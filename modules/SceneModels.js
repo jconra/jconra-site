@@ -135,7 +135,7 @@ class StationTop extends THREE.Group {
 class Station extends THREE.Group {
   constructor() {
     super();
-    this.url = './models/station.glb'
+    this.url = './models/station2.glb'
     this.onCreate();
   }
   onCreate() {
