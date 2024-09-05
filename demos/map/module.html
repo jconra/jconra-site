@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Demo</title>
+<style>
+body {margin:0px; overflow:hidden;}
+</style>
+</head>
+<body>
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.156.1/build/three.module.js",
+      "orbit": "https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js",
+      "stats": "https://cdnjs.cloudflare.com/ajax/libs/stats.js/r17/Stats.min.js",
+        "svg": "https://threejs.org/examples/jsm/loaders/SVGLoader.js"
+    }
+  }
+</script>
+<script src="https://cdn.jsdelivr.net/npm/lil-gui@0.17"></script>
+<script type="module">
+import * as THREE from 'three'; 
+import { OrbitControls } from 'orbit';
+import { default as Stats } from 'stats';
+import { SVGLoader } from 'svg';
+
+let width = window.innerWidth;
+let height = window.innerHeight;
+const stats = new Stats();
+stats.domElement.style.position = "fixed";
+document.body.appendChild( stats.domElement );
+
+// Create a renderer and add it to the DOM.
+let renderer = new THREE.WebGLRenderer();
+renderer.setSize(width, height);
+document.body.appendChild(renderer.domElement);
+// Create the scene 
+let scene = new THREE.Scene();
+// Create a camera
+let camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
+camera.position.z = 50;
+
+scene.add(camera);
+
+// Create a light, set its position, and add it to the scene.
+var light = new THREE.PointLight(0xffffff);
+light.position.set(-100,200,100);
+scene.add(light);
+
+// Add OrbitControls so that we can pan around with the mouse.
+var controls = new OrbitControls(camera, renderer.domElement);
+
+// instantiate a loader
+const loader = new SVGLoader();
+
+// load a SVG resource
+loader.load(
+	// resource URL
+	'us.svg',
+	// called when the resource is loaded
+	function ( data ) {
+
+		const paths = data.paths;
+		const group = new THREE.Group();
+
+		for ( let i = 0; i < paths.length; i ++ ) {
+
+			const path = paths[ i ];
+
+			const material = new THREE.MeshBasicMaterial( {
+				color: 0xffffff,
+				side: THREE.DoubleSide,
+				depthWrite: false
+			} );
+
+			const shapes = SVGLoader.createShapes( path );
+
+			for ( let j = 0; j < shapes.length; j ++ ) {
+
+				const shape = shapes[ j ];
+				const geometry = new THREE.ShapeGeometry( shape );
+				const mesh = new THREE.Mesh( geometry, material );
+				group.add( mesh );
+
+			}
+
+		}
+    group.rotateX(Math.PI);
+		scene.add( group );
+
+	},
+	// called when loading is in progresses
+	function ( xhr ) {
+
+		console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
+
+	},
+	// called when loading has errors
+	function ( error ) {
+
+		console.log( 'An error happened' );
+
+	}
+);
+
+resize();
+animate();
+window.addEventListener('resize',resize);
+
+function resize(){
+  let w = window.innerWidth;
+  let h = window.innerHeight;
+  
+  renderer.setSize(w,h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+const gui = new lil.GUI()
+const cameraFolder = gui.addFolder('Camera')
+cameraFolder.add(camera.position, 'z', 10, 50)
+cameraFolder.open()
+
+// Renders the scene
+function animate() {
+
+  renderer.render( scene, camera );
+  controls.update();
+  stats.update();
+  requestAnimationFrame( animate );
+}
+</script>
+</body>
+</html>

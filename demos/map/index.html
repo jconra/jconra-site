@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Demo</title>
+<style>
+body {margin:0px; overflow:hidden;}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r68/three.min.js"></script>
+<script src="https://s.cdpn.io/25480/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lil-gui@0.17"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/stats.js/r16/Stats.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lil-gui@0.17"></script>
+<script src="https://cdn.jsdelivr.net/npm/vue-svg-loader@0.16.0/index.min.js"></script>
+</head>
+<body>
+<script>
+
+let width = window.innerWidth;
+let height = window.innerHeight;
+const stats = new Stats();
+stats.domElement.style.position = "fixed";
+document.body.appendChild( stats.domElement );
+
+// Create a renderer and add it to the DOM.
+let renderer = new THREE.WebGLRenderer();
+renderer.setSize(width, height);
+document.body.appendChild(renderer.domElement);
+// Create the scene 
+let scene = new THREE.Scene();
+// Create a camera
+let camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
+camera.position.z = 50;
+
+scene.add(camera);
+
+// Create a light, set its position, and add it to the scene.
+var light = new THREE.PointLight(0xffffff);
+light.position.set(-100,200,100);
+scene.add(light);
+
+// Add OrbitControls so that we can pan around with the mouse.
+var controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+// Add axes
+var axes = new THREE.AxisHelper(50);
+scene.add( axes );
+
+var geometry = new THREE.BoxGeometry(5,5,5);
+var cubeMaterial = new THREE.MeshNormalMaterial(); 
+
+var cube = new THREE.Mesh( geometry, cubeMaterial );
+scene.add( cube );
+
+const loader = new SVGLoader();
+
+
+
+resize();
+animate();
+window.addEventListener('resize',resize);
+
+function resize(){
+  let w = window.innerWidth;
+  let h = window.innerHeight;
+  
+  renderer.setSize(w,h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+const gui = new lil.GUI()
+const cubeFolder = gui.addFolder('Cube')
+cubeFolder.add(cube.rotation, 'x', 0, Math.PI * 2)
+cubeFolder.add(cube.rotation, 'y', 0, Math.PI * 2)
+cubeFolder.add(cube.rotation, 'z', 0, Math.PI * 2)
+cubeFolder.open()
+const cameraFolder = gui.addFolder('Camera')
+cameraFolder.add(camera.position, 'z', 10, 50)
+cameraFolder.open()
+
+// Renders the scene
+function animate() {
+
+  renderer.render( scene, camera );
+  controls.update();
+  stats.update();
+  requestAnimationFrame( animate );
+}
+</script>
+</body>
+</html>

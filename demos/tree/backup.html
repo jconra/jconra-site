@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Tree</title>
+<style>
+body {margin:0px; overflow:hidden;}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r99/three.js"></script>
+<script src="https://s.cdpn.io/25480/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lil-gui@0.17"></script>
+</head>
+<body>
+<script>
+const guidat = {x:1, y:1, z:1, weight:1, age:100, tree_min:12, tree_mul:0.7, branch_min:8};
+let width = window.innerWidth;
+let height = window.innerHeight;
+
+// Create a renderer and add it to the DOM.
+let renderer = new THREE.WebGLRenderer();
+renderer.setSize(width, height);
+document.body.appendChild(renderer.domElement);
+// Create the scene 
+let scene = new THREE.Scene();
+// Create a camera
+let camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
+camera.position.set(20,10,20);
+camera.lookAt(new THREE.Vector3());
+
+scene.add(camera);
+
+// Create a light, set its position, and add it to the scene.
+let light = new THREE.PointLight(0xffffff);
+light.position.set(0,20,0);
+scene.add(light);
+
+// Add OrbitControls so that we can pan around with the mouse.
+let controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+
+let geometry = new THREE.PlaneGeometry(50,50);
+let material = new THREE.MeshPhongMaterial({color: 0x00bb00 }); 
+let cube = new THREE.Mesh( geometry, material );
+cube.rotateX(-Math.PI/2);
+scene.add( cube );
+
+class Tree extends THREE.Group{
+  constructor(position) {
+    super();
+    this.r = rn();
+    this.t = 0;
+    this.points = [];
+    this.age = 100;
+    this.position.copy(position);
+    this.normal = new THREE.Vector3(0, 1, 0);
+    this.drawTree(this.position, this.normal, guidat.age);
+  }
+  drawTree(position, normal, size) {
+    let wt = this.r.substr(this.t,2)/1000+0.95;
+    let length = (this.r.substr(this.t+2,2)/10+guidat.branch_min)*size/200;
+    let x = this.r.substr(this.t+4,2)/1000+0.95;
+    let z = this.r.substr(this.t+6,2)/1000+0.95;
+    this.t += 8;
+    let mesh = this.newCylinder(length, size);
+    let p2 = normal.clone().multiplyScalar(length).add(position);
+    mesh.position.copy(position);
+    mesh.lookAt(p2);
+    this.add(mesh);
+    size *= guidat.tree_mul;
+    if (size > guidat.tree_min) {
+      let g = guidat;
+      let v1 = new THREE.Euler(-Math.PI/4*g.x*g.weight, 0, -Math.PI/4*g.z);
+      let v2 = new THREE.Euler(Math.PI/4*g.x*(2-g.weight), 0, Math.PI/4*g.z);
+      let v1_normal = normal.clone().applyEuler(v1);
+      let v2_normal = normal.clone().applyEuler(v2);
+      this.drawTree(p2, v1_normal.clone().applyAxisAngle(normal, Math.PI/4*g.y), size*(2-g.weight));
+      this.drawTree(p2, v2_normal.clone().applyAxisAngle(normal, Math.PI/4*g.y), size*g.weight);
+    }
+  }
+
+  newCylinder(length, size) {
+    let c = Math.floor(50+2*size);
+    let geo = new THREE.CylinderGeometry(size/100*guidat.tree_mul, size/100, length, 8);
+    let mat = new THREE.MeshPhongMaterial({color: "rgb("+c+","+c+","+c+")"});
+    geo.applyMatrix(new THREE.Matrix4().makeTranslation(0, length/2, 0));
+    geo.applyMatrix(new THREE.Matrix4().makeRotationX(Math.PI/2));
+    let mesh = new THREE.Mesh(geo, mat);
+    return mesh;
+  }
+}
+
+let tree = new Tree(new THREE.Vector3());
+scene.add(tree);
+
+resize();
+animate();
+window.addEventListener('resize',resize);
+
+function resize(){
+  let w = window.innerWidth;
+  let h = window.innerHeight;
+  
+  renderer.setSize(w,h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+function rn(seed=Math.floor(Math.random()*1000), length=1000) {
+  let ret = seed.toString();
+  let track = 0;
+  while (ret.length < length) {
+    ret += Math.sin(ret.substr(track, 4)).toString().substr(3);
+    track += 4;
+  }
+  return ret.substr(0,length);
+}
+
+const gui = new lil.GUI()
+const cubeFolder = gui.addFolder('Cube').onChange(function(){
+ while (tree.children.length > 0) {tree.remove(tree.children[0]);}
+ tree.t = 0;
+ tree.drawTree(tree.position, tree.normal, guidat.age);
+});
+cubeFolder.add(guidat, 'x', 0, 2);
+cubeFolder.add(guidat, 'y', 0, Math.PI*8);
+cubeFolder.add(guidat, 'z', 0.5, 1.5);
+cubeFolder.add(guidat, 'weight', 0, 2);
+cubeFolder.add(guidat, 'age', 0, 200);
+cubeFolder.add(guidat, 'tree_min', 0, 20);
+cubeFolder.add(guidat, 'tree_mul', 0, 1);
+cubeFolder.add(guidat, 'branch_min', 1, 30);
+cubeFolder.open()
+const cameraFolder = gui.addFolder('Camera')
+cameraFolder.add(camera.position, 'z', 10, 50)
+cameraFolder.open()
+
+// Renders the scene
+function animate() {
+
+  renderer.render( scene, camera );
+  controls.update();
+
+  requestAnimationFrame( animate );
+}
+</script>
+</body>
+</html>

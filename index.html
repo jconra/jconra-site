@@ -1,0 +1,37 @@
+<!DOCTYPE html> 
+<html> 
+<head lang="en"> 
+<meta charset="utf-8"> 
+<title>jconra.com</title> 
+<style>
+body { margin: 0; overflow: hidden; } 
+#ui { position: fixed; z-index:5; pointer-events: none }
+@font-face { font-family: nasa; src: url("fonts/nasalization-rg.ttf");}
+</style>
+<script>document.fonts.load('10pt "nasa"').then(function(){console.log("Font Loaded")});</script> 
+<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.156.1/build/three.module.js",
+      "orbit": "https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js",
+      "fontLoader": "https://unpkg.com/three@0.138.3/examples/jsm/loaders/FontLoader.js",
+      "textGeometry": "https://unpkg.com/three@0.161.0/examples/jsm/geometries/TextGeometry.js",
+      "three/addons/": "https://unpkg.com/three@0.156.1/examples/jsm/",
+      "stats": "https://cdnjs.cloudflare.com/ajax/libs/stats.js/r17/Stats.min.js",
+      "draw": "./modules/Draw.js",
+      "texture": "./modules/Textures.js",
+      "displays": "./modules/Displays.js",
+      "controls": "./modules/Controls.js",
+      "scene_models": "./modules/SceneModels.js",
+      "keyframes": "./modules/KeyFrames.js"
+    }
+  }
+</script>
+</head> 
+<body>
+<canvas id="ui"></canvas>
+<script type="module" src="./main.js">
+</script> 
+</body> 
+</html>

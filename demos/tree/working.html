@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Tree</title>
+<style>
+body {margin:0px; overflow:hidden;}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r99/three.js"></script>
+<script src="https://s.cdpn.io/25480/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lil-gui@0.17"></script>
+</head>
+<body>
+<script>
+const guidat = {branches:2, growth:0.8, levels:5, age:3000, y_weight:0.5, leaves:20, leaf_size:2, position_offset:2.5, rotation_offset:3.14};
+let width = window.innerWidth;
+let height = window.innerHeight;
+let color = 0;
+
+// Create a renderer and add it to the DOM.
+let renderer = new THREE.WebGLRenderer();
+renderer.setSize(width, height);
+document.body.appendChild(renderer.domElement);
+// Create the scene 
+let scene = new THREE.Scene();
+// Create a camera
+let camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
+camera.position.set(20,10,20);
+camera.lookAt(new THREE.Vector3());
+
+scene.add(camera);
+
+// Create a light, set its position, and add it to the scene.
+let light = new THREE.PointLight(0xffffff);
+light.position.set(0,40,0);
+scene.add(light);
+
+const amb_light = new THREE.AmbientLight( 0xffffff, 0.25 );
+scene.add( amb_light );
+
+// Add OrbitControls so that we can pan around with the mouse.
+let controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+
+let geometry = new THREE.PlaneGeometry(50,50);
+let material = new THREE.MeshPhongMaterial({color: 0x00bb00 }); 
+let cube = new THREE.Mesh( geometry, material );
+cube.rotateX(-Math.PI/2);
+scene.add( cube );
+
+class Branch{
+  constructor(position, level=guidat.levels) {
+    this.position = position;
+    this.level = level;
+    this.kids = [];
+  }
+}
+
+class Tree extends THREE.Group{
+  constructor(position) {
+    super();
+    this.points = [new THREE.Vector3(0,5,0)];
+    this.position.copy(position);
+    this.root = new Branch(new THREE.Vector3(0, 5, 0).add(this.position));
+    this.createTree(this.root);
+    this.drawTree();
+    scene.add(this);
+  }
+
+  createTree(branch, level=guidat.levels) {
+    level--;
+    for (let i=0; i<guidat.branches; i++) {
+      let point = findBestPoint(branch.position, 5, this.points);
+      this.points.push(point);
+      let newBranch = new Branch(point, level);
+      branch.kids.push(newBranch);
+      if (level > 0) this.createTree(newBranch, level);
+    }
+  }
+
+  drawTree(position=this.position, branch=this.root, size=guidat.age) {
+    let d1 = Math.log(size) * Math.pow(guidat.growth, guidat.levels -branch.level)/10;
+    let d2 = (size < 50)? 0:d1*Math.pow(guidat.growth,2);
+    let length = Math.min(size/10, 5);
+    let mesh = newCylinder(d1, d2, length);
+    mesh.position.copy(position);
+    mesh.lookAt(branch.position);
+    this.add(mesh);
+    if (size < guidat.age/2) this.drawLeaves(position, branch.position, length/5);
+    if (size > 50) {
+      let kidNum = branch.kids.length;
+      for (let i=0; i<kidNum; i++) {
+        this.drawTree(branch.position, branch.kids[i], (size-50)/2);
+      }
+    }
+  }
+
+  drawLeaves(p1, p2, length) {
+    const LEAF_TOTAL = guidat.leaves;
+    for(let i=0; i<LEAF_TOTAL; i++) {
+      this.add(leaf(new THREE.Vector3().lerpVectors(p1,p2,i/LEAF_TOTAL*length), guidat.leaf_size));
+    }
+  }
+}
+ 
+function findBestPoint(position, length, treePoints) {
+  let points = [];
+  for (let i=0; i<10; i++) { 
+    points.push(generatePoint(position, length)) 
+  }
+  color = (color + 1) % 6;
+  let max_index = 0;
+  let max_dist = 0;
+  for (let i=0; i<points.length; i++) {
+    let min_dist = min_distance(points[i], treePoints);
+    let yScore = points[i].y * guidat.y_weight;
+    if (min_dist + yScore > max_dist) {
+      max_dist = min_dist + yScore;
+      max_index = i;
+    }
+  }
+  return points[max_index];
+}
+
+function min_distance(point, points) {
+  min_index = 0;
+  min_dist = 1000;
+  for (let i=0; i<points.length; i++) {
+    let distance = points[i].distanceTo(point);
+    if (distance < min_dist) {
+      min_index = i;
+      min_dist = distance;
+    }
+  }
+  return min_dist;
+}
+
+function generatePoint(position, length) {
+  let r = new THREE.Vector3(Math.random()-0.5,Math.random()*0.5,Math.random()-0.5);
+  return r.normalize().multiplyScalar(length).add(position);
+}
+
+function newCylinder(d1, d2, length) {
+  let geo = new THREE.CylinderGeometry(d2, d1, length, 8);
+  let mat = new THREE.MeshPhongMaterial({color: 0x532915});
+  geo.applyMatrix(new THREE.Matrix4().makeTranslation(0, length/2, 0));
+  geo.applyMatrix(new THREE.Matrix4().makeRotationX(Math.PI/2));
+  let mesh = new THREE.Mesh(geo, mat);
+  return mesh;
+}
+
+function rn(n=1) {return Math.random()*n-n*0.5;}
+function rv(n=1) {return new THREE.Vector3(rn(n), rn(n), rn(n));}
+
+function leaf(p, s) {
+  const geometry = new THREE.CircleGeometry( 0.25, 6 );
+  const material = new THREE.MeshPhongMaterial({ color: 0x009900, side: THREE.DoubleSide});
+  const leaf = new THREE.Mesh( geometry, material );
+  leaf.rotateX(Math.PI/2);
+  leaf.scale.set(s*2, 1, s);
+  leaf.position.copy(p);
+  leaf.position.add(rv(guidat.position_offset));
+  let r = guidat.rotation_offset;
+  leaf.rotation.set(rn(r), rn(r), rn(r));
+  leaf.position.y += 0.5;
+  return leaf;
+}
+
+function sphere(p) {
+  c = [0xffff00, 0xff0000, 0x00ff00, 0x0000ff, 0x00ffff, 0xff00ff][color]
+  const geometry = new THREE.SphereGeometry( 0.3, 16, 8 ); 
+  const material = new THREE.MeshBasicMaterial( { color: c } ); 
+  const sphere = new THREE.Mesh( geometry, material ); 
+  sphere.position.copy(p);
+  scene.add( sphere );
+}
+
+let tree = new Tree(new THREE.Vector3());
+scene.add(tree);
+
+resize();
+animate();
+window.addEventListener('resize',resize);
+
+function resize(){
+  let w = window.innerWidth;
+  let h = window.innerHeight;
+  
+  renderer.setSize(w,h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+const gui = new lil.GUI()
+const cubeFolder = gui.addFolder('Cube').onChange(function(){
+  while (tree.children.length > 0) {
+    tree.remove(tree.children[0]);
+  }
+  //tree = new Tree(new THREE.Vector3());
+  tree.drawTree();
+  console.log(renderer.info.render.triangles);
+});
+//cubeFolder.add(guidat, 'branches', 1, 6, 1);
+//cubeFolder.add(guidat, 'growth', 0.3, 0.95);
+//cubeFolder.add(guidat, 'levels', 1, 7, 1);
+cubeFolder.add(guidat, 'leaves', 1, 100, 1);
+cubeFolder.add(guidat, 'leaf_size', 0.01, 3);
+cubeFolder.add(guidat, 'age', 1, 5000);
+cubeFolder.add(guidat, 'position_offset', 0, 10);
+cubeFolder.add(guidat, 'rotation_offset', 0, Math.PI);
+//cubeFolder.add(guidat, 'y_weight', 0, 1);
+cubeFolder.open()
+const cameraFolder = gui.addFolder('Camera')
+cameraFolder.add(camera.position, 'z', 10, 50)
+cameraFolder.open()
+
+// Renders the scene
+function animate() {
+
+  renderer.render( scene, camera );
+  controls.update();
+
+  requestAnimationFrame( animate );
+}
+</script>
+</body>
+</html>
