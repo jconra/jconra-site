@@ -146,8 +146,8 @@ class Station extends THREE.Group {
     );
   }
   place(model) {
-    this.scale.set(60, 47, 60);
-    this.position.set(0, -800, 0);
+    this.scale.set(10, 10, 10);
+    this.position.set(0, -600, 0);
     this.rotation.set(0, Math.PI/2, 0);
   }  
   update(t) {
