@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bug Lab</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; background:#0b0e12; }
+  canvas { display:block; }
+  #hud {
+    position:fixed; top:12px; left:14px; z-index:10; pointer-events:none;
+    font:12px/1.6 'Courier New', monospace; letter-spacing:1px; color:#b9c8d2;
+    text-shadow:0 1px 3px rgba(0,0,0,.8);
+  }
+  #hud b { color:#e6c07a; font-weight:600; }
+  #hud .st { color:#7fb4cc; }
+  #panel {
+    position:fixed; top:12px; right:14px; z-index:10;
+    font:11px/1.7 'Courier New', monospace; letter-spacing:1px; color:#9fb0bd;
+    background:rgba(8,14,20,.72); border:1px solid rgba(255,255,255,.16);
+    border-radius:5px; padding:9px 12px; text-shadow:0 1px 3px rgba(0,0,0,.8);
+  }
+  #panel label { display:flex; align-items:center; gap:7px; cursor:pointer; }
+  #panel input { cursor:pointer; }
+  #panel .k { color:#e6c07a; }
+  #boot {
+    position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center;
+    background:#0b0e12; color:#b9c8d2; font:13px 'Courier New', monospace; letter-spacing:3px;
+    transition:opacity .5s ease;
+  }
+  #boot.gone { opacity:0; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="boot">LOADING SPECIMENS…</div>
+<div id="hud"></div>
+<div id="panel">
+  <label><input type="checkbox" id="c-names" checked> show <span class="k">state</span></label>
+  <label><input type="checkbox" id="c-sight"> show <span class="k">sight cones</span></label>
+  <label><input type="checkbox" id="c-slow"> <span class="k">slow motion</span></label>
+  <div style="margin-top:6px;opacity:.65">drag to orbit · scroll to zoom</div>
+</div>
+
+<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+<script type="importmap">
+{ "imports": {
+    "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+// BUG LAB — two Tripo-generated bugs wandering an arena. When one sees the other it rears up as a
+// threat display, then lunges.
+//
+// PINNED TO THREE 0.158.0, AND THE VERSION IS LOAD-BEARING. r159 rewrote the skinning vertex
+// shader to read bone matrices with textureSize()/texelFetch() and an integer modulus — all of
+// which are GLSL ES 3.00, i.e. WebGL 2 only. On a WebGL 1 machine every skinned mesh then fails to
+// compile ("no matching overloaded function found") and nothing but the ground renders. Ordinary
+// meshes are unaffected, which is why it is easy to miss. Tested by forcing a WebGL 1 context:
+// 0.159+ blank, 0.158 and below fine. Do not bump this without re-running that test.
+//
+// ?gl1 forces a WebGL 1 context even on a WebGL 2 machine — that is how the above gets verified,
+// since SwiftShader and any modern desktop GPU will happily hide the problem.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const ARENA = 6.5;
+// Measured off the baked walk cycles: the ground speed at which the feet do not slip when the clip
+// plays at rate 1. Driving position from these (rather than guessing) is what keeps the feet planted.
+const SPEC = {
+  // modelYaw squares each model onto +Z, which is what the movement code treats as forward.
+  // Blender->glTF maps (x,y,z) to (x,z,-y): the spider faced -Y so it arrives facing +Z already,
+  // the insect faced -X so it arrives facing -X and needs a quarter turn.
+  spider: { file:'../../models/spider_animated.glb', slipFree:0.225, scale:2.6, turn:1.7, sight:4.6, fov:1.15, modelYaw:0 },
+  insect: { file:'../../models/insect_animated.glb', slipFree:0.276, scale:2.7, turn:1.5, sight:5.2, fov:1.05, modelYaw:Math.PI/2 },
+};
+
+const FORCE_GL1 = new URLSearchParams(location.search).has('gl1');
+let renderer;
+if (FORCE_GL1) {
+  const cv = document.createElement('canvas');
+  const ctx = cv.getContext('webgl', { antialias:true }) || cv.getContext('experimental-webgl');
+  renderer = new THREE.WebGLRenderer({ canvas: cv, context: ctx });
+} else {
+  renderer = new THREE.WebGLRenderer({ antialias:true });
+}
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0e12);
+scene.fog = new THREE.Fog(0x0b0e12, 16, 34);
+
+const camera = new THREE.PerspectiveCamera(46, innerWidth/innerHeight, 0.1, 200);
+camera.position.set(6.4, 4.2, 6.4);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0.7, 0);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI*0.49;
+controls.minDistance = 3; controls.maxDistance = 26;
+
+scene.add(new THREE.HemisphereLight(0x8fa3b5, 0x151b22, 0.85));
+const key = new THREE.DirectionalLight(0xfff0dc, 3.0);
+key.position.set(6, 10, 4);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+const d = 12;
+key.shadow.camera.left=-d; key.shadow.camera.right=d;
+key.shadow.camera.top=d; key.shadow.camera.bottom=-d;
+key.shadow.camera.far = 40; key.shadow.bias = -0.0015;
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x6688aa, 1.0);
+rim.position.set(-7, 4, -6); scene.add(rim);
+
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(ARENA+3, 64).rotateX(-Math.PI/2),
+  new THREE.MeshStandardMaterial({ color:0x1b2128, roughness:0.96, metalness:0.0 })
+);
+ground.receiveShadow = true; scene.add(ground);
+const ring = new THREE.Mesh(
+  new THREE.RingGeometry(ARENA-0.05, ARENA+0.05, 96).rotateX(-Math.PI/2),
+  new THREE.MeshBasicMaterial({ color:0x2e3c47 })
+);
+ring.position.y = 0.002; scene.add(ring);
+const grid = new THREE.GridHelper(ARENA*2, 18, 0x2a3a45, 0x1e2a33);
+grid.position.y = 0.001; scene.add(grid);
+
+const hud = document.getElementById('hud');
+const cName = document.getElementById('c-names');
+const cSight = document.getElementById('c-sight');
+const cSlow = document.getElementById('c-slow');
+
+// ── one bug ───────────────────────────────────────────────────────────────────
+class Bug {
+  constructor(name, gltf, spec, pos, heading) {
+    this.name = name; this.spec = spec;
+    this.slip = spec.slipFree * spec.scale;   // stride scales with the model, so speed must too
+    this.root = new THREE.Group();
+    this.root.position.copy(pos);
+    this.root.rotation.y = heading;
+    this.root.scale.setScalar(spec.scale);
+    scene.add(this.root);
+
+    // The GLB faces its own way (spider -Y, insect -X in Blender terms). Both come into three.js
+    // needing a spin so "forward" is +Z, which is what the movement code below assumes.
+    this.model = gltf.scene;
+    // KEEP THE GLB'S OWN MATERIAL. Both models ship a baseColorTexture (embedded JPEG) with real
+    // TEXCOORD_0 UVs — replacing it with a flat colour, as an earlier pass did, throws the texture
+    // away and they come out plain clay. Only the shadow flags are ours.
+    this.model.traverse(o => {
+      if (!o.isMesh) return;
+      o.castShadow = true; o.receiveShadow = true;
+      o.frustumCulled = false;              // skinned bounds go stale mid-animation and can pop out
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) {
+        if (!m) continue;
+        if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;   // glTF base colour is sRGB
+        m.roughness = Math.min(m.roughness ?? 0.8, 0.85);
+        m.needsUpdate = true;
+      }
+    });
+    this.model.rotation.y = spec.modelYaw || 0;
+    this.root.add(this.model);
+
+    this.mixer = new THREE.AnimationMixer(this.model);
+    this.clips = {};
+    for (const c of gltf.animations) {
+      const a = this.mixer.clipAction(c);
+      a.enabled = true; a.setEffectiveWeight(0);
+      this.clips[c.name] = a;
+      a.play();
+    }
+    this.current = null;
+    this.play('Idle');
+
+    this.state = 'idle';
+    this.t = 0.6 + Math.random()*1.4;
+    this.speed = 0;
+    this.cool = 0;
+
+    this.cone = makeCone(spec.sight, spec.fov);
+    this.cone.visible = false;
+    this.root.add(this.cone);
+  }
+  // Crossfade rather than snap — every clip is already playing at weight 0, so a fade is just a
+  // weight ramp and transitions never pop.
+  play(name, fade=0.28, rate=1) {
+    const next = this.clips[name];
+    if (!next) return;
+    next.setEffectiveTimeScale(rate);
+    if (this.current === next) return;          // same clip, only the rate changed
+    next.reset(); next.setEffectiveWeight(1); next.play();
+    if (this.current) this.current.crossFadeTo(next, fade, false);
+    this.current = next;
+    this.clipName = name;
+  }
+  get forward() { return new THREE.Vector3(0,0,1).applyQuaternion(this.root.quaternion); }
+  // can I see `other`? distance plus a forward cone — same shape as a sight lobe
+  sees(other) {
+    const to = other.root.position.clone().sub(this.root.position);
+    const dist = to.length();
+    if (dist > this.spec.sight) return false;
+    to.normalize();
+    return to.dot(this.forward) > Math.cos(this.spec.fov);
+  }
+}
+
+function makeCone(range, fov) {
+  const g = new THREE.BufferGeometry();
+  const pts = [0,0,0];
+  const N = 22;
+  for (let i=0;i<=N;i++){
+    const a = -fov + (2*fov)*(i/N);
+    pts.push(Math.sin(a)*range, 0, Math.cos(a)*range);
+  }
+  const idx = [];
+  for (let i=1;i<=N;i++) idx.push(0, i, i+1);
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pts,3));
+  g.setIndex(idx);
+  const m = new THREE.MeshBasicMaterial({ color:0x4fa3c7, transparent:true, opacity:0.12,
+                                          side:THREE.DoubleSide, depthWrite:false });
+  const mesh = new THREE.Mesh(g, m);
+  mesh.position.y = 0.05;
+  return mesh;
+}
+
+const loader = new GLTFLoader();
+const load = f => new Promise((res, rej) => loader.load(f, res, undefined, rej));
+
+const bugs = [];
+Promise.all([load(SPEC.spider.file), load(SPEC.insect.file)]).then(([sp, ins]) => {
+  bugs.push(new Bug('SPIDER', sp, SPEC.spider, new THREE.Vector3(-3.6, 0, -1.4), 0.9));
+  bugs.push(new Bug('BUG',    ins, SPEC.insect, new THREE.Vector3( 3.4, 0,  1.6), -2.2));
+  document.getElementById('boot').classList.add('gone');
+  setTimeout(()=>document.getElementById('boot').remove(), 600);
+  clock.start();
+  renderer.setAnimationLoop(tick);
+}).catch(e => {
+  document.getElementById('boot').textContent = 'LOAD FAILED — ' + e.message;
+});
+
+const clock = new THREE.Clock(false);
+const tmp = new THREE.Vector3();
+
+function think(b, other, dt) {
+  b.t -= dt;
+  if (b.cool > 0) b.cool -= dt;
+
+  // A contact in the cone outranks whatever it was doing — unless it is already mid-display.
+  if (b.cool <= 0 && other && b.sees(other) && b.state !== 'rear' && b.state !== 'lunge' && b.state !== 'recover') {
+    b.state = 'rear'; b.t = 2.05; b.speed = 0;
+    b.play('RearUp', 0.18);
+    return;
+  }
+
+  switch (b.state) {
+    case 'idle':
+      b.speed = 0;
+      if (b.t <= 0) { b.state='walk'; b.t = 2.5 + Math.random()*3.5;
+                      b.turnRate = (Math.random()-0.5)*0.5; b.play('Walk', 0.3); }
+      break;
+    case 'walk': {
+      // rate 1 == the clip's slip-free speed; anything else scales together so feet keep planted
+      const want = 0.55 + Math.random()*0.0;
+      b.speed = b.slip * (0.85 + 0.3*Math.sin(performance.now()*0.0004 + b.name.length));
+      b.play('Walk', 0.3, b.speed / b.slip);
+      b.root.rotation.y += (b.turnRate||0) * dt;
+      // steer back inside the ring before it wanders off the arena
+      const r = Math.hypot(b.root.position.x, b.root.position.z);
+      if (r > ARENA-1.2) {
+        const inward = Math.atan2(-b.root.position.x, -b.root.position.z);
+        let dY = inward - b.root.rotation.y;
+        while (dY >  Math.PI) dY -= Math.PI*2;
+        while (dY < -Math.PI) dY += Math.PI*2;
+        b.root.rotation.y += Math.sign(dY) * Math.min(Math.abs(dY), b.spec.turn*dt);
+      }
+      if (b.t <= 0) { b.state='idle'; b.t = 1.4 + Math.random()*2.6; b.play('Idle', 0.35); }
+      break;
+    }
+    case 'rear':
+      b.speed = 0;
+      // turn to square up on the rival while displaying
+      if (other) {
+        tmp.copy(other.root.position).sub(b.root.position);
+        const want = Math.atan2(tmp.x, tmp.z);
+        let dY = want - b.root.rotation.y;
+        while (dY >  Math.PI) dY -= Math.PI*2;
+        while (dY < -Math.PI) dY += Math.PI*2;
+        b.root.rotation.y += Math.sign(dY) * Math.min(Math.abs(dY), 1.2*dt);
+      }
+      if (b.t <= 0) { b.state='lunge'; b.t = 1.35; b.play('Strike', 0.12); }
+      break;
+    case 'lunge':
+      // the clip carries the body forward on its own; add a shove so it covers ground
+      b.speed = (b.t > 0.75 && b.t < 1.12) ? b.slip*3.4 : 0;
+      if (b.t <= 0) { b.state='recover'; b.t = 1.1 + Math.random(); b.cool = 3.2;
+                      b.play('Idle', 0.3); }
+      break;
+    case 'recover':
+      b.speed = (b.t > 0.55) ? -b.slip*0.7 : 0;      // back off from what it just bit
+      if (b.t <= 0) { b.state='walk'; b.t = 3 + Math.random()*3;
+                      b.turnRate = (Math.random()-0.5)*1.4; b.play('Walk', 0.35); }
+      break;
+  }
+}
+
+function tick() {
+  let dt = Math.min(clock.getDelta(), 0.05);
+  if (cSlow.checked) dt *= 0.3;
+  for (let i=0;i<bugs.length;i++) {
+    const b = bugs[i], other = bugs[1-i];
+    think(b, other, dt);
+    if (b.speed) b.root.position.addScaledVector(b.forward, b.speed*dt);
+    // SOFT SEPARATION. A lunge closes hard and would otherwise walk one body through the other;
+    // push them apart rather than letting the meshes interpenetrate.
+    if (other) {
+      tmp.copy(b.root.position).sub(other.root.position); tmp.y = 0;
+      const gap = tmp.length(), MIN = 2.45;
+      if (gap > 1e-4 && gap < MIN) b.root.position.addScaledVector(tmp.normalize(), (MIN-gap)*0.5);
+    }
+    // and keep everyone inside the ring
+    const rr = Math.hypot(b.root.position.x, b.root.position.z);
+    if (rr > ARENA) {
+      b.root.position.x *= ARENA/rr; b.root.position.z *= ARENA/rr;
+    }
+    b.cone.visible = cSight.checked;
+    b.mixer.update(dt);
+  }
+  controls.update();
+  if (cName.checked && bugs.length) {
+    hud.innerHTML = bugs.map(b =>
+      `<b>${b.name}</b> <span class="st">${b.state}</span> · ${b.clipName}`).join('<br>');
+  } else hud.innerHTML = '';
+  renderer.render(scene, camera);
+}
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
