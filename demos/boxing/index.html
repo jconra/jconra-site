@@ -170,6 +170,11 @@ class Rig {
     a.setEffectiveTimeScale(rate);
     if (this.cur === a && !force) return a;
     a.reset();
+    // A REVERSED CLIP MUST START AT ITS END. reset() puts the playhead at 0, so with a negative
+    // rate the very first update steps to -0.04 and wraps round to the end — meaning one frame
+    // posed at the START of the walk (mid-stride, weight forward) before it snaps back. That one
+    // frame is what reads as lurching forward before he backs up.
+    if (rate < 0) a.time = a.getClip().duration;
     a.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, once ? 1 : Infinity);
     a.clampWhenFinished = once;
     a.setEffectiveWeight(1); a.play();
@@ -388,7 +393,7 @@ function player(dt) {
     moved = true; P.state = run ? 'run' : 'walk';
   } else if (f < 0) {
     // backing up: the walk cycle run in reverse
-    hero.play(A('walk'), { fade:0.18, rate:-1.15 });
+    hero.play(A('walk'), { fade:0.12, rate:-1.15 });
     hero.root.position.addScaledVector(fwd, -PLAYER.back*dt);
     moved = true; P.state = 'back';
   }
@@ -474,6 +479,13 @@ function fightCam(dt) {
   camera.lookAt(lookGoal);
 }
 
+window.__heroPos = () => hero ? {
+  x:+hero.root.position.x.toFixed(3), z:+hero.root.position.z.toFixed(3),
+  yaw:+hero.root.rotation.y.toFixed(3), st:P.state, clip:hero.curName,
+  bx:+bug.root.position.x.toFixed(2), bz:+bug.root.position.z.toFixed(2), bst:B.state,
+  ct: hero.cur? +hero.cur.time.toFixed(3):null, ts: hero.cur? hero.cur.timeScale:null,
+  w: hero.cur? +hero.cur.getEffectiveWeight().toFixed(2):null
+} : null;
 function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
   if (phase === 'cine') cine(dt);
