@@ -333,7 +333,8 @@ function endCine() {
   if (phase !== 'cine') return;
   phase = 'fight';
   hide(); hud.classList.add('on');
-  hero.root.position.set(0, 0, -4.0);
+  // Keep the position reached by the intro walk. Resetting this to a separate
+  // fight start position made Stephen visibly teleport backward at the handoff.
   hero.root.rotation.y = 0;
   P.state = 'idle';
   say('FIGHT', '');
