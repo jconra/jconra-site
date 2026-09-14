@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bug Fight</title>
+<title>Boxing Demo</title>
 <style>
   @font-face { font-family: nasa; src: url("../../fonts/nasalization-rg.ttf"); font-display: swap; }
   * { margin:0; padding:0; box-sizing:border-box; }
   html,body { height:100%; overflow:hidden; background:#05070a; }
-  canvas { display:block; }
+  canvas { display:block; touch-action:none; }
 
   #hud { position:fixed; inset:0; pointer-events:none; z-index:5; opacity:0; transition:opacity .8s ease; }
   #hud.on { opacity:1; }
@@ -54,13 +54,20 @@
     background:rgba(0,0,0,.35);
   }
   #skip:hover { color:#e0c07a; border-color:rgba(224,192,122,.5); }
+  #opponent-picker {
+    position:fixed; top:20px; right:22px; z-index:45; color:#8fa0ad;
+    font:11px ui-monospace,monospace; letter-spacing:.08em; text-shadow:0 1px 4px #000;
+  }
+  #opponent-picker button { margin-left:7px; padding:6px 8px; color:#dce6ed; background:#101820;
+    border:1px solid rgba(255,255,255,.25); border-radius:4px; font:inherit; cursor:pointer; }
 </style>
 </head>
 <body>
 <div id="boot">LOADING…</div>
+<div id="opponent-picker"><button id="opponent-switch" type="button">SWITCH FOE</button></div>
 <div id="hud">
   <div class="bar p"><div class="who">Stephen</div><div class="track"><div class="fill" id="php"></div></div></div>
-  <div class="bar e"><div class="who">Warrior Bug</div><div class="track"><div class="fill" id="ehp"></div></div></div>
+  <div class="bar e"><div class="who" id="enemy-name">Warrior Bug</div><div class="track"><div class="fill" id="ehp"></div></div></div>
   <div id="keys"></div>
   <div id="centre"></div>
   <div id="skip">SKIP INTRO</div>
@@ -75,7 +82,7 @@
 </script>
 
 <script type="module">
-// BUG FIGHT — Stephen versus a Starship Troopers warrior bug.
+// BOXING DEMO — Stephen versus a selectable opponent.
 //
 // three 0.158.0 ON PURPOSE: r159 rewrote the skinning shader to use textureSize()/texelFetch(),
 // which are WebGL 2 only, so every skinned mesh goes invisible on a WebGL 1 machine. Both fighters
@@ -84,7 +91,10 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const A = n => 'preset:biped:' + n;              // Stephen's clips carry this prefix
+const C = n => 'preset:biped:' + n + '.001';      // Chimpanzee clips have a Blender suffix
+const opponent = new URLSearchParams(location.search).get('opponent') === 'insect' ? 'insect' : 'chimp';
 const ARENA = 11;
+const INTRO_START_Z = -13, INTRO_END_Z = -4, INTRO_DURATION = 7;
 const PLAYER = {
   scale: 1.8, walk: 2.4, run: 5.6, back: 1.8, side: 3.8,
   hp: 100, reach: 3.6, damage: [12, 20],
@@ -92,7 +102,20 @@ const PLAYER = {
 const BUG = {
   scale: 2.2, walk: 1.7, hp: 420, lungeSpeed: 9.5, lungeDamage: 16, reach: 3.2,
 };
-const ATTACKS = ['box_01','box_02','box_03','front_kick_01','front_kick_02','chop'];
+// The chimp has biped clips, but not the insect-specific names.
+const CHIMP_ANIM = {
+  idle: C('idle'), walk: C('walk'), rear: C('dance_05'), strike: C('press-up'), death: C('defeat_03'),
+};
+const INSECT_ANIM = {idle:'Idle', walk:'Walk', rear:'RearUp', strike:'Strike', death:'Death'};
+const ENEMY_ANIM = opponent === 'chimp' ? CHIMP_ANIM : INSECT_ANIM;
+const ENEMY_FILE = opponent === 'chimp' ? 'chimpanzee.glb' : 'insect_animated.glb';
+document.getElementById('opponent-switch').textContent = opponent === 'chimp' ? 'SWITCH TO BUG' : 'SWITCH TO CHIMP';
+document.getElementById('enemy-name').textContent = opponent === 'chimp' ? 'Chimpanzee' : 'Warrior Bug';
+document.getElementById('opponent-switch').addEventListener('click', () => {
+  const query = opponent === 'chimp' ? '?opponent=insect' : '';
+  location.search = query;
+});
+const ATTACKS = ['box_01','box_03','front_kick_01','front_kick_02'];
 // The preset clips are performed at a leisurely pace; a fight wants them snappy. Rate scales the
 // playback AND the state timer together, otherwise the state outlasts the animation and he stands
 // frozen at the end of a swing.
@@ -145,6 +168,70 @@ const grid = new THREE.GridHelper(ARENA*2, 22, 0x2b3a46, 0x1d2830);
 grid.position.y = 0.004; scene.add(grid);
 
 // ── animation helper ──────────────────────────────────────────────────────────
+// Add a distal mitten joint in the bind pose. Existing animation continues to
+// control the knuckles; this extra joint curls the fingertips into the palm.
+function closeStephenFists(model) {
+  model.updateMatrixWorld(true);
+  const fingers = ['L_Fingers', 'R_Fingers'].map(name => model.getObjectByName(name));
+  for (const finger of fingers) {
+    if (!finger) continue;
+    const meshes = [];
+    model.traverse(mesh => {
+      if (mesh.isSkinnedMesh && mesh.skeleton.bones.includes(finger)) meshes.push(mesh);
+    });
+    const inverse = finger.matrixWorld.clone().invert();
+    const point = new THREE.Vector3();
+    let length = 0;
+    for (const mesh of meshes) {
+      const {position, skinIndex, skinWeight} = mesh.geometry.attributes;
+      const index = mesh.skeleton.bones.indexOf(finger);
+      for (let v = 0; v < position.count; v++) {
+        let weight = 0;
+        for (let k = 0; k < 4; k++) if (skinIndex.getComponent(v, k) === index) weight += skinWeight.getComponent(v, k);
+        if (weight < 0.25) continue;
+        point.fromBufferAttribute(position, v).applyMatrix4(mesh.matrixWorld).applyMatrix4(inverse);
+        length = Math.max(length, point.y);
+      }
+    }
+    if (length <= 0) continue;
+    const tip = new THREE.Bone();
+    tip.name = finger.name + '_Curl';
+    tip.position.y = length * 0.5;
+    finger.add(tip);
+    model.updateMatrixWorld(true);
+    const tipInverse = tip.matrixWorld.clone().invert();
+    for (const mesh of meshes) {
+      mesh.geometry = mesh.geometry.clone();
+      const {position, skinIndex, skinWeight} = mesh.geometry.attributes;
+      const skeleton = mesh.skeleton, index = skeleton.bones.indexOf(finger);
+      const tipIndex = skeleton.bones.length;
+      for (let v = 0; v < position.count; v++) {
+        point.fromBufferAttribute(position, v).applyMatrix4(mesh.matrixWorld).applyMatrix4(inverse);
+        const blend = THREE.MathUtils.smoothstep(point.y, length * 0.25, length * 0.62);
+        const influences = [];
+        let tipWeight = 0;
+        for (let k = 0; k < 4; k++) {
+          const bone = skinIndex.getComponent(v, k), weight = skinWeight.getComponent(v, k);
+          const split = bone === index ? weight * blend : 0;
+          tipWeight += split;
+          influences.push({bone, weight:weight - split});
+        }
+        influences.push({bone:tipIndex, weight:tipWeight});
+        influences.sort((a, b) => b.weight - a.weight);
+        const total = influences.slice(0, 4).reduce((sum, item) => sum + item.weight, 0);
+        if (!total) continue;
+        for (let k = 0; k < 4; k++) {
+          skinIndex.setComponent(v, k, influences[k].bone);
+          skinWeight.setComponent(v, k, influences[k].weight / total);
+        }
+      }
+      mesh.skeleton = new THREE.Skeleton([...skeleton.bones, tip], [...skeleton.boneInverses, tipInverse]);
+      skinIndex.needsUpdate = skinWeight.needsUpdate = true;
+    }
+    tip.rotation.x = THREE.MathUtils.degToRad(-120);
+  }
+}
+
 class Rig {
   constructor(gltf, scale, yaw) {
     this.root = new THREE.Group(); this.root.scale.setScalar(scale); scene.add(this.root);
@@ -160,7 +247,26 @@ class Rig {
     this.root.add(this.model);
     this.mixer = new THREE.AnimationMixer(this.model);
     this.clips = {};
-    for (const c of gltf.animations) this.clips[c.name] = this.mixer.clipAction(c);
+    for (const c of gltf.animations) {
+      const corrected = c.name === C('press-up');
+      const entrance = c.name === A('swagger');
+      const clip = corrected || entrance ? c.clone() : c;
+      if (entrance) clip.tracks = clip.tracks.filter(track => track.name !== 'Root.position');
+      if (corrected) {
+        // The push-up clip is authored on the floor, so pitch it upright.
+        const root = clip.tracks.find(track => track.name === 'Root.quaternion');
+        if (root) {
+          const axis = c.name === C('press-up') ? new THREE.Vector3(1,0,0) : new THREE.Vector3(0,1,0);
+          const angle = -Math.PI/2;
+          const turn = new THREE.Quaternion().setFromAxisAngle(axis, angle);
+          const q = new THREE.Quaternion();
+          for (let i = 0; i < root.times.length; i++) {
+            q.fromArray(root.values, i * 4).premultiply(turn).toArray(root.values, i * 4);
+          }
+        }
+      }
+      this.clips[clip.name] = this.mixer.clipAction(clip);
+    }
     this.cur = null; this.curName = null;
   }
   has(n){ return !!this.clips[n]; }
@@ -183,6 +289,7 @@ class Rig {
     return a;
   }
   get dur(){ return this.cur ? this.cur.getClip().duration : 0; }
+  freeze(){ this.mixer.stopAllAction(); this.cur = null; this.curName = null; }
 }
 
 // ── load ──────────────────────────────────────────────────────────────────────
@@ -190,16 +297,18 @@ const loader = new GLTFLoader();
 const load = f => new Promise((res, rej) => loader.load(f, res, undefined, rej));
 let hero, bug, clock;
 
-Promise.all([load('../../models/stephen.glb'), load('../../models/insect_animated.glb')])
+Promise.all([load('../../models/stephen.glb'), load('../../models/' + ENEMY_FILE)])
 .then(([s, i]) => {
+  closeStephenFists(s.scene);
   hero = new Rig(s, PLAYER.scale, 0);            // faces +Z after the glTF axis swap
-  bug  = new Rig(i, BUG.scale, Math.PI/2);       // this one faced -X in Blender
-  hero.root.position.set(0, 0, -13);             // off-platform, walks on during the intro
+  bug  = new Rig(i, BUG.scale, opponent === 'chimp' ? 0 : Math.PI/2);
+  hero.root.position.set(0, 0, INTRO_START_Z);   // off-platform, walks on during the intro
   hero.root.rotation.y = 0;
   bug.root.position.set(0, 0, 3.2);
+  B.home = bug.root.position.clone();
   bug.root.rotation.y = Math.PI;
-  hero.play(A('walk'));
-  bug.play('Idle');
+  hero.play(A('swagger'));
+  bug.play(ENEMY_ANIM.idle);
   document.getElementById('boot').classList.add('gone');
   setTimeout(()=>document.getElementById('boot').remove(), 700);
   clock = new THREE.Clock(true);
@@ -211,22 +320,29 @@ const hud = document.getElementById('hud');
 const centre = document.getElementById('centre');
 const php = document.getElementById('php'), ehp = document.getElementById('ehp');
 document.getElementById('keys').innerHTML =
-  '<b>W/S</b> forward &amp; back · <b>A/D</b> sidestep · <b>SHIFT</b> run · <b>CLICK</b> attack · <b>RIGHT-DRAG</b> spin camera';
+  '<b>W/S</b> dodge depth · <b>D</b> backstep · <b>1–4</b> attacks · <b>TAP/CLICK</b> random attack';
 
-const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0 };
-const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false };
+const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, dodgeKey:null, dodgeUntil:0, dodgeAnimT:0 };
+const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null };
 let phase = 'cine', cineT = 0, overT = 0;
 
 const keys = {};
 addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.code === 'Space') e.preventDefault();
+  const attack = ['Digit1','Digit2','Digit3','Digit4','Digit5'].indexOf(e.code);
+  if (attack >= 0) { e.preventDefault(); tryAttack(attack); }
 });
 addEventListener('keyup', e => keys[e.code] = false);
-let camYaw = 0, dragging = false, lastX = 0;
+let camYaw = 0, cameraDistance = 7, dragging = false, lastX = 0;
 addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('wheel', e => {
+  if (phase !== 'fight') return;
+  e.preventDefault();
+  cameraDistance = THREE.MathUtils.clamp(cameraDistance + e.deltaY * 0.006, 4.2, 10);
+}, {passive:false});
 addEventListener('mousedown', e => {
-  if (e.button === 0) tryAttack();
+  if (e.button === 0 && !e.target.closest('#opponent-picker, #skip')) tryAttack((Math.random() * ATTACKS.length) | 0);
   if (e.button === 2) { dragging = true; lastX = e.clientX; }
 });
 addEventListener('mouseup',   e => { if (e.button === 2) dragging = false; });
@@ -237,6 +353,28 @@ addEventListener('mousemove', e => {
   lastX = e.clientX;
 });
 document.getElementById('skip').onclick = () => endCine();
+let touchStart = null;
+addEventListener('touchstart', e => {
+  if (e.touches.length !== 1) return;
+  e.preventDefault();
+  const touch = e.touches[0];
+  touchStart = {x:touch.clientX, y:touch.clientY};
+}, {passive:false});
+addEventListener('touchend', e => {
+  if (!touchStart) return;
+  e.preventDefault();
+  const touch = e.changedTouches[0];
+  const dx = touch.clientX - touchStart.x, dy = touch.clientY - touchStart.y;
+  touchStart = null;
+  if (e.target.closest('#opponent-picker, #skip')) return;
+  if (Math.hypot(dx,dy) < 28) {
+    tryAttack((Math.random() * ATTACKS.length) | 0);
+    return;
+  }
+  const key = Math.abs(dy) > Math.abs(dx) ? (dy < 0 ? 'KeyW' : 'KeyS') : 'KeyD';
+  P.dodgeKey = key;
+  P.dodgeUntil = performance.now() + 360;
+}, {passive:false});
 
 function say(t, sub) {
   centre.innerHTML = t + (sub ? `<small>${sub}</small>` : '');
@@ -244,9 +382,12 @@ function say(t, sub) {
 }
 function hide(){ centre.classList.remove('on'); }
 
-function tryAttack() {
+function tryAttack(index) {
   if (phase !== 'fight' || P.dead || P.state === 'attack' || P.state === 'hurt') return;
-  const n = ATTACKS[(Math.random()*ATTACKS.length)|0];
+  const n = ATTACKS[index];
+  if (!n) return;
+  P.kickYaw = n.startsWith('front_kick') ? -Math.PI/2 : 0;
+  if (P.kickYaw) hero.model.rotation.y += P.kickYaw;
   P.state = 'attack'; P.atk = n;
   const a = hero.play(A(n), { once:true, fade:0.07, rate:ATTACK_RATE, force:true });
   P.t = (a ? a.getClip().duration : 0.8) / ATTACK_RATE;
@@ -264,12 +405,13 @@ function damageBug(d) {
   ehp.style.width = (100*B.hp/BUG.hp) + '%';
   if (B.hp <= 0) {
     B.dead = true; B.state = 'dead';
-    bug.play('Death', { once:true, fade:0.15 });
+    bug.play(ENEMY_ANIM.death, { once:true, fade:0.15 });
     setTimeout(()=>{ if (!P.dead) { say('BUG DOWN', 'you win'); } }, 900);
   }
 }
 function damageHero(d) {
   if (P.dead || P.invuln > 0) return;
+  if (P.kickYaw) { hero.model.rotation.y -= P.kickYaw; P.kickYaw = 0; }
   P.hp = Math.max(0, P.hp - d);
   P.invuln = 0.7;
   php.style.width = (100*P.hp/PLAYER.hp) + '%';
@@ -291,40 +433,27 @@ function cine(dt) {
   const t = cineT;
   // He walks on from the very start and the camera keeps him in frame throughout — an opening
   // that orbits the bug alone reads as spinning around an empty patch of floor.
-  const walkK = Math.min(1, t/7.0), we = walkK*walkK*(3-2*walkK);
-  if (t < 7.6) { hero.root.position.z = -13 + we*10.5; hero.play(A('walk')); }
+  const walkK = Math.min(1, t/INTRO_DURATION), we = walkK*walkK*(3-2*walkK);
+  if (t < INTRO_DURATION) hero.root.position.z = THREE.MathUtils.lerp(INTRO_START_Z, INTRO_END_Z, we);
 
+  const between = tmp.copy(bug.root.position).add(hero.root.position).multiplyScalar(0.5);
+  const line = new THREE.Vector3().subVectors(hero.root.position, bug.root.position);
+  line.y = 0; line.normalize();
+  const side = new THREE.Vector3(-line.z, 0, line.x);
+  const behind = bug.root.position.clone().addScaledVector(line, -8).setY(2.9);
+  const sideView = between.clone().addScaledVector(side, cameraDistance).setY(2.8);
   if (t < 3.4) {
-    // 1. the bug, with Stephen approaching behind it — both in shot, the eye on him
-    const a = 0.30 + t*0.10;
-    camera.position.set(Math.sin(a)*8.2, 2.9, bug.root.position.z + Math.cos(a)*8.2);
-    const bias = Math.min(1, t/3.4)*0.45;
-    camera.lookAt(
-      THREE.MathUtils.lerp(bug.root.position.x, hero.root.position.x, bias),
-      1.2,
-      THREE.MathUtils.lerp(bug.root.position.z, hero.root.position.z, bias));
+    // Approach from behind the chimp, with the camera looking down the line
+    // between the fighters as Stephen walks into the arena.
+    camera.position.copy(behind);
+    camera.lookAt(between.x, 1.2, between.z);
     if (t < 0.1) say('THE ARENA', '');
     if (t > 2.8) hide();
-  } else if (t < 7.6) {
-    // 2. settle onto him as he arrives
+  } else if (t < INTRO_DURATION) {
+    // Move to a side-on position and aim directly at the space between them.
     const k = Math.min(1,(t-3.4)/4.2), e = k*k*(3-2*k);
-    const from = new THREE.Vector3(Math.sin(0.64)*8.2, 2.9, bug.root.position.z + Math.cos(0.64)*8.2);
-    const to   = new THREE.Vector3(hero.root.position.x - 4.4, 2.4, hero.root.position.z - 3.8);
-    camera.position.lerpVectors(from, to, e);
-    camera.lookAt(
-      THREE.MathUtils.lerp(THREE.MathUtils.lerp(bug.root.position.x, hero.root.position.x, 0.45), hero.root.position.x, e),
-      1.35,
-      THREE.MathUtils.lerp(THREE.MathUtils.lerp(bug.root.position.z, hero.root.position.z, 0.45), hero.root.position.z, e));
-  } else if (t < 12.4) {
-    // 3. he cheers, and the camera goes round HIM
-    if (hero.curName !== A('cheer')) hero.play(A('cheer'), { fade:0.3 });
-    const k = (t-7.6)/4.8, a = -0.6 + k*Math.PI*1.35, r = 5.6 - k*1.4;
-    camera.position.set(hero.root.position.x + Math.sin(a)*r,
-                        1.5 + Math.sin(k*Math.PI)*1.5,
-                        hero.root.position.z + Math.cos(a)*r);
-    camera.lookAt(hero.root.position.x, 1.15, hero.root.position.z);
-    if (t > 8.0 && t < 11.4) say('CHALLENGER', 'Stephen');
-    else hide();
+    camera.position.lerpVectors(behind, sideView, e);
+    camera.lookAt(between.x, 1.2, between.z);
   } else {
     endCine();
   }
@@ -336,16 +465,29 @@ function endCine() {
   // Keep the position reached by the intro walk. Resetting this to a separate
   // fight start position made Stephen visibly teleport backward at the handoff.
   hero.root.rotation.y = 0;
+  hero.play(A('idle'), { fade:0.2 });
+  P.home = hero.root.position.clone();
   P.state = 'idle';
   say('FIGHT', '');
   setTimeout(hide, 1100);
 }
 
 // ── the player ────────────────────────────────────────────────────────────────
-const fwd = new THREE.Vector3(), rightV = new THREE.Vector3(), tmp = new THREE.Vector3();
+const fwd = new THREE.Vector3(), tmp = new THREE.Vector3(), dodgeAxis = new THREE.Vector3(), dodgeTarget = new THREE.Vector3();
 function player(dt) {
   if (P.dead) return;
   if (P.invuln > 0) P.invuln -= dt;
+
+  // This is a one-dimensional fighter: the opponents stay squared up instead
+  // of turning away while moving around the arena.
+  if (!B.dead) {
+    tmp.copy(bug.root.position).sub(hero.root.position); tmp.y = 0;
+    const want = Math.atan2(tmp.x, tmp.z);
+    let dY = want - hero.root.rotation.y;
+    while (dY > Math.PI) dY -= Math.PI * 2;
+    while (dY < -Math.PI) dY += Math.PI * 2;
+    hero.root.rotation.y += Math.sign(dY) * Math.min(Math.abs(dY), 5.0 * dt);
+  }
 
   if (P.state === 'attack' || P.state === 'hurt') {
     P.t -= dt;
@@ -359,50 +501,44 @@ function player(dt) {
         damageBug(PLAYER.damage[0] + Math.random()*(PLAYER.damage[1]-PLAYER.damage[0]));
       }
     }
-    if (P.t <= 0) P.state = 'idle';
+    if (P.t <= 0) {
+      if (P.kickYaw) hero.model.rotation.y -= P.kickYaw;
+      P.kickYaw = 0;
+      P.state = 'idle';
+    }
     return;
   }
 
-  const run = keys['ShiftLeft'] || keys['ShiftRight'];
-  const f = (keys['KeyW']?1:0) - (keys['KeyS']?1:0);
-  const step = (keys['KeyD']?1:0) - (keys['KeyA']?1:0);      // A/D sidestep
-
-  // face the bug while fighting — this is a duel, not free roam
-  if (!B.dead) {
-    tmp.copy(bug.root.position).sub(hero.root.position); tmp.y = 0;
-    const want = Math.atan2(tmp.x, tmp.z);
-    let dY = want - hero.root.rotation.y;
-    while (dY >  Math.PI) dY -= Math.PI*2;
-    while (dY < -Math.PI) dY += Math.PI*2;
-    hero.root.rotation.y += Math.sign(dY)*Math.min(Math.abs(dY), 5.0*dt);
+  dodgeAxis.set(0,0,0);
+  const midpoint = tmp.copy(hero.root.position).add(bug.root.position).multiplyScalar(0.5);
+  const dodgeKey = keys['KeyW'] ? 'KeyW' : keys['KeyS'] ? 'KeyS' : keys['KeyD'] ? 'KeyD' :
+    performance.now() < P.dodgeUntil ? P.dodgeKey : null;
+  if (dodgeKey === 'KeyW' || dodgeKey === 'KeyS') {
+    dodgeAxis.copy(midpoint).sub(camera.position).setY(0).normalize();
+    if (dodgeKey === 'KeyS') dodgeAxis.negate();
+  } else if (dodgeKey === 'KeyD') {
+    dodgeAxis.copy(hero.root.position).sub(bug.root.position).setY(0).normalize();
   }
-  fwd.set(0,0,1).applyQuaternion(hero.root.quaternion);
-  // RIGHT IS -X when forward is +Z (right = forward x up = Z x Y = -X). Using +X had A and D
-  // swapped.
-  rightV.set(-1,0,0).applyQuaternion(hero.root.quaternion);
-
-  let moved = false;
-  if (step) {
-    // no strafe clip in the set — the jump reads as a hop to the side
-    hero.play(A('jump'), { fade:0.1 });
-    hero.root.position.addScaledVector(rightV, step * PLAYER.side * dt);
-    moved = true; P.state = 'step';
-  } else if (f > 0) {
-    const sp = run ? PLAYER.run : PLAYER.walk;
-    hero.play(A(run ? 'run' : 'walk'), { fade:0.18, rate: run ? 1.15 : 1.25 });
-    hero.root.position.addScaledVector(fwd, sp*dt);
-    moved = true; P.state = run ? 'run' : 'walk';
-  } else if (f < 0) {
-    // backing up: the walk cycle run in reverse
-    hero.play(A('walk'), { fade:0.12, rate:-1.15 });
-    hero.root.position.addScaledVector(fwd, -PLAYER.back*dt);
-    moved = true; P.state = 'back';
-  }
-  if (!moved) { hero.play(A('angry_01'), { fade:0.3 }); P.state = 'idle'; }
-
-  const r = Math.hypot(hero.root.position.x, hero.root.position.z);
-  if (r > ARENA-0.7) {
-    hero.root.position.x *= (ARENA-0.7)/r; hero.root.position.z *= (ARENA-0.7)/r;
+  if (dodgeAxis.lengthSq() > 0) {
+    dodgeTarget.copy(P.home).addScaledVector(dodgeAxis, 2.1);
+    hero.root.position.lerp(dodgeTarget, 1 - Math.pow(0.0001, dt));
+    if (P.state !== 'dodge') {
+      const jump = hero.play(A('jump'), { once:true, fade:0.1 });
+      P.dodgeAnimT = jump ? jump.getClip().duration : 0;
+    } else if (P.dodgeAnimT > 0) {
+      P.dodgeAnimT -= dt;
+    } else {
+      hero.play(A('idle'), { fade:0.2 });
+    }
+    P.state = 'dodge';
+  } else {
+    hero.root.position.lerp(P.home, 1 - Math.pow(0.0001, dt));
+    if (P.state === 'dodge' && P.dodgeAnimT > 0) {
+      P.dodgeAnimT -= dt;
+    } else {
+      P.dodgeAnimT = 0;
+      hero.play(A('idle'), { fade:0.2 }); P.state = 'idle';
+    }
   }
 }
 
@@ -416,45 +552,59 @@ function bugAI(dt) {
   const dist = tmp.length();
   const toHero = tmp.clone().normalize();
 
-  if (B.state !== 'lunge' && B.state !== 'rear') {
-    const want = Math.atan2(toHero.x, toHero.z);
-    let dY = want - bug.root.rotation.y;
-    while (dY >  Math.PI) dY -= Math.PI*2;
-    while (dY < -Math.PI) dY += Math.PI*2;
-    bug.root.rotation.y += Math.sign(dY)*Math.min(Math.abs(dY), 1.9*dt);
-  }
+  const want = Math.atan2(toHero.x, toHero.z);
+  let dY = want - bug.root.rotation.y;
+  while (dY > Math.PI) dY -= Math.PI*2;
+  while (dY < -Math.PI) dY += Math.PI*2;
+  bug.root.rotation.y += Math.sign(dY) * Math.min(Math.abs(dY), 4.0 * dt);
 
   switch (B.state) {
     case 'idle':
-      bug.play('Idle');
-      if (B.t <= 0) { B.state='stalk'; B.t = 2 + Math.random()*2; }
+      bug.play(ENEMY_ANIM.idle);
+      if (B.t <= 0) { B.state='rear'; B.t = 0.85; bug.play(ENEMY_ANIM.rear, { once:true, fade:0.12, rate:1.45 }); }
       break;
     case 'stalk': {
-      bug.play('Walk', { rate:1.25 });
-      if (dist > 3.4) bug.root.position.addScaledVector(toHero, BUG.walk*dt);
-      if (dist < 4.4 && B.t <= 0) {
-        // TELEGRAPH. Rearing is the tell that a lunge is coming — the player's cue to move.
-        B.state='rear'; B.t = 0.85; bug.play('RearUp', { once:true, fade:0.12, rate:1.45 });
-      } else if (B.t <= -3) { B.state='idle'; B.t = 1 + Math.random(); }
+      // Compatibility state for older debug state. The chimp stays at its
+      // mark instead of walking through Stephen.
+      B.state='idle'; B.t = 1 + Math.random(); bug.play(ENEMY_ANIM.idle);
       break;
     }
     case 'rear':
       if (B.t <= 0) {
         B.state='lunge'; B.t = 0.85; B.lunged = false;
         B.dir = toHero.clone();                    // committed direction, locked at launch
-        bug.play('Strike', { once:true, fade:0.08, rate:1.6 });
+        B.jumpFrom = bug.root.position.clone();
+        // Land at striking distance instead of putting both fighters inside
+        // the same point in space.
+        B.jumpTo = hero.root.position.clone().addScaledVector(B.dir, -2.8);
+        bug.play(ENEMY_ANIM.strike, { once:true, fade:0.08, rate:1.6 });
       }
       break;
     case 'lunge': {
-      const punch = B.t > 0.35;
-      if (punch) bug.root.position.addScaledVector(B.dir, BUG.lungeSpeed*dt);
+      const progress = Math.min(1, 1 - B.t / 0.85);
+      bug.root.position.lerpVectors(B.jumpFrom, B.jumpTo, progress);
+      bug.root.position.y = Math.sin(progress * Math.PI) * 1.35;
       if (!B.lunged && B.t < 0.55) {
         B.lunged = true;
         // it connects only if the player is still in the path — stepping aside beats it
         tmp.copy(hero.root.position).sub(bug.root.position); tmp.y=0;
         if (tmp.length() < BUG.reach && tmp.normalize().dot(B.dir) > 0.3) damageHero(BUG.lungeDamage);
       }
-      if (B.t <= 0) { B.state='idle'; B.t = 1.1 + Math.random()*1.4; }
+      if (B.t <= 0) {
+        bug.root.position.copy(B.jumpTo).setY(0);
+        B.returnFrom = bug.root.position.clone();
+        B.returnTo = B.home.clone();
+        B.state='return'; B.t = 0.5;
+      }
+      break;
+    }
+    case 'return': {
+      const progress = Math.min(1, 1 - B.t / 0.5);
+      bug.root.position.lerpVectors(B.returnFrom, B.returnTo, progress);
+      if (B.t <= 0) {
+        bug.root.position.copy(B.home);
+        B.state='idle'; B.t = 1.1 + Math.random()*1.4;
+      }
       break;
     }
   }
@@ -468,13 +618,14 @@ function bugAI(dt) {
 const camGoal = new THREE.Vector3(), lookGoal = new THREE.Vector3();
 function fightCam(dt) {
   const mid = tmp.copy(hero.root.position).add(bug.root.position).multiplyScalar(0.5);
-  const away = new THREE.Vector3().subVectors(hero.root.position, bug.root.position);
-  away.y = 0;
-  if (away.lengthSq() < 1e-4) away.set(0,0,1);
-  away.normalize();
-  // the default is behind Stephen looking past him at the bug; right-drag spins that offset
-  away.applyAxisAngle(new THREE.Vector3(0,1,0), camYaw);
-  camGoal.copy(hero.root.position).addScaledVector(away, 5.4).setY(3.1);
+  const line = new THREE.Vector3().subVectors(hero.root.position, bug.root.position);
+  line.y = 0;
+  if (line.lengthSq() < 1e-4) line.set(0,0,1);
+  line.normalize();
+  // Keep the camera beside the line between them, aimed at their midpoint.
+  const side = new THREE.Vector3(-line.z, 0, line.x);
+  side.applyAxisAngle(new THREE.Vector3(0,1,0), camYaw);
+  camGoal.copy(mid).addScaledVector(side, cameraDistance).setY(2.8);
   lookGoal.set(mid.x, 1.25, mid.z);
   camera.position.lerp(camGoal, 1 - Math.pow(0.0016, dt));
   camera.lookAt(lookGoal);
@@ -497,9 +648,8 @@ function tick() {
     // straight through it.
     tmp.copy(hero.root.position).sub(bug.root.position); tmp.y = 0;
     const gap = tmp.length(), MIN = 3.0;
-    if (gap > 1e-4 && gap < MIN) {
+    if (B.state !== 'lunge' && B.state !== 'rear' && B.state !== 'return' && gap > 1e-4 && gap < MIN) {
       const push = tmp.normalize().multiplyScalar((MIN - gap) * 0.5);
-      if (!P.dead) hero.root.position.add(push);
       if (!B.dead) bug.root.position.sub(push);
     }
     fightCam(dt);
