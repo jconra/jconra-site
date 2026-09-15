@@ -97,7 +97,14 @@ const ARENA = 11;
 // the opponent shows off, and INTRO_DURATION is just their sum.
 const INTRO_START_Z = -11, INTRO_END_Z = -0.8;
 const WALK_T = 3.6, CELEBRATE = 1.7, INTRO_DURATION = WALK_T + CELEBRATE;
-const WALK_RATE = 1.45, CHEER_RATE = 2.3;
+// Walk rates are set from the ground speed each one covers, not picked by eye: Stephen crosses
+// 10.2 units in WALK_T (2.83 a second against his 2.4 walk) and the opponent 9.2 (2.56 against
+// 1.7), so their feet keep up with the floor.
+const HERO_WALK_RATE = 1.18, FOE_WALK_RATE = 1.5;
+// `cheer` holds one arm straight up for the whole beat, which is the jitter. `angry_01` is 3.54s
+// and runs neutral -> both arms up -> fighting stance, so at this rate the entire clip plays
+// inside the beat and ends where the fight starts. Fists stay closed; they read right for it.
+const CHEER_RATE = 3.54 / CELEBRATE;
 // The opponent walks on from its own side rather than being planted there from frame one.
 // The chimp squares up at a 1.6 gap, derived from its punch reach below; the insect is a much
 // longer body and keeps the 3.2 it was tuned at.
@@ -163,6 +170,22 @@ const DMG = UNBEATABLE ? BUG.boss : BUG;
 // ends 0.246 below the floor and the chimp's 0.274 - they lie in the concrete. The clip sinks
 // gradually to its lowest at the very end, so the lift ramps in over the fall rather than popping
 // the body up on the first frame.
+// THE BITE, measured at game scale. The clip already does the move: at its midpoint (t=1.0 of
+// 2.0) the feet are 0.347 off the ground, the hands are furthest forward (0.492) AND closest
+// together (spread 0.712 against 0.805 at rest) - the jump and the squeeze are both in there.
+// Two things stopped it reading. The head at that moment sits at z -0.204, a fifth of a unit
+// BEHIND the chimp's root while its hands reach half a unit in front, so the face can never get
+// near Stephen without the bodies interpenetrating. Pitching the model 25 degrees forward swings
+// the head to z +0.463 and drops it to y 1.474, which is Stephen's head height (1.451) - so the
+// faces meet with the bodies still a clear 0.74 apart. And the move had no hold: it lerped
+// straight through the contact. It is phased now - spring in, hold, snap back.
+const BITE = {
+  spring: 0.34, hold: 0.95, recoil: 0.26,
+  gap: 0.74,               // root to root at the hold; bodies touch at 0.47
+  lean: THREE.MathUtils.degToRad(25),
+  peak: 1.0,               // seconds into the clip where the squeeze is
+};
+BITE.dur = BITE.spring + BITE.hold + BITE.recoil;
 const DEATH_LIFT = { stephen: 0.27, chimp: 0.30, insect: 0 };
 const DEATH_RAMP = 1.6;
 function liftBody(rig, who, elapsed) {
@@ -483,7 +506,7 @@ class Rig {
     this.clips = {};
     for (const c of gltf.animations) {
       const corrected = c.name === C('press-up');
-      const entrance = c.name === A('swagger');
+      const entrance = c.name === A('walk');
       const clip = c.clone();          // always clone: stripTravel edits track values in place
       if (entrance) clip.tracks = clip.tracks.filter(track => track.name !== 'Root.position');
       if (corrected) {
@@ -572,7 +595,7 @@ function setInput(mode) {
 setInput(matchMedia('(hover: none) and (pointer: coarse)').matches ? 'touch' : 'keys');
 
 const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, dodgeKey:null, dodgeUntil:0, dodgeAnimT:0, lastDodgeKey:null, deadT:0 };
-const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0 };
+const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0, phase:null, act:null };
 let phase = 'cine', cineT = 0, overT = 0;
 
 const keys = {};
@@ -690,6 +713,7 @@ function damageBug(d) {
   const committed = B.state === 'rear' && B.t < 0.32;
   if (B.hp > 0 && ENEMY_ANIM.hurt && B.hurtCd <= 0 && !committed && B.state !== 'victory') {
     if (B.kickYaw) { bug.model.rotation.y -= B.kickYaw; B.kickYaw = 0; }
+    bug.model.rotation.x = 0;
     const n = ENEMY_ANIM.hurt[(Math.random() * ENEMY_ANIM.hurt.length) | 0];
     const a = bug.play(n, { once:true, fade:0.07, rate:HURT_RATE, force:true });
     B.state = 'hurt';
@@ -715,6 +739,7 @@ function damageHero(d) {
     P.dead = true; P.state = 'dead'; P.deadT = 0;
     hero.play(A('defeat_03'), { once:true, fade:0.15 });
     if (!B.dead) { B.state = 'victory'; B.t = 0; B.lunged = true;
+      bug.model.rotation.x = 0;
       if (B.kickYaw) { bug.model.rotation.y -= B.kickYaw; B.kickYaw = 0; } }
     say('DEFEATED', UNBEATABLE ? 'nothing beats the bug' : 'reload to try again');
   } else {
@@ -737,15 +762,13 @@ function cine(dt) {
     // the opponent squares up from the far side on the same beat
     bug.root.position.z = THREE.MathUtils.lerp(ENEMY_START_Z, ENEMY_END_Z, we);
     bug.root.rotation.y = Math.PI;
-    bug.play(ENEMY_ANIM.walk, { fade:0.3, rate:WALK_RATE });
-    hero.play(A('swagger'), { fade:0.3, rate:WALK_RATE });
+    bug.play(ENEMY_ANIM.walk, { fade:0.3, rate:FOE_WALK_RATE });
+    hero.play(A('walk'), { fade:0.3, rate:HERO_WALK_RATE });
   } else {
     // ON THE MARK. He cheers, the opponent shows off, and neither keeps walking on the spot.
     hero.root.position.z = INTRO_END_Z;
     bug.root.position.z = ENEMY_END_Z;
-    // `cheer` is 12s of arm-waving; at this rate the beat shows only its opening lift.
-    hero.play(A('cheer'), { fade:0.18, rate:CHEER_RATE, once:true });
-    fistCurl(0);                                   // open hands to wave, fists for the fight
+    hero.play(A('angry_01'), { fade:0.18, rate:CHEER_RATE, once:true });
     bug.play(ENEMY_TAUNT, { fade:0.2, rate:1.5, once:true });
   }
 
@@ -853,7 +876,10 @@ function player(dt) {
     // Replay on every fresh dodge: a new press, or a change of direction. Keying it on the state
     // alone meant a second dodge inside the clip's own length silently skipped the hop, because
     // the state was still 'dodge' and play() returns early when the action is already current.
-    if (P.state !== 'dodge' || dodgeKey !== P.lastDodgeKey) {
+    // ONE HOP PER DODGE. Replaying on every fresh press meant holding or mashing a direction
+    // turned him into a pogo stick, so the hop cannot restart until the previous one has run;
+    // changing direction inside that window just moves him.
+    if ((P.state !== 'dodge' || dodgeKey !== P.lastDodgeKey) && P.dodgeAnimT <= 0) {
       const jump = hero.play(A('jump'), { once:true, fade:0.07, rate:DODGE_RATE, force:true });
       P.dodgeAnimT = jump ? jump.getClip().duration / DODGE_RATE : 0;
     } else if (P.dodgeAnimT > 0) {
@@ -866,10 +892,10 @@ function player(dt) {
   } else {
     hero.root.position.lerp(P.home, 1 - Math.pow(0.0001, dt));
     P.lastDodgeKey = null;
+    if (P.dodgeAnimT > 0) P.dodgeAnimT -= dt;      // the hop keeps running once he is back home
     if (P.state === 'dodge' && P.dodgeAnimT > 0) {
-      P.dodgeAnimT -= dt;
+      /* let it finish */
     } else {
-      P.dodgeAnimT = 0;
       hero.play(A('idle'), { fade:0.2 }); P.state = 'idle';
     }
   }
@@ -936,14 +962,22 @@ function bugAI(dt) {
         const pick = set[(Math.random() * set.length) | 0];
         B.bite = pick === ENEMY_ANIM.bite;
         B.strike = STRIKE[opponent][bare(pick)];
-        const rate = B.bite ? 1.3 : 1.55;
+        B.dir = toHero.clone();
+        B.jumpFrom = bug.root.position.clone();
+        if (B.bite) {
+          // Reach the squeeze exactly as the spring ends, then freeze there, then reverse out.
+          B.act = bug.play(pick, { once:true, fade:0.06, rate: BITE.peak / BITE.spring, force:true });
+          B.phase = 'spring';
+          B.state = 'bite'; B.t = BITE.dur; B.lunged = false;
+          B.jumpTo = hero.root.position.clone().addScaledVector(B.dir, -BITE.gap);
+          break;
+        }
+        const rate = 1.55;
         const a = bug.play(pick, { once:true, fade:0.08, rate, force:true });
         // The blow registers at the clip's measured peak; the state lasts just past it.
         B.hitAt = (a ? a.getClip().duration : 1) / rate * B.strike.peak;
         B.lungeDur = B.hitAt + 0.12;
         B.state='lunge'; B.t = B.lungeDur; B.lunged = false;
-        B.dir = toHero.clone();
-        B.jumpFrom = bug.root.position.clone();
         // Land where this strike's extension meets Stephen's chest - never backing up to do it.
         const gapNow = dist, want = B.strike.ext - PEN + HALF_DEPTH.stephen;
         B.jumpTo = hero.root.position.clone().addScaledVector(B.dir, -Math.min(gapNow, want));
@@ -951,6 +985,39 @@ function bugAI(dt) {
         if (B.kickYaw) bug.model.rotation.y += B.kickYaw;
       }
       break;
+    case 'bite': {
+      const el = BITE.dur - B.t;
+      if (el < BITE.spring) {
+        const k = el / BITE.spring, e = k*k*(3-2*k);
+        bug.root.position.lerpVectors(B.jumpFrom, B.jumpTo, e);
+        bug.model.rotation.x = BITE.lean * e;          // pitch the face down and forward
+      } else if (el < BITE.spring + BITE.hold) {
+        if (B.phase === 'spring') {                    // freeze on the squeeze and hold it
+          B.phase = 'hold';
+          if (B.act) B.act.setEffectiveTimeScale(0);
+          if (contact(bug.root.position, B.dir, BITE.gap + 0.2, hero.root.position, HALF_DEPTH.stephen, LATERAL[opponent]))
+            damageHero(DMG.biteDamage);
+          B.lunged = true;
+        }
+        bug.root.position.copy(B.jumpTo);
+        bug.model.rotation.x = BITE.lean;
+      } else {
+        if (B.phase === 'hold') {                      // snap back out, clip running in reverse
+          B.phase = 'recoil';
+          if (B.act) B.act.setEffectiveTimeScale(-BITE.peak / BITE.recoil);
+        }
+        const k = Math.min(1, (el - BITE.spring - BITE.hold) / BITE.recoil), e = k*k*(3-2*k);
+        bug.root.position.lerpVectors(B.jumpTo, B.home, e);
+        bug.model.rotation.x = BITE.lean * (1 - e);
+      }
+      if (B.t <= 0) {
+        bug.model.rotation.x = 0;
+        bug.root.position.copy(B.home);
+        B.state = 'idle'; B.t = 1.1 + Math.random()*1.4;
+        bug.play(ENEMY_ANIM.idle, { fade:0.2 });
+      }
+      break;
+    }
     case 'lunge': {
       // arrive by the peak, then hold
       const progress = Math.min(1, (B.lungeDur - B.t) / B.hitAt);
@@ -1023,7 +1090,7 @@ window.__heroPos = () => hero ? {
   w: hero.cur? +hero.cur.getEffectiveWeight().toFixed(2):null
 } : null;
 // Headless test hook: ?probe lets a harness drive damage directly.
-if (Q.has('probe')) Object.assign(window, { damageBug, damageHero, P, B, BUG, rigs:()=>({hero,bug}) });
+if (Q.has('probe')) Object.assign(window, { damageBug, damageHero, P, B, BUG, rigs:()=>({hero,bug}), THREE });
 
 function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
