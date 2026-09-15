@@ -266,8 +266,10 @@ const GRAB = { reach:0.42, latch:0.20, shake:1.95, release:0.55,
                // through the inside of the skull; crosswise he sticks out either side, which is
                // both what a bug carrying prey looks like and free of clipping.
                pitch: THREE.MathUtils.degToRad(90), cross: Math.PI/2,
-               // out past the mandibles, and half the mouth's height down off the midline
-               holdFore: 0.18, holdDown: 0.11,
+               // Out past the mandibles and below the midline. One step of this cleared the skull;
+               // a second step of the same size puts him properly under the jaws rather than level
+               // with them, which is where a mantis actually carries something it has caught.
+               holdFore: 0.36, holdDown: 0.22,
                dmg: 7, tick: 0.33, finishAt: 1/3 };
 GRAB.dur = GRAB.reach + GRAB.latch + GRAB.shake + GRAB.release;
 // The preset clips are performed at a leisurely pace; a fight wants them snappy. Rate scales the
