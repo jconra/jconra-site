@@ -169,7 +169,7 @@ const CHIMP_ANIM = {
   hurt: [C('hit_to_body_02'), C('hit_to_head')],  // it flinches when it is hit
   death: C('defeat_03'),
 };
-const INSECT_ANIM = {idle:'Idle', walk:'Walk', rear:'RearUp', strike:'Strike', strikeSet:['Strike'], taunt:'RearUp', victory:'RearUp', victoryLoop:false, hurt:null, death:'Death'};
+const INSECT_ANIM = {idle:'Idle', walk:'Walk', rear:'RearUp', strike:'Strike', strikeSet:['Strike'], taunt:'RearUp', victory:'RearUp', victoryLoop:false, hurt:null, canGrab:true, death:'Death'};
 const ENEMY_ANIM = opponent === 'chimp' ? CHIMP_ANIM : INSECT_ANIM;
 const ENEMY_FILE = opponent === 'chimp' ? 'chimpanzee.glb' : 'insect_animated.glb';
 const ENEMY_TAUNT = ENEMY_ANIM.taunt;
@@ -227,6 +227,26 @@ const HOP_CLIP = '__hop';
 // Between attacks it used to stand perfectly still, which reads as waiting rather than circling.
 // A single hop and a small step off the line and back, on a random cadence.
 const SHUFFLE = { dur: 0.7, dist: 0.85, rate: 1, gapMin: 1.1, gapMax: 2.4 };
+// THE BUG'S GRAB. Measured at game scale off the Strike clip, its jaws thrust to z 1.19 at head
+// height 0.98, and the mouth - the midpoint of Upper_Jaw and Lower_Jaw - is the anchor. Stephen is
+// pitched 75 degrees so he hangs head-first from it: a point at chest height h then sits h*sin(75)
+// ahead of his root and h*cos(75) above it, which is the offset that puts his chest IN the mouth.
+// Everything is recomputed per frame from the live bone, so he goes wherever the jaws go.
+// MEASURED on the squeeze frame: adding to the upper arms' X takes the hand gap from 0.713 to
+// 0.280 at 0.35rad while keeping the hands forward, so X is the axis that crushes inward. The clip
+// already squeezes; this drives it further at the hold.
+const SQUEEZE = { upper: 0.30, fore: 0.14 };
+function squeezeArms(k) {
+  if (!foeArms || foeArms.applied === k) return;
+  const d = k - foeArms.applied;
+  for (const b of foeArms.upper) b.rotation.x += SQUEEZE.upper * d;
+  if (foeArms.fore) for (const b of foeArms.fore) b.rotation.x += SQUEEZE.fore * d;
+  foeArms.applied = k;
+}
+const GRAB = { reach:0.42, latch:0.20, shake:1.95, release:0.55,
+               pitch: THREE.MathUtils.degToRad(75),
+               dmg: 7, tick: 0.33, chance: 0.45 };
+GRAB.dur = GRAB.reach + GRAB.latch + GRAB.shake + GRAB.release;
 // The preset clips are performed at a leisurely pace; a fight wants them snappy. Rate scales the
 // playback AND the state timer together, otherwise the state outlasts the animation and he stands
 // frozen at the end of a swing.
@@ -574,12 +594,14 @@ class Rig {
 // ── load ──────────────────────────────────────────────────────────────────────
 const loader = new GLTFLoader();
 const load = f => new Promise((res, rej) => loader.load(f, res, undefined, rej));
-let hero, bug, clock, heroHead, foeHead;
+let hero, bug, clock, heroHead, foeHead, jawU, jawL, heroChest, foeArms = null;
 
 Promise.all([load('../../models/stephen.glb'), load('../../models/' + ENEMY_FILE)])
 .then(([s, i]) => {
   hero = new Rig(s, PLAYER.scale, 0);            // faces +Z after the glTF axis swap
   heroHead = hero.model.getObjectByName('Head');
+  // The bone the jaws close on.
+  heroChest = hero.model.getObjectByName('Spine02') || hero.model.getObjectByName('Spine01');
   const jc = s.animations.find(c => c.name === A('jump'));
   if (jc) {
     const hop = THREE.AnimationUtils.subclip(
@@ -589,6 +611,11 @@ Promise.all([load('../../models/stephen.glb'), load('../../models/' + ENEMY_FILE
   }
   bug  = new Rig(i, BUG.scale, opponent === 'chimp' ? 0 : Math.PI/2);
   foeHead = bug.model.getObjectByName('Head');
+  jawU = bug.model.getObjectByName('Upper_Jaw');
+  jawL = bug.model.getObjectByName('Lower_Jaw');
+  const ua = ['L_Upperarm','R_Upperarm'].map(n => bug.model.getObjectByName(n));
+  const fa = ['L_Forearm','R_Forearm'].map(n => bug.model.getObjectByName(n));
+  if (ua[0] && ua[1]) foeArms = { upper: ua, fore: fa[0] && fa[1] ? fa : null, applied: 0 };
   // Same cut for the opponent, which shuffles between attacks. Its own victory bounce keeps the
   // full clip, because there a string of hops is the point.
   const bj = i.animations.find(c => c.name === ENEMY_ANIM.victory);
@@ -630,8 +657,8 @@ function setInput(mode) {
 }
 setInput(matchMedia('(hover: none) and (pointer: coarse)').matches ? 'touch' : 'keys');
 
-const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, dodgeT:0, dodgeFrom:null, dodgeTo:null, deadT:0, deathClip:'defeat_03' };
-const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0, phase:null, act:null, victoryT:0, shuffleT:0, shuffleCd:1.2, shuffleDir:null };
+const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, dodgeT:0, dodgeFrom:null, dodgeTo:null, deadT:0, deathClip:'defeat_03', grabPitch:0, throwFrom:null, throwPitch:0 };
+const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0, phase:null, act:null, victoryT:0, shuffleT:0, shuffleCd:1.2, shuffleDir:null, caught:false, grabTick:0, grabYaw:0 };
 let phase = 'cine', cineT = 0, overT = 0;
 
 const keys = {};
@@ -711,7 +738,7 @@ function say(t, sub) {
 function hide(){ centre.classList.remove('on'); }
 
 function tryAttack(index) {
-  if (phase !== 'fight' || P.dead || P.state === 'attack' || P.state === 'hurt' || P.state === 'celebrate') return;
+  if (phase !== 'fight' || P.dead || ['attack','hurt','celebrate','grabbed','thrown'].includes(P.state)) return;
   const n = ATTACKS[index];
   if (!n) return;
   const st = STRIKE.stephen[n];
@@ -736,9 +763,7 @@ function damageBug(d) {
   if (B.dead) return;
   B.hp = Math.max(0, B.hp - d);
   B.hitFlash = 0.16;
-  bug.model.traverse(o => { if (o.isMesh && o.material && o.material.emissive) {
-    o.material.emissive.setHex(0x883322); o.material.emissiveIntensity = 1;
-    setTimeout(()=>o.material.emissive.setHex(0x000000), 130); } });
+  flashRed(bug);
   if (UNBEATABLE) B.hp = Math.max(B.hp, BUG.hp * HP_FLOOR);
   ehp.style.width = (100*B.hp/BUG.hp) + '%';
   // FLINCH. A hit interrupts whatever it was doing, including a committed swing, so trading blows
@@ -749,6 +774,7 @@ function damageBug(d) {
   if (B.hp > 0 && ENEMY_ANIM.hurt && B.hurtCd <= 0 && !committed && B.state !== 'victory') {
     if (B.kickYaw) { bug.model.rotation.y -= B.kickYaw; B.kickYaw = 0; }
     bug.model.rotation.x = 0;
+    squeezeArms(0);
     const n = ENEMY_ANIM.hurt[(Math.random() * ENEMY_ANIM.hurt.length) | 0];
     const a = bug.play(n, { once:true, fade:0.07, rate:HURT_RATE, force:true });
     B.state = 'hurt';
@@ -766,20 +792,32 @@ function damageBug(d) {
     } }, 900);
   }
 }
+function flashRed(rig) {
+  rig.model.traverse(o => {
+    if (!o.isMesh || !o.material || !o.material.emissive) return;
+    o.material.emissive.setHex(0x8c2a1e);
+    o.material.emissiveIntensity = 1;
+    setTimeout(() => o.material.emissive.setHex(0x000000), 130);
+  });
+}
 function damageHero(d) {
   if (P.dead || P.invuln > 0) return;
+  flashRed(hero);
   if (P.kickYaw) { hero.model.rotation.y -= P.kickYaw; P.kickYaw = 0; }
   P.hp = Math.max(0, P.hp - d);
   P.invuln = 0.7;
   php.style.width = (100*P.hp/PLAYER.hp) + '%';
   if (P.hp <= 0) {
     P.dead = true; P.state = 'dead'; P.deadT = 0;
+    hero.model.rotation.x = 0;                     // let go of the grab pose
     P.deathClip = STEPHEN_DEATHS[(Math.random() * STEPHEN_DEATHS.length) | 0];
     hero.play(A(P.deathClip), { once:true, fade:0.15 });
     // the opponent claims its win in bugAI, which sees it however the kill arrived
     say('DEFEATED', round > 1 ? 'back to the start' : 'going again');
     // Long enough for it to walk onto the body and dance there, then restart the same round.
     setTimeout(restartRun, 5600);
+  } else if (P.state === 'grabbed' || P.state === 'thrown') {
+    // held in the jaws: he takes it, but the flinch must not fight the anchor
   } else {
     P.state = 'hurt';
     const n = HURTS[(Math.random() * HURTS.length) | 0];
@@ -922,6 +960,19 @@ function player(dt) {
     hero.root.rotation.y += Math.sign(dY) * Math.min(Math.abs(dY), 5.0 * dt);
   }
 
+  if (P.state === 'grabbed') return;               // the bug is driving
+  if (P.state === 'thrown') {
+    P.t -= dt;
+    const k = Math.min(1, 1 - P.t / GRAB.release), e = k*k*(3-2*k);
+    hero.root.position.lerpVectors(P.throwFrom, P.home, e);
+    hero.root.position.y = Math.sin(e * Math.PI) * 0.55;      // tumbles back to his mark
+    hero.model.rotation.x = P.throwPitch * (1 - e);
+    if (P.t <= 0) {
+      hero.root.position.copy(P.home); hero.model.rotation.x = 0;
+      P.state = 'idle'; hero.play(A('idle'), { fade:0.2 });
+    }
+    return;
+  }
   if (P.state === 'dodge') { runDodge(dt); return; }
 
   if (P.state === 'attack' || P.state === 'hurt') {
@@ -998,6 +1049,24 @@ function runDodge(dt) {
 
 
 // ── the bug ───────────────────────────────────────────────────────────────────
+// Hang him head-first from the mouth. Rather than positioning his ROOT by an assumed chest height,
+// read where his chest actually is this frame and shift the root by the difference - his spine
+// moves with whatever clip is on him, so a rest-pose offset left a visible gap between the jaws
+// and his body. `k` eases the pull-in so he is dragged into the mouth rather than teleported.
+function anchorToMouth(dt, k) {
+  mouthPoint(mouth);
+  P.grabPitch = THREE.MathUtils.lerp(P.grabPitch, GRAB.pitch, 1 - Math.pow(0.004, dt));
+  hero.model.rotation.x = P.grabPitch;
+  tmp.copy(bug.root.position).sub(hero.root.position); tmp.y = 0;
+  if (tmp.lengthSq() > 1e-6) hero.root.rotation.y = Math.atan2(tmp.x, tmp.z);
+  hero.root.updateMatrixWorld(true);
+  if (heroChest) {
+    heroChest.getWorldPosition(vB);
+    vA.copy(mouth).sub(vB);
+    hero.root.position.addScaledVector(vA, k >= 1 ? 1 : 0.4 * k);
+  }
+}
+
 function bugAI(dt) {
   if (B.hurtCd > 0) B.hurtCd -= dt;
   // CLAIM THE WIN HERE, not where the damage is dealt. Stephen can die inside any branch of the
@@ -1088,6 +1157,17 @@ function bugAI(dt) {
       if (B.t <= 0) {
         const set = ENEMY_ANIM.strikeSet;
         const pick = set[(Math.random() * set.length) | 0];
+        // Only the bug does this, and it is meant to be the moment the fight stops being a fight.
+        if (ENEMY_ANIM.canGrab && Math.random() < GRAB.chance) {
+          B.state = 'grab'; B.t = GRAB.dur; B.phase = 'reach'; B.lunged = false;
+          B.dir = toHero.clone();
+          B.grabTick = 0;
+          B.jumpFrom = bug.root.position.clone();
+          B.jumpTo = hero.root.position.clone().addScaledVector(B.dir, -1.45);
+          B.grabYaw = bug.root.rotation.y;
+          bug.play(ENEMY_ANIM.strike, { once:true, fade:0.08, rate:1.25, force:true });
+          break;
+        }
         B.bite = pick === ENEMY_ANIM.bite;
         B.strike = STRIKE[opponent][bare(pick)];
         B.dir = toHero.clone();
@@ -1113,12 +1193,61 @@ function bugAI(dt) {
         if (B.kickYaw) bug.model.rotation.y += B.kickYaw;
       }
       break;
+    case 'grab': {
+      const el = GRAB.dur - B.t;
+      if (el < GRAB.reach) {                                  // jaws thrown forward
+        const k = el / GRAB.reach, e = k*k*(3-2*k);
+        bug.root.position.lerpVectors(B.jumpFrom, B.jumpTo, e);
+      } else if (el < GRAB.dur - GRAB.release) {
+        bug.root.position.copy(B.jumpTo);
+        if (B.phase === 'reach') {
+          B.phase = 'hold';
+          // It only latches if he is still there. Dodge and the jaws close on nothing.
+          B.caught = contact(bug.root.position, B.dir, 2.0, hero.root.position,
+                             HALF_DEPTH.stephen, LATERAL[opponent] + 0.2);
+          if (B.caught) { P.state = 'grabbed'; P.grabPitch = 0; }
+        }
+        const sh = el - GRAB.reach - GRAB.latch;
+        if (sh > 0) {                                         // worry it like a dog with a rag
+          bug.root.rotation.y = B.grabYaw + Math.sin(sh * 24) * 0.42;
+          bug.model.rotation.x = Math.sin(sh * 17) * 0.17;
+          if (B.caught) {
+            B.grabTick -= dt;
+            if (B.grabTick <= 0) { B.grabTick = GRAB.tick; damageHero(GRAB.dmg); }
+          }
+        }
+        if (B.caught) anchorToMouth(dt, Math.min(1, (el - GRAB.reach) / GRAB.latch));
+      } else {
+        if (B.phase !== 'release') {
+          B.phase = 'release';
+          bug.model.rotation.x = 0;
+          bug.root.rotation.y = B.grabYaw;
+          if (B.caught) {                                     // thrown clear
+            P.throwFrom = hero.root.position.clone();
+            P.throwPitch = P.grabPitch;
+            P.state = 'thrown'; P.t = GRAB.release;
+            B.caught = false;
+          }
+        }
+        const k = Math.min(1, (el - (GRAB.dur - GRAB.release)) / GRAB.release), e = k*k*(3-2*k);
+        bug.root.position.lerpVectors(B.jumpTo, B.home, e);
+      }
+      if (B.t <= 0) {
+        bug.root.position.copy(B.home);
+        bug.root.rotation.y = B.grabYaw;
+        bug.model.rotation.x = 0;
+        B.state = 'idle'; B.t = 1.2 + Math.random()*1.3;
+        bug.play(ENEMY_ANIM.idle, { fade:0.25 });
+      }
+      break;
+    }
     case 'bite': {
       const el = BITE.dur - B.t;
       if (el < BITE.spring) {
         const k = el / BITE.spring, e = k*k*(3-2*k);
         bug.root.position.lerpVectors(B.jumpFrom, B.jumpTo, e);
         bug.model.rotation.x = BITE.lean * e;          // pitch the face down and forward
+        squeezeArms(e);
       } else if (el < BITE.spring + BITE.hold) {
         if (B.phase === 'spring') {                    // freeze on the squeeze and hold it
           B.phase = 'hold';
@@ -1129,6 +1258,7 @@ function bugAI(dt) {
         }
         bug.root.position.copy(B.jumpTo);
         bug.model.rotation.x = BITE.lean;
+        squeezeArms(1);
       } else {
         if (B.phase === 'hold') {                      // snap back out, clip running in reverse
           B.phase = 'recoil';
@@ -1137,9 +1267,11 @@ function bugAI(dt) {
         const k = Math.min(1, (el - BITE.spring - BITE.hold) / BITE.recoil), e = k*k*(3-2*k);
         bug.root.position.lerpVectors(B.jumpTo, B.home, e);
         bug.model.rotation.x = BITE.lean * (1 - e);
+        squeezeArms(1 - e);
       }
       if (B.t <= 0) {
         bug.model.rotation.x = 0;
+        squeezeArms(0);
         bug.root.position.copy(B.home);
         B.state = 'idle'; B.t = 1.1 + Math.random()*1.4;
         bug.play(ENEMY_ANIM.idle, { fade:0.2 });
@@ -1194,6 +1326,15 @@ const camGoal = new THREE.Vector3(), lookGoal = new THREE.Vector3();
 const camLine = new THREE.Vector3(), camMid = new THREE.Vector3(), liveMid = new THREE.Vector3();
 const faceShot = new THREE.Vector3(), foeShot = new THREE.Vector3(), lookOut = new THREE.Vector3();
 const camTrack = new THREE.Vector3(), pivot = new THREE.Vector3();
+const vA = new THREE.Vector3(), vB = new THREE.Vector3(), mouth = new THREE.Vector3();
+// Midpoint of the two jaw bones, in world space, as they are this frame.
+function mouthPoint(out) {
+  if (jawU && jawL) {
+    jawU.getWorldPosition(vA); jawL.getWorldPosition(vB);
+    return out.copy(vA).add(vB).multiplyScalar(0.5);
+  }
+  return out.copy(bug.root.position).setY(0.9);
+}
 function fightCam(dt) {
   const homeA = P.home || hero.root.position, homeB = B.home || bug.root.position;
   camMid.copy(homeA).add(homeB).multiplyScalar(0.5);
@@ -1241,7 +1382,11 @@ function tick() {
     // straight through it.
     tmp.copy(hero.root.position).sub(bug.root.position); tmp.y = 0;
     const gap = tmp.length(), MIN = MIN_GAP;
-    if (B.state !== 'lunge' && B.state !== 'rear' && B.state !== 'return' && gap > 1e-4 && gap < MIN) {
+    // Anything that deliberately closes the distance is exempt. The grab in particular holds him
+    // inside the jaws, and the push was quietly shoving the bug off him every frame.
+    const CLOSING = ['lunge','rear','return','bite','grab'].includes(B.state)
+                 || P.state === 'grabbed' || P.state === 'thrown';
+    if (!CLOSING && gap > 1e-4 && gap < MIN) {
       const push = tmp.normalize().multiplyScalar((MIN - gap) * 0.5);
       if (!B.dead) bug.root.position.sub(push);
     }
