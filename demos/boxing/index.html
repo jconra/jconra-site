@@ -159,11 +159,11 @@ const CHIMP_ANIM = {
   taunt: C('dance_05'),                           // a quick strut while Stephen waves
   // `dance_05` is the threat display it winds up with, so using it over the body read as the
   // chimp still fighting. `jump` is a bounce on the spot - that reads as celebrating.
-  victory: C('jump'),
+  victory: C('jump'), victoryLoop: true,          // a bounce on the spot
   hurt: [C('hit_to_body_02'), C('hit_to_head')],  // it flinches when it is hit
   death: C('defeat_03'),
 };
-const INSECT_ANIM = {idle:'Idle', walk:'Walk', rear:'RearUp', strike:'Strike', strikeSet:['Strike'], taunt:'RearUp', victory:'RearUp', hurt:null, death:'Death'};
+const INSECT_ANIM = {idle:'Idle', walk:'Walk', rear:'RearUp', strike:'Strike', strikeSet:['Strike'], taunt:'RearUp', victory:'RearUp', victoryLoop:false, hurt:null, death:'Death'};
 const ENEMY_ANIM = opponent === 'chimp' ? CHIMP_ANIM : INSECT_ANIM;
 const ENEMY_FILE = opponent === 'chimp' ? 'chimpanzee.glb' : 'insect_animated.glb';
 const ENEMY_TAUNT = ENEMY_ANIM.taunt;
@@ -212,8 +212,8 @@ const HURTS = ['hit_to_body_01','hit_to_body_02','hit_to_side','hit_to_head'];
 // playback AND the state timer together, otherwise the state outlasts the animation and he stands
 // frozen at the end of a swing.
 const ATTACK_RATE = 1.7, HURT_RATE = 1.5;
-// The jump clip is a leisurely 1.75s float; a dodge is a quick hop out of the way.
-const DODGE_RATE = 1.75;
+// The jump clip is a leisurely 1.75s float; scaled so one hop covers exactly one dodge trip.
+const DODGE_RATE = 1.75 / 0.86;
 
 // ── renderer ──────────────────────────────────────────────────────────────────
 const FORCE_GL1 = Q.has('gl1');
@@ -232,7 +232,7 @@ if (FORCE_GL1) {
 //   - nothing in the environment, so a roughness-0.9 material with two lights has nothing to pick
 //     up. Tripo lights with an environment, which is where its surface detail comes from.
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.35;
+renderer.toneMappingExposure = 1.0;
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
@@ -244,8 +244,10 @@ scene.background = new THREE.Color(0x090d14);
 scene.fog = new THREE.Fog(0x0a0e15, 26, 120);
 const camera = new THREE.PerspectiveCamera(48, innerWidth/innerHeight, 0.1, 300);
 
-scene.add(new THREE.HemisphereLight(0x8ea8bd, 0x10161d, 0.62));
-const key = new THREE.DirectionalLight(0xfff2de, 2.5);
+// The environment below supplies ambient of its own, so the hemisphere is only a top-up now.
+// Left at its old strength the two stacked, and a black fleece jacket rendered almost white.
+scene.add(new THREE.HemisphereLight(0x8ea8bd, 0x10161d, 0.25));
+const key = new THREE.DirectionalLight(0xfff2de, 1.7);
 key.position.set(8, 14, 6); key.castShadow = true;
 key.shadow.mapSize.set(2048,2048);
 const S = 16;
@@ -256,7 +258,9 @@ scene.add(key);
 const rim = new THREE.DirectionalLight(0x6f9ac6, 1.5);
 rim.position.set(-8,5,-7); scene.add(rim);
 // A soft fill from the camera side so faces are not left to the ambient term alone.
-const fill = new THREE.DirectionalLight(0xbcd2e6, 0.9);
+// Key and fill both come from the camera side, so whatever faces us takes both. Keep the fill
+// low or it doubles the key on exactly the surfaces the player is looking at.
+const fill = new THREE.DirectionalLight(0xbcd2e6, 0.22);
 fill.position.set(6, 3, -2); scene.add(fill);
 
 // Image-based lighting, which is what the model is actually missing. PMREM wants half-float
@@ -267,14 +271,14 @@ if (renderer.capabilities.isWebGL2) {
     const env = new THREE.Scene();
     const box = new THREE.Mesh(
       new THREE.BoxGeometry(12, 7, 12),
-      new THREE.MeshBasicMaterial({ color: 0x2c3540, side: THREE.BackSide })
+      new THREE.MeshBasicMaterial({ color: 0x11161d, side: THREE.BackSide })
     );
     env.add(box);
     const glow = new THREE.Mesh(new THREE.PlaneGeometry(9, 5),
-      new THREE.MeshBasicMaterial({ color: 0xbed4ea }));
+      new THREE.MeshBasicMaterial({ color: 0x59708c }));
     glow.position.set(0, 3.4, 0); glow.rotation.x = Math.PI/2; env.add(glow);
     const lamp = new THREE.Mesh(new THREE.PlaneGeometry(4, 3),
-      new THREE.MeshBasicMaterial({ color: 0xffe3b0 }));
+      new THREE.MeshBasicMaterial({ color: 0xa8845a }));
     lamp.position.set(5.5, 1.4, 1); lamp.rotation.y = -Math.PI/2; env.add(lamp);
     scene.environment = pmrem.fromScene(env, 0.06).texture;
     pmrem.dispose();
@@ -484,7 +488,7 @@ class Rig {
           const t = m[slot];
           if (t) { t.anisotropy = maxAniso; t.needsUpdate = true; }
         }
-        m.envMapIntensity = 0.85;
+        m.envMapIntensity = 0.22;
         m.needsUpdate = true;
       }
     });
@@ -580,8 +584,8 @@ function setInput(mode) {
 }
 setInput(matchMedia('(hover: none) and (pointer: coarse)').matches ? 'touch' : 'keys');
 
-const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, dodgeKey:null, dodgeUntil:0, dodgeAnimT:0, lastDodgeKey:null, deadT:0, deathClip:'defeat_03' };
-const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0, phase:null, act:null };
+const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, dodgeT:0, dodgeFrom:null, dodgeTo:null, deadT:0, deathClip:'defeat_03' };
+const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0, phase:null, act:null, victoryT:0 };
 let phase = 'cine', cineT = 0, overT = 0;
 
 const keys = {};
@@ -595,6 +599,7 @@ addEventListener('keydown', e => {
   if (skipIntro()) { e.preventDefault(); return; }
   keys[e.code] = true;
   if (e.code === 'Space') e.preventDefault();
+  if (!e.repeat && (e.code === 'KeyW' || e.code === 'KeyS' || e.code === 'KeyD')) requestDodge(e.code);
   const attack = ['Digit1','Digit2','Digit3','Digit4','Digit5'].indexOf(e.code);
   if (attack >= 0) { e.preventDefault(); tryAttack(attack); }
 });
@@ -650,9 +655,7 @@ addEventListener('touchend', e => {
     tryAttack((Math.random() * ATTACKS.length) | 0);
     return;
   }
-  const key = Math.abs(dy) > Math.abs(dx) ? (dy < 0 ? 'KeyW' : 'KeyS') : 'KeyD';
-  P.dodgeKey = key;
-  P.dodgeUntil = performance.now() + 360;
+  requestDodge(Math.abs(dy) > Math.abs(dx) ? (dy < 0 ? 'KeyW' : 'KeyS') : 'KeyD');
 }, {passive:false});
 
 function say(t, sub) {
@@ -727,10 +730,10 @@ function damageHero(d) {
     P.dead = true; P.state = 'dead'; P.deadT = 0;
     P.deathClip = STEPHEN_DEATHS[(Math.random() * STEPHEN_DEATHS.length) | 0];
     hero.play(A(P.deathClip), { once:true, fade:0.15 });
-    if (!B.dead) { B.state = 'victory'; B.t = 0; B.lunged = true;
-      bug.model.rotation.x = 0;
-      if (B.kickYaw) { bug.model.rotation.y -= B.kickYaw; B.kickYaw = 0; } }
-    say('DEFEATED', UNBEATABLE ? 'nothing beats the bug' : 'reload to try again');
+    // the opponent claims its win in bugAI, which sees it however the kill arrived
+    say('DEFEATED', UNBEATABLE ? 'nothing beats the bug' : 'going again');
+    // Long enough for it to walk onto the body and dance there, then restart the same round.
+    setTimeout(() => location.reload(), 5600);
   } else {
     P.state = 'hurt';
     const n = HURTS[(Math.random() * HURTS.length) | 0];
@@ -809,7 +812,7 @@ function endCine() {
 
 // ── the player ────────────────────────────────────────────────────────────────
 const ndc = new THREE.Vector3();
-const fwd = new THREE.Vector3(), tmp = new THREE.Vector3(), dodgeAxis = new THREE.Vector3(), dodgeTarget = new THREE.Vector3();
+const fwd = new THREE.Vector3(), tmp = new THREE.Vector3(), dodgeAxis = new THREE.Vector3();
 function player(dt) {
   if (P.dead) { P.deadT += dt; liftBody(hero, 'stephen', P.deathClip, P.deadT); return; }
   if (P.state === 'celebrate') return;
@@ -825,6 +828,8 @@ function player(dt) {
     while (dY < -Math.PI) dY += Math.PI * 2;
     hero.root.rotation.y += Math.sign(dY) * Math.min(Math.abs(dY), 5.0 * dt);
   }
+
+  if (P.state === 'dodge') { runDodge(dt); return; }
 
   if (P.state === 'attack' || P.state === 'hurt') {
     P.t -= dt;
@@ -849,50 +854,69 @@ function player(dt) {
     return;
   }
 
-  dodgeAxis.set(0,0,0);
-  const midpoint = tmp.copy(hero.root.position).add(bug.root.position).multiplyScalar(0.5);
-  const dodgeKey = keys['KeyW'] ? 'KeyW' : keys['KeyS'] ? 'KeyS' : keys['KeyD'] ? 'KeyD' :
-    performance.now() < P.dodgeUntil ? P.dodgeKey : null;
-  if (dodgeKey === 'KeyW' || dodgeKey === 'KeyS') {
-    dodgeAxis.copy(midpoint).sub(camera.position).setY(0).normalize();
-    if (dodgeKey === 'KeyS') dodgeAxis.negate();
-  } else if (dodgeKey === 'KeyD') {
+  // Not dodging and not attacking: drift back to the mark and idle.
+  hero.root.position.lerp(P.home, 1 - Math.pow(0.0001, dt));
+  if (P.state !== 'idle') { hero.play(A('idle'), { fade:0.2 }); P.state = 'idle'; }
+}
+
+// THE DODGE IS ONE COMMITTED MOVE, not a position you hold. Held as a position it re-evaluated
+// every frame, which is what kept restarting the hop. A press now buys a fixed trip: out, wait
+// there long enough for a strike to miss, come back. Nothing during that reads the keys, and
+// because a keydown only repeats while held (filtered) the key must be released and pressed again
+// before the next one.
+const DODGE = { out: 0.16, hold: 0.44, back: 0.26, dist: 2.0 };
+DODGE.dur = DODGE.out + DODGE.hold + DODGE.back;
+function requestDodge(key) {
+  if (phase !== 'fight' || P.dead) return;
+  if (P.state === 'dodge' || P.state === 'attack' || P.state === 'hurt' || P.state === 'celebrate') return;
+  dodgeAxis.set(0, 0, 0);
+  if (key === 'KeyW' || key === 'KeyS') {
+    const mid = tmp.copy(hero.root.position).add(bug.root.position).multiplyScalar(0.5);
+    dodgeAxis.copy(mid).sub(camera.position).setY(0).normalize();   // across the camera, not the line
+    if (key === 'KeyS') dodgeAxis.negate();
+  } else if (key === 'KeyD') {
     dodgeAxis.copy(hero.root.position).sub(bug.root.position).setY(0).normalize();
   }
-  if (dodgeAxis.lengthSq() > 0) {
-    dodgeTarget.copy(P.home).addScaledVector(dodgeAxis, 2.1);
-    hero.root.position.lerp(dodgeTarget, 1 - Math.pow(0.0001, dt));
-    // Replay on every fresh dodge: a new press, or a change of direction. Keying it on the state
-    // alone meant a second dodge inside the clip's own length silently skipped the hop, because
-    // the state was still 'dodge' and play() returns early when the action is already current.
-    // ONE HOP PER DODGE. Replaying on every fresh press meant holding or mashing a direction
-    // turned him into a pogo stick, so the hop cannot restart until the previous one has run;
-    // changing direction inside that window just moves him.
-    if ((P.state !== 'dodge' || dodgeKey !== P.lastDodgeKey) && P.dodgeAnimT <= 0) {
-      const jump = hero.play(A('jump'), { once:true, fade:0.07, rate:DODGE_RATE, force:true });
-      P.dodgeAnimT = jump ? jump.getClip().duration / DODGE_RATE : 0;
-    } else if (P.dodgeAnimT > 0) {
-      P.dodgeAnimT -= dt;
-    } else {
-      hero.play(A('idle'), { fade:0.2 });
-    }
-    P.lastDodgeKey = dodgeKey;
-    P.state = 'dodge';
+  if (dodgeAxis.lengthSq() < 1e-6) return;
+  P.state = 'dodge';
+  P.dodgeT = DODGE.dur;
+  P.dodgeFrom = (P.home || hero.root.position).clone();
+  P.dodgeTo = P.dodgeFrom.clone().addScaledVector(dodgeAxis, DODGE.dist);
+  hero.play(A('jump'), { once:true, fade:0.06, rate:DODGE_RATE, force:true });
+}
+function runDodge(dt) {
+  P.dodgeT -= dt;
+  const el = DODGE.dur - P.dodgeT;
+  if (el < DODGE.out) {
+    const k = el / DODGE.out, e = k*k*(3-2*k);
+    hero.root.position.lerpVectors(P.dodgeFrom, P.dodgeTo, e);
+  } else if (el < DODGE.out + DODGE.hold) {
+    hero.root.position.copy(P.dodgeTo);            // parked clear of the strike line
   } else {
-    hero.root.position.lerp(P.home, 1 - Math.pow(0.0001, dt));
-    P.lastDodgeKey = null;
-    if (P.dodgeAnimT > 0) P.dodgeAnimT -= dt;      // the hop keeps running once he is back home
-    if (P.state === 'dodge' && P.dodgeAnimT > 0) {
-      /* let it finish */
-    } else {
-      hero.play(A('idle'), { fade:0.2 }); P.state = 'idle';
-    }
+    const k = Math.min(1, (el - DODGE.out - DODGE.hold) / DODGE.back), e = k*k*(3-2*k);
+    hero.root.position.lerpVectors(P.dodgeTo, P.dodgeFrom, e);
+  }
+  if (P.dodgeT <= 0) {
+    hero.root.position.copy(P.dodgeFrom);
+    P.state = 'idle';
+    hero.play(A('idle'), { fade:0.18 });
   }
 }
+
 
 // ── the bug ───────────────────────────────────────────────────────────────────
 function bugAI(dt) {
   if (B.hurtCd > 0) B.hurtCd -= dt;
+  // CLAIM THE WIN HERE, not where the damage is dealt. Stephen can die inside any branch of the
+  // switch below, and that branch then carries on to set its own next state - a lunge that lands
+  // the killing blow still moves itself to 'return' on the same frame, which is exactly how the
+  // chimp ended up fighting on over the body. Doing it before the switch covers every branch.
+  if (P.dead && !B.dead && B.state !== 'victory') {
+    B.state = 'victory'; B.lunged = true; B.victoryT = 0;
+    bug.model.rotation.x = 0;
+    if (B.kickYaw) { bug.model.rotation.y -= B.kickYaw; B.kickYaw = 0; }
+    if (B.act) { B.act.setEffectiveTimeScale(1); B.act = null; }
+  }
   if (B.dead) { B.deadT += dt; liftBody(bug, opponent, bare(ENEMY_ANIM.death), B.deadT); return; }
   if (UNBEATABLE && B.hp < BUG.hp) {               // it knits itself back together
     B.hp = Math.min(BUG.hp, B.hp + BUG.regen * dt);
@@ -923,8 +947,13 @@ function bugAI(dt) {
         bug.root.position.x += toHero.x * BUG.walk * 1.35 * dt;
         bug.root.position.z += toHero.z * BUG.walk * 1.35 * dt;
         bug.play(ENEMY_ANIM.walk, { fade:0.25, rate:1.35 });
-      } else {
+      } else if (ENEMY_ANIM.victoryLoop) {
         bug.play(ENEMY_ANIM.victory, { fade:0.3, rate:1.0 });
+      } else {
+        // No celebration clip in the set: display once, then settle rather than loop a threat.
+        B.victoryT += dt;
+        const a = bug.play(ENEMY_ANIM.victory, { fade:0.3, rate:1.0, once:true });
+        if (B.victoryT > (a ? a.getClip().duration : 1.5) + 0.2) bug.play(ENEMY_ANIM.idle, { fade:0.4 });
       }
       break;
     }
@@ -1047,9 +1076,18 @@ function bugAI(dt) {
 
 // ── camera during the fight ───────────────────────────────────────────────────
 const camGoal = new THREE.Vector3(), lookGoal = new THREE.Vector3();
+// The camera used to take its axis from the LIVE line between the two. They stand 1.6 apart and a
+// dodge moves 2.0, so that line could swing more than 50 degrees in a fifth of a second - and
+// during the bite, at a 0.82 gap, further still. The camera whipped round its own orbit, which
+// reads as a violent zoom. Take the axis from their marks instead, which do not move, and let the
+// aim point follow the live midpoint only part of the way.
+const camLine = new THREE.Vector3(), camMid = new THREE.Vector3(), liveMid = new THREE.Vector3();
 function fightCam(dt) {
-  const mid = tmp.copy(hero.root.position).add(bug.root.position).multiplyScalar(0.5);
-  const line = new THREE.Vector3().subVectors(hero.root.position, bug.root.position);
+  const homeA = P.home || hero.root.position, homeB = B.home || bug.root.position;
+  camMid.copy(homeA).add(homeB).multiplyScalar(0.5);
+  liveMid.copy(hero.root.position).add(bug.root.position).multiplyScalar(0.5);
+  const mid = tmp.copy(camMid).lerp(liveMid, 0.35);
+  const line = camLine.subVectors(homeA, homeB);
   line.y = 0;
   if (line.lengthSq() < 1e-4) line.set(0,0,1);
   line.normalize();
