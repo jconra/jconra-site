@@ -351,7 +351,12 @@ fill.position.set(6, 3, -2); scene.add(fill);
 const SPOT_H = 18, SPOT_ANGLE = 0.42;
 // 130 by eye against 0 / 70 / 130 / 220 rendered side by side: enough to draw the pool and let the
 // canvas fall away into the dark at the rim, without flattening the night out of the rest of it.
-const spot = new THREE.SpotLight(0xffeccd, 130, 46, SPOT_ANGLE, 0.55, 1);
+// PENUMBRA 0.08, not the 0.55 it started at. At 0.55 the falloff is so gradual that the pool has no
+// edge at all - the canvas just gets gradually less dark toward the middle, which reads as ambient
+// light rather than as a lamp pointed at something. Rendered 0.55 / 0.25 / 0.08 / 0 side by side:
+// 0.08 puts a definite rim on the circle while keeping a few pixels of feather, where a flat 0 is
+// crisp but aliases along the edge as the camera turns.
+const spot = new THREE.SpotLight(0xffeccd, 130, 46, SPOT_ANGLE, 0.08, 1);
 spot.position.set(0, SPOT_H, 1.5);          // just off the camera side of centre, so faces are lit
 spot.target.position.set(0, 0, 0); scene.add(spot.target);
 spot.castShadow = true;
@@ -1945,6 +1950,8 @@ function buildTunePanel() {
     ['spot light', 0, 320, 5,      () => spot.intensity,  v => spot.intensity = v],
     ['beam haze',  0, 0.25, 0.005, () => beam.material.uniforms.uStrength.value,
                                    v => beam.material.uniforms.uStrength.value = v],
+    ['spot edge',  0, 0.80, 0.01,  () => spot.penumbra, v => spot.penumbra = v],
+    ['spot width', 0.15, 0.75, 0.01, () => spot.angle, v => spot.angle = v],
     ['sway size',  0, 0.40, 0.01,  () => SWAY.amp,  v => SWAY.amp = v],
     ['sway speed', 0.2, 4.0, 0.05, () => SWAY.rate, v => SWAY.rate = v],
     ['fidget gap', 0.02, 1.50, 0.02, () => FIDGET.gapMax,
@@ -1979,6 +1986,7 @@ function buildTunePanel() {
     const text = 'const FIGHT = {\n' +
       FIELDS.map(([k]) => '  ' + k + ': ' + (+FIGHT[k]).toFixed(2) + ',').join('\n') + '\n};\n' +
       '// spot ' + spot.intensity.toFixed(0) +
+      '  penumbra ' + spot.penumbra.toFixed(2) + '  angle ' + spot.angle.toFixed(2) +
       '  beam ' + beam.material.uniforms.uStrength.value.toFixed(3) +
       '  sway ' + SWAY.amp.toFixed(2) + '/' + SWAY.rate.toFixed(2) +
       '  fidgetGap ' + FIDGET.gapMax.toFixed(2);
