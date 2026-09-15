@@ -260,8 +260,9 @@ const HOP = { from: 0.42, to: 1.04 };   // 1.13 caught the start of hop 2 liftin
 // Scaling the hop to fill the whole dodge played it at 0.72x, which is why it looked slow and why
 // he was still in the air when the dodge ended. It runs faster than life now and finishes early;
 // he lands and stands on guard for the rest of the trip.
-const DODGE_RATE = 1.5;
-let HOP_TIME = 0.42;                               // its real length once the rate is applied
+// The raw length of the one-arc hop subclip. The time he is airborne is this over the dodge rate,
+// recomputed at use rather than cached, so the tuning slider takes effect immediately.
+let HOP_RAW = 0.62;
 
 // ── renderer ──────────────────────────────────────────────────────────────────
 const FORCE_GL1 = Q.has('gl1');
@@ -617,7 +618,7 @@ class Rig {
 // ── load ──────────────────────────────────────────────────────────────────────
 const loader = new GLTFLoader();
 const load = f => new Promise((res, rej) => loader.load(f, res, undefined, rej));
-let hero, bug, clock, heroHead, foeHead, jawU, jawL, heroChest, foeArms = null;
+let hero, bug, clock, heroHead, foeHead, jawU, jawL, heroChest, foeArms = null, foeClav = [];
 
 Promise.all([load('../../models/stephen.glb'), load('../../models/' + ENEMY_FILE)])
 .then(([s, i]) => {
@@ -630,7 +631,7 @@ Promise.all([load('../../models/stephen.glb'), load('../../models/' + ENEMY_FILE
     const hop = THREE.AnimationUtils.subclip(
       stripTravel(jc.clone()), 'hop', Math.round(HOP.from * 60), Math.round(HOP.to * 60), 60);
     hero.clips[HOP_CLIP] = hero.mixer.clipAction(hop);
-    HOP_TIME = hop.duration / DODGE_RATE;         // when he is back on his feet
+    HOP_RAW = hop.duration;                       // airborne time is this over FIGHT.dodgeRate
   }
   bug  = new Rig(i, BUG.scale, opponent === 'chimp' ? 0 : Math.PI/2);
   foeHead = bug.model.getObjectByName('Head');
@@ -639,6 +640,7 @@ Promise.all([load('../../models/stephen.glb'), load('../../models/' + ENEMY_FILE
   const ua = ['L_Upperarm','R_Upperarm'].map(n => bug.model.getObjectByName(n));
   const fa = ['L_Forearm','R_Forearm'].map(n => bug.model.getObjectByName(n));
   if (ua[0] && ua[1]) foeArms = { upper: ua, fore: fa[0] && fa[1] ? fa : null, applied: 0 };
+  foeClav = ['L_Clavicle','R_Clavicle'].map(n => bug.model.getObjectByName(n)).filter(Boolean);
   // Same cut for the opponent, which shuffles between attacks. Its own victory bounce keeps the
   // full clip, because there a string of hops is the point.
   const bj = i.animations.find(c => c.name === ENEMY_ANIM.victory);
@@ -668,8 +670,8 @@ const php = document.getElementById('php'), ehp = document.getElementById('ehp')
 // Show only the controls the player is actually using. Start from what the device looks like,
 // then switch on the first real key or touch - a laptop with a touchscreen reports both.
 const HELP = {
-  keys:  '<b>W/S</b> dodge depth · <b>D</b> backstep · <b>1–4</b> attacks · <b>CLICK</b> random attack',
-  touch: '<b>SWIPE</b> to dodge · <b>TAP</b> to attack',
+  keys:  '<b>W</b> far · <b>S</b> close · <b>D</b> back · <b>1–4</b> attacks · <b>CLICK</b> attack — <i>centre is never safe</i>',
+  touch: '<b>SWIPE</b> up/down/back to a slot · <b>TAP</b> to attack — <i>centre is never safe</i>',
 };
 const keysEl = document.getElementById('keys');
 let inputMode = null;
@@ -680,8 +682,8 @@ function setInput(mode) {
 }
 setInput(matchMedia('(hover: none) and (pointer: coarse)').matches ? 'touch' : 'keys');
 
-const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, kickYaw:0, dodgeT:0, dodgeFrom:null, dodgeTo:null, landed:false, deadT:0, deathClip:'defeat_03', grabPitch:0, throwFrom:null, throwPitch:0, torn:false };
-const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0, phase:null, act:null, victoryT:0, shuffleT:0, shuffleCd:1.2, shuffleDir:null, caught:false, grabYaw:0, finisher:false, grabHp:0 };
+const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, kickYaw:0, dodgeT:0, dodgeFrom:null, dodgeTo:null, landed:false, slot:'center', deadT:0, deathClip:'defeat_03', grabPitch:0, throwFrom:null, throwPitch:0, torn:false };
+const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0, phase:null, act:null, victoryT:0, shuffleT:0, shuffleCd:1.2, shuffleDir:null, caught:false, grabYaw:0, finisher:false, grabHp:0, mark:null, markYaw:0, tellYaw:0, tellPose:0 };
 let phase = 'cine', cineT = 0, overT = 0;
 
 const keys = {};
@@ -794,7 +796,7 @@ function damageBug(d) {
   // plus a wind-up, so a flurry cannot stun-lock it into a statue that never swings back.
   const committed = B.state === 'rear' && B.t < 0.32;
   if (B.hp > 0 && ENEMY_ANIM.hurt && B.hurtCd <= 0 && !committed && B.state !== 'victory') {
-    B.kickYaw = 0;
+    B.kickYaw = 0; B.tellYaw = 0; B.tellPose = 0; B.mark = null;
     bug.model.rotation.x = 0;
     const n = ENEMY_ANIM.hurt[(Math.random() * ENEMY_ANIM.hurt.length) | 0];
     const a = bug.play(n, { once:true, fade:0.07, rate:HURT_RATE, force:true });
@@ -1121,51 +1123,184 @@ function player(dt) {
   if (P.state !== 'idle') { hero.play(A('idle'), { fade:0.2 }); P.state = 'idle'; }
 }
 
+// ── SLOTS ─────────────────────────────────────────────────────────────────────
+// FOUR PLACES STEPHEN CAN BE, and the whole fight is read off them: center, far (W, away from the
+// camera), close (S, toward it) and rear (D, straight back from the chimp).
+//
+// CENTER IS ALWAYS UNSAFE. The chimp's tell names exactly ONE more, so there are always two safe
+// slots and two that are not - and which one it named is the only thing the player has to read.
+//
+// The hit test used to be geometric: a cone from the striker against Stephen's live position. That
+// made "did I get out of the way" depend on sub-unit distances nobody can see, and because each
+// clip peaked at a different fraction of its own length, the time from wind-up to damage moved
+// between 0.26s and 0.58s depending on which attack was rolled. You cannot learn a tell whose
+// payoff time changes every throw. Slots make the question discrete, and FIGHT.strike below makes
+// the answer arrive at the same moment every single time.
+const FIGHT = {
+  slotDist:  1.0,    // how far a dodge carries him off the mark. 2.0 read as a standing long jump
+  tell:      0.45,   // the wind-up, before the chimp commits to anything
+  strike:    0.30,   // commit -> damage. THE SAME FOR EVERY ATTACK. This is the whole point
+  recover:   0.35,   // after the blow, before it is back on guard
+  gapMin:    0.9, gapMax: 1.8,        // breathing room between attacks
+  // THE TELL IS A POSE, NOT A CLIP. box_02 is a 2.8s duck: even played fast the read arrives late,
+  // because the information is buried in the middle of a long move. These four numbers are struck
+  // on in a tenth of a second and held, so the shape is complete before the player has to decide.
+  look:      0.75,   // head yaw toward the marked slot - THIS is the direction cue
+  bodyTurn:  0.18,   // a little shoulder follows the head, so it reads from the back of the arena
+  headLift:  0.38,   // chin comes up
+  armOut:    0.65,   // arms flare away from the body
+  poseIn:    0.10,   // seconds to snap the whole pose on
+  // THE DODGE MUST STILL BE OUT WHEN THE BLOW ARRIVES. At 0.40 the hold ran 0.72s in total against
+  // a 0.75s tell-to-impact, so a player who read the tell perfectly and moved on the first frame was
+  // home again three hundredths before the punch landed - and center is never safe, so a flawless
+  // dodge was punished exactly as hard as standing still. The trip now outlasts the strike window
+  // with room to spare: press any time from the start of the tell to the moment of impact and the
+  // ground under him is somewhere else when it lands.
+  dodgeOut:  0.12, dodgeHold: 0.55, dodgeBack: 0.20,
+  dodgeRate: 1.9,
+};
+const dodgeDur = () => FIGHT.dodgeOut + FIGHT.dodgeHold + FIGHT.dodgeBack;
+
+// APPLIED AFTER THE MIXER, UNDONE BEFORE THE NEXT ONE. The mixer owns these bones; anything added
+// on top of them only survives because it is re-added every frame, and the moment a clip stops
+// writing a bone - frozen with timeScale 0, or clamped on its last frame - an offset that is merely
+// added compounds instead. That is exactly how the bite's arms ended up helicoptering. Saving the
+// mixer's own value and restoring it before the next update makes that impossible by construction:
+// the pose is never read back as input, so there is nothing for it to accumulate onto.
+//
+// MEASURED on the rig: the Head bone's local Y maps to model up (so a Y rotation is a clean yaw)
+// and its local X to model lateral (a pitch). The arms are mirrored about the spine, so the two
+// sides take opposite signs or they scissor instead of flaring.
+const TELL_SAVE = [];
+const tellQ = new THREE.Quaternion(), tellQ2 = new THREE.Quaternion();
+const AX_X = new THREE.Vector3(1,0,0), AX_Y = new THREE.Vector3(0,1,0), AX_Z = new THREE.Vector3(0,0,1);
+function clearTellPose() {
+  for (let i = TELL_SAVE.length - 1; i >= 0; i--) TELL_SAVE[i].b.quaternion.copy(TELL_SAVE[i].q);
+  TELL_SAVE.length = 0;
+}
+function applyTellPose() {
+  const k = B.tellPose || 0;
+  if (k <= 0.001) return;
+  const push = (bone, q) => {
+    if (!bone) return;
+    TELL_SAVE.push({ b: bone, q: bone.quaternion.clone() });
+    bone.quaternion.premultiply(q);
+  };
+  if (foeHead) {
+    tellQ.setFromAxisAngle(AX_Y, B.markYaw * k);                  // look at the slot it will hit
+    // NEGATED: rendered both ways and looked at them. The Head bone's local +X tucks the chin
+    // DOWN, so the sign is flipped here to let the slider read the way it is labelled.
+    tellQ2.setFromAxisAngle(AX_X, -FIGHT.headLift * k);           // chin up
+    push(foeHead, tellQ.multiply(tellQ2));
+  }
+  if (foeArms) foeArms.upper.forEach((b, i) => {
+    push(b, tellQ2.setFromAxisAngle(AX_Z, (i ? -1 : 1) * FIGHT.armOut * k));
+  });
+  foeClav.forEach((b, i) => {
+    push(b, tellQ2.setFromAxisAngle(AX_Z, (i ? -1 : 1) * FIGHT.armOut * 0.4 * k));
+  });
+}
+const attackGap = () => FIGHT.gapMin + Math.random() * Math.max(0, FIGHT.gapMax - FIGHT.gapMin);
+
+const SLOTS = ['center', 'far', 'close', 'rear'];
+const KEY_SLOT = { KeyW:'far', KeyS:'close', KeyD:'rear' };
+const latAxis = new THREE.Vector3(), rearAxis = new THREE.Vector3(), slotTmp = new THREE.Vector3();
+// The lateral axis is taken ACROSS THE CAMERA rather than across the fight line, so W and S always
+// move him visibly up and down the screen whatever angle the camera has been dragged to.
+function slotAxes() {
+  slotTmp.copy(hero.root.position).add(bug.root.position).multiplyScalar(0.5);
+  latAxis.copy(slotTmp).sub(camera.position).setY(0).normalize();
+  rearAxis.copy(hero.root.position).sub(bug.root.position).setY(0).normalize();
+  if (latAxis.lengthSq() < 1e-6) latAxis.set(1, 0, 0);
+  if (rearAxis.lengthSq() < 1e-6) rearAxis.set(0, 0, 1);
+}
+function slotPos(name, out) {
+  slotAxes();
+  out.copy(P.home || hero.root.position);
+  if (name === 'far')   out.addScaledVector(latAxis,   FIGHT.slotDist);
+  if (name === 'close') out.addScaledVector(latAxis,  -FIGHT.slotDist);
+  if (name === 'rear')  out.addScaledVector(rearAxis,  FIGHT.slotDist);
+  return out;
+}
+// WHERE HE ACTUALLY IS, not where he meant to go. Reading the live position rather than the dodge's
+// target means a dodge that is still on its way out, or already on its way home, is judged on the
+// ground he is actually standing over - which is what the player sees.
+const slotProbe = new THREE.Vector3();
+function currentSlot() {
+  if (!P.home) return 'center';
+  let best = 'center', bestD = Infinity;
+  for (const n of SLOTS) {
+    const d = slotPos(n, slotProbe).distanceToSquared(hero.root.position);
+    if (d < bestD) { bestD = d; best = n; }
+  }
+  return best;
+}
+const unsafeNow = () => ['center', B.mark].filter(Boolean);
+const isUnsafe = n => n === 'center' || n === B.mark;
+// A DODGE IS A COMMITMENT, so it counts from the press, not from when his feet arrive. Judging him
+// on his live position instead let a dodge started late in the tell still read as `center` at the
+// commit - the chimp would throw the face-eat at a man who was already leaving, and close its jaws
+// on the air he used to be in. Pressing a direction takes you off the middle immediately.
+const committedSlot = () => (P.state === 'dodge' ? P.slot : currentSlot());
+
+// The punches and the kick, with the face-eat held back for the middle slot.
+const PUNCHES = (ENEMY_ANIM.strikeSet || []).filter(n => n !== ENEMY_ANIM.bite);
+const pickPunch = () => (PUNCHES.length ? PUNCHES : ENEMY_ANIM.strikeSet)[
+  (Math.random() * (PUNCHES.length || ENEMY_ANIM.strikeSet.length)) | 0];
+
+// WHICH WAY TO TURN FOR THE TELL. The direction comes from the geometry, so the chimp turns its
+// real right for `close` and its real left for `far` however the camera has been dragged round;
+// the SIZE comes from the slider, so the turn can be pushed well past life-size to read at a
+// glance. `rear` deliberately gets nothing - staying square is itself the third tell.
+const markProbe = new THREE.Vector3();
+function markLookYaw(mark) {
+  if (mark === 'rear' || !mark) return 0;
+  slotPos(mark, markProbe);
+  let d = Math.atan2(markProbe.x - bug.root.position.x, markProbe.z - bug.root.position.z)
+        - bug.root.rotation.y;
+  while (d >  Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return Math.sign(d) * FIGHT.look;
+}
+
 // THE DODGE IS ONE COMMITTED MOVE, not a position you hold. Held as a position it re-evaluated
 // every frame, which is what kept restarting the hop. A press now buys a fixed trip: out, wait
 // there long enough for a strike to miss, come back. Nothing during that reads the keys, and
 // because a keydown only repeats while held (filtered) the key must be released and pressed again
 // before the next one.
-const DODGE = { out: 0.16, hold: 0.44, back: 0.26, dist: 2.0 };
-DODGE.dur = DODGE.out + DODGE.hold + DODGE.back;
 function requestDodge(key) {
   if (phase !== 'fight' || P.dead) return;
   if (P.state === 'dodge' || P.state === 'attack' || P.state === 'hurt' || P.state === 'celebrate') return;
-  dodgeAxis.set(0, 0, 0);
-  if (key === 'KeyW' || key === 'KeyS') {
-    const mid = tmp.copy(hero.root.position).add(bug.root.position).multiplyScalar(0.5);
-    dodgeAxis.copy(mid).sub(camera.position).setY(0).normalize();   // across the camera, not the line
-    if (key === 'KeyS') dodgeAxis.negate();
-  } else if (key === 'KeyD') {
-    dodgeAxis.copy(hero.root.position).sub(bug.root.position).setY(0).normalize();
-  }
-  if (dodgeAxis.lengthSq() < 1e-6) return;
+  const slot = KEY_SLOT[key];
+  if (!slot) return;
   P.state = 'dodge';
-  P.dodgeT = DODGE.dur;
+  P.slot = slot;
+  P.dodgeT = dodgeDur();
   P.landed = false;
   P.dodgeFrom = (P.home || hero.root.position).clone();
-  P.dodgeTo = P.dodgeFrom.clone().addScaledVector(dodgeAxis, DODGE.dist);
-  hero.play(hero.has(HOP_CLIP) ? HOP_CLIP : A('jump'), { once:true, fade:0.06, rate:DODGE_RATE, force:true });
+  P.dodgeTo = slotPos(slot, new THREE.Vector3());
+  hero.play(hero.has(HOP_CLIP) ? HOP_CLIP : A('jump'), { once:true, fade:0.06, rate:FIGHT.dodgeRate, force:true });
 }
 function runDodge(dt) {
+  const dur = dodgeDur();
   P.dodgeT -= dt;
-  const el = DODGE.dur - P.dodgeT;
-  if (!P.landed && el >= HOP_TIME) {               // down on his feet, back on guard
+  const el = dur - P.dodgeT;
+  if (!P.landed && el >= HOP_RAW / FIGHT.dodgeRate) {   // down on his feet, back on guard
     P.landed = true;
     hero.play(A('idle'), { fade:0.12 });
   }
-  if (el < DODGE.out) {
-    const k = el / DODGE.out, e = k*k*(3-2*k);
+  if (el < FIGHT.dodgeOut) {
+    const k = el / FIGHT.dodgeOut, e = k*k*(3-2*k);
     hero.root.position.lerpVectors(P.dodgeFrom, P.dodgeTo, e);
-  } else if (el < DODGE.out + DODGE.hold) {
+  } else if (el < FIGHT.dodgeOut + FIGHT.dodgeHold) {
     hero.root.position.copy(P.dodgeTo);            // parked clear of the strike line
   } else {
-    const k = Math.min(1, (el - DODGE.out - DODGE.hold) / DODGE.back), e = k*k*(3-2*k);
+    const k = Math.min(1, (el - FIGHT.dodgeOut - FIGHT.dodgeHold) / FIGHT.dodgeBack), e = k*k*(3-2*k);
     hero.root.position.lerpVectors(P.dodgeTo, P.dodgeFrom, e);
   }
   if (P.dodgeT <= 0) {
     hero.root.position.copy(P.dodgeFrom);
-    P.state = 'idle';
+    P.state = 'idle'; P.slot = 'center';
     hero.play(A('idle'), { fade:0.18 });
   }
 }
@@ -1199,7 +1334,7 @@ function bugAI(dt) {
   if (P.dead && !B.dead && B.state !== 'victory') {
     B.state = 'victory'; B.lunged = true; B.victoryT = 0;
     bug.model.rotation.x = 0;
-    B.kickYaw = 0;
+    B.kickYaw = 0; B.tellYaw = 0; B.tellPose = 0;
     if (B.act) { B.act.setEffectiveTimeScale(1); B.act = null; }
   }
   if (B.dead) { B.deadT += dt; liftBody(bug, opponent, bare(ENEMY_ANIM.death), B.deadT); return; }
@@ -1260,8 +1395,16 @@ function bugAI(dt) {
           bug.play(HOP_CLIP, { once:true, fade:0.08, rate:SHUFFLE.rate, force:true });
         }
       }
-      if (B.t <= 0) { B.state='rear'; B.t = 0.85; B.shuffleT = 0; bug.root.position.copy(B.home);
-        bug.play(ENEMY_ANIM.rear, { once:true, fade:0.12, rate:1.45 }); }
+      if (B.t <= 0) {
+        // Roll the second unsafe slot and start the tell. Center is unsafe regardless, so this is
+        // always a choice between two safe slots and two that are not.
+        B.mark = ['far', 'close', 'rear'][(Math.random() * 3) | 0];
+        B.markYaw = markLookYaw(B.mark);
+        B.tellYaw = 0;
+        B.state = 'rear'; B.t = FIGHT.tell; B.shuffleT = 0; B.tellPose = 0;
+        bug.root.position.copy(B.home);
+        bug.play(ENEMY_ANIM.idle, { fade:0.10 });
+      }
       break;
     case 'stalk': {
       // Compatibility state for older debug state. The chimp stays at its
@@ -1269,22 +1412,38 @@ function bugAI(dt) {
       B.state='idle'; B.t = 1 + Math.random(); bug.play(ENEMY_ANIM.idle);
       break;
     }
-    case 'rear':
-      // Late in the tell, glide half a step toward the hero — a visible commit
-      // that gives the player a beat to move.
-      if (B.t < 0.30) {
-        const step = 0.83 * dt;             // ~0.25u over the final 0.3s
-        bug.root.position.x += toHero.x * step;
-        bug.root.position.z += toHero.z * step;
-      }
+    case 'rear': {
+      // THE TELL. Fixed length, and it carries exactly one piece of information: which slot, on top
+      // of center, is about to become unsafe. B.mark was chosen when this state was entered.
+      //
+      // The chimp turns toward the slot it has marked - its right for `close`, its left for `far` -
+      // and stays square for `rear`. The turn is set ABSOLUTELY from the state every frame down in
+      // tick(), never accumulated onto a bone, because a clip that is frozen or clamped stops
+      // resetting what you added to it and the offset then compounds every frame. That is the bug
+      // that made the arms helicopter; this cannot reproduce it.
+      const into = FIGHT.tell - Math.max(0, B.t);
+      B.tellPose = Math.min(1, into / Math.max(0.02, FIGHT.poseIn));   // struck on, then held
+      B.tellYaw = Math.sign(B.markYaw) * FIGHT.bodyTurn * B.tellPose;
       if (B.t <= 0) {
-        const set = ENEMY_ANIM.strikeSet;
-        const pick = set[(Math.random() * set.length) | 0];
-        // The finisher. Once he is down to a third it stops trading blows and just takes him.
+        // COMMIT. Read the ground he is committed to and pick the response to it.
+        const slot = committedSlot();
+        B.jumpFrom = bug.root.position.clone();
+        B.tellYaw = 0; B.tellPose = 0;
+
+        // IT ATTACKS A PLACE, NOT A PERSON. Everything below aims at a slot the tell already named,
+        // never at wherever Stephen happens to be standing - which is what makes a miss legible.
+        // Tracking him meant the chimp lunged at the man, so a "miss" looked like a punch that
+        // should plainly have connected. Thrown at the spot it telegraphed, the same punch reads as
+        // him having got out of the way.
+        const aimSlot = isUnsafe(slot) ? slot : (B.mark || 'center');
+        const aim = slotPos(aimSlot, new THREE.Vector3());
+        B.dir = aim.clone().sub(bug.root.position).setY(0).normalize();
+        if (B.dir.lengthSq() < 1e-6) B.dir = toHero.clone();
+
+        // The finisher ignores the slot rules - once he is down to a third it just takes him.
         if (ENEMY_ANIM.canGrab && P.hp <= PLAYER.hp * GRAB.finishAt) {
-          B.state = 'grab'; B.t = GRAB.dur; B.phase = 'reach'; B.lunged = false;
           B.dir = toHero.clone();
-          B.jumpFrom = bug.root.position.clone();
+          B.state = 'grab'; B.t = GRAB.dur; B.phase = 'reach'; B.lunged = false;
           B.jumpTo = hero.root.position.clone().addScaledVector(B.dir, -1.45);
           B.grabYaw = bug.root.rotation.y;
           B.finisher = true;
@@ -1292,30 +1451,46 @@ function bugAI(dt) {
           bug.play(ENEMY_ANIM.strike, { once:true, fade:0.08, rate:1.25, force:true });
           break;
         }
+
+        // A PUNCH IS ALWAYS THROWN, whether or not it can land - a blow that whistles past sells the
+        // dodge far better than the chimp pulling up short does. Only the face-eat is withheld: it
+        // ENDS on a hold with the jaws clamped shut, so thrown at a man who is not there it closes
+        // on empty air and hangs there, and no amount of timing makes that read as a near miss.
+        // So: the middle gets you eaten, the slot it named gets you hit, anywhere else gets you a
+        // punch through the space you just left.
+        const pick = slot === 'center' && ENEMY_ANIM.bite ? ENEMY_ANIM.bite : pickPunch();
         B.bite = pick === ENEMY_ANIM.bite;
-        B.strike = STRIKE[opponent][bare(pick)];
-        B.dir = toHero.clone();
-        B.jumpFrom = bug.root.position.clone();
+        B.strike = STRIKE[opponent][bare(pick)] || { ext: 1.2, peak: 0.3 };
+
         if (B.bite) {
-          // Reach the squeeze exactly as the spring ends, then freeze there, then reverse out.
+          // EVERY ATTACK LANDS AT FIGHT.strike. The spring is stretched or squeezed to that, and
+          // the clip is played at whatever rate puts its measured peak exactly on the end of it.
+          BITE.spring = FIGHT.strike;
+          BITE.dur = BITE.spring + BITE.hold + BITE.recoil;
           B.act = bug.play(pick, { once:true, fade:0.06, rate: BITE.peak / BITE.spring, force:true });
           B.phase = 'spring';
           B.state = 'bite'; B.t = BITE.dur; B.lunged = false;
-          B.jumpTo = hero.root.position.clone().addScaledVector(B.dir, -BITE.gap);
+          B.jumpTo = aim.clone().addScaledVector(B.dir, -BITE.gap);
           break;
         }
-        const rate = 1.55;
-        const a = bug.play(pick, { once:true, fade:0.08, rate, force:true });
-        // The blow registers at the clip's measured peak; the state lasts just past it.
-        B.hitAt = (a ? a.getClip().duration : 1) / rate * B.strike.peak;
-        B.lungeDur = B.hitAt + 0.12;
+        // Same contract for the punches and the kick: rate = clipLength * peakFraction / strike,
+        // so box_01, box_03 and front_kick_02 all connect on the same beat instead of the 0.26s to
+        // 0.58s spread they used to have.
+        const a = bug.play(pick, { once:true, fade:0.08, rate:1, force:true });
+        const clipLen = a ? a.getClip().duration : 1;
+        const rate = THREE.MathUtils.clamp(clipLen * B.strike.peak / FIGHT.strike, 0.25, 8);
+        if (a) a.setEffectiveTimeScale(rate);
+        B.hitAt = FIGHT.strike;
+        B.lungeDur = FIGHT.strike + FIGHT.recover;
         B.state='lunge'; B.t = B.lungeDur; B.lunged = false;
         // Land where this strike's extension meets Stephen's chest - never backing up to do it.
-        const gapNow = dist, want = B.strike.ext - PEN + HALF_DEPTH.stephen;
-        B.jumpTo = hero.root.position.clone().addScaledVector(B.dir, -Math.min(gapNow, want));
+        const want = B.strike.ext - PEN + HALF_DEPTH.stephen;
+        const gapNow = aim.distanceTo(bug.root.position);
+        B.jumpTo = aim.clone().addScaledVector(B.dir, -Math.min(gapNow, want));
         B.kickYaw = B.strike.yaw || 0;
       }
       break;
+    }
     case 'grab': {
       const el = GRAB.dur - B.t;
       if (el < GRAB.reach) {                                  // jaws thrown forward
@@ -1369,7 +1544,7 @@ function bugAI(dt) {
         bug.root.position.copy(B.home);
         bug.root.rotation.y = B.grabYaw;
         bug.model.rotation.x = 0;
-        B.state = 'idle'; B.t = 1.2 + Math.random()*1.3;
+        B.state = 'idle'; B.t = attackGap();
         bug.play(ENEMY_ANIM.idle, { fade:0.25 });
       }
       break;
@@ -1384,8 +1559,7 @@ function bugAI(dt) {
         if (B.phase === 'spring') {                    // freeze on the squeeze and hold it
           B.phase = 'hold';
           if (B.act) B.act.setEffectiveTimeScale(0);
-          if (contact(bug.root.position, B.dir, BITE.gap + 0.2, hero.root.position, HALF_DEPTH.stephen, LATERAL[opponent]))
-            damageHero(DMG.biteDamage);
+          if (isUnsafe(committedSlot())) damageHero(DMG.biteDamage);
           B.lunged = true;
         }
         bug.root.position.copy(B.jumpTo);
@@ -1402,7 +1576,7 @@ function bugAI(dt) {
       if (B.t <= 0) {
         bug.model.rotation.x = 0;
         bug.root.position.copy(B.home);
-        B.state = 'idle'; B.t = 1.1 + Math.random()*1.4;
+        B.state = 'idle'; B.t = attackGap();
         bug.play(ENEMY_ANIM.idle, { fade:0.2 });
       }
       break;
@@ -1416,9 +1590,10 @@ function bugAI(dt) {
       bug.root.position.y = Math.sin(progress * Math.PI) * arc;
       if (!B.lunged && B.lungeDur - B.t >= B.hitAt) {
         B.lunged = true;
-        // it connects only if the player is still on the line - stepping aside beats it
-        if (contact(bug.root.position, B.dir, B.strike.ext, hero.root.position, HALF_DEPTH.stephen, LATERAL[opponent]))
-          damageHero(DMG[B.bite ? 'biteDamage' : 'lungeDamage']);
+        // SLOTS, NOT GEOMETRY. Re-read the ground at the moment of impact rather than trusting the
+        // read taken at commit, so a dodge that starts late still saves him - he is judged on where
+        // he is when it lands, which is what the player can see.
+        if (isUnsafe(committedSlot())) damageHero(DMG[B.bite ? 'biteDamage' : 'lungeDamage']);
       }
       if (B.t <= 0) {
         B.kickYaw = 0;
@@ -1434,7 +1609,7 @@ function bugAI(dt) {
       bug.root.position.lerpVectors(B.returnFrom, B.returnTo, progress);
       if (B.t <= 0) {
         bug.root.position.copy(B.home);
-        B.state='idle'; B.t = 1.1 + Math.random()*1.4;
+        B.state='idle'; B.t = attackGap();
       }
       break;
     }
@@ -1499,7 +1674,88 @@ window.__heroPos = () => hero ? {
   w: hero.cur? +hero.cur.getEffectiveWeight().toFixed(2):null
 } : null;
 // Headless test hook: ?probe lets a harness drive damage directly.
-if (Q.has('probe')) Object.assign(window, { damageBug, damageHero, P, B, BUG, rigs:()=>({hero,bug}), THREE, camera, scene, renderer, requestDodge });
+if (Q.has('probe')) Object.assign(window, { damageBug, damageHero, P, B, BUG, rigs:()=>({hero,bug}), THREE, camera, scene, renderer, requestDodge, FIGHT, currentSlot, isUnsafe, slotPos, SLOTS, __markYaw: markLookYaw });
+
+// ── tuning panel (?tune) ───────────────────────────────────────────────
+// Feel is not a thing you can reason your way to from a diff - it has to be dialled in while the
+// fight is running. Every number the timing depends on is a slider here, live, and COPY prints the
+// set as a JS literal ready to paste back over the FIGHT block above. Off unless ?tune is present,
+// so the demo itself is untouched.
+let tuneReadout = null;
+if (Q.has('tune')) {
+  const FIELDS = [
+    ['slotDist',  0.4,  2.5,  0.05, 'slot distance'],
+    ['tell',      0.15, 1.20, 0.01, 'tell length'],
+    ['strike',    0.10, 0.80, 0.01, 'commit → damage'],
+    ['recover',   0.10, 0.90, 0.01, 'recovery'],
+    ['gapMin',    0.30, 3.00, 0.05, 'gap min'],
+    ['gapMax',    0.50, 4.00, 0.05, 'gap max'],
+    ['look',      0.00, 1.60, 0.01, 'head turn (rad)'],
+    ['bodyTurn',  0.00, 0.80, 0.01, 'body turn (rad)'],
+    ['headLift', -0.80, 0.80, 0.02, 'head lift (±)'],
+    ['armOut',   -1.20, 1.20, 0.02, 'arms out (±)'],
+    ['poseIn',    0.03, 0.40, 0.01, 'pose snap'],
+    ['dodgeOut',  0.05, 0.40, 0.01, 'dodge out'],
+    ['dodgeHold', 0.10, 1.00, 0.01, 'dodge hold'],
+    ['dodgeBack', 0.05, 0.60, 0.01, 'dodge back'],
+    ['dodgeRate', 0.80, 3.50, 0.10, 'dodge clip rate'],
+  ];
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:60;width:264px;max-height:72vh;' +
+    'overflow:auto;background:rgba(8,14,20,.88);border:1px solid rgba(255,255,255,.18);border-radius:6px;' +
+    'padding:10px 12px;font:11px/1.5 \'Courier New\',monospace;color:#9fb0bd;letter-spacing:.5px;' +
+    '-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)';
+  const head = document.createElement('div');
+  head.innerHTML = '<b style="color:#e6c07a">TUNING</b> <span style="opacity:.6">— tap to fold</span>';
+  head.style.cssText = 'cursor:pointer;margin-bottom:8px';
+  wrap.appendChild(head);
+  const body = document.createElement('div');
+  wrap.appendChild(body);
+  head.onclick = () => body.style.display = body.style.display === 'none' ? '' : 'none';
+
+  const live = document.createElement('div');
+  live.style.cssText = 'margin:2px 0 9px;padding:6px 8px;background:rgba(230,192,122,.10);' +
+    'border-left:2px solid #e6c07a;color:#cdd8e1';
+  body.appendChild(live);
+  tuneReadout = live;
+
+  for (const [k, min, max, step, label] of FIELDS) {
+    const row = document.createElement('div');
+    row.style.cssText = 'margin-bottom:6px';
+    const val = document.createElement('span');
+    val.style.cssText = 'float:right;color:#e6c07a';
+    val.textContent = (+FIGHT[k]).toFixed(2);
+    const name = document.createElement('span');
+    name.textContent = label;
+    const slider = document.createElement('input');
+    slider.type = 'range'; slider.min = min; slider.max = max; slider.step = step;
+    slider.value = FIGHT[k];
+    slider.style.cssText = 'width:100%;margin:2px 0 0;accent-color:#e6c07a';
+    slider.oninput = () => { FIGHT[k] = +slider.value; val.textContent = (+slider.value).toFixed(2); };
+    row.append(name, val, slider);
+    body.appendChild(row);
+  }
+
+  const out = document.createElement('textarea');
+  out.readOnly = true;
+  out.style.cssText = 'width:100%;height:58px;margin-top:6px;background:#060b10;color:#9fb0bd;' +
+    'border:1px solid rgba(255,255,255,.15);border-radius:4px;font:10px/1.4 \'Courier New\',monospace;' +
+    'padding:5px;display:none;resize:vertical';
+  const copy = document.createElement('button');
+  copy.textContent = 'COPY SETTINGS';
+  copy.style.cssText = 'width:100%;margin-top:6px;padding:6px;cursor:pointer;background:#e6c07a;' +
+    'color:#10161c;border:0;border-radius:4px;font:600 11px \'Courier New\',monospace;letter-spacing:1px';
+  copy.onclick = () => {
+    const text = 'const FIGHT = {\n' +
+      FIELDS.map(([k]) => '  ' + k + ': ' + (+FIGHT[k]).toFixed(2) + ',').join('\n') + '\n};';
+    out.style.display = 'block';
+    out.value = text;
+    out.select();
+    if (navigator.clipboard) navigator.clipboard.writeText(text).catch(()=>{});
+  };
+  body.append(copy, out);
+  document.body.appendChild(wrap);
+}
 
 function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
@@ -1522,16 +1778,27 @@ function tick() {
     fightCam(dt);
   }
   if (debris.length) stepDebris(dt);
+  clearTellPose();            // hand the bones back before the mixer writes them
   hero.mixer.update(dt);
   bug.mixer.update(dt);
+  applyTellPose();            // and lay the tell back on top of what it wrote
   // KICK YAW IS ABSOLUTE. Some attacks strike sideways, so the model is turned to aim them at the
   // target. That used to be done by adding to the rotation on the way in and subtracting on the
   // way out, across seven different places - and any path that skipped its subtraction, or ran it
   // twice, left the fighter permanently turned. Setting it outright from the state each frame
   // cannot drift, and clearing the state snaps the facing back on the very next frame.
   hero.model.rotation.y = hero.baseYaw + P.kickYaw;
-  bug.model.rotation.y  = bug.baseYaw  + B.kickYaw;
-  window.__dbg = { phase, round, unbeatable:UNBEATABLE, bhp:B.hp, bmax:BUG.hp, php:P.hp, bdead:B.dead, dist:cameraDistance, aspect:camera.aspect, bstate:B.state, bt:B.t, bhit:B.hitAt, blen:B.lungeDur, pstate:P.state, pt:P.t, phit:P.hitAt, patk:P.atk, gap:Math.hypot(hero.root.position.x-bug.root.position.x, hero.root.position.z-bug.root.position.z),
+  bug.model.rotation.y  = bug.baseYaw  + B.kickYaw + B.tellYaw;
+  if (tuneReadout) {
+    const safe = SLOTS.filter(n => !isUnsafe(n));
+    tuneReadout.innerHTML =
+      'tell → hit <b style="color:#e6c07a">' + (FIGHT.tell + FIGHT.strike).toFixed(2) + 's</b>' +
+      ' · cycle ' + (FIGHT.tell + FIGHT.strike + FIGHT.recover).toFixed(2) + 's<br>' +
+      'chimp <b>' + B.state + '</b>' + (B.mark ? ' → marks <b>' + B.mark + '</b>' : '') + '<br>' +
+      'stephen <b style="color:' + (isUnsafe(currentSlot()) ? '#d98a7a' : '#8fc6a2') + '">' +
+      currentSlot() + '</b>' + (B.mark ? ' · safe: ' + safe.join(', ') : '');
+  }
+  window.__dbg = { phase, round, unbeatable:UNBEATABLE, mark:B.mark, slot:phase==='fight'?currentSlot():null, bhp:B.hp, bmax:BUG.hp, php:P.hp, bdead:B.dead, dist:cameraDistance, aspect:camera.aspect, bstate:B.state, bt:B.t, bhit:B.hitAt, blen:B.lungeDur, pstate:P.state, pt:P.t, phit:P.hitAt, patk:P.atk, gap:Math.hypot(hero.root.position.x-bug.root.position.x, hero.root.position.z-bug.root.position.z),
     heroZ:hero.root.position.z, bugZ:bug.root.position.z,
     cam:[camera.position.x, camera.position.y, camera.position.z] };
   renderer.render(scene, camera);
