@@ -232,6 +232,27 @@ function closeStephenFists(model) {
   }
 }
 
+// STRIP ROOT MOTION. Tripo's clips travel: Stephen's walk moves the Hip 1.53 units over one
+// cycle and his run 3.53, monotonically — and when the clip loops the Hip snaps back to the start,
+// which is the teleport. The chimp's walk does the same (1.12). Attacks are fine; box_01 and
+// box_03 return to where they began.
+//
+// The game decides where a character is, so a clip should only pose the bones. Hip translation is
+// in the rig's own Z-up space — index 0 sideways, 1 forward/back, 2 height — so pin 0 and 1 to
+// their first-frame value and leave 2 alone, which keeps bob, crouch, jump height and the fall in
+// defeat_03.
+function stripTravel(clip) {
+  for (const tr of clip.tracks) {
+    if (!/\.position$/.test(tr.name)) continue;
+    if (!/(^|\.)(Hip|Root)\.position$/.test(tr.name)) continue;
+    const v = tr.values;
+    if (v.length < 6) continue;
+    const x0 = v[0], y0 = v[1];
+    for (let i = 0; i < v.length; i += 3) { v[i] = x0; v[i+1] = y0; }
+  }
+  return clip;
+}
+
 class Rig {
   constructor(gltf, scale, yaw) {
     this.root = new THREE.Group(); this.root.scale.setScalar(scale); scene.add(this.root);
@@ -250,7 +271,7 @@ class Rig {
     for (const c of gltf.animations) {
       const corrected = c.name === C('press-up');
       const entrance = c.name === A('swagger');
-      const clip = corrected || entrance ? c.clone() : c;
+      const clip = c.clone();          // always clone: stripTravel edits track values in place
       if (entrance) clip.tracks = clip.tracks.filter(track => track.name !== 'Root.position');
       if (corrected) {
         // The push-up clip is authored on the floor, so pitch it upright.
@@ -265,7 +286,7 @@ class Rig {
           }
         }
       }
-      this.clips[clip.name] = this.mixer.clipAction(clip);
+      this.clips[clip.name] = this.mixer.clipAction(stripTravel(clip));
     }
     this.cur = null; this.curName = null;
   }
