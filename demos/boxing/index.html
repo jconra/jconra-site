@@ -127,7 +127,12 @@ const STRIKE = {
              front_kick_01:{ext:0.78, peak:0.40, yaw:-1.67}, front_kick_02:{ext:0.90, peak:0.50, yaw:-2.86} },
   chimp:   { box_01:{ext:1.28, peak:0.30}, box_03:{ext:1.14, peak:0.27},
              front_kick_02:{ext:0.83, peak:0.63, yaw:-0.85}, 'press-up':{ext:0.42, peak:0.60} },
-  insect:  { Strike:{ext:2.61, peak:0.5} },          // keeps the insect's landing spot where it was
+  // 2.61 was never a measurement - it was chosen to keep the insect's landing spot where it had
+  // been. The consequence is that it pulls up 2.66 units from Stephen and swings at nothing: its
+  // arms, thrown fully forward, carry the spikes about half that. Its body is 1.1 deep and his is
+  // 0.2, so surfaces meet around 1.3; stopping at 1.95 puts the points on him with the bodies
+  // still clear of each other.
+  insect:  { Strike:{ext:1.85, peak:0.5} },
 };
 const HALF_DEPTH = { stephen:0.20, chimp:0.26, insect:1.1 };   // root to chest surface (insect estimated)
 const PEN = 0.1;                                               // how deep a landed blow sinks in
@@ -682,6 +687,38 @@ function applyStance(clip, pose) {
   return clip;
 }
 
+// THROW THE SPIKES OUT WHEN IT STRIKES. The insect's Strike clip lunges the body about 0.36 units
+// (0.79 at game scale) and leaves the raptorial arms folded, so it arrives near Stephen without
+// anything actually reaching him - the hit registers but nothing on the model touches anything.
+//
+// The rig is To-Upper-Head -> Top-*-Rear -> Top-*-Forward, the second of which is a leaf, so the
+// spike's extension lives entirely in the skinned mesh and cannot be read off bone positions.
+// Measured on the joint that CAN be read: rotating Top-Left-Rear about its local -X carries the
+// forearm's origin forward, which is the direction the body lunges.
+//
+// Baked onto the clip rather than applied per frame, and weighted by a half-sine so the arms are
+// folded at both ends and fully out at the moment of contact - the same treatment the chimp's
+// press-up gets, and for the same reason: nothing may touch a bone at runtime.
+const SPIKE = { rear: 0.62, fore: 0.50 };
+const SPIKE_X = new THREE.Vector3(1, 0, 0);
+function reachOut(clip) {
+  const dur = clip.duration || 1;
+  const extra = new THREE.Quaternion(), q = new THREE.Quaternion();
+  for (const [names, amount] of [[['Top-Left-Rear','Top-Right-Rear'], SPIKE.rear],
+                                 [['Top-Left-Forward','Top-Right-Forward'], SPIKE.fore]]) {
+    for (const n of names) {
+      const tr = clip.tracks.find(t => t.name === n + '.quaternion');
+      if (!tr) continue;
+      for (let i = 0; i < tr.times.length; i++) {
+        const w = Math.sin(Math.PI * (tr.times[i] / dur));
+        extra.setFromAxisAngle(SPIKE_X, -amount * w);
+        q.fromArray(tr.values, i * 4).multiply(extra).toArray(tr.values, i * 4);
+      }
+    }
+  }
+  return clip;
+}
+
 function stripTravel(clip) {
   for (const tr of clip.tracks) {
     if (!/\.position$/.test(tr.name)) continue;
@@ -728,6 +765,7 @@ class Rig {
       const clip = c.clone();          // always clone: stripTravel edits track values in place
       if (entrance) clip.tracks = clip.tracks.filter(track => track.name !== 'Root.position');
       if (c.name === A('idle')) applyStance(clip, stance);   // stand him up in a guard
+      if (c.name === 'Strike') reachOut(clip);               // the insect's arms, thrown forward
       if (corrected) {
         // STAND THE PUSH-UP UP. Measured raw: the body lies horizontal with the Hip at its normal
         // standing height (0.305), head 0.29 forward of it, feet 0.27 behind, hands under the chest.
