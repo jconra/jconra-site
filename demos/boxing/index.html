@@ -226,7 +226,30 @@ const HURTS = ['hit_to_body_01','hit_to_body_02','hit_to_side','hit_to_head'];
 const HOP_CLIP = '__hop';
 // Between attacks it used to stand perfectly still, which reads as waiting rather than circling.
 // A single hop and a small step off the line and back, on a random cadence.
-const SHUFFLE = { dur: 0.7, dist: 0.85, rate: 1, gapMin: 1.1, gapMax: 2.4 };
+const BOB_CLIP = '__bob', STRUT_CLIP = '__strut';
+// STANDING STILL BETWEEN ATTACKS READS AS WAITING FOR INPUT, not as a fighter picking its moment.
+// There was already a shuffle here, but it only fired when more than 1.15s of the gap was left and
+// the gap is now 0.9-1.8s, so it had quietly stopped happening at all. This is a small table of
+// things to do instead, each one cut to a fixed length and played at whatever rate fills it.
+//
+// `lateral` steps off the line and back on a half-sine, so he always finishes on his mark - the
+// tell has to start from a known place or the slot geometry stops meaning anything. It is kept far
+// smaller than the 1.0 a dodge covers: this is weight-shifting, not repositioning.
+const FIDGETS = [
+  { clip: HOP_CLIP,   dur: 0.55, lateral: 0.34, weight: 3 },   // hop off the line and back
+  { clip: HOP_CLIP,   dur: 0.42, lateral: 0.00, weight: 2 },   // bounce on the spot
+  { clip: BOB_CLIP,   dur: 0.60, lateral: 0.00, weight: 3 },   // dip at the knees
+  { clip: STRUT_CLIP, dur: 0.95, lateral: 0.18, weight: 2 },   // a roll of the shoulders
+];
+const FIDGET = { gapMin: 0.30, gapMax: 0.95, lead: 0.30 };     // `lead`: never eat the wind-up
+function pickFidget(have) {
+  const ok = FIDGETS.filter(f => have(f.clip));
+  const total = ok.reduce((n, f) => n + f.weight, 0);
+  if (!total) return null;
+  let r = Math.random() * total;
+  for (const f of ok) if ((r -= f.weight) <= 0) return f;
+  return ok[ok.length - 1];
+}
 // THE BUG'S GRAB. Measured at game scale off the Strike clip, its jaws thrust to z 1.19 at head
 // height 0.98, and the mouth - the midpoint of Upper_Jaw and Lower_Jaw - is the anchor. Stephen is
 // pitched 75 degrees so he hangs head-first from it: a point at chest height h then sits h*sin(75)
@@ -316,6 +339,59 @@ const bounce = new THREE.DirectionalLight(0xc2cfdc, 0.5);
 bounce.position.set(2, -3.5, 4); scene.add(bounce);
 const fill = new THREE.DirectionalLight(0xbcd2e6, 0.22);
 fill.position.set(6, 3, -2); scene.add(fill);
+
+// THE SPOT OVER THE RING. The directionals above light the fighters but they light the whole
+// rooftop equally, so nothing said where the fight was - the canvas read as floor rather than as
+// the lit circle everyone is watching. This hangs one lamp over the middle and lets its falloff
+// draw the edge of the arena for us.
+//
+// `decay` is left at 1 rather than the physical 2 on purpose: at 2 the intensity needed to reach
+// the canvas from 18 units up blows the fighters' heads out long before the floor is lit, because
+// they are a third of the way up the cone.
+const SPOT_H = 18, SPOT_ANGLE = 0.42;
+// 130 by eye against 0 / 70 / 130 / 220 rendered side by side: enough to draw the pool and let the
+// canvas fall away into the dark at the rim, without flattening the night out of the rest of it.
+const spot = new THREE.SpotLight(0xffeccd, 130, 46, SPOT_ANGLE, 0.55, 1);
+spot.position.set(0, SPOT_H, 1.5);          // just off the camera side of centre, so faces are lit
+spot.target.position.set(0, 0, 0); scene.add(spot.target);
+spot.castShadow = true;
+spot.shadow.mapSize.set(1024, 1024);
+spot.shadow.camera.near = 2; spot.shadow.camera.far = SPOT_H + 14;
+spot.shadow.bias = -0.0022;
+scene.add(spot);
+
+// The beam itself. A cone of haze, additive and never writing depth, brightest where we are looking
+// along its surface rather than through it - which is what makes a shaft of light read as a volume
+// instead of as a grey ice cream cone. It fades out before it reaches the canvas so the beam and
+// the pool of light meet instead of the geometry ending in a visible rim.
+const beamGeo = new THREE.ConeGeometry(SPOT_H * Math.tan(SPOT_ANGLE) * 1.02, SPOT_H, 48, 1, true);
+const beam = new THREE.Mesh(beamGeo, new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  blending: THREE.AdditiveBlending,
+  uniforms: { uColor: { value: new THREE.Color(0xffe3b4) }, uStrength: { value: 0.085 } },
+  vertexShader: `
+    varying vec3 vN; varying vec3 vV; varying float vH;
+    void main() {
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      vN = normalize(normalMatrix * normal);
+      vV = normalize(-mv.xyz);
+      vH = clamp(position.y / ${SPOT_H.toFixed(1)} + 0.5, 0.0, 1.0);   // 0 at the floor, 1 at the lamp
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    uniform vec3 uColor; uniform float uStrength;
+    varying vec3 vN; varying vec3 vV; varying float vH;
+    void main() {
+      float graze = 1.0 - abs(dot(normalize(vN), normalize(vV)));
+      float a = pow(graze, 2.0) * uStrength;
+      a *= smoothstep(0.0, 0.42, vH);          // gone by the time it reaches the canvas
+      a *= mix(0.55, 1.0, vH);                 // and denser up near the lamp
+      gl_FragColor = vec4(uColor, a);
+    }`,
+}));
+beam.position.set(spot.position.x, SPOT_H / 2, spot.position.z);
+beam.renderOrder = 2;
+scene.add(beam);
 
 // Image-based lighting, which is what the model is actually missing. PMREM wants half-float
 // render targets, so it is WebGL 2 only; on WebGL 1 the lights above carry it alone.
@@ -511,6 +587,46 @@ for (let i = 0; i < 26; i++) {
 // in the rig's own Z-up space — index 0 sideways, 1 forward/back, 2 height — so pin 0 and 1 to
 // their first-frame value and leave 2 alone, which keeps bob, crouch, jump height and the fall in
 // defeat_03.
+// THE REST POSE IS A GUARD, NOT ARMS AT THE SIDES. Both fighters ship with a generic standing idle
+// - hands hanging - which reads as two men queuing rather than two men about to fight. box_01 ends
+// on a real stance: rendered the last frame of every boxing clip on both models and looked at them,
+// and box_02 ends mid-reach while box_03 reads as covering up, but box_01 ends hands-up and weight
+// forward on Stephen and the chimp alike. Its final keyframe is lifted and laid over the idle.
+//
+// APPLIED AS A DELTA from the idle's own first frame, not as a replacement: the difference between
+// the two poses is added to every idle keyframe, so the idle's breathing and weight shift carry
+// through the arms instead of freezing them into a mannequin.
+//
+// Arms only. The legs, hips and spine are left to the idle, which owns the ground contact - posing
+// the hips out of a clip whose root sits elsewhere is what floated the feet last time.
+const STANCE_BONE = /^(?:L|R)_(?:Clavicle|Upperarm|Forearm|Hand|UpperarmTwist\d*|ForearmTwist\d*)$/;
+function stanceFrom(anims) {
+  const src = anims.find(a => a.name === A('box_01'));
+  if (!src) return null;                           // the insect has no biped clips; it keeps its own
+  const pose = new Map();
+  for (const tr of src.tracks) {
+    const m = /^(.+)\.quaternion$/.exec(tr.name);
+    if (!m || !STANCE_BONE.test(m[1]) || tr.values.length < 4) continue;
+    pose.set(m[1], tr.values.slice(tr.values.length - 4));      // the last keyframe
+  }
+  return pose.size ? pose : null;
+}
+const stWant = new THREE.Quaternion(), stHave = new THREE.Quaternion();
+const stDelta = new THREE.Quaternion(), stQ = new THREE.Quaternion();
+function applyStance(clip, pose) {
+  if (!pose) return clip;
+  for (const tr of clip.tracks) {
+    const m = /^(.+)\.quaternion$/.exec(tr.name);
+    if (!m || !pose.has(m[1]) || tr.values.length < 4) continue;
+    stWant.fromArray(pose.get(m[1]));
+    stHave.fromArray(tr.values, 0);                // where the idle starts this bone
+    stDelta.copy(stWant).multiply(stHave.invert());
+    for (let i = 0; i < tr.times.length; i++)
+      stQ.fromArray(tr.values, i * 4).premultiply(stDelta).toArray(tr.values, i * 4);
+  }
+  return clip;
+}
+
 function stripTravel(clip) {
   for (const tr of clip.tracks) {
     if (!/\.position$/.test(tr.name)) continue;
@@ -550,11 +666,13 @@ class Rig {
     this.root.add(this.model);
     this.mixer = new THREE.AnimationMixer(this.model);
     this.clips = {};
+    const stance = stanceFrom(gltf.animations);
     for (const c of gltf.animations) {
       const corrected = c.name === C('press-up');
       const entrance = c.name === A('walk');
       const clip = c.clone();          // always clone: stripTravel edits track values in place
       if (entrance) clip.tracks = clip.tracks.filter(track => track.name !== 'Root.position');
+      if (c.name === A('idle')) applyStance(clip, stance);   // stand him up in a guard
       if (corrected) {
         // STAND THE PUSH-UP UP. Measured raw: the body lies horizontal with the Hip at its normal
         // standing height (0.305), head 0.29 forward of it, feet 0.27 behind, hands under the chest.
@@ -641,6 +759,19 @@ Promise.all([load('../../models/stephen.glb'), load('../../models/' + ENEMY_FILE
   const fa = ['L_Forearm','R_Forearm'].map(n => bug.model.getObjectByName(n));
   if (ua[0] && ua[1]) foeArms = { upper: ua, fore: fa[0] && fa[1] ? fa : null, applied: 0 };
   foeClav = ['L_Clavicle','R_Clavicle'].map(n => bug.model.getObjectByName(n)).filter(Boolean);
+  // IDLE BUSINESS. box_02 used to be the tell and dance_05 the victory strut; the tell is a pose
+  // now, so both clips are free, and the front of each is cut out to fidget with between attacks.
+  // Only the FRONT: box_02's dip reads on its own, but its follow-through is a committed crouch,
+  // and a full 2.9s of dance_05 between attacks looks like the fight has stopped for a routine.
+  const subcut = (name, secs, into) => {
+    const c = i.animations.find(a => a.name === name);
+    if (!c || c.duration < secs * 1.05) return;
+    bug.clips[into] = bug.mixer.clipAction(THREE.AnimationUtils.subclip(
+      stripTravel(c.clone()), into, 0, Math.round(secs * 60), 60));
+  };
+  subcut(ENEMY_ANIM.rear,  0.85, BOB_CLIP);      // box_02: a quick dip at the knees
+  subcut(ENEMY_ANIM.taunt, 1.30, STRUT_CLIP);    // dance_05: a shoulder roll
+
   // Same cut for the opponent, which shuffles between attacks. Its own victory bounce keeps the
   // full clip, because there a string of hops is the point.
   const bj = i.animations.find(c => c.name === ENEMY_ANIM.victory);
@@ -648,7 +779,6 @@ Promise.all([load('../../models/stephen.glb'), load('../../models/' + ENEMY_FILE
     const bhop = THREE.AnimationUtils.subclip(
       stripTravel(bj.clone()), 'bhop', Math.round(HOP.from * 60), Math.round(HOP.to * 60), 60);
     bug.clips[HOP_CLIP] = bug.mixer.clipAction(bhop);
-    SHUFFLE.rate = bhop.duration / SHUFFLE.dur;
   }
   hero.root.position.set(0, 0, INTRO_START_Z);   // off-platform, walks on during the intro
   hero.root.rotation.y = 0;
@@ -683,7 +813,7 @@ function setInput(mode) {
 setInput(matchMedia('(hover: none) and (pointer: coarse)').matches ? 'touch' : 'keys');
 
 const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, kickYaw:0, dodgeT:0, dodgeFrom:null, dodgeTo:null, landed:false, slot:'center', deadT:0, deathClip:'defeat_03', grabPitch:0, throwFrom:null, throwPitch:0, torn:false };
-const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0, phase:null, act:null, victoryT:0, shuffleT:0, shuffleCd:1.2, shuffleDir:null, caught:false, grabYaw:0, finisher:false, grabHp:0, mark:null, markYaw:0, tellYaw:0, tellPose:0 };
+const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0, phase:null, act:null, victoryT:0, fidgetT:0, fidgetCd:0.6, fidgetDir:null, fidget:null, caught:false, grabYaw:0, finisher:false, grabHp:0, mark:null, markYaw:0, tellYaw:0, tellPose:0 };
 let phase = 'cine', cineT = 0, overT = 0;
 
 const keys = {};
@@ -1378,21 +1508,26 @@ function bugAI(dt) {
       break;
     }
     case 'idle':
-      if (B.shuffleT > 0) {
-        B.shuffleT -= dt;
-        const k = 1 - Math.max(0, B.shuffleT) / SHUFFLE.dur;
-        bug.root.position.copy(B.home).addScaledVector(B.shuffleDir, SHUFFLE.dist * Math.sin(k * Math.PI));
-        if (B.shuffleT <= 0) { bug.root.position.copy(B.home); bug.play(ENEMY_ANIM.idle, { fade:0.22 }); }
+      if (B.fidgetT > 0) {
+        B.fidgetT -= dt;
+        const f = B.fidget;
+        const k = 1 - Math.max(0, B.fidgetT) / f.dur;
+        if (f.lateral) bug.root.position.copy(B.home)
+          .addScaledVector(B.fidgetDir, f.lateral * Math.sin(k * Math.PI));
+        if (B.fidgetT <= 0) { bug.root.position.copy(B.home); bug.play(ENEMY_ANIM.idle, { fade:0.22 }); }
       } else {
         bug.play(ENEMY_ANIM.idle);
-        B.shuffleCd -= dt;
-        // Only when there is room before the next attack, so a shuffle never eats the wind-up.
-        if (B.shuffleCd <= 0 && B.t > SHUFFLE.dur + 0.45 && bug.has(HOP_CLIP)) {
-          B.shuffleT = SHUFFLE.dur;
-          B.shuffleCd = SHUFFLE.gapMin + Math.random() * (SHUFFLE.gapMax - SHUFFLE.gapMin);
+        B.fidgetCd -= dt;
+        const f = B.fidgetCd <= 0 ? pickFidget(n => bug.has(n)) : null;
+        // Only when the whole thing fits before the wind-up starts. A fidget that runs into the
+        // tell either cuts the tell short or hides it, and the tell is the only warning there is.
+        if (f && B.t > f.dur + FIDGET.lead) {
+          B.fidget = f; B.fidgetT = f.dur;
+          B.fidgetCd = FIDGET.gapMin + Math.random() * (FIDGET.gapMax - FIDGET.gapMin);
           const sgn = Math.random() < 0.5 ? 1 : -1;
-          B.shuffleDir = new THREE.Vector3(toHero.z * sgn, 0, -toHero.x * sgn);
-          bug.play(HOP_CLIP, { once:true, fade:0.08, rate:SHUFFLE.rate, force:true });
+          B.fidgetDir = new THREE.Vector3(toHero.z * sgn, 0, -toHero.x * sgn);
+          const a = bug.play(f.clip, { once:true, fade:0.10, force:true });
+          if (a) a.setEffectiveTimeScale(a.getClip().duration / f.dur);   // cut to fit
         }
       }
       if (B.t <= 0) {
@@ -1401,7 +1536,7 @@ function bugAI(dt) {
         B.mark = ['far', 'close', 'rear'][(Math.random() * 3) | 0];
         B.markYaw = markLookYaw(B.mark);
         B.tellYaw = 0;
-        B.state = 'rear'; B.t = FIGHT.tell; B.shuffleT = 0; B.tellPose = 0;
+        B.state = 'rear'; B.t = FIGHT.tell; B.fidgetT = 0; B.tellPose = 0;
         bug.root.position.copy(B.home);
         bug.play(ENEMY_ANIM.idle, { fade:0.10 });
       }
@@ -1736,6 +1871,28 @@ if (Q.has('tune')) {
     body.appendChild(row);
   }
 
+  // The lighting is dialled in the same way, since it is just as much an eye judgement.
+  const LIGHTS = [
+    ['spot light', 0, 320, 5,     () => spot.intensity,  v => spot.intensity = v],
+    ['beam haze',  0, 0.25, 0.005, () => beam.material.uniforms.uStrength.value,
+                                   v => beam.material.uniforms.uStrength.value = v],
+  ];
+  const lhead = document.createElement('div');
+  lhead.innerHTML = '<b style="color:#e6c07a">LIGHT</b>';
+  lhead.style.cssText = 'margin:10px 0 5px';
+  body.appendChild(lhead);
+  for (const [label, min, max, step, get, set] of LIGHTS) {
+    const row = document.createElement('div'); row.style.cssText = 'margin-bottom:6px';
+    const val = document.createElement('span');
+    val.style.cssText = 'float:right;color:#e6c07a'; val.textContent = (+get()).toFixed(3);
+    const name = document.createElement('span'); name.textContent = label;
+    const sl = document.createElement('input');
+    sl.type='range'; sl.min=min; sl.max=max; sl.step=step; sl.value=get();
+    sl.style.cssText = 'width:100%;margin:2px 0 0;accent-color:#e6c07a';
+    sl.oninput = () => { set(+sl.value); val.textContent = (+sl.value).toFixed(3); };
+    row.append(name, val, sl); body.appendChild(row);
+  }
+
   const out = document.createElement('textarea');
   out.readOnly = true;
   out.style.cssText = 'width:100%;height:58px;margin-top:6px;background:#060b10;color:#9fb0bd;' +
@@ -1747,7 +1904,9 @@ if (Q.has('tune')) {
     'color:#10161c;border:0;border-radius:4px;font:600 11px \'Courier New\',monospace;letter-spacing:1px';
   copy.onclick = () => {
     const text = 'const FIGHT = {\n' +
-      FIELDS.map(([k]) => '  ' + k + ': ' + (+FIGHT[k]).toFixed(2) + ',').join('\n') + '\n};';
+      FIELDS.map(([k]) => '  ' + k + ': ' + (+FIGHT[k]).toFixed(2) + ',').join('\n') + '\n};\n' +
+      '// spot ' + spot.intensity.toFixed(0) +
+      '  beam ' + beam.material.uniforms.uStrength.value.toFixed(3);
     out.style.display = 'block';
     out.value = text;
     out.select();
