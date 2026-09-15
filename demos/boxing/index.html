@@ -12,18 +12,17 @@
 
   #hud { position:fixed; inset:0; pointer-events:none; z-index:5; opacity:0; transition:opacity .8s ease; }
   #hud.on { opacity:1; }
-  /* Each bar sits on its own fighter's side and drains toward the outside edge. The camera is
-     side-on with Stephen on the right, but a right-drag can spin past them, so #hud.swap flips
-     both bars when that happens. */
+  /* Each fighter keeps one side of the screen for the whole fight: Stephen right, opponent left.
+     These used to follow whichever side its fighter was actually on, which is a nice idea and one
+     complication too many - and in the bug's finisher, where the two are stacked inside each other,
+     it strobed. A bar that stays put is one less thing to read. */
   .bar { position:absolute; top:22px; width:34%; }
   .bar.p { right:22px; } .bar.e { left:22px; }
-  #hud.swap .bar.p { left:22px; right:auto; } #hud.swap .bar.e { right:22px; left:auto; }
   .bar .who {
     font:12px/1 nasa, ui-monospace, monospace; letter-spacing:.16em; text-transform:uppercase;
     color:#c7d4dd; margin-bottom:6px; text-shadow:0 2px 6px #000;
   }
-  .bar.p .who { text-align:right; } #hud.swap .bar.p .who { text-align:left; }
-  #hud.swap .bar.e .who { text-align:right; }
+  .bar.p .who { text-align:right; }
   .bar .track {
     height:13px; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.28); border-radius:3px;
     overflow:hidden;
@@ -31,8 +30,7 @@
   .bar .fill { height:100%; width:100%; transition:width .18s ease; }
   .bar.p .fill { background:linear-gradient(90deg,#3ee07d,#8ff0b4); }
   .bar.e .fill { background:linear-gradient(90deg,#e0563e,#f0a23e); }
-  .bar.p .track { direction:rtl; } #hud.swap .bar.p .track { direction:ltr; }
-  #hud.swap .bar.e .track { direction:rtl; }
+  .bar.p .track { direction:rtl; }
 
   #keys {
     position:absolute; left:22px; bottom:20px;
@@ -1276,7 +1274,6 @@ function endCine() {
 }
 
 // ── the player ────────────────────────────────────────────────────────────────
-const ndc = new THREE.Vector3();
 const tmp = new THREE.Vector3();
 function player(dt) {
   if (P.dead) { P.deadT += dt; if (!P.torn) liftBody(hero, 'stephen', P.deathClip, P.deadT); return; }
@@ -1983,13 +1980,7 @@ function fightCam(dt) {
   camera.position.lerp(camGoal, 1 - Math.pow(0.0016, dt));
   camera.lookAt(lookGoal);
 
-  // Put each health bar on the side of the screen its fighter is actually on. Project both roots
-  // and compare; a right-drag that spins the camera past them flips the pair.
-  camera.updateMatrixWorld();
-  ndc.copy(hero.root.position).project(camera);
-  const heroX = ndc.x;
-  ndc.copy(bug.root.position).project(camera);
-  hud.classList.toggle('swap', heroX < ndc.x);
+
 }
 
 window.__heroPos = () => hero ? {
