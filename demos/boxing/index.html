@@ -700,7 +700,13 @@ function applyStance(clip, pose) {
 // Applied LIVE rather than baked into the clip, unlike the other corrections here, because the
 // angles depend on how the rig was authored and are quicker to find by dragging than by search.
 // Same save-and-restore as the chimp's tell, so nothing accumulates.
-const SPIKE = { rx:0, ry:0, rz:0, fx:0, fy:0, fz:0, stretch:1.6 };
+// FOUND BY SEARCH, not by reasoning. Sweeping one bone on one axis at a time said rotation could
+// only shift the reach by four percent, and that was simply too coarse a search to be worth
+// believing: six thousand random poses across both joints and all six angles, hill-climbed, finds
+// 1.961 units against 1.439 as animated. The gap to cross is about 1.75, so turning the arm does
+// reach him and nothing needs stretching. The angles are large and not remotely human-readable,
+// which is what a search over an arbitrarily authored rig produces.
+const SPIKE = { rx:-3.07, ry:-2.03, rz:-1.27, fx:2.62, fy:-2.32, fz:0.63, stretch:1 };
 const SPIKE_BONES = { rear:['Top-Left-Rear','Top-Right-Rear'],
                       fore:['Top-Left-Forward','Top-Right-Forward'] };
 function stripTravel(clip) {
@@ -1496,12 +1502,17 @@ function applySpikePose() {
       const bone = bug.model.getObjectByName(n);
       if (!bone) continue;
       SPIKE_SAVE.push({ b: bone, q: bone.quaternion.clone(), s: bone.scale.clone() });
+      // BUILD THE POSE AT FULL SIZE, THEN SLERP INTO IT. Scaling the three angles by k and
+      // rebuilding takes a different, wandering path through the turn - at angles this close to a
+      // half turn it reads as the arm swinging round rather than reaching out. Slerping from rest
+      // to the finished pose takes the short way there.
       q.identity();
       for (let i = 0; i < 3; i++) if (ax[i]) {
-        t.setFromAxisAngle(i === 0 ? AX_X : i === 1 ? AX_Y : AX_Z, ax[i] * k);
+        t.setFromAxisAngle(i === 0 ? AX_X : i === 1 ? AX_Y : AX_Z, ax[i]);
         q.multiply(t);
       }
-      bone.quaternion.multiply(q);
+      t.identity().slerp(q, k);
+      bone.quaternion.multiply(t);
       if (group === 'rear' && SPIKE.stretch !== 1) {
         // along the bone only - the axis its own child sits furthest out on - so it thrusts
         // rather than inflating
