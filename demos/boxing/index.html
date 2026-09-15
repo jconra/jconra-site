@@ -132,16 +132,9 @@ const STRIKE = {
   insect:  { Strike:{ext:2.61, peak:0.5} },          // keeps the insect's landing spot where it was
 };
 const HALF_DEPTH = { stephen:0.20, chimp:0.26, insect:1.1 };   // root to chest surface (insect estimated)
-const LATERAL    = { stephen:0.7,  chimp:0.75, insect:1.2 };   // how far off the line still connects
 const PEN = 0.1;                                               // how deep a landed blow sinks in
 const bare = n => n.replace(/^preset:biped:/, '').replace(/\.001$/, '');
 // Did a strike from `from` along `dir`, reaching `ext`, land on a body at `to`?
-function contact(from, dir, ext, to, targetHalf, lateral) {
-  const d = new THREE.Vector3().subVectors(to, from); d.y = 0;
-  const along = d.dot(dir);
-  const off = Math.hypot(d.x - dir.x*along, d.z - dir.z*along);
-  return along > 0 && along < ext + targetHalf + 0.15 && off < lateral;
-}
 const PLAYER = {
   scale: 1.8, walk: 2.4, run: 5.6, back: 1.8, side: 3.8,
   hp: 100, reach: 3.6, damage: [12, 20],
@@ -274,6 +267,10 @@ GRAB.dur = GRAB.reach + GRAB.latch + GRAB.shake + GRAB.release;
 // The preset clips are performed at a leisurely pace; a fight wants them snappy. Rate scales the
 // playback AND the state timer together, otherwise the state outlasts the animation and he stands
 // frozen at the end of a swing.
+// THE ONE WAY A SWING CAN MISS. Rolled the moment the player commits to an attack, and only while
+// the chimp is idle - so a blow thrown at one already committed to its own attack always lands,
+// which is what makes the gap after its attack the window to punish it in. `chance` is on a slider.
+const EVADE = { chance: 1/3, dur: 0.50, dist: 0.95 };
 const ATTACK_RATE = 1.7, HURT_RATE = 1.5;
 // HOW FAR A COMMITTED SWING MAY CARRY HIM. This was 1.4, which is less than the job needs: the
 // fighters' marks are 1.6 apart and a dodge puts him a further 1.0 out, so a counter thrown from
@@ -872,7 +869,7 @@ function setInput(mode) {
 setInput(matchMedia('(hover: none) and (pointer: coarse)').matches ? 'touch' : 'keys');
 
 const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, kickYaw:0, dodgeT:0, dodgeFrom:null, dodgeTo:null, landed:false, slot:'center', bounceT:0, bounceCd:1.0, deadT:0, deathClip:'defeat_03', grabPitch:0, throwFrom:null, throwPitch:0, torn:false };
-const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0, phase:null, act:null, victoryT:0, fidgetT:0, fidgetCd:0.6, fidgetDir:null, fidget:null, caught:false, grabYaw:0, finisher:false, grabHp:0, mark:null, markYaw:0, tellYaw:0, tellPose:0, reacted:null };
+const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0, phase:null, act:null, victoryT:0, fidgetT:0, fidgetCd:0.6, fidgetDir:null, fidget:null, caught:false, grabYaw:0, finisher:false, grabHp:0, mark:null, markYaw:0, tellYaw:0, tellPose:0, reacted:null, evadeT:0, evadeDur:EVADE.dur, evadeFrom:null, evadeTo:null };
 let phase = 'cine', cineT = 0, overT = 0;
 // THE TUNING PANEL HOLDS THE FIGHT STILL. Dialling a reaction window in while being punched is not
 // really dialling it in, and worse, dying reloads the page (restartRun) - so the panel a player had
@@ -974,6 +971,29 @@ function tryAttack(index) {
   P.drive = THREE.MathUtils.clamp(tmp.length() - HALF_DEPTH[opponent] + PEN - st.ext, 0, DRIVE_MAX);
   P.driveDir = tmp.normalize().clone();
   P.driveFrom = hero.root.position.clone();
+  maybeEvade();
+}
+
+// It only gets out of the way from a standing start. Caught mid-attack, or already flinching, it
+// wears the blow - so finishing its attack really does hand the player a turn.
+function maybeEvade() {
+  if (B.dead || B.state !== 'idle' || Math.random() >= EVADE.chance) return;
+  slotAxes();
+  const sideways = Math.random() < 0.66;
+  const sgn = Math.random() < 0.5 ? 1 : -1;
+  B.evadeFrom = bug.root.position.clone();
+  B.evadeTo = B.evadeFrom.clone().addScaledVector(
+    sideways ? latAxis : rearAxis, EVADE.dist * (sideways ? sgn : -1));
+  // IT HAS TO STILL BE OUT THERE WHEN THE BLOW ARRIVES. A flat 0.50s was shorter than some of the
+  // swings it is dodging - front_kick_01 takes 0.59s to reach its peak - so the chimp hopped clear
+  // and then hopped back INTO the punch, and a dodge the player watched succeed still cost it
+  // health. The trip is cut to whatever this particular swing needs, plus a margin.
+  B.evadeDur = Math.max(EVADE.dur, (P.dur - P.hitAt) + 0.20);
+  B.state = 'evade'; B.evadeT = B.evadeDur; B.fidgetT = 0;
+  if (bug.has(HOP_CLIP)) {
+    const a = bug.play(HOP_CLIP, { once:true, fade:0.08, force:true });
+    if (a) a.setEffectiveTimeScale(a.getClip().duration / B.evadeDur);
+  }
 }
 
 function damageBug(d) {
@@ -1257,7 +1277,7 @@ function endCine() {
 
 // ── the player ────────────────────────────────────────────────────────────────
 const ndc = new THREE.Vector3();
-const fwd = new THREE.Vector3(), tmp = new THREE.Vector3(), dodgeAxis = new THREE.Vector3();
+const tmp = new THREE.Vector3();
 function player(dt) {
   if (P.dead) { P.deadT += dt; if (!P.torn) liftBody(hero, 'stephen', P.deathClip, P.deadT); return; }
   if (P.state === 'celebrate') return;
@@ -1302,7 +1322,10 @@ function player(dt) {
       // starts where he started - so the lunge reads the same - but it finishes at the right
       // standoff from wherever the chimp actually is by then.
       const stk = STRIKE.stephen[P.atk];
-      tmp.copy(bug.root.position).sub(P.driveFrom); tmp.y = 0;
+      // but never chase one that is slipping the punch, or the miss reads as a bug rather than as
+      // the chimp having beaten him to it
+      if (B.state !== 'evade') { tmp.copy(bug.root.position).sub(P.driveFrom); tmp.y = 0; }
+      else tmp.copy(P.driveDir).multiplyScalar(P.drive + stk.ext + HALF_DEPTH[opponent] - PEN);
       const reach = stk.ext + HALF_DEPTH[opponent] - PEN;
       P.drive = THREE.MathUtils.clamp(tmp.length() - reach, 0, DRIVE_MAX);
       if (tmp.lengthSq() > 1e-6) P.driveDir.copy(tmp).normalize();
@@ -1310,8 +1333,13 @@ function player(dt) {
     }
     if (P.state === 'attack' && !P.didHit && P.t <= P.hitAt) {
       P.didHit = true;
-      fwd.set(0,0,1).applyQuaternion(hero.root.quaternion);
-      if (contact(hero.root.position, fwd, STRIKE.stephen[P.atk].ext, bug.root.position, HALF_DEPTH[opponent], LATERAL.stephen)) {
+      // A SWING LANDS UNLESS THE CHIMP GOT OUT OF THE WAY. It used to be a cone test - reach,
+      // angle, and how far off the line the chimp was - and the honest problem with that is the
+      // player cannot see any of it. A blow that whiffed because the chimp had drifted a tenth of
+      // a unit too far looks exactly like one that should have connected, so a miss read as the
+      // game being broken rather than as anything the player did. There is only one way to miss
+      // now, and it is one you can watch happen.
+      if (B.state !== 'evade') {
         damageBug(PLAYER.damage[0] + Math.random()*(PLAYER.damage[1]-PLAYER.damage[0]));
       }
     }
@@ -1687,6 +1715,17 @@ function bugAI(dt) {
         bug.play(ENEMY_ANIM.idle, { fade:0.10 });
       }
       break;
+    case 'evade': {
+      B.evadeT -= dt;
+      const k = 1 - Math.max(0, B.evadeT) / B.evadeDur;
+      bug.root.position.lerpVectors(B.evadeFrom, B.evadeTo, Math.sin(k * Math.PI));
+      if (B.evadeT <= 0) {
+        bug.root.position.copy(B.evadeFrom);
+        B.state = 'idle';
+        bug.play(ENEMY_ANIM.idle, { fade:0.2 });
+      }
+      break;
+    }
     case 'stalk': {
       // Compatibility state for older debug state. The chimp stays at its
       // mark instead of walking through Stephen.
@@ -2034,6 +2073,7 @@ function buildTunePanel() {
                                    v => beam.material.uniforms.uStrength.value = v],
     ['spot edge',  0, 0.80, 0.01,  () => spot.penumbra, v => spot.penumbra = v],
     ['spot width', 0.15, 0.75, 0.01, () => spot.angle, v => spot.angle = v],
+    ['chimp dodge', 0, 0.75, 0.01, () => EVADE.chance, v => EVADE.chance = v],
     ['haze width', 0.25, 1.20, 0.01, () => BEAM.narrow, v => BEAM.narrow = v],
     ['haze edge',  0.35, 3.00, 0.05, () => beam.material.uniforms.uSoft.value,
                                      v => beam.material.uniforms.uSoft.value = v],
@@ -2072,6 +2112,7 @@ function buildTunePanel() {
       FIELDS.map(([k]) => '  ' + k + ': ' + (+FIGHT[k]).toFixed(2) + ',').join('\n') + '\n};\n' +
       '// spot ' + spot.intensity.toFixed(0) +
       '  penumbra ' + spot.penumbra.toFixed(2) + '  angle ' + spot.angle.toFixed(2) +
+      '  evadeChance ' + EVADE.chance.toFixed(2) +
       '  hazeWidth ' + BEAM.narrow.toFixed(2) +
       '  hazeEdge ' + beam.material.uniforms.uSoft.value.toFixed(2) +
       '  beam ' + beam.material.uniforms.uStrength.value.toFixed(3) +
@@ -2147,7 +2188,8 @@ function tick() {
     // inside the jaws, and the push was quietly shoving the bug off him every frame.
     const CLOSING = ['lunge','rear','return','bite','grab'].includes(B.state)
                  || P.state === 'grabbed' || P.state === 'thrown'
-                 || P.state === 'attack';          // his swing is closing too; do not shove the target off it
+                 || P.state === 'attack'           // his swing is closing too; do not shove the target off it
+                 || B.state === 'evade';           // and it is slipping out on purpose
     if (!CLOSING && gap > 1e-4 && gap < MIN) {
       const push = tmp.normalize().multiplyScalar((MIN - gap) * 0.5);
       if (!B.dead) bug.root.position.sub(push);
