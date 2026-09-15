@@ -241,7 +241,7 @@ const FIDGETS = [
   { clip: BOB_CLIP,   dur: 0.60, lateral: 0.00, weight: 3 },   // dip at the knees
   { clip: STRUT_CLIP, dur: 0.95, lateral: 0.18, weight: 2 },   // a roll of the shoulders
 ];
-const FIDGET = { gapMin: 0.30, gapMax: 0.95, lead: 0.30 };     // `lead`: never eat the wind-up
+const FIDGET = { gapMin: 0.08, gapMax: 0.50, lead: 0.25 };     // `lead`: never eat the wind-up
 function pickFidget(have) {
   const ok = FIDGETS.filter(f => have(f.clip));
   const total = ok.reduce((n, f) => n + f.weight, 0);
@@ -812,8 +812,8 @@ function setInput(mode) {
 }
 setInput(matchMedia('(hover: none) and (pointer: coarse)').matches ? 'touch' : 'keys');
 
-const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, kickYaw:0, dodgeT:0, dodgeFrom:null, dodgeTo:null, landed:false, slot:'center', deadT:0, deathClip:'defeat_03', grabPitch:0, throwFrom:null, throwPitch:0, torn:false };
-const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0, phase:null, act:null, victoryT:0, fidgetT:0, fidgetCd:0.6, fidgetDir:null, fidget:null, caught:false, grabYaw:0, finisher:false, grabHp:0, mark:null, markYaw:0, tellYaw:0, tellPose:0 };
+const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, kickYaw:0, dodgeT:0, dodgeFrom:null, dodgeTo:null, landed:false, slot:'center', bounceT:0, bounceCd:1.0, deadT:0, deathClip:'defeat_03', grabPitch:0, throwFrom:null, throwPitch:0, torn:false };
+const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0, phase:null, act:null, victoryT:0, fidgetT:0, fidgetCd:0.6, fidgetDir:null, fidget:null, caught:false, grabYaw:0, finisher:false, grabHp:0, mark:null, markYaw:0, tellYaw:0, tellPose:0, reacted:null };
 let phase = 'cine', cineT = 0, overT = 0;
 
 const keys = {};
@@ -1248,9 +1248,22 @@ function player(dt) {
     return;
   }
 
-  // Not dodging and not attacking: drift back to the mark and idle.
-  hero.root.position.lerp(P.home, 1 - Math.pow(0.0001, dt));
+  // Not dodging and not attacking: drift back to the mark and idle. The mark itself moves.
+  hero.root.position.lerp(swayMark(P.home, 0, swayTarget), 1 - Math.pow(0.0001, dt));
   if (P.state !== 'idle') { hero.play(A('idle'), { fade:0.2 }); P.state = 'idle'; }
+  // A bounce on his toes between exchanges. It only ever plays a clip - his state stays `idle` -
+  // so it can never swallow a dodge: a press just plays the hop over it with force.
+  if (P.bounceT > 0) {
+    P.bounceT -= dt;
+    if (P.bounceT <= 0) hero.play(A('idle'), { fade:0.15 });
+  } else {
+    P.bounceCd -= dt;
+    if (P.bounceCd <= 0 && hero.has(HOP_CLIP)) {
+      P.bounceCd = 1.3 + Math.random() * 2.0;
+      const a = hero.play(HOP_CLIP, { once:true, fade:0.12, force:true });
+      if (a) { a.setEffectiveTimeScale(1.35); P.bounceT = HOP_RAW / 1.35; }
+    }
+  }
 }
 
 // ── SLOTS ─────────────────────────────────────────────────────────────────────
@@ -1271,7 +1284,7 @@ const FIGHT = {
   tell:      0.45,   // the wind-up, before the chimp commits to anything
   strike:    0.30,   // commit -> damage. THE SAME FOR EVERY ATTACK. This is the whole point
   recover:   0.35,   // after the blow, before it is back on guard
-  gapMin:    0.9, gapMax: 1.8,        // breathing room between attacks
+  gapMin:    1.1, gapMax: 2.3,        // breathing room between attacks, and room to move in it
   // THE TELL IS A POSE, NOT A CLIP. box_02 is a 2.8s duck: even played fast the read arrives late,
   // because the information is buried in the middle of a long move. These four numbers are struck
   // on in a tenth of a second and held, so the shape is complete before the player has to decide.
@@ -1290,6 +1303,26 @@ const FIGHT = {
   dodgeRate: 1.9,
 };
 const dodgeDur = () => FIGHT.dodgeOut + FIGHT.dodgeHold + FIGHT.dodgeBack;
+
+// KEEP THEIR FEET MOVING. Two fighters planted on their marks between exchanges reads as two models
+// waiting for input rather than as two men looking for an opening. Both of them now drift on a slow
+// figure of eight around the mark: lateral on one period, forward and back on a slower one, so the
+// two never line up and it does not tick like a metronome. They run on opposite phases so they are
+// not swaying in unison.
+//
+// The amplitude is an eighth of the gap between slots. That is deliberately far too small to change
+// which slot anyone is nearest, so every hit rule is untouched by it - the movement is on the
+// surface only, and nothing about who gets hit moves with it.
+const SWAY = { amp: 0.13, rate: 1.9 };
+let swayT = 0;
+const swayTarget = new THREE.Vector3();
+function swayMark(home, phase, out) {
+  slotAxes();
+  const a = swayT * SWAY.rate + phase;
+  return out.copy(home)
+    .addScaledVector(latAxis,  Math.sin(a) * SWAY.amp)
+    .addScaledVector(rearAxis, Math.cos(a * 0.63) * SWAY.amp * 0.5);
+}
 
 // APPLIED AFTER THE MIXER, UNDONE BEFORE THE NEXT ONE. The mixer owns these bones; anything added
 // on top of them only survives because it is re-added every frame, and the moment a clip stops
@@ -1365,6 +1398,17 @@ function currentSlot() {
   }
   return best;
 }
+// ONCE THE JAWS ARE COMMITTED THEY FOLLOW HIM. Both closing moves are only ever thrown at a man
+// standing in the middle who has had the whole tell to leave, so they are not meant to be escapable
+// at the last instant - and if he does bolt inside the strike window, a mouth that keeps aiming at
+// the ground he vacated is the exact thing that looks stupid. Re-aiming each frame while it closes
+// means it lands on him wherever he went, which reads as being run down rather than as a whiff.
+function trackHero(gap) {
+  B.dir.copy(hero.root.position).sub(bug.root.position).setY(0);
+  if (B.dir.lengthSq() > 1e-6) B.dir.normalize(); else B.dir.set(0, 0, 1);
+  B.jumpTo.copy(hero.root.position).addScaledVector(B.dir, -gap);
+}
+
 const unsafeNow = () => ['center', B.mark].filter(Boolean);
 const isUnsafe = n => n === 'center' || n === B.mark;
 // A DODGE IS A COMMITMENT, so it counts from the press, not from when his feet arrive. Judging him
@@ -1372,6 +1416,19 @@ const isUnsafe = n => n === 'center' || n === B.mark;
 // commit - the chimp would throw the face-eat at a man who was already leaving, and close its jaws
 // on the air he used to be in. Pressing a direction takes you off the middle immediately.
 const committedSlot = () => (P.state === 'dodge' ? P.slot : currentSlot());
+
+// READING A TELL IS STICKY FOR THE WHOLE EXCHANGE. The slot used to be read at the instant the
+// chimp commits, which is a single invisible frame at the end of the tell - and the dodge is an
+// 0.87s round trip that puts him back on centre. So a player who pressed a little early, or pressed
+// twice, or hopped at a fidget and mistook it for the wind-up, had his hop finish BEFORE that
+// instant, was standing on centre when it was sampled, and got the face-eat for it. From the chair
+// that is indistinguishable from dodging every attack and being grabbed anyway.
+//
+// So it is no longer a sample. Pressing a direction at any point from the start of the tell to the
+// moment of impact books that slot for this exchange, whatever his feet are doing by then, and the
+// last press before impact is the one that counts. Read the tell and you are out of the middle -
+// full stop - and the timing lottery in between is gone.
+const effectiveSlot = () => B.reacted || committedSlot();
 
 // The punches and the kick, with the face-eat held back for the middle slot.
 const PUNCHES = (ENEMY_ANIM.strikeSet || []).filter(n => n !== ENEMY_ANIM.bite);
@@ -1403,6 +1460,7 @@ function requestDodge(key) {
   if (P.state === 'dodge' || P.state === 'attack' || P.state === 'hurt' || P.state === 'celebrate') return;
   const slot = KEY_SLOT[key];
   if (!slot) return;
+  B.reacted = slot;                    // books it for this exchange, however the hop plays out
   P.state = 'dodge';
   P.slot = slot;
   P.dodgeT = dodgeDur();
@@ -1516,6 +1574,7 @@ function bugAI(dt) {
           .addScaledVector(B.fidgetDir, f.lateral * Math.sin(k * Math.PI));
         if (B.fidgetT <= 0) { bug.root.position.copy(B.home); bug.play(ENEMY_ANIM.idle, { fade:0.22 }); }
       } else {
+        bug.root.position.lerp(swayMark(B.home, 2.4, swayTarget), 1 - Math.pow(0.0006, dt));
         bug.play(ENEMY_ANIM.idle);
         B.fidgetCd -= dt;
         const f = B.fidgetCd <= 0 ? pickFidget(n => bug.has(n)) : null;
@@ -1536,8 +1595,8 @@ function bugAI(dt) {
         B.mark = ['far', 'close', 'rear'][(Math.random() * 3) | 0];
         B.markYaw = markLookYaw(B.mark);
         B.tellYaw = 0;
+        B.reacted = null;                  // and this exchange starts unanswered
         B.state = 'rear'; B.t = FIGHT.tell; B.fidgetT = 0; B.tellPose = 0;
-        bug.root.position.copy(B.home);
         bug.play(ENEMY_ANIM.idle, { fade:0.10 });
       }
       break;
@@ -1556,12 +1615,13 @@ function bugAI(dt) {
       // tick(), never accumulated onto a bone, because a clip that is frozen or clamped stops
       // resetting what you added to it and the offset then compounds every frame. That is the bug
       // that made the arms helicopter; this cannot reproduce it.
+      bug.root.position.lerp(B.home, 1 - Math.pow(0.002, dt));   // settle onto the mark
       const into = FIGHT.tell - Math.max(0, B.t);
       B.tellPose = Math.min(1, into / Math.max(0.02, FIGHT.poseIn));   // struck on, then held
       B.tellYaw = Math.sign(B.markYaw) * FIGHT.bodyTurn * B.tellPose;
       if (B.t <= 0) {
-        // COMMIT. Read the ground he is committed to and pick the response to it.
-        const slot = committedSlot();
+        // COMMIT. Read the slot he has booked, not the ground his feet happen to be over.
+        const slot = effectiveSlot();
         B.jumpFrom = bug.root.position.clone();
         B.tellYaw = 0; B.tellPose = 0;
 
@@ -1575,8 +1635,12 @@ function bugAI(dt) {
         B.dir = aim.clone().sub(bug.root.position).setY(0).normalize();
         if (B.dir.lengthSq() < 1e-6) B.dir = toHero.clone();
 
-        // The finisher ignores the slot rules - once he is down to a third it just takes him.
-        if (ENEMY_ANIM.canGrab && P.hp <= PLAYER.hp * GRAB.finishAt) {
+        // THE GRAB IS A PUNISH FOR STANDING STILL, exactly like the face-eat, and for the same
+        // reason: it ends with the jaws shut, so thrown at a man who is not there it closes on air
+        // and hangs there. It used to ignore the slot rules entirely - below a third HP EVERY
+        // attack became the grab wherever he was standing, so a clean dodge still got grabbed at
+        // nothing. It needs the middle slot now; anywhere else and he gets punched instead.
+        if (ENEMY_ANIM.canGrab && slot === 'center' && P.hp <= PLAYER.hp * GRAB.finishAt) {
           B.dir = toHero.clone();
           B.state = 'grab'; B.t = GRAB.dur; B.phase = 'reach'; B.lunged = false;
           B.jumpTo = hero.root.position.clone().addScaledVector(B.dir, -1.45);
@@ -1629,6 +1693,7 @@ function bugAI(dt) {
     case 'grab': {
       const el = GRAB.dur - B.t;
       if (el < GRAB.reach) {                                  // jaws thrown forward
+        trackHero(1.45);                                      // and they follow him in
         const k = el / GRAB.reach, e = k*k*(3-2*k);
         bug.root.position.lerpVectors(B.jumpFrom, B.jumpTo, e);
       } else if (el < GRAB.dur - GRAB.release) {
@@ -1636,8 +1701,7 @@ function bugAI(dt) {
         if (B.phase === 'reach') {
           B.phase = 'hold';
           // It only latches if he is still there. Dodge and the jaws close on nothing.
-          B.caught = contact(bug.root.position, B.dir, 2.0, hero.root.position,
-                             HALF_DEPTH.stephen, LATERAL[opponent] + 0.2);
+          B.caught = true;                     // same: it only launches from the middle, and it chases
           if (B.caught) { P.state = 'grabbed'; P.grabPitch = 0; }
         }
         const sh = el - GRAB.reach - GRAB.latch;
@@ -1687,6 +1751,7 @@ function bugAI(dt) {
     case 'bite': {
       const el = BITE.dur - B.t;
       if (el < BITE.spring) {
+        trackHero(BITE.gap);                                  // the face goes where he goes
         const k = el / BITE.spring, e = k*k*(3-2*k);
         bug.root.position.lerpVectors(B.jumpFrom, B.jumpTo, e);
         bug.model.rotation.x = BITE.lean * e;          // pitch the face down and forward
@@ -1694,7 +1759,7 @@ function bugAI(dt) {
         if (B.phase === 'spring') {                    // freeze on the squeeze and hold it
           B.phase = 'hold';
           if (B.act) B.act.setEffectiveTimeScale(0);
-          if (isUnsafe(committedSlot())) damageHero(DMG.biteDamage);
+          damageHero(DMG.biteDamage);          // it tracked him; it does not miss
           B.lunged = true;
         }
         bug.root.position.copy(B.jumpTo);
@@ -1728,7 +1793,7 @@ function bugAI(dt) {
         // SLOTS, NOT GEOMETRY. Re-read the ground at the moment of impact rather than trusting the
         // read taken at commit, so a dodge that starts late still saves him - he is judged on where
         // he is when it lands, which is what the player can see.
-        if (isUnsafe(committedSlot())) damageHero(DMG[B.bite ? 'biteDamage' : 'lungeDamage']);
+        if (isUnsafe(effectiveSlot())) damageHero(DMG[B.bite ? 'biteDamage' : 'lungeDamage']);
       }
       if (B.t <= 0) {
         B.kickYaw = 0;
@@ -1877,12 +1942,16 @@ function buildTunePanel() {
 
   // The lighting is dialled in the same way, since it is just as much an eye judgement.
   const LIGHTS = [
-    ['spot light', 0, 320, 5,     () => spot.intensity,  v => spot.intensity = v],
+    ['spot light', 0, 320, 5,      () => spot.intensity,  v => spot.intensity = v],
     ['beam haze',  0, 0.25, 0.005, () => beam.material.uniforms.uStrength.value,
                                    v => beam.material.uniforms.uStrength.value = v],
+    ['sway size',  0, 0.40, 0.01,  () => SWAY.amp,  v => SWAY.amp = v],
+    ['sway speed', 0.2, 4.0, 0.05, () => SWAY.rate, v => SWAY.rate = v],
+    ['fidget gap', 0.02, 1.50, 0.02, () => FIDGET.gapMax,
+                                   v => { FIDGET.gapMax = v; FIDGET.gapMin = Math.min(FIDGET.gapMin, v); }],
   ];
   const lhead = document.createElement('div');
-  lhead.innerHTML = '<b style="color:#e6c07a">LIGHT</b>';
+  lhead.innerHTML = '<b style="color:#e6c07a">LIGHT &amp; MOTION</b>';
   lhead.style.cssText = 'margin:10px 0 5px';
   body.appendChild(lhead);
   for (const [label, min, max, step, get, set] of LIGHTS) {
@@ -1910,7 +1979,9 @@ function buildTunePanel() {
     const text = 'const FIGHT = {\n' +
       FIELDS.map(([k]) => '  ' + k + ': ' + (+FIGHT[k]).toFixed(2) + ',').join('\n') + '\n};\n' +
       '// spot ' + spot.intensity.toFixed(0) +
-      '  beam ' + beam.material.uniforms.uStrength.value.toFixed(3);
+      '  beam ' + beam.material.uniforms.uStrength.value.toFixed(3) +
+      '  sway ' + SWAY.amp.toFixed(2) + '/' + SWAY.rate.toFixed(2) +
+      '  fidgetGap ' + FIDGET.gapMax.toFixed(2);
     out.style.display = 'block';
     out.value = text;
     out.select();
@@ -1940,6 +2011,7 @@ if (Q.has('tune')) buildTunePanel();
 
 function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
+  swayT += dt;
   if (phase === 'cine') cine(dt);
   else {
     player(dt); bugAI(dt);
