@@ -355,7 +355,12 @@ const SPOT_H = 18, SPOT_ANGLE = 0.20;      // tight enough to sit on the fight a
 // rim as the camera turns. 0.55, where this started, was gradual enough that the pool had no edge
 // at all and simply read as ambient light.
 const spot = new THREE.SpotLight(0xffeccd, 130, 46, SPOT_ANGLE, 0.30, 1);
-spot.position.set(0, SPOT_H, 1.5);          // just off the camera side of centre, so faces are lit
+// DEAD CENTRE. This used to sit 1.5 off in z, on the reasoning that it put the light on the side
+// the camera was on - which is wrong, because the camera orbits on a right-drag, so there is no
+// fixed camera side for it to be on. All it actually did was push the lamp off the middle of the
+// arena while the pool it casts stayed centred on the target, which is what made the haze look
+// one-sided: its near edge was shoved toward one side of frame and its far edge out of it.
+spot.position.set(0, SPOT_H, 0);
 spot.target.position.set(0, 0, 0); scene.add(spot.target);
 spot.castShadow = true;
 spot.shadow.mapSize.set(1024, 1024);
@@ -398,17 +403,29 @@ const beam = new THREE.Mesh(beamGeo, new THREE.ShaderMaterial({
       gl_FragColor = vec4(uColor, a);
     }`,
 }));
-beam.position.set(spot.position.x, SPOT_H / 2, spot.position.z);
 beam.renderOrder = 2;
 scene.add(beam);
-// The cone is built at SPOT_ANGLE, so it has to be rescaled whenever the width slider moves or the
-// haze stops lining up with the pool it is supposed to be pouring into.
-let beamAngleCache = -1;
+
+// THE HAZE IS DERIVED FROM THE LIGHT, never placed alongside it. It used to be a vertical cone
+// parked at the lamp's x/z while the spot itself was tilted - aimed from an off-centre lamp at a
+// centred target - so the shaft leaned one way, the beam of light leaned the other, and the circle
+// at the bottom of the haze missed the lit pool by the whole offset. Reading the real axis means
+// the two cannot come apart again, wherever the lamp is put or the sliders are dragged to.
+const beamFrom = new THREE.Vector3(), beamTo = new THREE.Vector3(), beamAxis = new THREE.Vector3();
+const BEAM_UP = new THREE.Vector3(0, 1, 0);
+let beamKey = '';
 function syncBeam() {
-  if (spot.angle === beamAngleCache) return;
-  beamAngleCache = spot.angle;
+  beamFrom.copy(spot.position);
+  beamTo.copy(spot.target.position);
+  const key = beamFrom.toArray().join() + '|' + beamTo.toArray().join() + '|' + spot.angle;
+  if (key === beamKey) return;
+  beamKey = key;
+  beamAxis.subVectors(beamFrom, beamTo);            // cone's local +Y is its apex, so point it up the beam
+  const len = beamAxis.length() || 1;
   const k = Math.tan(spot.angle) / Math.tan(SPOT_ANGLE);
-  beam.scale.set(k, 1, k);
+  beam.scale.set(k, len / SPOT_H, k);               // stretch to reach exactly from lamp to target
+  beam.position.copy(beamFrom).add(beamTo).multiplyScalar(0.5);
+  beam.quaternion.setFromUnitVectors(BEAM_UP, beamAxis.divideScalar(len));
 }
 
 // Image-based lighting, which is what the model is actually missing. PMREM wants half-float
