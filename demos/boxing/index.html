@@ -863,11 +863,17 @@ function cine(dt) {
 
   // Stephen's close-up sits off his shoulder; his opponent's is further out, since "not super
   // close" for something with that many teeth still wants its whole head in frame.
-  const heroNear = faceShot.clone().addScaledVector(line, 0.62).add(new THREE.Vector3(0.66, 0.10, 0));
+  // Stand off to his SIDE rather than back along the line - the line runs away from his opponent,
+  // so distance along it puts the camera behind his head. Sideways keeps his face in shot and is
+  // where the extra room was wanted.
+  const heroNear = faceShot.clone().addScaledVector(line, 0.15).add(new THREE.Vector3(1.75, 0.25, 0));
   // `line` runs from the opponent toward Stephen, so the camera goes along POSITIVE line to sit in
   // front of its face. Going negative put it behind the head, which is why the sweep ended looking
   // at the back of it.
-  const foeNear  = foeShot.clone().addScaledVector(line, 1.32).add(new THREE.Vector3(0.48, 0.06, 0));
+  // The insect is a much larger animal than the chimp, so its introduction stands off further to
+  // get the whole thing in frame.
+  const foeBack = opponent === 'chimp' ? 2.35 : 3.6;
+  const foeNear  = foeShot.clone().addScaledVector(line, foeBack).add(new THREE.Vector3(0.9, 0.3, 0));
 
   if (t < WALK_T) {
     // RUNNING BACKWARDS AHEAD OF HIM. The camera leads him down the walkway at head height and
