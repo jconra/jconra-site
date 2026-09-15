@@ -102,14 +102,15 @@ const PLAYER = {
   hp: 100, reach: 3.6, damage: [12, 20],
 };
 const BUG = {
-  scale: 2.2, walk: 1.7, hp: 420, lungeSpeed: 9.5, lungeDamage: 16, reach: 3.2,
+  scale: 2.2, walk: 1.7, hp: 420, lungeSpeed: 9.5, lungeDamage: 16, biteDamage: 22, reach: 3.2,
 };
 // The chimp has biped clips, but not the insect-specific names.
 const CHIMP_ANIM = {
   idle: C('idle'), walk: C('walk'),
   rear: C('box_02'),                              // the low crouching wind-up
   strike: C('box_01'),                            // default; strikeSet cycles
-  strikeSet: ['box_01','box_03','front_kick_02'].map(C),
+  strikeSet: ['box_01','box_03','front_kick_02','press-up'].map(C),
+  bite: C('press-up'),                            // jumps at the face, grabs and pulls
   death: C('defeat_03'),
 };
 const INSECT_ANIM = {idle:'Idle', walk:'Walk', rear:'RearUp', strike:'Strike', strikeSet:['Strike'], death:'Death'};
@@ -429,15 +430,18 @@ class Rig {
       const clip = c.clone();          // always clone: stripTravel edits track values in place
       if (entrance) clip.tracks = clip.tracks.filter(track => track.name !== 'Root.position');
       if (corrected) {
-        // The push-up clip is authored on the floor, so pitch it upright.
-        const root = clip.tracks.find(track => track.name === 'Root.quaternion');
-        if (root) {
-          const axis = c.name === C('press-up') ? new THREE.Vector3(1,0,0) : new THREE.Vector3(0,1,0);
-          const angle = -Math.PI/2;
-          const turn = new THREE.Quaternion().setFromAxisAngle(axis, angle);
+        // STAND THE PUSH-UP UP. Measured raw: the body lies horizontal with the Hip at its normal
+        // standing height (0.305), head 0.29 forward of it, feet 0.27 behind, hands under the chest.
+        // Pitching it 90 degrees about the HIP keeps the hip where it is, so the feet come down to
+        // the floor and the hands swing out in front - the grab. An earlier version pitched the
+        // Root instead, whose pivot is on the floor: that dropped the hip to ground level, put the
+        // feet 0.27 under it and slid the whole body 0.3 back from its mark.
+        const hip = clip.tracks.find(track => track.name === 'Hip.quaternion');
+        if (hip) {
+          const turn = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), -Math.PI/2);
           const q = new THREE.Quaternion();
-          for (let i = 0; i < root.times.length; i++) {
-            q.fromArray(root.values, i * 4).premultiply(turn).toArray(root.values, i * 4);
+          for (let i = 0; i < hip.times.length; i++) {
+            q.fromArray(hip.values, i * 4).premultiply(turn).toArray(hip.values, i * 4);
           }
         }
       }
@@ -499,7 +503,7 @@ document.getElementById('keys').innerHTML =
   '<b>W/S</b> dodge depth · <b>D</b> backstep · <b>1–4</b> attacks · <b>TAP/CLICK</b> random attack';
 
 const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, dodgeKey:null, dodgeUntil:0, dodgeAnimT:0 };
-const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null };
+const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55 };
 let phase = 'cine', cineT = 0, overT = 0;
 
 const keys = {};
@@ -776,25 +780,30 @@ function bugAI(dt) {
         bug.root.position.z += toHero.z * step;
       }
       if (B.t <= 0) {
-        B.state='lunge'; B.t = 0.55; B.lunged = false;
-        B.dir = toHero.clone();
-        B.jumpFrom = bug.root.position.clone();
-        B.jumpTo = hero.root.position.clone().addScaledVector(B.dir, -BUG.reach * 0.85);
         const set = ENEMY_ANIM.strikeSet;
         const pick = set[(Math.random() * set.length) | 0];
-        bug.play(pick, { once:true, fade:0.08, rate:1.55, force:true });
+        B.bite = pick === ENEMY_ANIM.bite;
+        // A punch lands from reach; the bite has to get to the face, so it jumps in close and
+        // stays on the clip long enough for the heave-and-pull to read.
+        B.lungeDur = B.bite ? 0.85 : 0.55;
+        B.state='lunge'; B.t = B.lungeDur; B.lunged = false;
+        B.dir = toHero.clone();
+        B.jumpFrom = bug.root.position.clone();
+        B.jumpTo = hero.root.position.clone().addScaledVector(B.dir, -BUG.reach * (B.bite ? 0.5 : 0.85));
+        bug.play(pick, { once:true, fade:0.08, rate: B.bite ? 1.3 : 1.55, force:true });
       }
       break;
     case 'lunge': {
-      const progress = Math.min(1, 1 - B.t / 0.55);
+      const progress = Math.min(1, 1 - B.t / B.lungeDur);
       bug.root.position.lerpVectors(B.jumpFrom, B.jumpTo, progress);
-      // Chimp punches on the ground; the insect leaps.
-      bug.root.position.y = opponent === 'chimp' ? 0 : Math.sin(progress * Math.PI) * 1.35;
+      // Punches stay on the ground; the insect leaps; the chimp's bite is a low jump at the face.
+      const arc = opponent !== 'chimp' ? 1.35 : B.bite ? 0.55 : 0;
+      bug.root.position.y = Math.sin(progress * Math.PI) * arc;
       if (!B.lunged && B.t < 0.30) {
         B.lunged = true;
         // it connects only if the player is still in the path — stepping aside beats it
         tmp.copy(hero.root.position).sub(bug.root.position); tmp.y=0;
-        if (tmp.length() < BUG.reach && tmp.normalize().dot(B.dir) > 0.3) damageHero(BUG.lungeDamage);
+        if (tmp.length() < BUG.reach && tmp.normalize().dot(B.dir) > 0.3) damageHero(B.bite ? BUG.biteDamage : BUG.lungeDamage);
       }
       if (B.t <= 0) {
         bug.root.position.copy(B.jumpTo).setY(0);
