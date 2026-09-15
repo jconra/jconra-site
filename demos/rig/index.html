@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rig Lab</title>
+<style>
+  @font-face { font-family: nasa; src: url("../../fonts/nasalization-rg.ttf"); font-display: swap; }
+  :root {
+    --ground:#07090c; --panel:#10141a; --panel-hi:#151b23;
+    --line:#212a34; --line-hi:#2f7d55;
+    --ink:#ccd6de; --ink-dim:#7f8d99; --ink-faint:#59656f;
+    --accent:#35e07d; --warn:#e6c07a;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; }
+  body {
+    background:var(--ground); color:var(--ink);
+    font:13px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    display:flex;
+  }
+  canvas { display:block; }
+
+  /* ── the panel ─────────────────────────────────────────────────────────── */
+  #side {
+    width:330px; flex:0 0 330px; height:100vh; overflow-y:auto;
+    background:var(--panel); border-right:1px solid var(--line);
+    padding:14px 15px 40px;
+  }
+  #stage { flex:1; position:relative; height:100vh; }
+  #hint {
+    position:absolute; left:14px; bottom:12px; pointer-events:none;
+    font:10.5px/1.7 ui-monospace,"Courier New",monospace; letter-spacing:.09em;
+    color:var(--ink-faint); text-transform:uppercase;
+  }
+  a.back {
+    display:inline-block; font:10.5px/1 ui-monospace,"Courier New",monospace;
+    letter-spacing:.18em; text-transform:uppercase; color:var(--ink-faint);
+    text-decoration:none; margin-bottom:12px;
+  }
+  a.back:hover { color:var(--accent); }
+  h1 {
+    font-family:nasa, ui-sans-serif, sans-serif; font-weight:400; font-size:20px;
+    letter-spacing:.06em; color:#e8f1f5; margin-bottom:3px;
+  }
+  .sub { color:var(--ink-faint); font-size:11.5px; margin-bottom:16px; }
+
+  section { border-top:1px solid var(--line); padding:13px 0 4px; }
+  section:first-of-type { border-top:0; padding-top:0; }
+  h2 {
+    font:10.5px/1 ui-monospace,"Courier New",monospace; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--accent); margin-bottom:10px; font-weight:400;
+  }
+  label.row { display:block; margin-bottom:9px; }
+  label.row span.k { display:block; color:var(--ink-dim); font-size:11.5px; margin-bottom:3px; }
+  select, button, input[type=text] {
+    width:100%; background:var(--panel-hi); color:var(--ink);
+    border:1px solid var(--line); border-radius:4px; padding:6px 8px;
+    font:12px ui-monospace,"Courier New",monospace;
+  }
+  select:focus, button:focus-visible { outline:1px solid var(--accent); }
+  button { cursor:pointer; text-align:center; letter-spacing:.08em; }
+  button:hover { border-color:var(--line-hi); background:#18202a; }
+  button.go { background:var(--accent); color:#07120b; border-color:var(--accent); font-weight:600; }
+  button.go:hover { background:#4ef291; }
+  .btnrow { display:flex; gap:7px; }
+  .btnrow button { flex:1; }
+
+  /* bone tree */
+  #bones { max-height:230px; overflow-y:auto; border:1px solid var(--line); border-radius:4px; padding:5px; }
+  .bone {
+    display:flex; align-items:center; gap:6px; padding:2px 5px; border-radius:3px;
+    font:11.5px ui-monospace,"Courier New",monospace; color:var(--ink-dim);
+    cursor:pointer; white-space:nowrap;
+  }
+  .bone:hover { background:var(--panel-hi); color:var(--ink); }
+  .bone.sel { background:#16321f; color:var(--accent); }
+  .bone.posed::after { content:"●"; color:var(--warn); font-size:9px; }
+  .bone input { flex:0 0 auto; margin:0; accent-color:var(--accent); }
+
+  /* sliders */
+  .sl { margin-bottom:8px; }
+  .sl .top { display:flex; justify-content:space-between; font:11px ui-monospace,monospace; }
+  .sl .top b { color:var(--warn); font-weight:400; }
+  .sl input[type=range] { width:100%; accent-color:var(--accent); margin-top:2px; }
+
+  .read {
+    background:#0b0f14; border:1px solid var(--line); border-left:2px solid var(--accent);
+    border-radius:3px; padding:8px 9px; font:11px/1.65 ui-monospace,"Courier New",monospace;
+    color:var(--ink-dim); white-space:pre-wrap; word-break:break-word;
+  }
+  .read b { color:var(--ink); font-weight:400; }
+  .note { color:var(--ink-faint); font-size:11px; margin-top:7px; line-height:1.5; }
+  textarea {
+    width:100%; height:86px; background:#0b0f14; color:var(--ink-dim);
+    border:1px solid var(--line); border-radius:4px; padding:7px;
+    font:10.5px/1.45 ui-monospace,"Courier New",monospace; resize:vertical;
+  }
+  #drop {
+    position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+    background:rgba(7,9,12,.86); border:2px dashed var(--accent); z-index:20;
+    font:13px ui-monospace,monospace; letter-spacing:.1em; color:var(--accent);
+  }
+  #drop.on { display:flex; }
+</style>
+</head>
+<body>
+
+<div id="side">
+  <a class="back" href="../">← demos</a>
+  <h1>Rig Lab</h1>
+  <div class="sub">Pose a rigged model, measure what its bones actually drive, and search for a pose.</div>
+
+  <section>
+    <h2>Model</h2>
+    <label class="row"><select id="model"></select></label>
+    <label class="row"><span class="k">Clip</span><select id="clip"></select></label>
+    <div class="sl">
+      <div class="top"><span>time</span><b id="tval">0.00s</b></div>
+      <input type="range" id="time" min="0" max="1" step="0.001" value="0">
+    </div>
+    <div class="btnrow">
+      <button id="play">▶ play</button>
+      <button id="rest">rest pose</button>
+    </div>
+    <div class="note">Or drop a <b>.glb</b> anywhere on the viewport.</div>
+  </section>
+
+  <section>
+    <h2>Bones <span id="bcount" style="color:var(--ink-faint)"></span></h2>
+    <div id="bones"></div>
+    <div class="btnrow" style="margin-top:8px">
+      <button id="showSkel">skeleton: off</button>
+      <button id="clearPose">clear pose</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Pose <span id="selname" style="color:var(--ink-faint)"></span></h2>
+    <div id="rot"></div>
+    <div class="note" id="noSel">Pick a bone above. Sliders sit <i>on top of</i> the clip, so you can
+      scrub and pose at once.</div>
+  </section>
+
+  <section>
+    <h2>Measure</h2>
+    <label class="row"><span class="k">reach from</span><select id="origin"></select></label>
+    <label class="row"><span class="k">direction</span><select id="dir">
+      <option value="-x">−X</option><option value="+x">+X</option>
+      <option value="-y">−Y</option><option value="+y">+Y</option>
+      <option value="-z">−Z</option><option value="+z">+Z</option>
+      <option value="far">furthest, any direction</option>
+    </select></label>
+    <div class="read" id="measure">select a bone</div>
+    <div class="note">Reach is measured on the <b>skinned vertices</b> the bone actually drives, not
+      on the bone's own origin — a bone can own geometry that sits nowhere near its pivot.</div>
+  </section>
+
+  <section>
+    <h2>Search a pose</h2>
+    <div class="note" style="margin:0 0 9px">Tick bones in the list to include, then maximise reach
+      in the direction above. Six angles searched per bone.</div>
+    <div class="btnrow">
+      <button class="go" id="opt">maximise reach</button>
+      <button id="revert">undo</button>
+    </div>
+    <div class="read" id="optout" style="margin-top:9px">nothing searched yet</div>
+  </section>
+
+  <section>
+    <h2>Export</h2>
+    <div class="btnrow"><button id="copy">copy pose</button></div>
+    <textarea id="out" readonly placeholder="pose JSON appears here"></textarea>
+  </section>
+</div>
+
+<div id="stage">
+  <div id="drop">drop a .glb</div>
+  <div id="hint">drag to orbit · scroll to zoom</div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+    "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WHY THIS EXISTS. Everything here came out of debugging one attack animation by
+// hand. A rigged model at runtime really is just bones with rotations, and three
+// questions kept coming up that a general 3D package makes surprisingly indirect:
+//
+//   1. what does this bone actually move?  A bone can own vertices that sit
+//      nowhere near its pivot, and a bone that looks like a forearm can turn out
+//      to be a stub at the fingertip that drives almost nothing.
+//   2. how far does that reach?  Not the bone's origin - the skinned geometry.
+//   3. what rotation reaches furthest?  Sweeping one axis at a time answers this
+//      badly: joints interact, and the honest answer needs all the angles moved
+//      together.
+//
+// So: pose, measure, search. Nothing about skinning weights, IK, constraints or
+// export - that is what Blender is for, and this does not try to replace it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MODELS = ['insect_animated','chimpanzee','stephen','spider_animated','jay','ship'];
+
+const stage = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0e13);
+const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 500);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+scene.add(new THREE.HemisphereLight(0x9ab4c8, 0x1a222c, 1.1));
+const key = new THREE.DirectionalLight(0xfff2de, 2.0); key.position.set(4,7,5); scene.add(key);
+const rim = new THREE.DirectionalLight(0x6f9ac6, 1.0); rim.position.set(-5,3,-4); scene.add(rim);
+const grid = new THREE.GridHelper(10, 20, 0x2f7d55, 0x1b2430);
+grid.material.opacity = 0.45; grid.material.transparent = true; scene.add(grid);
+
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h); camera.aspect = w/h; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+
+// ── model state ──────────────────────────────────────────────────────────────
+const loader = new GLTFLoader();
+let root = null, mixer = null, action = null, clips = [];
+let skins = [];                       // every SkinnedMesh, so measurements cover the whole body
+let bones = [];                       // the first skeleton's bones, in order
+let skelHelper = null, showSkel = false;
+let selected = null;                  // bone name
+let playing = false;
+// The pose the user has dialled in, on top of whatever the clip says. Kept as euler
+// triples by bone name so it survives clip changes and can be exported as-is.
+const pose = new Map();
+let poseBefore = null;                // one level of undo, for the search
+
+const $ = id => document.getElementById(id);
+const els = {
+  model:$('model'), clip:$('clip'), time:$('time'), tval:$('tval'), play:$('play'),
+  rest:$('rest'), bones:$('bones'), bcount:$('bcount'), rot:$('rot'), selname:$('selname'),
+  noSel:$('noSel'), origin:$('origin'), dir:$('dir'), measure:$('measure'), opt:$('opt'),
+  optout:$('optout'), revert:$('revert'), copy:$('copy'), out:$('out'),
+  showSkel:$('showSkel'), clearPose:$('clearPose'), drop:$('drop'),
+};
+
+MODELS.forEach(m => els.model.add(new Option(m, m)));
+
+function clearModel() {
+  if (root) { scene.remove(root); }
+  if (skelHelper) { scene.remove(skelHelper); skelHelper = null; }
+  root = null; mixer = null; action = null; clips = []; skins = []; bones = [];
+  selected = null; pose.clear();
+}
+
+function adopt(gltf) {
+  clearModel();
+  root = gltf.scene;
+  scene.add(root);
+  root.traverse(o => { if (o.isSkinnedMesh) skins.push(o); });
+  if (skins.length) bones = skins[0].skeleton.bones;
+  clips = gltf.animations || [];
+  mixer = new THREE.AnimationMixer(root);
+
+  // frame it
+  buildClips(); buildBones(); buildOrigins(); selectBone(bones.length ? bones[0].name : null);
+  frameModel();
+}
+
+function frameModel() {
+  // MEASURE THE POSED SHAPE, NOT THE BIND POSE. Box3.setFromObject reads geometry bounds and
+  // transforms them; for a skinned mesh that describes the model before any bone has moved it. The
+  // insect's legs sprawl once posed, so that gave a sphere of radius 0.3 for something half a unit
+  // across and parked the camera inside it. Sampling real skinned vertices costs a few thousand
+  // transforms once, at load.
+  const box = new THREE.Box3();
+  if (skins.length) {
+    const pv = new THREE.Vector3();
+    for (const skin of skins) {
+      const pos = skin.geometry.attributes.position;
+      const stride = Math.max(1, Math.floor(pos.count / 1500));   // a sample is plenty for bounds
+      for (let v = 0; v < pos.count; v += stride) {
+        pv.fromBufferAttribute(pos, v);
+        skin.applyBoneTransform(v, pv);
+        skin.localToWorld(pv);
+        box.expandByPoint(pv);
+      }
+    }
+  }
+  if (box.isEmpty()) box.setFromObject(root);
+  const sphere = box.getBoundingSphere(new THREE.Sphere());
+  const c = sphere.center, r = sphere.radius || 1;
+  const vFov = camera.fov * Math.PI / 180;
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+  const dist = r / Math.sin(Math.min(vFov, hFov) / 2) * 1.15;
+  controls.target.copy(c);
+  camera.position.set(c.x + dist*0.55, c.y + r*0.35, c.z + dist*0.84);
+  camera.near = r/100; camera.far = dist*20; camera.updateProjectionMatrix();
+  grid.position.y = box.min.y;
+  grid.scale.setScalar(Math.max(1, r/2));
+  window.__lab && (window.__lab.frame = { r:+r.toFixed(3), dist:+dist.toFixed(3),
+    aspect:+camera.aspect.toFixed(3), camDist:+camera.position.distanceTo(c).toFixed(3) });
+
+}
+
+function loadNamed(name) {
+  loader.load(`../../models/${name}.glb`, adopt,
+    undefined, e => els.measure.textContent = 'load failed: ' + e.message);
+}
+
+// ── clips + time ─────────────────────────────────────────────────────────────
+function buildClips() {
+  els.clip.innerHTML = '';
+  els.clip.add(new Option('— rest pose —', ''));
+  clips.forEach(c => els.clip.add(new Option(`${c.name}  (${c.duration.toFixed(2)}s)`, c.name)));
+  els.clip.value = clips.length ? clips[0].name : '';
+  useClip(els.clip.value);
+}
+function useClip(name) {
+  if (action) { action.stop(); action = null; }
+  const clip = clips.find(c => c.name === name);
+  if (!clip) { els.time.max = 1; els.time.value = 0; setTime(0); return; }
+  action = mixer.clipAction(clip);
+  action.play(); action.paused = true;
+  els.time.max = clip.duration; els.time.step = clip.duration/600;
+  setTime(Math.min(+els.time.value, clip.duration));
+}
+function setTime(t) {
+  els.time.value = t; els.tval.textContent = (+t).toFixed(2) + 's';
+  if (mixer && action) mixer.setTime(t);
+}
+
+// ── bones ────────────────────────────────────────────────────────────────────
+function buildBones() {
+  els.bones.innerHTML = '';
+  els.bcount.textContent = bones.length ? `(${bones.length})` : '(no skeleton)';
+  const depthOf = b => { let d = 0, p = b.parent; while (p && p.isBone) { d++; p = p.parent; } return d; };
+  bones.forEach(b => {
+    const row = document.createElement('div');
+    row.className = 'bone'; row.dataset.name = b.name;
+    row.style.paddingLeft = (5 + depthOf(b)*11) + 'px';
+    const tick = document.createElement('input');
+    tick.type = 'checkbox'; tick.title = 'include when searching';
+    tick.onclick = e => e.stopPropagation();
+    const label = document.createElement('span'); label.textContent = b.name;
+    row.append(tick, label);
+    row.onclick = () => selectBone(b.name);
+    els.bones.appendChild(row);
+  });
+  refreshBoneList();
+}
+function refreshBoneList() {
+  for (const row of els.bones.children) {
+    row.classList.toggle('sel', row.dataset.name === selected);
+    row.classList.toggle('posed', pose.has(row.dataset.name));
+  }
+}
+function buildOrigins() {
+  els.origin.innerHTML = '';
+  els.origin.add(new Option('— model origin —', ''));
+  bones.forEach(b => els.origin.add(new Option(b.name, b.name)));
+  // the root bone is the sane default to measure a limb's reach from
+  els.origin.value = bones.length ? bones[0].name : '';
+}
+
+const AXES = ['x','y','z'];
+function selectBone(name) {
+  selected = name;
+  els.selname.textContent = name ? '' : '';
+  els.rot.innerHTML = '';
+  els.noSel.style.display = name ? 'none' : '';
+  if (!name) { refreshBoneList(); measure(); return; }
+  const cur = pose.get(name) || { x:0, y:0, z:0 };
+  AXES.forEach(ax => {
+    const wrap = document.createElement('div'); wrap.className = 'sl';
+    const top = document.createElement('div'); top.className = 'top';
+    const k = document.createElement('span'); k.textContent = 'rotate ' + ax.toUpperCase();
+    const v = document.createElement('b'); v.textContent = cur[ax].toFixed(2);
+    top.append(k, v);
+    const sl = document.createElement('input');
+    sl.type = 'range'; sl.min = -Math.PI; sl.max = Math.PI; sl.step = 0.01; sl.value = cur[ax];
+    sl.oninput = () => {
+      const p = pose.get(name) || { x:0, y:0, z:0 };
+      p[ax] = +sl.value; pose.set(name, p);
+      v.textContent = (+sl.value).toFixed(2);
+      refreshBoneList(); measure(); dumpPose();
+    };
+    wrap.append(top, sl); els.rot.appendChild(wrap);
+  });
+  refreshBoneList(); measure();
+}
+
+// THE POSE GOES ON AFTER THE MIXER, EVERY FRAME. The clip owns these bones; anything laid on top
+// only survives because it is re-applied, and re-applying means reading the mixer's value fresh
+// rather than accumulating onto last frame's result. Nothing here can drift.
+const _e = new THREE.Euler(), _q = new THREE.Quaternion();
+function applyPose() {
+  if (!bones.length) return;
+  for (const b of bones) {
+    const p = pose.get(b.name);
+    if (!p) continue;
+    _e.set(p.x, p.y, p.z);
+    b.quaternion.multiply(_q.setFromEuler(_e));
+  }
+}
+
+// ── measuring ────────────────────────────────────────────────────────────────
+// A bone's reach is a question about the MESH, not the skeleton: which vertices follow it, and
+// where do they end up once skinning has been applied. applyBoneTransform gives the deformed
+// position of a vertex, which is the only honest way to answer it.
+const _v = new THREE.Vector3(), _o = new THREE.Vector3();
+function drivenBy(name, minWeight = 0.5) {
+  const out = [];
+  for (const skin of skins) {
+    const idx = skin.skeleton.bones.findIndex(b => b.name === name);
+    if (idx < 0) continue;
+    const si = skin.geometry.attributes.skinIndex, sw = skin.geometry.attributes.skinWeight;
+    if (!si || !sw) continue;
+    const list = [];
+    for (let v = 0; v < si.count; v++) {
+      let w = 0;
+      for (let k = 0; k < 4; k++) if (si.getComponent(v, k) === idx) w += sw.getComponent(v, k);
+      if (w >= minWeight) list.push(v);
+    }
+    if (list.length) out.push({ skin, list });
+  }
+  return out;
+}
+let drivenCache = { name:null, sets:[] };
+function drivenCached(name) {
+  if (drivenCache.name !== name) drivenCache = { name, sets: drivenBy(name) };
+  return drivenCache.sets;
+}
+function dirVector() {
+  const d = els.dir.value;
+  if (d === 'far') return null;
+  const s = d[0] === '-' ? -1 : 1, ax = d[1];
+  return new THREE.Vector3(ax==='x'?s:0, ax==='y'?s:0, ax==='z'?s:0);
+}
+function originPoint(out) {
+  const n = els.origin.value;
+  const b = n && bones.find(x => x.name === n);
+  if (b) b.getWorldPosition(out); else if (root) root.getWorldPosition(out); else out.set(0,0,0);
+  return out;
+}
+// returns { count, reach, tip } — reach in world units along the chosen direction
+function reachOf(name) {
+  const sets = drivenCached(name);
+  let count = 0, best = -Infinity, tip = null;
+  if (!sets.length) return { count:0, reach:0, tip:null };
+  originPoint(_o);
+  const dir = dirVector();
+  for (const { skin, list } of sets) {
+    count += list.length;
+    for (const v of list) {
+      _v.fromBufferAttribute(skin.geometry.attributes.position, v);
+      skin.applyBoneTransform(v, _v);
+      skin.localToWorld(_v);
+      const d = dir ? _v.clone().sub(_o).dot(dir) : _v.distanceTo(_o);
+      if (d > best) { best = d; tip = _v.clone(); }
+    }
+  }
+  return { count, reach: best, tip };
+}
+function measure() {
+  if (!selected) { els.measure.textContent = 'select a bone'; return; }
+  if (!skins.length) { els.measure.textContent = 'this model has no skinned mesh'; return; }
+  const r = reachOf(selected);
+  if (!r.count) {
+    els.measure.innerHTML = `<b>${selected}</b>\nno vertices weighted above 0.5 to this bone —\nit drives nothing on its own.`;
+    return;
+  }
+  // how much does this bone actually move its own geometry? a stub at a fingertip owns vertices
+  // but barely shifts them, which is exactly the trap that cost hours on the insect.
+  const before = [];
+  for (const { skin, list } of drivenCached(selected)) {
+    for (const v of list) {
+      _v.fromBufferAttribute(skin.geometry.attributes.position, v);
+      skin.applyBoneTransform(v, _v); skin.localToWorld(_v);
+      before.push(_v.clone());
+    }
+  }
+  // TWIST IT ON EVERY AXIS, not one. Doing this on a single axis is how I convinced myself a bone
+  // was a stub that drove nothing - it barely moved about X and moved plenty about Z. Whether a
+  // joint does real work is a question about the joint, and must not depend on which axis I picked.
+  const bone = bones.find(b => b.name === selected);
+  const keep = bone.quaternion.clone();
+  let mean = 0, max = 0, bestAxis = 'x';
+  for (const ax of AXES) {
+    bone.quaternion.copy(keep);
+    _e.set(ax === 'x' ? 1 : 0, ax === 'y' ? 1 : 0, ax === 'z' ? 1 : 0);
+    bone.quaternion.multiply(_q.setFromEuler(_e));               // a 1 rad test twist
+    root.updateMatrixWorld(true);
+    let sum = 0, i = 0, mx = 0;
+    for (const { skin, list } of drivenCached(selected)) {
+      for (const v of list) {
+        _v.fromBufferAttribute(skin.geometry.attributes.position, v);
+        skin.applyBoneTransform(v, _v); skin.localToWorld(_v);
+        const d = _v.distanceTo(before[i++]); sum += d; mx = Math.max(mx, d);
+      }
+    }
+    const m = sum / Math.max(1, i);
+    if (m > mean) { mean = m; max = mx; bestAxis = ax; }
+  }
+  bone.quaternion.copy(keep); root.updateMatrixWorld(true);
+  const label = els.dir.value === 'far' ? 'furthest vertex' : `reach along ${els.dir.value.toUpperCase()}`;
+  els.measure.innerHTML =
+    `<b>${selected}</b>\n` +
+    `drives <b>${r.count}</b> vertices\n` +
+    `${label}: <b>${r.reach.toFixed(3)}</b>\n` +
+    `tip height: <b>${(r.tip.y - _o.y).toFixed(3)}</b> above the origin\n` +
+    `1 rad twist moves them <b>${mean.toFixed(3)}</b> mean / ${max.toFixed(3)} max ` +
+    `(best axis ${bestAxis.toUpperCase()})` +
+    (mean < 0.02 ? `\n\n⚠ barely moves its own geometry on any axis — a stub, not a joint.` : '');
+}
+
+// ── the search ───────────────────────────────────────────────────────────────
+// Sweeping one axis at a time is the obvious thing and it lies: joints interact, and the reach a
+// limb can be posed into is found by moving every angle together. Coarse random sampling to find
+// the basin, then a shrinking hill-climb to sharpen it.
+function checkedBones() {
+  const out = [];
+  for (const row of els.bones.children)
+    if (row.firstChild.checked) out.push(row.dataset.name);
+  return out;
+}
+function runSearch() {
+  if (!selected || !skins.length) { els.optout.textContent = 'select a bone first'; return; }
+  let vary = checkedBones();
+  if (!vary.length) {
+    // nothing ticked: the selected bone and its parent is almost always what is meant
+    const b = bones.find(x => x.name === selected);
+    vary = [selected];
+    if (b && b.parent && b.parent.isBone) vary.unshift(b.parent.name);
+  }
+  if (vary.length > 5) { els.optout.textContent = 'tick at most 5 bones (that is 15 angles)'; return; }
+
+  poseBefore = new Map([...pose].map(([k, v]) => [k, { ...v }]));
+  const score = p => {
+    for (let i = 0; i < vary.length; i++)
+      pose.set(vary[i], { x:p[i*3], y:p[i*3+1], z:p[i*3+2] });
+    if (action) mixer.setTime(+els.time.value);
+    applyPose(); root.updateMatrixWorld(true);
+    return reachOf(selected).reach;
+  };
+  const n = vary.length * 3;
+  const start = [];
+  for (const nm of vary) { const q = pose.get(nm) || {x:0,y:0,z:0}; start.push(q.x, q.y, q.z); }
+
+  const t0 = performance.now();
+  let best = start.slice(), bestScore = score(best);
+  const from = score([...Array(n)].map(() => 0));
+  const R = () => (Math.random()*2 - 1) * Math.PI;
+  const TRIES = 4000;
+  for (let i = 0; i < TRIES; i++) {
+    const p = [...Array(n)].map(R);
+    const s = score(p);
+    if (s > bestScore) { bestScore = s; best = p; }
+  }
+  for (let step = 0.5; step > 0.004; step *= 0.72) {
+    let moved = true;
+    while (moved) {
+      moved = false;
+      for (let d = 0; d < n; d++) for (const s of [1, -1]) {
+        const p = best.slice(); p[d] += s*step;
+        const sc = score(p);
+        if (sc > bestScore + 1e-7) { bestScore = sc; best = p; moved = true; }
+      }
+    }
+  }
+  score(best);
+  const ms = Math.round(performance.now() - t0);
+  const gain = from !== 0 ? ((bestScore - from) / Math.abs(from) * 100) : 0;
+  els.optout.innerHTML =
+    `varied: <b>${vary.join(', ')}</b>\n` +
+    `unposed <b>${from.toFixed(3)}</b> → searched <b>${bestScore.toFixed(3)}</b>` +
+    `  (${gain >= 0 ? '+' : ''}${gain.toFixed(1)}%)\n` +
+    `${TRIES} samples + hill-climb, ${ms}ms`;
+  selectBone(selected); dumpPose();
+}
+
+// ── export ───────────────────────────────────────────────────────────────────
+function dumpPose() {
+  if (!pose.size) { els.out.value = ''; return; }
+  const o = {};
+  for (const [k, v] of pose)
+    o[k] = { x:+v.x.toFixed(4), y:+v.y.toFixed(4), z:+v.z.toFixed(4) };
+  els.out.value = JSON.stringify(o, null, 2);
+}
+
+// ── wiring ───────────────────────────────────────────────────────────────────
+els.model.onchange = () => loadNamed(els.model.value);
+els.clip.onchange = () => useClip(els.clip.value);
+els.time.oninput = () => setTime(+els.time.value);
+els.play.onclick = () => {
+  playing = !playing;
+  els.play.textContent = playing ? '❚❚ pause' : '▶ play';
+};
+els.rest.onclick = () => { els.clip.value = ''; useClip(''); };
+els.dir.onchange = measure;
+els.origin.onchange = measure;
+els.opt.onclick = runSearch;
+els.revert.onclick = () => {
+  if (!poseBefore) return;
+  pose.clear(); for (const [k, v] of poseBefore) pose.set(k, v);
+  poseBefore = null; selectBone(selected); dumpPose();
+};
+els.clearPose.onclick = () => { pose.clear(); selectBone(selected); dumpPose(); };
+els.showSkel.onclick = () => {
+  showSkel = !showSkel;
+  els.showSkel.textContent = 'skeleton: ' + (showSkel ? 'on' : 'off');
+  if (showSkel && root && !skelHelper) {
+    skelHelper = new THREE.SkeletonHelper(root);
+    skelHelper.material.linewidth = 2; scene.add(skelHelper);
+  }
+  if (skelHelper) skelHelper.visible = showSkel;
+};
+els.copy.onclick = () => {
+  dumpPose(); els.out.select();
+  if (navigator.clipboard) navigator.clipboard.writeText(els.out.value).catch(()=>{});
+  els.copy.textContent = 'copied'; setTimeout(() => els.copy.textContent = 'copy pose', 900);
+};
+
+// drag a .glb straight in
+stage.addEventListener('dragover', e => { e.preventDefault(); els.drop.classList.add('on'); });
+stage.addEventListener('dragleave', () => els.drop.classList.remove('on'));
+stage.addEventListener('drop', e => {
+  e.preventDefault(); els.drop.classList.remove('on');
+  const f = e.dataTransfer.files[0];
+  if (!f) return;
+  f.arrayBuffer().then(buf => loader.parse(buf, '', adopt,
+    err => els.measure.textContent = 'could not read that file: ' + err.message));
+});
+
+// ── loop ─────────────────────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = clock.getDelta();
+  if (playing && action) {
+    const clip = action.getClip();
+    let t = (+els.time.value + dt) % clip.duration;
+    setTime(t);
+  } else if (mixer && action) {
+    mixer.setTime(+els.time.value);            // re-evaluate so the pose is laid on a fresh base
+  }
+  applyPose();
+  if (skelHelper) skelHelper.visible = showSkel;
+  controls.update();
+  renderer.render(scene, camera);
+});
+
+window.__lab = { pose, reachOf, drivenBy, THREE, bonesOf: () => bones.map(b => b.name) };
+resize();
+loadNamed(MODELS[0]);
+</script>
+</body>
+</html>
