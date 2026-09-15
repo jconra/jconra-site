@@ -275,6 +275,12 @@ GRAB.dur = GRAB.reach + GRAB.latch + GRAB.shake + GRAB.release;
 // playback AND the state timer together, otherwise the state outlasts the animation and he stands
 // frozen at the end of a swing.
 const ATTACK_RATE = 1.7, HURT_RATE = 1.5;
+// HOW FAR A COMMITTED SWING MAY CARRY HIM. This was 1.4, which is less than the job needs: the
+// fighters' marks are 1.6 apart and a dodge puts him a further 1.0 out, so a counter thrown from
+// the rear slot has to cover 1.54 to 1.76 depending on the strike. Clamped at 1.4 it fell short
+// every single time - dodge backwards, hit back, and the blow could not reach by construction,
+// however well it was timed. 2.4 covers the worst case with room for both of them drifting.
+const DRIVE_MAX = 2.4;
 // THE JUMP CLIP IS FIVE HOPS. Measured off the foot height, `jump` runs 2.25s and bounces at
 // 0.13, 0.61, 1.13, 1.57 and 1.99 - which is why a dodge looked like a kangaroo however the
 // trigger behaved. Hop 1 is the tallest, so the dodge uses a subclip cut from just after hop 0
@@ -965,7 +971,7 @@ function tryAttack(index) {
   // now, how much further than this swing's extension is the chest surface? Step that far in
   // on the way to the peak and back out afterwards, like a lunging jab.
   tmp.copy(bug.root.position).sub(hero.root.position); tmp.y = 0;
-  P.drive = THREE.MathUtils.clamp(tmp.length() - HALF_DEPTH[opponent] + PEN - st.ext, 0, 1.4);
+  P.drive = THREE.MathUtils.clamp(tmp.length() - HALF_DEPTH[opponent] + PEN - st.ext, 0, DRIVE_MAX);
   P.driveDir = tmp.normalize().clone();
   P.driveFrom = hero.root.position.clone();
 }
@@ -1285,10 +1291,21 @@ function player(dt) {
 
   if (P.state === 'attack' || P.state === 'hurt') {
     P.t -= dt;
-    if (P.state === 'attack' && P.drive > 0) {
+    if (P.state === 'attack' && P.driveFrom) {
       // in to the peak, out over the rest
       const peakT = P.dur - P.hitAt, el = P.dur - P.t;
       const k = el < peakT ? el / peakT : Math.max(0, 1 - (el - peakT) / Math.max(0.05, P.hitAt));
+      // RE-AIM WHILE CLOSING, for the same reason the chimp's jaws do. Aim taken once at the key
+      // press is aim at where the chimp WAS, and the gap between that and the blow landing is long
+      // enough to matter: 0.36s for a punch and 0.59s for front_kick_01, during which the chimp can
+      // fidget, sway, or lunge and return through more than a unit of ground. The swing still
+      // starts where he started - so the lunge reads the same - but it finishes at the right
+      // standoff from wherever the chimp actually is by then.
+      const stk = STRIKE.stephen[P.atk];
+      tmp.copy(bug.root.position).sub(P.driveFrom); tmp.y = 0;
+      const reach = stk.ext + HALF_DEPTH[opponent] - PEN;
+      P.drive = THREE.MathUtils.clamp(tmp.length() - reach, 0, DRIVE_MAX);
+      if (tmp.lengthSq() > 1e-6) P.driveDir.copy(tmp).normalize();
       hero.root.position.copy(P.driveFrom).addScaledVector(P.driveDir, P.drive * k);
     }
     if (P.state === 'attack' && !P.didHit && P.t <= P.hitAt) {
@@ -2129,7 +2146,8 @@ function tick() {
     // Anything that deliberately closes the distance is exempt. The grab in particular holds him
     // inside the jaws, and the push was quietly shoving the bug off him every frame.
     const CLOSING = ['lunge','rear','return','bite','grab'].includes(B.state)
-                 || P.state === 'grabbed' || P.state === 'thrown';
+                 || P.state === 'grabbed' || P.state === 'thrown'
+                 || P.state === 'attack';          // his swing is closing too; do not shove the target off it
     if (!CLOSING && gap > 1e-4 && gap < MIN) {
       const push = tmp.normalize().multiplyScalar((MIN - gap) * 0.5);
       if (!B.dead) bug.root.position.sub(push);
