@@ -92,7 +92,12 @@ const opponent = round === 2 ? 'insect' : 'chimp';
 const UNBEATABLE = round === 2 && !Q.has('fair');
 const HP_FLOOR = 0.09;                             // fraction of max the bug never falls below
 const ARENA = 11;
-const INTRO_START_Z = -11, INTRO_END_Z = -0.8, INTRO_DURATION = 7;
+// INTRO BEATS. He used to walk for 7s and reach his mark in about 4, so the last three were spent
+// marching on the spot. WALK_T is now the whole walk-on, CELEBRATE the beat where he cheers and
+// the opponent shows off, and INTRO_DURATION is just their sum.
+const INTRO_START_Z = -11, INTRO_END_Z = -0.8;
+const WALK_T = 3.6, CELEBRATE = 1.7, INTRO_DURATION = WALK_T + CELEBRATE;
+const WALK_RATE = 1.45, CHEER_RATE = 2.3;
 // The opponent walks on from its own side rather than being planted there from frame one.
 // The chimp squares up at a 1.6 gap, derived from its punch reach below; the insect is a much
 // longer body and keeps the 3.2 it was tuned at.
@@ -142,15 +147,27 @@ const CHIMP_ANIM = {
   strike: C('box_01'),                            // default; strikeSet cycles
   strikeSet: ['box_01','box_03','front_kick_02','press-up'].map(C),
   bite: C('press-up'),                            // jumps at the face, grabs and pulls
+  taunt: C('dance_05'),                           // a quick strut while Stephen cheers
+  hurt: [C('hit_to_body_02'), C('hit_to_head')],  // it flinches when it is hit
   death: C('defeat_03'),
 };
-const INSECT_ANIM = {idle:'Idle', walk:'Walk', rear:'RearUp', strike:'Strike', strikeSet:['Strike'], death:'Death'};
+const INSECT_ANIM = {idle:'Idle', walk:'Walk', rear:'RearUp', strike:'Strike', strikeSet:['Strike'], taunt:'RearUp', hurt:null, death:'Death'};
 const ENEMY_ANIM = opponent === 'chimp' ? CHIMP_ANIM : INSECT_ANIM;
 const ENEMY_FILE = opponent === 'chimp' ? 'chimpanzee.glb' : 'insect_animated.glb';
+const ENEMY_TAUNT = ENEMY_ANIM.taunt;
 const FOE_NAME = opponent === 'chimp' ? 'Chimpanzee' : 'Warrior Bug';
 document.getElementById('enemy-name').textContent = FOE_NAME;
 const nextRound = () => { location.search = '?round=2' + (FORCE_GL1 ? '&gl1' : ''); };
 const DMG = UNBEATABLE ? BUG.boss : BUG;
+// MEASURED: sampling the skinned surface through defeat_03 at game scale, Stephen's lowest vertex
+// ends 0.246 below the floor and the chimp's 0.274 - they lie in the concrete. The clip sinks
+// gradually to its lowest at the very end, so the lift ramps in over the fall rather than popping
+// the body up on the first frame.
+const DEATH_LIFT = { stephen: 0.27, chimp: 0.30, insect: 0 };
+const DEATH_RAMP = 1.6;
+function liftBody(rig, who, elapsed) {
+  rig.root.position.y = DEATH_LIFT[who] * Math.min(1, elapsed / DEATH_RAMP);
+}
 const ATTACKS = ['box_01','box_03','front_kick_01','front_kick_02'];
 // The preset clips are performed at a leisurely pace; a fight wants them snappy. Rate scales the
 // playback AND the state timer together, otherwise the state outlasts the animation and he stands
@@ -355,6 +372,14 @@ for (let i = 0; i < 26; i++) {
 // ── animation helper ──────────────────────────────────────────────────────────
 // Add a distal mitten joint in the bind pose. Existing animation continues to
 // control the knuckles; this extra joint curls the fingertips into the palm.
+// The curl joints added below are held at -120 degrees so he makes a fist. That is right for
+// punching and wrong for waving, which is why the celebration clips looked broken - so the angle
+// is driven rather than fixed.
+const curlTips = [];
+function fistCurl(k) {
+  const a = THREE.MathUtils.degToRad(-120 * k);
+  for (const t of curlTips) t.rotation.x = a;
+}
 function closeStephenFists(model) {
   model.updateMatrixWorld(true);
   const fingers = ['L_Fingers', 'R_Fingers'].map(name => model.getObjectByName(name));
@@ -414,6 +439,7 @@ function closeStephenFists(model) {
       skinIndex.needsUpdate = skinWeight.needsUpdate = true;
     }
     tip.rotation.x = THREE.MathUtils.degToRad(-120);
+    curlTips.push(tip);
   }
 }
 
@@ -543,8 +569,8 @@ function setInput(mode) {
 }
 setInput(matchMedia('(hover: none) and (pointer: coarse)').matches ? 'touch' : 'keys');
 
-const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, dodgeKey:null, dodgeUntil:0, dodgeAnimT:0 };
-const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55 };
+const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, dodgeKey:null, dodgeUntil:0, dodgeAnimT:0, deadT:0 };
+const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0 };
 let phase = 'cine', cineT = 0, overT = 0;
 
 const keys = {};
@@ -655,6 +681,19 @@ function damageBug(d) {
     setTimeout(()=>o.material.emissive.setHex(0x000000), 130); } });
   if (UNBEATABLE) B.hp = Math.max(B.hp, BUG.hp * HP_FLOOR);
   ehp.style.width = (100*B.hp/BUG.hp) + '%';
+  // FLINCH. A hit interrupts whatever it was doing, including a committed swing, so trading blows
+  // beats standing off. It does NOT interrupt a rear that is already past its tell - otherwise a
+  // fast enough player denies the attack outright - and the cooldown is longer than the flinch
+  // plus a wind-up, so a flurry cannot stun-lock it into a statue that never swings back.
+  const committed = B.state === 'rear' && B.t < 0.32;
+  if (B.hp > 0 && ENEMY_ANIM.hurt && B.hurtCd <= 0 && !committed && B.state !== 'victory') {
+    if (B.kickYaw) { bug.model.rotation.y -= B.kickYaw; B.kickYaw = 0; }
+    const n = ENEMY_ANIM.hurt[(Math.random() * ENEMY_ANIM.hurt.length) | 0];
+    const a = bug.play(n, { once:true, fade:0.07, rate:HURT_RATE, force:true });
+    B.state = 'hurt';
+    B.t = (a ? a.getClip().duration * 0.45 : 0.4) / HURT_RATE;
+    B.hurtCd = 2.0;
+  }
   if (B.hp <= 0) {
     B.dead = true; B.state = 'dead';
     bug.play(ENEMY_ANIM.death, { once:true, fade:0.15 });
@@ -671,8 +710,10 @@ function damageHero(d) {
   P.invuln = 0.7;
   php.style.width = (100*P.hp/PLAYER.hp) + '%';
   if (P.hp <= 0) {
-    P.dead = true; P.state = 'dead';
+    P.dead = true; P.state = 'dead'; P.deadT = 0;
     hero.play(A('defeat_03'), { once:true, fade:0.15 });
+    if (!B.dead) { B.state = 'victory'; B.t = 0; B.lunged = true;
+      if (B.kickYaw) { bug.model.rotation.y -= B.kickYaw; B.kickYaw = 0; } }
     say('DEFEATED', UNBEATABLE ? 'nothing beats the bug' : 'reload to try again');
   } else {
     P.state = 'hurt';
@@ -688,13 +729,22 @@ function cine(dt) {
   const t = cineT;
   // He walks on from the very start and the camera keeps him in frame throughout — an opening
   // that orbits the bug alone reads as spinning around an empty patch of floor.
-  const walkK = Math.min(1, t/INTRO_DURATION), we = walkK*walkK*(3-2*walkK);
-  if (t < INTRO_DURATION) {
+  const walkK = Math.min(1, t/WALK_T), we = walkK*walkK*(3-2*walkK);
+  if (t < WALK_T) {
     hero.root.position.z = THREE.MathUtils.lerp(INTRO_START_Z, INTRO_END_Z, we);
     // the opponent squares up from the far side on the same beat
     bug.root.position.z = THREE.MathUtils.lerp(ENEMY_START_Z, ENEMY_END_Z, we);
     bug.root.rotation.y = Math.PI;
-    bug.play(ENEMY_ANIM.walk, { fade:0.3 });
+    bug.play(ENEMY_ANIM.walk, { fade:0.3, rate:WALK_RATE });
+    hero.play(A('swagger'), { fade:0.3, rate:WALK_RATE });
+  } else {
+    // ON THE MARK. He cheers, the opponent shows off, and neither keeps walking on the spot.
+    hero.root.position.z = INTRO_END_Z;
+    bug.root.position.z = ENEMY_END_Z;
+    // `cheer` is 12s of arm-waving; at this rate the beat shows only its opening lift.
+    hero.play(A('cheer'), { fade:0.18, rate:CHEER_RATE, once:true });
+    fistCurl(0);                                   // open hands to wave, fists for the fight
+    bug.play(ENEMY_TAUNT, { fade:0.2, rate:1.5, once:true });
   }
 
   const between = tmp.copy(bug.root.position).add(hero.root.position).multiplyScalar(0.5);
@@ -705,16 +755,16 @@ function cine(dt) {
   const br = Math.hypot(behind.x, behind.z);
   if (br > ARENA + 2) { behind.x *= (ARENA+2)/br; behind.z *= (ARENA+2)/br; }
   const sideView = between.clone().addScaledVector(side, cameraDistance).setY(2.8);
-  if (t < 3.4) {
+  if (t < WALK_T * 0.55) {
     // Approach from behind the chimp, with the camera looking down the line
     // between the fighters as Stephen walks into the arena.
     camera.position.copy(behind);
     camera.lookAt(between.x, 1.2, between.z);
     if (t < 0.1) say('ROUND ' + round, FOE_NAME);
-    if (t > 2.8) hide();
+    if (t > WALK_T*0.45) hide();
   } else if (t < INTRO_DURATION) {
     // Move to a side-on position and aim directly at the space between them.
-    const k = Math.min(1,(t-3.4)/4.2), e = k*k*(3-2*k);
+    const k = Math.min(1,(t - WALK_T*0.55)/(WALK_T*0.45)), e = k*k*(3-2*k);
     camera.position.lerpVectors(behind, sideView, e);
     camera.lookAt(between.x, 1.2, between.z);
   } else {
@@ -736,6 +786,7 @@ function endCine() {
     cameraDistance = fitDistance();
   }
   hero.root.rotation.y = 0;
+  fistCurl(1);                                     // back to fists for the fight
   hero.play(A('idle'), { fade:0.2 });
   P.home = hero.root.position.clone();
   P.state = 'idle';
@@ -747,7 +798,7 @@ function endCine() {
 const ndc = new THREE.Vector3();
 const fwd = new THREE.Vector3(), tmp = new THREE.Vector3(), dodgeAxis = new THREE.Vector3(), dodgeTarget = new THREE.Vector3();
 function player(dt) {
-  if (P.dead) return;
+  if (P.dead) { P.deadT += dt; liftBody(hero, 'stephen', P.deadT); return; }
   if (P.invuln > 0) P.invuln -= dt;
 
   // This is a one-dimensional fighter: the opponents stay squared up instead
@@ -819,7 +870,8 @@ function player(dt) {
 
 // ── the bug ───────────────────────────────────────────────────────────────────
 function bugAI(dt) {
-  if (B.dead) return;
+  if (B.hurtCd > 0) B.hurtCd -= dt;
+  if (B.dead) { B.deadT += dt; liftBody(bug, opponent, B.deadT); return; }
   if (UNBEATABLE && B.hp < BUG.hp) {               // it knits itself back together
     B.hp = Math.min(BUG.hp, B.hp + BUG.regen * dt);
     ehp.style.width = (100*B.hp/BUG.hp) + '%';
@@ -838,6 +890,22 @@ function bugAI(dt) {
   bug.root.rotation.y += Math.sign(dY) * Math.min(Math.abs(dY), 4.0 * dt);
 
   switch (B.state) {
+    case 'hurt':
+      if (B.t <= 0) { B.state = 'idle'; B.t = 0.5 + Math.random()*0.7; bug.play(ENEMY_ANIM.idle, { fade:0.15 }); }
+      break;
+    case 'victory': {
+      // Walk over and dance on the spot where he fell. This has to be tighter than the 1.6 they
+      // fight at, or the approach never happens and it just dances where it stood.
+      const close = 1.05;
+      if (dist > close) {
+        bug.root.position.x += toHero.x * BUG.walk * 1.35 * dt;
+        bug.root.position.z += toHero.z * BUG.walk * 1.35 * dt;
+        bug.play(ENEMY_ANIM.walk, { fade:0.25, rate:1.35 });
+      } else {
+        bug.play(ENEMY_ANIM.taunt, { fade:0.3, rate:1.0 });
+      }
+      break;
+    }
     case 'idle':
       bug.play(ENEMY_ANIM.idle);
       if (B.t <= 0) { B.state='rear'; B.t = 0.85; bug.play(ENEMY_ANIM.rear, { once:true, fade:0.12, rate:1.45 }); }
@@ -948,7 +1016,7 @@ window.__heroPos = () => hero ? {
   w: hero.cur? +hero.cur.getEffectiveWeight().toFixed(2):null
 } : null;
 // Headless test hook: ?probe lets a harness drive damage directly.
-if (Q.has('probe')) Object.assign(window, { damageBug, damageHero, P, B, BUG });
+if (Q.has('probe')) Object.assign(window, { damageBug, damageHero, P, B, BUG, rigs:()=>({hero,bug}) });
 
 function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
