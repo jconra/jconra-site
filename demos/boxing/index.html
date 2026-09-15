@@ -351,10 +351,11 @@ fill.position.set(6, 3, -2); scene.add(fill);
 const SPOT_H = 18, SPOT_ANGLE = 0.20;      // tight enough to sit on the fight and nothing else
 // 130 by eye against 0 / 70 / 130 / 220 rendered side by side: enough to draw the pool and let the
 // canvas fall away into the dark at the rim, without flattening the night out of the rest of it.
-// PENUMBRA 0.30: an edge you can see, with enough softness left that it does not alias along the
-// rim as the camera turns. 0.55, where this started, was gradual enough that the pool had no edge
-// at all and simply read as ambient light.
-const spot = new THREE.SpotLight(0xffeccd, 130, 46, SPOT_ANGLE, 0.30, 1);
+// PENUMBRA 0.80, chosen in play rather than from a render. A soft edge read as mush when the cone
+// was wide, because the falloff was spread across most of the canvas; narrowed to 0.20 the same
+// softness lands in a much shorter distance, so it reads as a lamp with a soft edge rather than as
+// no edge at all. Sharpness and width are not independent choices, which is why both are sliders.
+const spot = new THREE.SpotLight(0xffeccd, 130, 46, SPOT_ANGLE, 0.80, 1);
 // DEAD CENTRE. This used to sit 1.5 off in z, on the reasoning that it put the light on the side
 // the camera was on - which is wrong, because the camera orbits on a right-drag, so there is no
 // fixed camera side for it to be on. All it actually did was push the lamp off the middle of the
@@ -376,7 +377,8 @@ const beamGeo = new THREE.ConeGeometry(SPOT_H * Math.tan(SPOT_ANGLE) * 1.02, SPO
 const beam = new THREE.Mesh(beamGeo, new THREE.ShaderMaterial({
   transparent: true, depthWrite: false, side: THREE.DoubleSide,
   blending: THREE.AdditiveBlending,
-  uniforms: { uColor: { value: new THREE.Color(0xffe3b4) }, uStrength: { value: 0.26 } },
+  uniforms: { uColor: { value: new THREE.Color(0xffe3b4) }, uStrength: { value: 0.10 },
+              uSoft: { value: 1.0 } },
   vertexShader: `
     varying vec3 vN; varying vec3 vV; varying float vH;
     void main() {
@@ -387,11 +389,21 @@ const beam = new THREE.Mesh(beamGeo, new THREE.ShaderMaterial({
       gl_Position = projectionMatrix * mv;
     }`,
   fragmentShader: `
-    uniform vec3 uColor; uniform float uStrength;
+    uniform vec3 uColor; uniform float uStrength; uniform float uSoft;
     varying vec3 vN; varying vec3 vV; varying float vH;
     void main() {
-      float graze = 1.0 - abs(dot(normalize(vN), normalize(vV)));
-      float a = pow(graze, 2.0) * uStrength;
+      // FACE-ON, NOT EDGE-ON. Weighting by grazing angle is what a thin shell does, and it draws
+      // the cone as two bright outlines with nothing in between - which is why the edges looked
+      // like drawn lines. Weighting by how square the shell is to the eye fills the shaft instead
+      // and takes it to zero exactly at the silhouette, so the edge feathers out on its own.
+      //
+      // It is also the more honest of the two. What a real shaft shows is how much lit air the ray
+      // crossed, and for a cylinder seen side-on that chord is exactly sqrt(1 - (x/r)^2) across the
+      // width - which is precisely abs(dot(N, V)). A narrow cone is close enough to a cylinder that
+      // the same term carries it. Drawn double-sided and added, the near and far walls together
+      // stand in for the volume between them.
+      float facing = abs(dot(normalize(vN), normalize(vV)));
+      float a = pow(facing, uSoft) * uStrength;
       // THE ONLY VIEW THAT MATTERS IS THE LOW ONE. This used to fade out below 0.42 of the way up
       // and get denser toward the lamp, which is a perfectly good shaft of light from across the
       // roof and completely invisible from where the fight is actually watched: at eye level only
@@ -411,18 +423,24 @@ scene.add(beam);
 // centred target - so the shaft leaned one way, the beam of light leaned the other, and the circle
 // at the bottom of the haze missed the lit pool by the whole offset. Reading the real axis means
 // the two cannot come apart again, wherever the lamp is put or the sliders are dragged to.
+// THE SHAFT IS NARROWER THAN THE LIGHT IT SITS IN, on purpose. Matching the cone to the spot's own
+// angle is the physically honest thing and it reads badly close up: at the distance the fight is
+// actually watched from, a cone as wide as the pool puts haze across the whole frame and softens
+// the fighters instead of framing them. Drawing a tighter core inside the same pool keeps the shaft
+// legible without touching what the lamp does to the ground, which is a separate object entirely.
+const BEAM = { narrow: 0.70 };
 const beamFrom = new THREE.Vector3(), beamTo = new THREE.Vector3(), beamAxis = new THREE.Vector3();
 const BEAM_UP = new THREE.Vector3(0, 1, 0);
 let beamKey = '';
 function syncBeam() {
   beamFrom.copy(spot.position);
   beamTo.copy(spot.target.position);
-  const key = beamFrom.toArray().join() + '|' + beamTo.toArray().join() + '|' + spot.angle;
+  const key = beamFrom.toArray().join() + '|' + beamTo.toArray().join() + '|' + spot.angle + '|' + BEAM.narrow;
   if (key === beamKey) return;
   beamKey = key;
   beamAxis.subVectors(beamFrom, beamTo);            // cone's local +Y is its apex, so point it up the beam
   const len = beamAxis.length() || 1;
-  const k = Math.tan(spot.angle) / Math.tan(SPOT_ANGLE);
+  const k = Math.tan(spot.angle) / Math.tan(SPOT_ANGLE) * BEAM.narrow;
   beam.scale.set(k, len / SPOT_H, k);               // stretch to reach exactly from lamp to target
   beam.position.copy(beamFrom).add(beamTo).multiplyScalar(0.5);
   beam.quaternion.setFromUnitVectors(BEAM_UP, beamAxis.divideScalar(len));
@@ -1926,7 +1944,7 @@ window.__heroPos = () => hero ? {
   w: hero.cur? +hero.cur.getEffectiveWeight().toFixed(2):null
 } : null;
 // Headless test hook: ?probe lets a harness drive damage directly.
-if (Q.has('probe')) Object.assign(window, { damageBug, damageHero, P, B, BUG, rigs:()=>({hero,bug}), THREE, camera, scene, renderer, requestDodge, FIGHT, currentSlot, isUnsafe, slotPos, SLOTS, __markYaw: markLookYaw });
+if (Q.has('probe')) Object.assign(window, { damageBug, damageHero, P, B, BUG, rigs:()=>({hero,bug}), THREE, camera, scene, renderer, requestDodge, FIGHT, currentSlot, isUnsafe, slotPos, SLOTS, __markYaw: markLookYaw, BEAM, SWAY, FIDGET, spot, beam, syncBeam });
 
 // ── tuning panel (?tune) ───────────────────────────────────────────────
 // Feel is not a thing you can reason your way to from a diff - it has to be dialled in while the
@@ -1999,6 +2017,9 @@ function buildTunePanel() {
                                    v => beam.material.uniforms.uStrength.value = v],
     ['spot edge',  0, 0.80, 0.01,  () => spot.penumbra, v => spot.penumbra = v],
     ['spot width', 0.15, 0.75, 0.01, () => spot.angle, v => spot.angle = v],
+    ['haze width', 0.25, 1.20, 0.01, () => BEAM.narrow, v => BEAM.narrow = v],
+    ['haze edge',  0.35, 3.00, 0.05, () => beam.material.uniforms.uSoft.value,
+                                     v => beam.material.uniforms.uSoft.value = v],
     ['sway size',  0, 0.40, 0.01,  () => SWAY.amp,  v => SWAY.amp = v],
     ['sway speed', 0.2, 4.0, 0.05, () => SWAY.rate, v => SWAY.rate = v],
     ['fidget gap', 0.02, 1.50, 0.02, () => FIDGET.gapMax,
@@ -2034,6 +2055,8 @@ function buildTunePanel() {
       FIELDS.map(([k]) => '  ' + k + ': ' + (+FIGHT[k]).toFixed(2) + ',').join('\n') + '\n};\n' +
       '// spot ' + spot.intensity.toFixed(0) +
       '  penumbra ' + spot.penumbra.toFixed(2) + '  angle ' + spot.angle.toFixed(2) +
+      '  hazeWidth ' + BEAM.narrow.toFixed(2) +
+      '  hazeEdge ' + beam.material.uniforms.uSoft.value.toFixed(2) +
       '  beam ' + beam.material.uniforms.uStrength.value.toFixed(3) +
       '  sway ' + SWAY.amp.toFixed(2) + '/' + SWAY.rate.toFixed(2) +
       '  fidgetGap ' + FIDGET.gapMax.toFixed(2);
