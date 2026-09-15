@@ -247,7 +247,10 @@ function applySqueeze() {
   if (foeArms.fore) for (const b of foeArms.fore) b.rotation.x += SQUEEZE.fore * k;
 }
 const GRAB = { reach:0.42, latch:0.20, shake:1.95, release:0.55,
-               pitch: THREE.MathUtils.degToRad(75),
+               // Held ACROSS the jaws, not pointing into them. Head-first drove his whole body
+               // through the inside of the skull; crosswise he sticks out either side, which is
+               // both what a bug carrying prey looks like and free of clipping.
+               pitch: THREE.MathUtils.degToRad(90), cross: Math.PI/2,
                dmg: 7, tick: 0.33, finishAt: 1/3 };
 GRAB.dur = GRAB.reach + GRAB.latch + GRAB.shake + GRAB.release;
 // The preset clips are performed at a leisurely pace; a fight wants them snappy. Rate scales the
@@ -528,6 +531,7 @@ class Rig {
   constructor(gltf, scale, yaw) {
     this.root = new THREE.Group(); this.root.scale.setScalar(scale); scene.add(this.root);
     this.model = gltf.scene;
+    this.baseYaw = yaw;
     this.model.rotation.y = yaw;
     this.model.traverse(o => {
       if (!o.isMesh) return;
@@ -664,7 +668,7 @@ function setInput(mode) {
 }
 setInput(matchMedia('(hover: none) and (pointer: coarse)').matches ? 'touch' : 'keys');
 
-const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, dodgeT:0, dodgeFrom:null, dodgeTo:null, landed:false, deadT:0, deathClip:'defeat_03', grabPitch:0, throwFrom:null, throwPitch:0, torn:false };
+const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, kickYaw:0, dodgeT:0, dodgeFrom:null, dodgeTo:null, landed:false, deadT:0, deathClip:'defeat_03', grabPitch:0, throwFrom:null, throwPitch:0, torn:false };
 const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0, phase:null, act:null, victoryT:0, shuffleT:0, shuffleCd:1.2, shuffleDir:null, caught:false, grabYaw:0, finisher:false, grabHp:0, squeeze:0 };
 let phase = 'cine', cineT = 0, overT = 0;
 
@@ -750,7 +754,6 @@ function tryAttack(index) {
   if (!n) return;
   const st = STRIKE.stephen[n];
   P.kickYaw = st.yaw || 0;
-  if (P.kickYaw) hero.model.rotation.y += P.kickYaw;
   P.state = 'attack'; P.atk = n;
   const a = hero.play(A(n), { once:true, fade:0.07, rate:ATTACK_RATE, force:true });
   P.t = (a ? a.getClip().duration : 0.8) / ATTACK_RATE;
@@ -779,7 +782,7 @@ function damageBug(d) {
   // plus a wind-up, so a flurry cannot stun-lock it into a statue that never swings back.
   const committed = B.state === 'rear' && B.t < 0.32;
   if (B.hp > 0 && ENEMY_ANIM.hurt && B.hurtCd <= 0 && !committed && B.state !== 'victory') {
-    if (B.kickYaw) { bug.model.rotation.y -= B.kickYaw; B.kickYaw = 0; }
+    B.kickYaw = 0;
     bug.model.rotation.x = 0;
     B.squeeze = 0;
     const n = ENEMY_ANIM.hurt[(Math.random() * ENEMY_ANIM.hurt.length) | 0];
@@ -901,7 +904,7 @@ function flashRed(rig) {
 function damageHero(d, held) {
   if (P.dead || (!held && P.invuln > 0)) return;
   flashRed(hero);
-  if (P.kickYaw) { hero.model.rotation.y -= P.kickYaw; P.kickYaw = 0; }
+  P.kickYaw = 0;
   P.hp = Math.max(0, P.hp - d);
   if (!held) P.invuln = 0.7;
   php.style.width = (100*P.hp/PLAYER.hp) + '%';
@@ -1096,7 +1099,6 @@ function player(dt) {
       }
     }
     if (P.t <= 0) {
-      if (P.kickYaw) hero.model.rotation.y -= P.kickYaw;
       P.kickYaw = 0;
       P.state = 'idle';
     }
@@ -1168,7 +1170,7 @@ function anchorToMouth(dt, k) {
   P.grabPitch = THREE.MathUtils.lerp(P.grabPitch, GRAB.pitch, 1 - Math.pow(0.004, dt));
   hero.model.rotation.x = P.grabPitch;
   tmp.copy(bug.root.position).sub(hero.root.position); tmp.y = 0;
-  if (tmp.lengthSq() > 1e-6) hero.root.rotation.y = Math.atan2(tmp.x, tmp.z);
+  if (tmp.lengthSq() > 1e-6) hero.root.rotation.y = Math.atan2(tmp.x, tmp.z) + GRAB.cross;
   hero.root.updateMatrixWorld(true);
   if (heroChest) {
     heroChest.getWorldPosition(vB);
@@ -1186,7 +1188,7 @@ function bugAI(dt) {
   if (P.dead && !B.dead && B.state !== 'victory') {
     B.state = 'victory'; B.lunged = true; B.victoryT = 0;
     bug.model.rotation.x = 0;
-    if (B.kickYaw) { bug.model.rotation.y -= B.kickYaw; B.kickYaw = 0; }
+    B.kickYaw = 0;
     if (B.act) { B.act.setEffectiveTimeScale(1); B.act = null; }
   }
   if (B.dead) { B.deadT += dt; liftBody(bug, opponent, bare(ENEMY_ANIM.death), B.deadT); return; }
@@ -1301,7 +1303,6 @@ function bugAI(dt) {
         const gapNow = dist, want = B.strike.ext - PEN + HALF_DEPTH.stephen;
         B.jumpTo = hero.root.position.clone().addScaledVector(B.dir, -Math.min(gapNow, want));
         B.kickYaw = B.strike.yaw || 0;
-        if (B.kickYaw) bug.model.rotation.y += B.kickYaw;
       }
       break;
     case 'grab': {
@@ -1413,7 +1414,7 @@ function bugAI(dt) {
           damageHero(DMG[B.bite ? 'biteDamage' : 'lungeDamage']);
       }
       if (B.t <= 0) {
-        if (B.kickYaw) { bug.model.rotation.y -= B.kickYaw; B.kickYaw = 0; }
+        B.kickYaw = 0;
         bug.root.position.copy(B.jumpTo).setY(0);
         B.returnFrom = bug.root.position.clone();
         B.returnTo = B.home.clone();
@@ -1517,6 +1518,13 @@ function tick() {
   hero.mixer.update(dt);
   bug.mixer.update(dt);
   applySqueeze();                 // after the mixer: it rewrites these bones every frame
+  // KICK YAW IS ABSOLUTE. Some attacks strike sideways, so the model is turned to aim them at the
+  // target. That used to be done by adding to the rotation on the way in and subtracting on the
+  // way out, across seven different places - and any path that skipped its subtraction, or ran it
+  // twice, left the fighter permanently turned. Setting it outright from the state each frame
+  // cannot drift, and clearing the state snaps the facing back on the very next frame.
+  hero.model.rotation.y = hero.baseYaw + P.kickYaw;
+  bug.model.rotation.y  = bug.baseYaw  + B.kickYaw;
   window.__dbg = { phase, round, unbeatable:UNBEATABLE, bhp:B.hp, bmax:BUG.hp, php:P.hp, bdead:B.dead, dist:cameraDistance, aspect:camera.aspect, bstate:B.state, bt:B.t, bhit:B.hitAt, blen:B.lungeDur, pstate:P.state, pt:P.t, phit:P.hitAt, patk:P.atk, gap:Math.hypot(hero.root.position.x-bug.root.position.x, hero.root.position.z-bug.root.position.z),
     heroZ:hero.root.position.z, bugZ:bug.root.position.z,
     cam:[camera.position.x, camera.position.y, camera.position.z] };
