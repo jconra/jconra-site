@@ -208,12 +208,20 @@ function liftBody(rig, who, clip, elapsed) {
 }
 const ATTACKS = ['box_01','box_03','front_kick_01','front_kick_02'];
 const HURTS = ['hit_to_body_01','hit_to_body_02','hit_to_side','hit_to_head'];
+const HOP_CLIP = '__hop';
+// Between attacks it used to stand perfectly still, which reads as waiting rather than circling.
+// A single hop and a small step off the line and back, on a random cadence.
+const SHUFFLE = { dur: 0.7, dist: 0.85, rate: 1, gapMin: 1.1, gapMax: 2.4 };
 // The preset clips are performed at a leisurely pace; a fight wants them snappy. Rate scales the
 // playback AND the state timer together, otherwise the state outlasts the animation and he stands
 // frozen at the end of a swing.
 const ATTACK_RATE = 1.7, HURT_RATE = 1.5;
-// The jump clip is a leisurely 1.75s float; scaled so one hop covers exactly one dodge trip.
-const DODGE_RATE = 1.75 / 0.86;
+// THE JUMP CLIP IS FIVE HOPS. Measured off the foot height, `jump` runs 2.25s and bounces at
+// 0.13, 0.61, 1.13, 1.57 and 1.99 - which is why a dodge looked like a kangaroo however the
+// trigger behaved. Hop 1 is the tallest, so the dodge uses a subclip cut from just after hop 0
+// lands to just before hop 2 leaves: one arc, with its take-off and landing.
+const HOP = { from: 0.42, to: 1.04 };   // 1.13 caught the start of hop 2 lifting again
+let DODGE_RATE = 1;                                // set from the real subclip length on load
 
 // ── renderer ──────────────────────────────────────────────────────────────────
 const FORCE_GL1 = Q.has('gl1');
@@ -232,7 +240,7 @@ if (FORCE_GL1) {
 //   - nothing in the environment, so a roughness-0.9 material with two lights has nothing to pick
 //     up. Tripo lights with an environment, which is where its surface detail comes from.
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 1.12;
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
@@ -246,7 +254,7 @@ const camera = new THREE.PerspectiveCamera(48, innerWidth/innerHeight, 0.1, 300)
 
 // The environment below supplies ambient of its own, so the hemisphere is only a top-up now.
 // Left at its old strength the two stacked, and a black fleece jacket rendered almost white.
-scene.add(new THREE.HemisphereLight(0x8ea8bd, 0x10161d, 0.25));
+scene.add(new THREE.HemisphereLight(0x8ea8bd, 0x1c242e, 0.36));
 const key = new THREE.DirectionalLight(0xfff2de, 1.7);
 key.position.set(8, 14, 6); key.castShadow = true;
 key.shadow.mapSize.set(2048,2048);
@@ -260,6 +268,11 @@ rim.position.set(-8,5,-7); scene.add(rim);
 // A soft fill from the camera side so faces are not left to the ambient term alone.
 // Key and fill both come from the camera side, so whatever faces us takes both. Keep the fill
 // low or it doubles the key on exactly the surfaces the player is looking at.
+// Bounce off the concrete, from below. Everything else comes from above, which leaves the eye
+// sockets and the underside of the brow in shadow - this lifts them without touching the jacket
+// much, since it strikes upward-facing surfaces at a glance.
+const bounce = new THREE.DirectionalLight(0xc2cfdc, 0.5);
+bounce.position.set(2, -3.5, 4); scene.add(bounce);
 const fill = new THREE.DirectionalLight(0xbcd2e6, 0.22);
 fill.position.set(6, 3, -2); scene.add(fill);
 
@@ -546,12 +559,29 @@ class Rig {
 // ── load ──────────────────────────────────────────────────────────────────────
 const loader = new GLTFLoader();
 const load = f => new Promise((res, rej) => loader.load(f, res, undefined, rej));
-let hero, bug, clock;
+let hero, bug, clock, heroHead;
 
 Promise.all([load('../../models/stephen.glb'), load('../../models/' + ENEMY_FILE)])
 .then(([s, i]) => {
   hero = new Rig(s, PLAYER.scale, 0);            // faces +Z after the glTF axis swap
+  heroHead = hero.model.getObjectByName('Head');
+  const jc = s.animations.find(c => c.name === A('jump'));
+  if (jc) {
+    const hop = THREE.AnimationUtils.subclip(
+      stripTravel(jc.clone()), 'hop', Math.round(HOP.from * 60), Math.round(HOP.to * 60), 60);
+    hero.clips[HOP_CLIP] = hero.mixer.clipAction(hop);
+    DODGE_RATE = hop.duration / DODGE.dur;        // one arc spans exactly one dodge
+  }
   bug  = new Rig(i, BUG.scale, opponent === 'chimp' ? 0 : Math.PI/2);
+  // Same cut for the opponent, which shuffles between attacks. Its own victory bounce keeps the
+  // full clip, because there a string of hops is the point.
+  const bj = i.animations.find(c => c.name === ENEMY_ANIM.victory);
+  if (bj && bj.duration > HOP.to) {
+    const bhop = THREE.AnimationUtils.subclip(
+      stripTravel(bj.clone()), 'bhop', Math.round(HOP.from * 60), Math.round(HOP.to * 60), 60);
+    bug.clips[HOP_CLIP] = bug.mixer.clipAction(bhop);
+    SHUFFLE.rate = bhop.duration / SHUFFLE.dur;
+  }
   hero.root.position.set(0, 0, INTRO_START_Z);   // off-platform, walks on during the intro
   hero.root.rotation.y = 0;
   bug.root.position.set(0, 0, ENEMY_START_Z);
@@ -585,7 +615,7 @@ function setInput(mode) {
 setInput(matchMedia('(hover: none) and (pointer: coarse)').matches ? 'touch' : 'keys');
 
 const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, dodgeT:0, dodgeFrom:null, dodgeTo:null, deadT:0, deathClip:'defeat_03' };
-const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0, phase:null, act:null, victoryT:0 };
+const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0, phase:null, act:null, victoryT:0, shuffleT:0, shuffleCd:1.2, shuffleDir:null };
 let phase = 'cine', cineT = 0, overT = 0;
 
 const keys = {};
@@ -779,11 +809,28 @@ function cine(dt) {
     camera.lookAt(between.x, 1.2, between.z);
     if (t < 0.1) say('ROUND ' + round, FOE_NAME);
     if (t > WALK_T*0.45) hide();
-  } else if (t < INTRO_DURATION) {
+  } else if (t < WALK_T) {
     // Move to a side-on position and aim directly at the space between them.
     const k = Math.min(1,(t - WALK_T*0.55)/(WALK_T*0.45)), e = k*k*(3-2*k);
     camera.position.lerpVectors(behind, sideView, e);
     camera.lookAt(between.x, 1.2, between.z);
+  } else if (t < INTRO_DURATION) {
+    // ON HIS FACE. The fighting camera sits five units back and side on, which leaves his head a
+    // few dozen pixels tall - the face is detailed enough to recognise and nothing ever showed it.
+    // Hold a close-up through the wave, then pull out to the fighting shot for the last third.
+    const c = (t - WALK_T) / CELEBRATE;
+    faceShot.copy(heroHead ? heroHead.getWorldPosition(tmp) : hero.root.position);
+    faceShot.y += 0.12;
+    const near = faceShot.clone().add(new THREE.Vector3(0.62, 0.10, 0.80));
+    if (c < 0.62) {
+      camera.position.lerp(near, 1 - Math.pow(0.02, dt));
+      camera.lookAt(faceShot);
+    } else {
+      const k = (c - 0.62) / 0.38, e = k*k*(3-2*k);
+      camera.position.lerpVectors(near, sideView, e);
+      lookOut.copy(faceShot).lerp(new THREE.Vector3(between.x, 1.2, between.z), e);
+      camera.lookAt(lookOut);
+    }
   } else {
     endCine();
   }
@@ -882,7 +929,7 @@ function requestDodge(key) {
   P.dodgeT = DODGE.dur;
   P.dodgeFrom = (P.home || hero.root.position).clone();
   P.dodgeTo = P.dodgeFrom.clone().addScaledVector(dodgeAxis, DODGE.dist);
-  hero.play(A('jump'), { once:true, fade:0.06, rate:DODGE_RATE, force:true });
+  hero.play(hero.has(HOP_CLIP) ? HOP_CLIP : A('jump'), { once:true, fade:0.06, rate:DODGE_RATE, force:true });
 }
 function runDodge(dt) {
   P.dodgeT -= dt;
@@ -958,8 +1005,25 @@ function bugAI(dt) {
       break;
     }
     case 'idle':
-      bug.play(ENEMY_ANIM.idle);
-      if (B.t <= 0) { B.state='rear'; B.t = 0.85; bug.play(ENEMY_ANIM.rear, { once:true, fade:0.12, rate:1.45 }); }
+      if (B.shuffleT > 0) {
+        B.shuffleT -= dt;
+        const k = 1 - Math.max(0, B.shuffleT) / SHUFFLE.dur;
+        bug.root.position.copy(B.home).addScaledVector(B.shuffleDir, SHUFFLE.dist * Math.sin(k * Math.PI));
+        if (B.shuffleT <= 0) { bug.root.position.copy(B.home); bug.play(ENEMY_ANIM.idle, { fade:0.22 }); }
+      } else {
+        bug.play(ENEMY_ANIM.idle);
+        B.shuffleCd -= dt;
+        // Only when there is room before the next attack, so a shuffle never eats the wind-up.
+        if (B.shuffleCd <= 0 && B.t > SHUFFLE.dur + 0.45 && bug.has(HOP_CLIP)) {
+          B.shuffleT = SHUFFLE.dur;
+          B.shuffleCd = SHUFFLE.gapMin + Math.random() * (SHUFFLE.gapMax - SHUFFLE.gapMin);
+          const sgn = Math.random() < 0.5 ? 1 : -1;
+          B.shuffleDir = new THREE.Vector3(toHero.z * sgn, 0, -toHero.x * sgn);
+          bug.play(HOP_CLIP, { once:true, fade:0.08, rate:SHUFFLE.rate, force:true });
+        }
+      }
+      if (B.t <= 0) { B.state='rear'; B.t = 0.85; B.shuffleT = 0; bug.root.position.copy(B.home);
+        bug.play(ENEMY_ANIM.rear, { once:true, fade:0.12, rate:1.45 }); }
       break;
     case 'stalk': {
       // Compatibility state for older debug state. The chimp stays at its
@@ -1082,6 +1146,7 @@ const camGoal = new THREE.Vector3(), lookGoal = new THREE.Vector3();
 // reads as a violent zoom. Take the axis from their marks instead, which do not move, and let the
 // aim point follow the live midpoint only part of the way.
 const camLine = new THREE.Vector3(), camMid = new THREE.Vector3(), liveMid = new THREE.Vector3();
+const faceShot = new THREE.Vector3(), lookOut = new THREE.Vector3();
 function fightCam(dt) {
   const homeA = P.home || hero.root.position, homeB = B.home || bug.root.position;
   camMid.copy(homeA).add(homeB).multiplyScalar(0.5);
@@ -1117,7 +1182,7 @@ window.__heroPos = () => hero ? {
   w: hero.cur? +hero.cur.getEffectiveWeight().toFixed(2):null
 } : null;
 // Headless test hook: ?probe lets a harness drive damage directly.
-if (Q.has('probe')) Object.assign(window, { damageBug, damageHero, P, B, BUG, rigs:()=>({hero,bug}), THREE, camera, scene, renderer });
+if (Q.has('probe')) Object.assign(window, { damageBug, damageHero, P, B, BUG, rigs:()=>({hero,bug}), THREE, camera, scene, renderer, requestDodge });
 
 function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
