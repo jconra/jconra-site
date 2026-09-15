@@ -12,13 +12,18 @@
 
   #hud { position:fixed; inset:0; pointer-events:none; z-index:5; opacity:0; transition:opacity .8s ease; }
   #hud.on { opacity:1; }
+  /* Each bar sits on its own fighter's side and drains toward the outside edge. The camera is
+     side-on with Stephen on the right, but a right-drag can spin past them, so #hud.swap flips
+     both bars when that happens. */
   .bar { position:absolute; top:22px; width:34%; }
-  .bar.p { left:22px; } .bar.e { right:22px; }
+  .bar.p { right:22px; } .bar.e { left:22px; }
+  #hud.swap .bar.p { left:22px; right:auto; } #hud.swap .bar.e { right:22px; left:auto; }
   .bar .who {
     font:12px/1 nasa, ui-monospace, monospace; letter-spacing:.16em; text-transform:uppercase;
     color:#c7d4dd; margin-bottom:6px; text-shadow:0 2px 6px #000;
   }
-  .bar.e .who { text-align:right; }
+  .bar.p .who { text-align:right; } #hud.swap .bar.p .who { text-align:left; }
+  #hud.swap .bar.e .who { text-align:right; }
   .bar .track {
     height:13px; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.28); border-radius:3px;
     overflow:hidden;
@@ -26,7 +31,8 @@
   .bar .fill { height:100%; width:100%; transition:width .18s ease; }
   .bar.p .fill { background:linear-gradient(90deg,#3ee07d,#8ff0b4); }
   .bar.e .fill { background:linear-gradient(90deg,#e0563e,#f0a23e); }
-  .bar.e .track { direction:rtl; }
+  .bar.p .track { direction:rtl; } #hud.swap .bar.p .track { direction:ltr; }
+  #hud.swap .bar.e .track { direction:rtl; }
 
   #keys {
     position:absolute; left:22px; bottom:20px;
@@ -47,15 +53,8 @@
     transition:opacity .6s ease;
   }
   #boot.gone { opacity:0; pointer-events:none; }
-  #skip {
-    position:absolute; right:22px; bottom:20px; pointer-events:auto; cursor:pointer;
-    font:11px ui-monospace,monospace; letter-spacing:.14em; color:#7f8d99;
-    border:1px solid rgba(255,255,255,.18); border-radius:4px; padding:6px 11px;
-    background:rgba(0,0,0,.35);
-  }
-  #skip:hover { color:#e0c07a; border-color:rgba(224,192,122,.5); }
   #opponent-picker {
-    position:fixed; top:20px; right:22px; z-index:45; color:#8fa0ad;
+    position:fixed; bottom:18px; right:22px; z-index:45; color:#8fa0ad;
     font:11px ui-monospace,monospace; letter-spacing:.08em; text-shadow:0 1px 4px #000;
   }
   #opponent-picker button { margin-left:7px; padding:6px 8px; color:#dce6ed; background:#101820;
@@ -70,7 +69,6 @@
   <div class="bar e"><div class="who" id="enemy-name">Warrior Bug</div><div class="track"><div class="fill" id="ehp"></div></div></div>
   <div id="keys"></div>
   <div id="centre"></div>
-  <div id="skip">SKIP INTRO</div>
 </div>
 
 <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
@@ -526,15 +524,34 @@ Promise.all([load('../../models/stephen.glb'), load('../../models/' + ENEMY_FILE
 const hud = document.getElementById('hud');
 const centre = document.getElementById('centre');
 const php = document.getElementById('php'), ehp = document.getElementById('ehp');
-document.getElementById('keys').innerHTML =
-  '<b>W/S</b> dodge depth · <b>D</b> backstep · <b>1–4</b> attacks · <b>TAP/CLICK</b> random attack';
+// Show only the controls the player is actually using. Start from what the device looks like,
+// then switch on the first real key or touch - a laptop with a touchscreen reports both.
+const HELP = {
+  keys:  '<b>W/S</b> dodge depth · <b>D</b> backstep · <b>1–4</b> attacks · <b>CLICK</b> random attack',
+  touch: '<b>SWIPE</b> to dodge · <b>TAP</b> to attack',
+};
+const keysEl = document.getElementById('keys');
+let inputMode = null;
+function setInput(mode) {
+  if (inputMode === mode) return;
+  inputMode = mode;
+  keysEl.innerHTML = HELP[mode];
+}
+setInput(matchMedia('(hover: none) and (pointer: coarse)').matches ? 'touch' : 'keys');
 
 const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, dodgeKey:null, dodgeUntil:0, dodgeAnimT:0 };
 const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55 };
 let phase = 'cine', cineT = 0, overT = 0;
 
 const keys = {};
+// ANY INPUT SKIPS THE INTRO. It replaces a button that had to be aimed at, and the same press
+// must not also throw a punch, so every handler returns once it has skipped.
+const chrome = e => !!(e.target.closest && e.target.closest('#opponent-picker'));
+function skipIntro() { if (phase !== 'cine') return false; endCine(); return true; }
+
 addEventListener('keydown', e => {
+  setInput('keys');
+  if (skipIntro()) { e.preventDefault(); return; }
   keys[e.code] = true;
   if (e.code === 'Space') e.preventDefault();
   const attack = ['Digit1','Digit2','Digit3','Digit4','Digit5'].indexOf(e.code);
@@ -563,7 +580,7 @@ addEventListener('wheel', e => {
   cameraDistance = THREE.MathUtils.clamp(cameraDistance + e.deltaY * 0.012, 4.2, 30);
 }, {passive:false});
 addEventListener('mousedown', e => {
-  if (e.button === 0 && !e.target.closest('#opponent-picker, #skip')) tryAttack((Math.random() * ATTACKS.length) | 0);
+  if (e.button === 0 && !chrome(e)) { if (skipIntro()) return; tryAttack((Math.random() * ATTACKS.length) | 0); }
   if (e.button === 2) { dragging = true; lastX = e.clientX; }
 });
 addEventListener('mouseup',   e => { if (e.button === 2) dragging = false; });
@@ -573,9 +590,9 @@ addEventListener('mousemove', e => {
   camYaw -= (e.clientX - lastX) * 0.006;     // drag right, scene spins right
   lastX = e.clientX;
 });
-document.getElementById('skip').onclick = () => endCine();
 let touchStart = null;
 addEventListener('touchstart', e => {
+  setInput('touch');
   if (e.touches.length !== 1) return;
   e.preventDefault();
   const touch = e.touches[0];
@@ -587,7 +604,8 @@ addEventListener('touchend', e => {
   const touch = e.changedTouches[0];
   const dx = touch.clientX - touchStart.x, dy = touch.clientY - touchStart.y;
   touchStart = null;
-  if (e.target.closest('#opponent-picker, #skip')) return;
+  if (chrome(e)) return;
+  if (skipIntro()) return;
   if (Math.hypot(dx,dy) < 28) {
     tryAttack((Math.random() * ATTACKS.length) | 0);
     return;
@@ -700,8 +718,16 @@ function endCine() {
   if (phase !== 'cine') return;
   phase = 'fight';
   hide(); hud.classList.add('on');
-  // Keep the position reached by the intro walk. Resetting this to a separate
-  // fight start position made Stephen visibly teleport backward at the handoff.
+  // Let the walk-on finish where it stands if it ran to the end; if the intro was skipped part
+  // way, put both on their marks. (Resetting unconditionally made Stephen teleport backward at
+  // the handoff when the intro played out.)
+  if (cineT < INTRO_DURATION) {
+    hero.root.position.set(0, 0, INTRO_END_Z);
+    bug.root.position.set(0, 0, ENEMY_END_Z);
+    bug.root.rotation.y = Math.PI;
+    bug.play(ENEMY_ANIM.idle, { fade:0.15 });
+    cameraDistance = fitDistance();
+  }
   hero.root.rotation.y = 0;
   hero.play(A('idle'), { fade:0.2 });
   P.home = hero.root.position.clone();
@@ -711,6 +737,7 @@ function endCine() {
 }
 
 // ── the player ────────────────────────────────────────────────────────────────
+const ndc = new THREE.Vector3();
 const fwd = new THREE.Vector3(), tmp = new THREE.Vector3(), dodgeAxis = new THREE.Vector3(), dodgeTarget = new THREE.Vector3();
 function player(dt) {
   if (P.dead) return;
@@ -892,6 +919,14 @@ function fightCam(dt) {
   lookGoal.set(mid.x, tall ? 1.45 : 1.25, mid.z);
   camera.position.lerp(camGoal, 1 - Math.pow(0.0016, dt));
   camera.lookAt(lookGoal);
+
+  // Put each health bar on the side of the screen its fighter is actually on. Project both roots
+  // and compare; a right-drag that spins the camera past them flips the pair.
+  camera.updateMatrixWorld();
+  ndc.copy(hero.root.position).project(camera);
+  const heroX = ndc.x;
+  ndc.copy(bug.root.position).project(camera);
+  hud.classList.toggle('swap', heroX < ndc.x);
 }
 
 window.__heroPos = () => hero ? {
