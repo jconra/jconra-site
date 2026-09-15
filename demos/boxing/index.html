@@ -94,7 +94,9 @@ const A = n => 'preset:biped:' + n;              // Stephen's clips carry this p
 const C = n => 'preset:biped:' + n + '.001';      // Chimpanzee clips have a Blender suffix
 const opponent = new URLSearchParams(location.search).get('opponent') === 'insect' ? 'insect' : 'chimp';
 const ARENA = 11;
-const INTRO_START_Z = -13, INTRO_END_Z = -4, INTRO_DURATION = 7;
+const INTRO_START_Z = -11, INTRO_END_Z = -2.3, INTRO_DURATION = 7;
+// The opponent walks on from its own side rather than being planted there from frame one.
+const ENEMY_START_Z = 10, ENEMY_END_Z = 2.3;
 const PLAYER = {
   scale: 1.8, walk: 2.4, run: 5.6, back: 1.8, side: 3.8,
   hp: 100, reach: 3.6, damage: [12, 20],
@@ -137,12 +139,12 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x05070a);
-scene.fog = new THREE.Fog(0x070a0f, 22, 50);
+scene.background = new THREE.Color(0x090d14);
+scene.fog = new THREE.Fog(0x0a0e15, 26, 120);
 const camera = new THREE.PerspectiveCamera(48, innerWidth/innerHeight, 0.1, 300);
 
-scene.add(new THREE.HemisphereLight(0xa8bccd, 0x18202a, 1.15));
-const key = new THREE.DirectionalLight(0xfff2de, 3.4);
+scene.add(new THREE.HemisphereLight(0x8ea8bd, 0x10161d, 0.62));
+const key = new THREE.DirectionalLight(0xfff2de, 2.5);
 key.position.set(8, 14, 6); key.castShadow = true;
 key.shadow.mapSize.set(2048,2048);
 const S = 16;
@@ -164,8 +166,157 @@ const lip = new THREE.Mesh(
   new THREE.MeshStandardMaterial({ color:0x3b4a57, roughness:0.7, metalness:0.3 })
 );
 scene.add(lip);
-const grid = new THREE.GridHelper(ARENA*2, 22, 0x2b3a46, 0x1d2830);
-grid.position.y = 0.004; scene.add(grid);
+
+// ── the stage ─────────────────────────────────────────────────────────────────
+// Everything here is drawn into canvases at load time. No external images: the page already pulls
+// two multi-megabyte models, and a fighting stage is mostly grime, windows and silhouettes, which
+// a few dozen lines of 2D drawing does as well as a download would. Every canvas is a power of two
+// so the textures still mipmap on WebGL 1.
+function canvasTex(w, h, draw, repX = 1, repY = 1) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(repX, repY);
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return t;
+}
+const rand = (a, b) => a + Math.random() * (b - a);
+
+// Poured concrete: slab seams, aggregate speckle, and stains that pool toward the joints.
+const concrete = canvasTex(512, 512, (g, w, h) => {
+  g.fillStyle = '#242a31'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 26000; i++) {
+    const v = Math.random();
+    g.fillStyle = v > 0.5 ? 'rgba(210,225,240,0.035)' : 'rgba(0,0,0,0.10)';
+    g.fillRect(Math.random()*w, Math.random()*h, 1 + (v > 0.97 ? 1 : 0), 1);
+  }
+  for (let i = 0; i < 16; i++) {                      // damp patches
+    const x = Math.random()*w, y = Math.random()*h, r = rand(26, 90);
+    const gr = g.createRadialGradient(x, y, 0, x, y, r);
+    gr.addColorStop(0, 'rgba(10,13,17,0.42)'); gr.addColorStop(1, 'rgba(10,13,17,0)');
+    g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+  }
+  g.lineWidth = 3; g.strokeStyle = 'rgba(8,10,13,0.85)';    // slab joints
+  for (const p of [0, 256]) { g.beginPath(); g.moveTo(p, 0); g.lineTo(p, h); g.moveTo(0, p); g.lineTo(w, p); g.stroke(); }
+  g.lineWidth = 1; g.strokeStyle = 'rgba(0,0,0,0.35)';      // hairline cracks
+  for (let i = 0; i < 7; i++) {
+    let x = Math.random()*w, y = Math.random()*h;
+    g.beginPath(); g.moveTo(x, y);
+    for (let k = 0; k < 6; k++) { x += rand(-34, 34); y += rand(-34, 34); g.lineTo(x, y); }
+    g.stroke();
+  }
+}, 5, 5);
+
+const platMat  = new THREE.MeshStandardMaterial({ map: concrete, color: 0x9aa3ad, roughness: 0.99 });
+const platSide = new THREE.MeshStandardMaterial({ color: 0x232a31, roughness: 0.9 });
+plat.material = [platSide, platMat, platSide];             // cylinder groups: side, top, bottom
+
+// A worn paint ring where the two of them square up, sized to the stances.
+const paint = new THREE.Mesh(
+  new THREE.RingGeometry(3.9, 4.25, 96),
+  new THREE.MeshStandardMaterial({ color:0x9a7d2c, roughness:1, transparent:true, opacity:0.55 })
+);
+paint.rotation.x = -Math.PI/2; paint.position.y = 0.012; scene.add(paint);
+
+// Crowd: silhouettes on the inside of a cylinder. A ring of heads and shoulders reads as a packed
+// crowd from every angle at a fraction of the cost of even one low-poly spectator.
+const crowdTex = canvasTex(1024, 256, (g, w, h) => {
+  g.clearRect(0, 0, w, h);
+  for (let row = 0; row < 3; row++) {
+    const base = h + 8, shade = 11 + row * 9;                 // back rows lighter = further away
+    for (let x = -30; x < w + 30; x += 21) {
+      const cx = x + rand(-7, 7), hd = rand(9, 13);
+      const sy = base - rand(86, 128) + row * 22;            // ragged heights, back rows shorter
+      g.fillStyle = `rgb(${shade},${shade+2},${shade+6})`;
+      g.beginPath(); g.arc(cx, sy, hd, 0, 7); g.fill();                           // head
+      g.fillRect(cx - hd*0.5, sy, hd, hd*1.1);                                    // neck
+      g.beginPath();                                                              // shoulders + torso
+      g.moveTo(cx - hd*2.3, base);
+      g.quadraticCurveTo(cx - hd*2.0, sy + hd*1.5, cx, sy + hd*1.4);
+      g.quadraticCurveTo(cx + hd*2.0, sy + hd*1.5, cx + hd*2.3, base);
+      g.fill();
+      if (Math.random() < 0.10) {                                                 // a raised phone
+        g.fillStyle = 'rgba(150,200,245,0.8)';
+        g.fillRect(cx + rand(-18, 18), sy - rand(26, 44), 4, 7);
+      }
+    }
+  }
+}, 14, 1);
+const crowd = new THREE.Mesh(
+  new THREE.CylinderGeometry(21, 21, 5.6, 72, 1, true),
+  new THREE.MeshBasicMaterial({ map:crowdTex, transparent:true, alphaTest:0.45, side:THREE.BackSide, fog:true })
+);
+crowd.position.y = 1.9; scene.add(crowd);
+
+// Asphalt apron. Without it the drums and poles outside the deck stand in the void.
+const apron = new THREE.Mesh(
+  new THREE.CircleGeometry(46, 56).rotateX(-Math.PI/2),
+  new THREE.MeshStandardMaterial({ map: concrete.clone(), color:0x4a5158, roughness:1 })
+);
+apron.material.map.repeat.set(20, 20); apron.material.map.needsUpdate = true;
+apron.position.y = -0.72; scene.add(apron);
+
+// City behind it. Lit windows are the whole effect, so they go straight in the colour map on an
+// unlit material — the skyline is meant to be a backdrop, not something the key light touches.
+const windows = canvasTex(256, 512, (g, w, h) => {
+  g.fillStyle = '#070a10'; g.fillRect(0, 0, w, h);
+  for (let y = 12; y < h - 10; y += 26) for (let x = 12; x < w - 10; x += 22) {
+    const r = Math.random();
+    if (r < 0.52) continue;
+    g.fillStyle = r > 0.93 ? '#e8c777' : r > 0.78 ? '#9dbcd8' : '#4e6a86';
+    g.globalAlpha = rand(0.35, 1);
+    g.fillRect(x, y, 11, 15);
+  }
+  g.globalAlpha = 1;
+});
+const skyline = new THREE.Group(); scene.add(skyline);
+for (let i = 0; i < 64; i++) {
+  const back = i % 2 === 1;                       // two rings, so no gap opens onto bare sky
+  const a = (i / 64) * Math.PI * 2 + rand(-0.06, 0.06);
+  const r = back ? rand(84, 112) : rand(52, 72);
+  const hgt = back ? rand(22, 60) : rand(11, 34), wid = back ? rand(12, 22) : rand(8, 15);
+  const tex = windows.clone(); tex.needsUpdate = true;
+  tex.repeat.set(Math.max(1, Math.round(wid / 7)), Math.max(1, Math.round(hgt / 14)));
+  tex.offset.set(Math.random(), Math.random());
+  const b = new THREE.Mesh(new THREE.BoxGeometry(wid, hgt, wid),
+    new THREE.MeshBasicMaterial({ map: tex }));
+  b.position.set(Math.sin(a) * r, hgt/2 - 3, Math.cos(a) * r);
+  b.rotation.y = a;
+  skyline.add(b);
+}
+
+// Floodlights, drums and crates crowded up against the platform edge.
+const glowTex = canvasTex(64, 64, (g, w) => {
+  const gr = g.createRadialGradient(w/2, w/2, 0, w/2, w/2, w/2);
+  gr.addColorStop(0, 'rgba(255,238,200,0.95)'); gr.addColorStop(0.4, 'rgba(255,205,120,0.35)');
+  gr.addColorStop(1, 'rgba(255,190,90,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, w, w);
+});
+const steel = new THREE.MeshStandardMaterial({ color:0x2e363e, roughness:0.72, metalness:0.45 });
+const rust  = new THREE.MeshStandardMaterial({ color:0x6d4028, roughness:0.95 });
+const wood  = new THREE.MeshStandardMaterial({ color:0x4e3c26, roughness:1 });
+for (let i = 0; i < 6; i++) {
+  const a = (i / 6) * Math.PI * 2 + 0.03, r = 20;     // beyond the crowd, so never in the way
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 13, 8), steel);
+  pole.position.set(Math.sin(a)*r, 5.8, Math.cos(a)*r); scene.add(pole);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.1, 0.6), steel);
+  head.position.set(Math.sin(a)*r, 12, Math.cos(a)*r); head.rotation.y = a; scene.add(head);
+  const lamp = new THREE.Sprite(new THREE.SpriteMaterial({ map:glowTex, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false }));
+  lamp.scale.setScalar(5.5); lamp.position.copy(head.position); scene.add(lamp);
+}
+for (let i = 0; i < 26; i++) {
+  const a = Math.random() * Math.PI * 2, r = rand(14.5, 19.5);
+  const drum = Math.random() < 0.55;
+  const m = drum
+    ? new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 1.15, 12), Math.random() < 0.5 ? rust : steel)
+    : new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, 1.1), wood);
+  m.position.set(Math.sin(a)*r, -0.72 + (drum ? 0.58 : 0.55), Math.cos(a)*r);
+  m.rotation.y = Math.random() * Math.PI;
+  if (!drum && Math.random() < 0.4) { m.position.y += 1.1; m.rotation.y += 0.3; }
+  m.castShadow = m.receiveShadow = true; scene.add(m);
+}
 
 // ── animation helper ──────────────────────────────────────────────────────────
 // Add a distal mitten joint in the bind pose. Existing animation continues to
@@ -325,8 +476,8 @@ Promise.all([load('../../models/stephen.glb'), load('../../models/' + ENEMY_FILE
   bug  = new Rig(i, BUG.scale, opponent === 'chimp' ? 0 : Math.PI/2);
   hero.root.position.set(0, 0, INTRO_START_Z);   // off-platform, walks on during the intro
   hero.root.rotation.y = 0;
-  bug.root.position.set(0, 0, 3.2);
-  B.home = bug.root.position.clone();
+  bug.root.position.set(0, 0, ENEMY_START_Z);
+  B.home = new THREE.Vector3(0, 0, ENEMY_END_Z);
   bug.root.rotation.y = Math.PI;
   hero.play(A('swagger'));
   bug.play(ENEMY_ANIM.idle);
@@ -355,12 +506,26 @@ addEventListener('keydown', e => {
   if (attack >= 0) { e.preventDefault(); tryAttack(attack); }
 });
 addEventListener('keyup', e => keys[e.code] = false);
-let camYaw = 0, cameraDistance = 7, dragging = false, lastX = 0;
+let camYaw = 0, cameraDistance = 7, dragging = false, lastX = 0, zoomedByUser = false;
+// FIT THE PAIR TO THE VIEWPORT. A phone held upright has a horizontal field of view less than half
+// a desktop's, so a distance that frames both fighters on a laptop puts them off the sides of a
+// phone. Solve for the distance that fits their separation plus a margin in the HORIZONTAL fov,
+// which is what actually constrains a side-on shot.
+function fitDistance() {
+  camera.fov = camera.aspect < 1 ? 62 : 48;
+  camera.updateProjectionMatrix();
+  const sep = Math.abs(ENEMY_END_Z - INTRO_END_Z) + 1.8;   // they close the gap, never widen it
+  const vFov = camera.fov * Math.PI / 180;
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+  return THREE.MathUtils.clamp((sep / 2) / Math.tan(hFov / 2) + 1.2, 5, 14);
+}
+cameraDistance = fitDistance();
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('wheel', e => {
   if (phase !== 'fight') return;
   e.preventDefault();
-  cameraDistance = THREE.MathUtils.clamp(cameraDistance + e.deltaY * 0.006, 4.2, 10);
+  zoomedByUser = true;
+  cameraDistance = THREE.MathUtils.clamp(cameraDistance + e.deltaY * 0.012, 4.2, 30);
 }, {passive:false});
 addEventListener('mousedown', e => {
   if (e.button === 0 && !e.target.closest('#opponent-picker, #skip')) tryAttack((Math.random() * ATTACKS.length) | 0);
@@ -455,13 +620,21 @@ function cine(dt) {
   // He walks on from the very start and the camera keeps him in frame throughout — an opening
   // that orbits the bug alone reads as spinning around an empty patch of floor.
   const walkK = Math.min(1, t/INTRO_DURATION), we = walkK*walkK*(3-2*walkK);
-  if (t < INTRO_DURATION) hero.root.position.z = THREE.MathUtils.lerp(INTRO_START_Z, INTRO_END_Z, we);
+  if (t < INTRO_DURATION) {
+    hero.root.position.z = THREE.MathUtils.lerp(INTRO_START_Z, INTRO_END_Z, we);
+    // the opponent squares up from the far side on the same beat
+    bug.root.position.z = THREE.MathUtils.lerp(ENEMY_START_Z, ENEMY_END_Z, we);
+    bug.root.rotation.y = Math.PI;
+    bug.play(ENEMY_ANIM.walk, { fade:0.3 });
+  }
 
   const between = tmp.copy(bug.root.position).add(hero.root.position).multiplyScalar(0.5);
   const line = new THREE.Vector3().subVectors(hero.root.position, bug.root.position);
   line.y = 0; line.normalize();
   const side = new THREE.Vector3(-line.z, 0, line.x);
-  const behind = bug.root.position.clone().addScaledVector(line, -8).setY(2.9);
+  const behind = bug.root.position.clone().addScaledVector(line, -6).setY(2.9);
+  const br = Math.hypot(behind.x, behind.z);
+  if (br > ARENA + 2) { behind.x *= (ARENA+2)/br; behind.z *= (ARENA+2)/br; }
   const sideView = between.clone().addScaledVector(side, cameraDistance).setY(2.8);
   if (t < 3.4) {
     // Approach from behind the chimp, with the camera looking down the line
@@ -646,8 +819,9 @@ function fightCam(dt) {
   // Keep the camera beside the line between them, aimed at their midpoint.
   const side = new THREE.Vector3(-line.z, 0, line.x);
   side.applyAxisAngle(new THREE.Vector3(0,1,0), camYaw);
-  camGoal.copy(mid).addScaledVector(side, cameraDistance).setY(2.8);
-  lookGoal.set(mid.x, 1.25, mid.z);
+  const tall = camera.aspect < 1;
+  camGoal.copy(mid).addScaledVector(side, cameraDistance).setY(tall ? 3.5 : 2.8);
+  lookGoal.set(mid.x, tall ? 1.45 : 1.25, mid.z);
   camera.position.lerp(camGoal, 1 - Math.pow(0.0016, dt));
   camera.lookAt(lookGoal);
 }
@@ -677,11 +851,15 @@ function tick() {
   }
   hero.mixer.update(dt);
   bug.mixer.update(dt);
+  window.__dbg = { phase, dist:cameraDistance, aspect:camera.aspect,
+    heroZ:hero.root.position.z, bugZ:bug.root.position.z,
+    cam:[camera.position.x, camera.position.y, camera.position.z] };
   renderer.render(scene, camera);
 }
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  if (!zoomedByUser) cameraDistance = fitDistance();
   renderer.setSize(innerWidth, innerHeight);
 });
 </script>
