@@ -170,6 +170,15 @@ const ENEMY_TAUNT = ENEMY_ANIM.taunt;
 const FOE_NAME = opponent === 'chimp' ? 'Chimpanzee' : 'Warrior Bug';
 document.getElementById('enemy-name').textContent = FOE_NAME;
 const nextRound = () => { location.search = '?round=2' + (FORCE_GL1 ? '&gl1' : ''); };
+// Losing sends you back to the start of the run - the chimp - whichever round you lost on. Keep
+// the debug flags across the restart, and reload rather than navigate when the target is the URL
+// we are already on, since assigning an identical location does nothing.
+const restartRun = () => {
+  const keep = ['gl1', 'probe', 'fair'].filter(k => Q.has(k));
+  const target = location.pathname + (keep.length ? '?' + keep.join('&') : '');
+  if (location.pathname + location.search === target) location.reload();
+  else location.href = target;
+};
 const DMG = UNBEATABLE ? BUG.boss : BUG;
 // MEASURED: sampling the skinned surface through defeat_03 at game scale, Stephen's lowest vertex
 // ends 0.246 below the floor and the chimp's 0.274 - they lie in the concrete. The clip sinks
@@ -761,9 +770,9 @@ function damageHero(d) {
     P.deathClip = STEPHEN_DEATHS[(Math.random() * STEPHEN_DEATHS.length) | 0];
     hero.play(A(P.deathClip), { once:true, fade:0.15 });
     // the opponent claims its win in bugAI, which sees it however the kill arrived
-    say('DEFEATED', UNBEATABLE ? 'nothing beats the bug' : 'going again');
+    say('DEFEATED', round > 1 ? 'back to the start' : 'going again');
     // Long enough for it to walk onto the body and dance there, then restart the same round.
-    setTimeout(() => location.reload(), 5600);
+    setTimeout(restartRun, 5600);
   } else {
     P.state = 'hurt';
     const n = HURTS[(Math.random() * HURTS.length) | 0];
