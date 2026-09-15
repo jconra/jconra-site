@@ -833,6 +833,10 @@ setInput(matchMedia('(hover: none) and (pointer: coarse)').matches ? 'touch' : '
 const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, kickYaw:0, dodgeT:0, dodgeFrom:null, dodgeTo:null, landed:false, slot:'center', bounceT:0, bounceCd:1.0, deadT:0, deathClip:'defeat_03', grabPitch:0, throwFrom:null, throwPitch:0, torn:false };
 const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0, phase:null, act:null, victoryT:0, fidgetT:0, fidgetCd:0.6, fidgetDir:null, fidget:null, caught:false, grabYaw:0, finisher:false, grabHp:0, mark:null, markYaw:0, tellYaw:0, tellPose:0, reacted:null };
 let phase = 'cine', cineT = 0, overT = 0;
+// THE TUNING PANEL HOLDS THE FIGHT STILL. Dialling a reaction window in while being punched is not
+// really dialling it in, and worse, dying reloads the page (restartRun) - so the panel a player had
+// open vanished mid-adjustment every time the round turned over.
+let paused = false;
 
 const keys = {};
 // ANY INPUT SKIPS THE INTRO. It replaces a button that had to be aimed at, and the same press
@@ -911,7 +915,7 @@ function say(t, sub) {
 function hide(){ centre.classList.remove('on'); }
 
 function tryAttack(index) {
-  if (phase !== 'fight' || P.dead || ['attack','hurt','celebrate','grabbed','thrown'].includes(P.state)) return;
+  if (paused || phase !== 'fight' || P.dead || ['attack','hurt','celebrate','grabbed','thrown'].includes(P.state)) return;
   const n = ATTACKS[index];
   if (!n) return;
   const st = STRIKE.stephen[n];
@@ -1299,8 +1303,16 @@ function player(dt) {
 // the answer arrive at the same moment every single time.
 const FIGHT = {
   slotDist:  1.0,    // how far a dodge carries him off the mark. 2.0 read as a standing long jump
-  tell:      0.45,   // the wind-up, before the chimp commits to anything
-  strike:    0.30,   // commit -> damage. THE SAME FOR EVERY ATTACK. This is the whole point
+  tell:      0.60,   // the wind-up. THIS IS THE REACTION WINDOW - see the note on `strike` below
+  // commit -> damage, THE SAME FOR EVERY ATTACK, which is what makes the tell learnable at all.
+  //
+  // THE TIME THERE IS TO DODGE IS `tell` + `strike`, the whole way from the tell appearing to the
+  // blow landing, because a press books its slot for the exchange rather than being sampled at one
+  // instant. Both halves count, but they are not interchangeable: `tell` is time spent LOOKING at
+  // the wind-up, so lengthening it makes the read easier, while `strike` is time spent watching an
+  // attack already in flight, so lengthening that makes the chimp look slow and floaty. To buy
+  // reaction time, raise `tell` first.
+  strike:    0.30,
   recover:   0.35,   // after the blow, before it is back on guard
   gapMin:    1.1, gapMax: 2.3,        // breathing room between attacks, and room to move in it
   // THE TELL IS A POSE, NOT A CLIP. box_02 is a 2.8s duck: even played fast the read arrives late,
@@ -1474,7 +1486,7 @@ function markLookYaw(mark) {
 // because a keydown only repeats while held (filtered) the key must be released and pressed again
 // before the next one.
 function requestDodge(key) {
-  if (phase !== 'fight' || P.dead) return;
+  if (paused || phase !== 'fight' || P.dead) return;
   if (P.state === 'dodge' || P.state === 'attack' || P.state === 'hurt' || P.state === 'celebrate') return;
   const slot = KEY_SLOT[key];
   if (!slot) return;
@@ -1961,7 +1973,7 @@ function buildTunePanel() {
   // The lighting is dialled in the same way, since it is just as much an eye judgement.
   const LIGHTS = [
     ['spot light', 0, 320, 5,      () => spot.intensity,  v => spot.intensity = v],
-    ['beam haze',  0, 0.25, 0.005, () => beam.material.uniforms.uStrength.value,
+    ['beam haze',  0, 0.60, 0.01,  () => beam.material.uniforms.uStrength.value,
                                    v => beam.material.uniforms.uStrength.value = v],
     ['spot edge',  0, 0.80, 0.01,  () => spot.penumbra, v => spot.penumbra = v],
     ['spot width', 0.15, 0.75, 0.01, () => spot.angle, v => spot.angle = v],
@@ -2021,17 +2033,44 @@ function buildTunePanel() {
   document.body.appendChild(wrap);
   tunePanel = wrap;
 }
+// The panel is remembered because dying reloads the page: without this, every round that turned
+// over took the panel with it, mid-adjustment. Wrapped because storage throws outright in a private
+// window rather than politely returning nothing.
+const TUNE_KEY = 'boxing.tune';
+const tuneRemember = v => { try { localStorage.setItem(TUNE_KEY, v ? '1' : '0'); } catch (e) {} };
+const tuneWasOpen = () => { try { return localStorage.getItem(TUNE_KEY) === '1'; } catch (e) { return false; } };
+
 function toggleTune() {
   if (tunePanel) { tunePanel.remove(); tunePanel = null; tuneReadout = null; }
   else buildTunePanel();
+  paused = !!tunePanel;
+  tuneRemember(paused);
+  hide();
+  if (paused) say('PAUSED', 'tuning \u2014 <b>`</b> to resume');
 }
 addEventListener('keydown', e => {
   if (e.code === 'Backquote') { e.preventDefault(); toggleTune(); }
 });
-if (Q.has('tune')) buildTunePanel();
+if (Q.has('tune') || tuneWasOpen()) { buildTunePanel(); paused = true; }
+
+// Pulled out of tick() so it keeps running while the fight is held still - otherwise the numbers
+// freeze at the instant of pausing, which is exactly when they need to be read.
+function updateTuneReadout() {
+  if (!tuneReadout) return;
+  const safe = SLOTS.filter(n => !isUnsafe(n));
+  tuneReadout.innerHTML =
+    'time to dodge <b style="color:#e6c07a">' + (FIGHT.tell + FIGHT.strike).toFixed(2) + 's</b>' +
+    ' <span style="opacity:.7">(' + FIGHT.tell.toFixed(2) + ' tell + ' + FIGHT.strike.toFixed(2) + ')</span><br>' +
+    'cycle ' + (FIGHT.tell + FIGHT.strike + FIGHT.recover).toFixed(2) + 's \u00b7 dodge covers ' +
+    dodgeDur().toFixed(2) + 's<br>' +
+    'chimp <b>' + B.state + '</b>' + (B.mark ? ' \u2192 marks <b>' + B.mark + '</b>' : '') + '<br>' +
+    'stephen <b style="color:' + (isUnsafe(currentSlot()) ? '#d98a7a' : '#8fc6a2') + '">' +
+    currentSlot() + '</b>' + (B.mark ? ' \u00b7 safe: ' + safe.join(', ') : '');
+}
 
 function tick() {
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const dt = Math.min(clock.getDelta(), 0.05);   // still drained while paused, so resuming does not jump
+  if (paused) { syncBeam(); updateTuneReadout(); renderer.render(scene, camera); return; }
   swayT += dt;
   syncBeam();
   if (phase === 'cine') cine(dt);
@@ -2064,15 +2103,7 @@ function tick() {
   // cannot drift, and clearing the state snaps the facing back on the very next frame.
   hero.model.rotation.y = hero.baseYaw + P.kickYaw;
   bug.model.rotation.y  = bug.baseYaw  + B.kickYaw + B.tellYaw;
-  if (tuneReadout) {
-    const safe = SLOTS.filter(n => !isUnsafe(n));
-    tuneReadout.innerHTML =
-      'tell → hit <b style="color:#e6c07a">' + (FIGHT.tell + FIGHT.strike).toFixed(2) + 's</b>' +
-      ' · cycle ' + (FIGHT.tell + FIGHT.strike + FIGHT.recover).toFixed(2) + 's<br>' +
-      'chimp <b>' + B.state + '</b>' + (B.mark ? ' → marks <b>' + B.mark + '</b>' : '') + '<br>' +
-      'stephen <b style="color:' + (isUnsafe(currentSlot()) ? '#d98a7a' : '#8fc6a2') + '">' +
-      currentSlot() + '</b>' + (B.mark ? ' · safe: ' + safe.join(', ') : '');
-  }
+  updateTuneReadout();
   window.__dbg = { phase, round, unbeatable:UNBEATABLE, mark:B.mark, slot:phase==='fight'?currentSlot():null, bhp:B.hp, bmax:BUG.hp, php:P.hp, bdead:B.dead, dist:cameraDistance, aspect:camera.aspect, bstate:B.state, bt:B.t, bhit:B.hitAt, blen:B.lungeDur, pstate:P.state, pt:P.t, phit:P.hitAt, patk:P.atk, gap:Math.hypot(hero.root.position.x-bug.root.position.x, hero.root.position.z-bug.root.position.z),
     heroZ:hero.root.position.z, bugZ:bug.root.position.z,
     cam:[camera.position.x, camera.position.y, camera.position.z] };
