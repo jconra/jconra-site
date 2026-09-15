@@ -96,7 +96,13 @@ const ARENA = 11;
 // marching on the spot. WALK_T is now the whole walk-on, CELEBRATE the beat where he cheers and
 // the opponent shows off, and INTRO_DURATION is just their sum.
 const INTRO_START_Z = -11, INTRO_END_Z = -0.8;
-const WALK_T = 3.6, CELEBRATE = 1.7, INTRO_DURATION = WALK_T + CELEBRATE;
+// FOUR BEATS, introducing the two of them the way a broadcast would.
+//   WALK    a camera running backwards ahead of Stephen as he comes out
+//   MEET    it settles onto his face for the wave
+//   REVEAL  it sweeps around him to find his opponent, and holds on its face
+//   SETTLE  it pulls back to the fighting shot
+const WALK_T = 3.2, CELEBRATE = 1.3, REVEAL = 1.6, SETTLE = 0.8;
+const INTRO_DURATION = WALK_T + CELEBRATE + REVEAL + SETTLE;
 // Walk rates are set from the ground speed each one covers, not picked by eye: Stephen crosses
 // 10.2 units in WALK_T (2.83 a second against his 2.4 walk) and the opponent 9.2 (2.56 against
 // 1.7), so their feet keep up with the floor.
@@ -263,7 +269,7 @@ const camera = new THREE.PerspectiveCamera(48, innerWidth/innerHeight, 0.1, 300)
 
 // The environment below supplies ambient of its own, so the hemisphere is only a top-up now.
 // Left at its old strength the two stacked, and a black fleece jacket rendered almost white.
-scene.add(new THREE.HemisphereLight(0x8ea8bd, 0x1c242e, 0.36));
+scene.add(new THREE.HemisphereLight(0x8ea8bd, 0x1c242e, 0.52));
 const key = new THREE.DirectionalLight(0xfff2de, 1.7);
 key.position.set(8, 14, 6); key.castShadow = true;
 key.shadow.mapSize.set(2048,2048);
@@ -568,7 +574,7 @@ class Rig {
 // ── load ──────────────────────────────────────────────────────────────────────
 const loader = new GLTFLoader();
 const load = f => new Promise((res, rej) => loader.load(f, res, undefined, rej));
-let hero, bug, clock, heroHead;
+let hero, bug, clock, heroHead, foeHead;
 
 Promise.all([load('../../models/stephen.glb'), load('../../models/' + ENEMY_FILE)])
 .then(([s, i]) => {
@@ -582,6 +588,7 @@ Promise.all([load('../../models/stephen.glb'), load('../../models/' + ENEMY_FILE
     DODGE_RATE = hop.duration / DODGE.dur;        // one arc spans exactly one dodge
   }
   bug  = new Rig(i, BUG.scale, opponent === 'chimp' ? 0 : Math.PI/2);
+  foeHead = bug.model.getObjectByName('Head');
   // Same cut for the opponent, which shuffles between attacks. Its own victory bounce keeps the
   // full clip, because there a string of hops is the point.
   const bj = i.animations.find(c => c.name === ENEMY_ANIM.victory);
@@ -807,39 +814,69 @@ function cine(dt) {
   const line = new THREE.Vector3().subVectors(hero.root.position, bug.root.position);
   line.y = 0; line.normalize();
   const side = new THREE.Vector3(-line.z, 0, line.x);
-  const behind = bug.root.position.clone().addScaledVector(line, -6).setY(2.9);
-  const br = Math.hypot(behind.x, behind.z);
-  if (br > ARENA + 2) { behind.x *= (ARENA+2)/br; behind.z *= (ARENA+2)/br; }
   const sideView = between.clone().addScaledVector(side, cameraDistance).setY(2.8);
-  if (t < WALK_T * 0.55) {
-    // Approach from behind the chimp, with the camera looking down the line
-    // between the fighters as Stephen walks into the arena.
-    camera.position.copy(behind);
-    camera.lookAt(between.x, 1.2, between.z);
+
+  // Where each fighter's face is. The chimp has a Head bone; the insect does not, so it gets an
+  // estimate off its root instead of a crash.
+  faceShot.copy(heroHead ? heroHead.getWorldPosition(tmp) : hero.root.position).setY(
+    heroHead ? heroHead.getWorldPosition(tmp).y + 0.12 : 1.5);
+  foeShot.copy(foeHead ? foeHead.getWorldPosition(tmp) : bug.root.position.clone().setY(1.25));
+  if (foeHead) foeShot.y += 0.05;
+
+  // Stephen's close-up sits off his shoulder; his opponent's is further out, since "not super
+  // close" for something with that many teeth still wants its whole head in frame.
+  const heroNear = faceShot.clone().addScaledVector(line, 0.62).add(new THREE.Vector3(0.66, 0.10, 0));
+  // `line` runs from the opponent toward Stephen, so the camera goes along POSITIVE line to sit in
+  // front of its face. Going negative put it behind the head, which is why the sweep ended looking
+  // at the back of it.
+  const foeNear  = foeShot.clone().addScaledVector(line, 1.32).add(new THREE.Vector3(0.48, 0.06, 0));
+
+  if (t < WALK_T) {
+    // RUNNING BACKWARDS AHEAD OF HIM. The camera leads him down the walkway at head height and
+    // slightly to one side, so it is never on the line his opponent is walking in along, and
+    // closes the distance as he arrives.
+    const k = t / WALK_T, e = k*k*(3-2*k);
+    // Close, and at or just under his head - his head sits at 1.475, so the lens rides 1.36 to
+    // 1.44 and looks very slightly up at him, the way a camera operator walking backwards would.
+    const ahead = THREE.MathUtils.lerp(2.5, 1.45, e);
+    const across = THREE.MathUtils.lerp(1.05, 0.72, e);
+    camTrack.set(hero.root.position.x + across, THREE.MathUtils.lerp(1.36, 1.44, e),
+                 hero.root.position.z + ahead);
+    camera.position.copy(camTrack);
+    lookOut.copy(faceShot).lerp(hero.root.position, 0.16);   // hold his face, not his chest
+    camera.lookAt(lookOut);
     if (t < 0.1) say('ROUND ' + round, FOE_NAME);
-    if (t > WALK_T*0.45) hide();
-  } else if (t < WALK_T) {
-    // Move to a side-on position and aim directly at the space between them.
-    const k = Math.min(1,(t - WALK_T*0.55)/(WALK_T*0.45)), e = k*k*(3-2*k);
-    camera.position.lerpVectors(behind, sideView, e);
-    camera.lookAt(between.x, 1.2, between.z);
+    if (t > WALK_T*0.5) hide();
+  } else if (t < WALK_T + CELEBRATE) {
+    // ON HIS FACE for the wave.
+    camera.position.lerp(heroNear, 1 - Math.pow(0.004, dt));
+    camera.lookAt(faceShot);
+    if (t > WALK_T + CELEBRATE*0.25) say('', '');
+  } else if (t < WALK_T + CELEBRATE + REVEAL) {
+    // THE SWEEP. Orbit around the point between the two of them, from his shoulder round to the
+    // far side, while the aim slides off his face and onto his opponent's. Interpolating the
+    // camera position directly would cut straight through both fighters.
+    const k = (t - WALK_T - CELEBRATE) / REVEAL, e = k*k*(3-2*k);
+    pivot.copy(faceShot).add(foeShot).multiplyScalar(0.5);
+    const a0 = Math.atan2(heroNear.x - pivot.x, heroNear.z - pivot.z);
+    const r0 = Math.hypot(heroNear.x - pivot.x, heroNear.z - pivot.z);
+    let a1 = Math.atan2(foeNear.x - pivot.x, foeNear.z - pivot.z);
+    const r1 = Math.hypot(foeNear.x - pivot.x, foeNear.z - pivot.z);
+    while (a1 - a0 >  Math.PI) a1 -= Math.PI * 2;
+    while (a1 - a0 < -Math.PI) a1 += Math.PI * 2;
+    const a = a0 + (a1 - a0) * e, r = THREE.MathUtils.lerp(r0, r1, e);
+    camera.position.set(pivot.x + Math.sin(a) * r, THREE.MathUtils.lerp(heroNear.y, foeNear.y, e),
+                        pivot.z + Math.cos(a) * r);
+    lookOut.copy(faceShot).lerp(foeShot, e);
+    camera.lookAt(lookOut);
+    if (k > 0.35 && k < 0.42) say(FOE_NAME.toUpperCase(), '');
+    if (k > 0.92) hide();
   } else if (t < INTRO_DURATION) {
-    // ON HIS FACE. The fighting camera sits five units back and side on, which leaves his head a
-    // few dozen pixels tall - the face is detailed enough to recognise and nothing ever showed it.
-    // Hold a close-up through the wave, then pull out to the fighting shot for the last third.
-    const c = (t - WALK_T) / CELEBRATE;
-    faceShot.copy(heroHead ? heroHead.getWorldPosition(tmp) : hero.root.position);
-    faceShot.y += 0.12;
-    const near = faceShot.clone().add(new THREE.Vector3(0.62, 0.10, 0.80));
-    if (c < 0.62) {
-      camera.position.lerp(near, 1 - Math.pow(0.02, dt));
-      camera.lookAt(faceShot);
-    } else {
-      const k = (c - 0.62) / 0.38, e = k*k*(3-2*k);
-      camera.position.lerpVectors(near, sideView, e);
-      lookOut.copy(faceShot).lerp(new THREE.Vector3(between.x, 1.2, between.z), e);
-      camera.lookAt(lookOut);
-    }
+    // Pull back to the fighting shot.
+    const k = (t - WALK_T - CELEBRATE - REVEAL) / SETTLE, e = k*k*(3-2*k);
+    camera.position.lerpVectors(foeNear, sideView, e);
+    lookOut.copy(foeShot).lerp(new THREE.Vector3(between.x, 1.2, between.z), e);
+    camera.lookAt(lookOut);
   } else {
     endCine();
   }
@@ -1155,7 +1192,8 @@ const camGoal = new THREE.Vector3(), lookGoal = new THREE.Vector3();
 // reads as a violent zoom. Take the axis from their marks instead, which do not move, and let the
 // aim point follow the live midpoint only part of the way.
 const camLine = new THREE.Vector3(), camMid = new THREE.Vector3(), liveMid = new THREE.Vector3();
-const faceShot = new THREE.Vector3(), lookOut = new THREE.Vector3();
+const faceShot = new THREE.Vector3(), foeShot = new THREE.Vector3(), lookOut = new THREE.Vector3();
+const camTrack = new THREE.Vector3(), pivot = new THREE.Vector3();
 function fightCam(dt) {
   const homeA = P.home || hero.root.position, homeB = B.home || bug.root.position;
   camMid.copy(homeA).add(homeB).multiplyScalar(0.5);
