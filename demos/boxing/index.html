@@ -1303,15 +1303,20 @@ function player(dt) {
 // the answer arrive at the same moment every single time.
 const FIGHT = {
   slotDist:  1.0,    // how far a dodge carries him off the mark. 2.0 read as a standing long jump
-  tell:      0.60,   // the wind-up. THIS IS THE REACTION WINDOW - see the note on `strike` below
+  tell:      0.75,   // THE REACTION WINDOW, in full - see the note on `strike` below
   // commit -> damage, THE SAME FOR EVERY ATTACK, which is what makes the tell learnable at all.
   //
-  // THE TIME THERE IS TO DODGE IS `tell` + `strike`, the whole way from the tell appearing to the
-  // blow landing, because a press books its slot for the exchange rather than being sampled at one
-  // instant. Both halves count, but they are not interchangeable: `tell` is time spent LOOKING at
-  // the wind-up, so lengthening it makes the read easier, while `strike` is time spent watching an
-  // attack already in flight, so lengthening that makes the chimp look slow and floaty. To buy
-  // reaction time, raise `tell` first.
+  // THE TIME THERE IS TO REACT IS `tell`, AND ONLY `tell`. It is tempting to count `strike` too,
+  // since a press books its slot right up until the blow lands - but that is only true of the
+  // punches, and a punch is only ever thrown at someone who ALREADY pressed before the commit and
+  // was therefore already safe. Press nothing by the end of the tell and the chimp commits to the
+  // face-eat, which lands unconditionally because it chases him down rather than closing on air.
+  // So the useful window shuts at the end of the tell. Measured, not assumed: pressing 0.30s into
+  // a 0.60s tell escapes every time, pressing after it escapes never.
+  //
+  // `strike` is time spent watching an attack already in flight. Stretching it does not buy the
+  // player anything, it just makes the chimp look slow. `tell` is the only dial that adds reaction
+  // time, which is why it is first in the panel and why the readout quotes it on its own.
   strike:    0.30,
   recover:   0.35,   // after the blow, before it is back on guard
   gapMin:    1.1, gapMax: 2.3,        // breathing room between attacks, and room to move in it
@@ -1919,7 +1924,7 @@ let tuneReadout = null, tunePanel = null;
 function buildTunePanel() {
   const FIELDS = [
     ['slotDist',  0.4,  2.5,  0.05, 'slot distance'],
-    ['tell',      0.15, 1.20, 0.01, 'tell length'],
+    ['tell',      0.15, 1.60, 0.01, 'REACT WINDOW'],
     ['strike',    0.10, 0.80, 0.01, 'commit → damage'],
     ['recover',   0.10, 0.90, 0.01, 'recovery'],
     ['gapMin',    0.30, 3.00, 0.05, 'gap min'],
@@ -2059,10 +2064,10 @@ function updateTuneReadout() {
   if (!tuneReadout) return;
   const safe = SLOTS.filter(n => !isUnsafe(n));
   tuneReadout.innerHTML =
-    'time to dodge <b style="color:#e6c07a">' + (FIGHT.tell + FIGHT.strike).toFixed(2) + 's</b>' +
-    ' <span style="opacity:.7">(' + FIGHT.tell.toFixed(2) + ' tell + ' + FIGHT.strike.toFixed(2) + ')</span><br>' +
-    'cycle ' + (FIGHT.tell + FIGHT.strike + FIGHT.recover).toFixed(2) + 's \u00b7 dodge covers ' +
-    dodgeDur().toFixed(2) + 's<br>' +
+    'react within <b style="color:#e6c07a">' + FIGHT.tell.toFixed(2) + 's</b>' +
+    ' <span style="opacity:.7">of the tell, then it is committed</span><br>' +
+    'blow lands ' + FIGHT.strike.toFixed(2) + 's later \u00b7 cycle ' +
+    (FIGHT.tell + FIGHT.strike + FIGHT.recover).toFixed(2) + 's<br>' +
     'chimp <b>' + B.state + '</b>' + (B.mark ? ' \u2192 marks <b>' + B.mark + '</b>' : '') + '<br>' +
     'stephen <b style="color:' + (isUnsafe(currentSlot()) ? '#d98a7a' : '#8fc6a2') + '">' +
     currentSlot() + '</b>' + (B.mark ? ' \u00b7 safe: ' + safe.join(', ') : '');
