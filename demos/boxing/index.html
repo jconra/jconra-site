@@ -1816,8 +1816,12 @@ if (Q.has('probe')) Object.assign(window, { damageBug, damageHero, P, B, BUG, ri
 // fight is running. Every number the timing depends on is a slider here, live, and COPY prints the
 // set as a JS literal ready to paste back over the FIGHT block above. Off unless ?tune is present,
 // so the demo itself is untouched.
-let tuneReadout = null;
-if (Q.has('tune')) {
+// OPENED BY ?tune OR BY THE BACKTICK KEY. A query string is not always reachable: published to a
+// host that frames the page, the URL the player edits belongs to the outer document and the frame
+// inside keeps its own, so `?tune` never arrives and the panel could not be opened at all. The key
+// works wherever the page does.
+let tuneReadout = null, tunePanel = null;
+function buildTunePanel() {
   const FIELDS = [
     ['slotDist',  0.4,  2.5,  0.05, 'slot distance'],
     ['tell',      0.15, 1.20, 0.01, 'tell length'],
@@ -1912,9 +1916,27 @@ if (Q.has('tune')) {
     out.select();
     if (navigator.clipboard) navigator.clipboard.writeText(text).catch(()=>{});
   };
-  body.append(copy, out);
+  // Same reason as the key: with the query string out of reach there has to be a way to reach the
+  // second round from inside the page. Assigning `search` reloads THIS document, which does work.
+  const rnd = document.createElement('button');
+  rnd.textContent = round === 2 ? 'BACK TO ROUND 1' : 'JUMP TO ROUND 2';
+  rnd.style.cssText = 'width:100%;margin-top:6px;padding:6px;cursor:pointer;background:transparent;' +
+    'color:#9fb0bd;border:1px solid rgba(255,255,255,.25);border-radius:4px;' +
+    "font:600 11px 'Courier New',monospace;letter-spacing:1px";
+  rnd.onclick = () => { location.search = round === 2 ? '' : '?round=2'; };
+
+  body.append(copy, rnd, out);
   document.body.appendChild(wrap);
+  tunePanel = wrap;
 }
+function toggleTune() {
+  if (tunePanel) { tunePanel.remove(); tunePanel = null; tuneReadout = null; }
+  else buildTunePanel();
+}
+addEventListener('keydown', e => {
+  if (e.code === 'Backquote') { e.preventDefault(); toggleTune(); }
+});
+if (Q.has('tune')) buildTunePanel();
 
 function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
