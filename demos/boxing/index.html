@@ -156,11 +156,14 @@ const CHIMP_ANIM = {
   strike: C('box_01'),                            // default; strikeSet cycles
   strikeSet: ['box_01','box_03','front_kick_02','press-up'].map(C),
   bite: C('press-up'),                            // jumps at the face, grabs and pulls
-  taunt: C('dance_05'),                           // a quick strut while Stephen cheers
+  taunt: C('dance_05'),                           // a quick strut while Stephen waves
+  // `dance_05` is the threat display it winds up with, so using it over the body read as the
+  // chimp still fighting. `jump` is a bounce on the spot - that reads as celebrating.
+  victory: C('jump'),
   hurt: [C('hit_to_body_02'), C('hit_to_head')],  // it flinches when it is hit
   death: C('defeat_03'),
 };
-const INSECT_ANIM = {idle:'Idle', walk:'Walk', rear:'RearUp', strike:'Strike', strikeSet:['Strike'], taunt:'RearUp', hurt:null, death:'Death'};
+const INSECT_ANIM = {idle:'Idle', walk:'Walk', rear:'RearUp', strike:'Strike', strikeSet:['Strike'], taunt:'RearUp', victory:'RearUp', hurt:null, death:'Death'};
 const ENEMY_ANIM = opponent === 'chimp' ? CHIMP_ANIM : INSECT_ANIM;
 const ENEMY_FILE = opponent === 'chimp' ? 'chimpanzee.glb' : 'insect_animated.glb';
 const ENEMY_TAUNT = ENEMY_ANIM.taunt;
@@ -188,13 +191,23 @@ const BITE = {
   peak: 1.0,               // seconds into the clip where the squeeze is
 };
 BITE.dur = BITE.spring + BITE.hold + BITE.recoil;
-const DEATH_LIFT = { stephen: 0.24, chimp: 0.30, insect: 0 };   // new model lies 0.222 deep
-const DEATH_RAMP = 1.6;
-function liftBody(rig, who, elapsed) {
-  rig.root.position.y = DEATH_LIFT[who] * Math.min(1, elapsed / DEATH_RAMP);
+// MEASURED per death clip: the lowest skinned vertex at game scale, and how long the clip takes
+// to get there. `fall` lies deeper than `defeat_03` (0.254 against 0.222) and drops more than
+// twice as fast - lowest at 1.75s against 3.77 - so one lift and one ramp for both would either
+// pop the body up early or leave it in the concrete while it settles.
+const DEATH = {
+  stephen: { 'defeat_03': {lift:0.24, ramp:2.6}, 'fall': {lift:0.27, ramp:1.2} },
+  chimp:   { 'defeat_03': {lift:0.30, ramp:2.6} },
+  insect:  { 'Death':     {lift:0,    ramp:1.0} },
+};
+const STEPHEN_DEATHS = ['defeat_03', 'fall'];
+function liftBody(rig, who, clip, elapsed) {
+  const d = DEATH[who] && DEATH[who][clip];
+  if (!d) return;
+  rig.root.position.y = d.lift * Math.min(1, elapsed / d.ramp);
 }
 const ATTACKS = ['box_01','box_03','front_kick_01','front_kick_02'];
-const HURTS = ['hit_to_body_01','hit_to_side','hit_to_head'];
+const HURTS = ['hit_to_body_01','hit_to_body_02','hit_to_side','hit_to_head'];
 // The preset clips are performed at a leisurely pace; a fight wants them snappy. Rate scales the
 // playback AND the state timer together, otherwise the state outlasts the animation and he stands
 // frozen at the end of a swing.
@@ -211,6 +224,15 @@ if (FORCE_GL1) {
 } else {
   renderer = new THREE.WebGLRenderer({ antialias:true });
 }
+// The models looked soft and washed out next to the same asset in Tripo's own viewer, and none of
+// it was the mesh. Three things were missing here:
+//   - no tone mapping, so the whole image sat flat with the highlights clipping
+//   - no anisotropy on the model textures, so a 4K map blurred at every glancing angle, which is
+//     most of a body; only the canvas textures for the stage were getting it
+//   - nothing in the environment, so a roughness-0.9 material with two lights has nothing to pick
+//     up. Tripo lights with an environment, which is where its surface detail comes from.
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.35;
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
@@ -233,6 +255,31 @@ key.shadow.bias=-0.0016;
 scene.add(key);
 const rim = new THREE.DirectionalLight(0x6f9ac6, 1.5);
 rim.position.set(-8,5,-7); scene.add(rim);
+// A soft fill from the camera side so faces are not left to the ambient term alone.
+const fill = new THREE.DirectionalLight(0xbcd2e6, 0.9);
+fill.position.set(6, 3, -2); scene.add(fill);
+
+// Image-based lighting, which is what the model is actually missing. PMREM wants half-float
+// render targets, so it is WebGL 2 only; on WebGL 1 the lights above carry it alone.
+if (renderer.capabilities.isWebGL2) {
+  try {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const env = new THREE.Scene();
+    const box = new THREE.Mesh(
+      new THREE.BoxGeometry(12, 7, 12),
+      new THREE.MeshBasicMaterial({ color: 0x2c3540, side: THREE.BackSide })
+    );
+    env.add(box);
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(9, 5),
+      new THREE.MeshBasicMaterial({ color: 0xbed4ea }));
+    glow.position.set(0, 3.4, 0); glow.rotation.x = Math.PI/2; env.add(glow);
+    const lamp = new THREE.Mesh(new THREE.PlaneGeometry(4, 3),
+      new THREE.MeshBasicMaterial({ color: 0xffe3b0 }));
+    lamp.position.set(5.5, 1.4, 1); lamp.rotation.y = -Math.PI/2; env.add(lamp);
+    scene.environment = pmrem.fromScene(env, 0.06).texture;
+    pmrem.dispose();
+  } catch (e) { /* no environment; the lights still stand on their own */ }
+}
 
 // platform
 const plat = new THREE.Mesh(
@@ -428,7 +475,18 @@ class Rig {
       o.castShadow = true; o.receiveShadow = true;
       o.frustumCulled = false;                       // skinned bounds go stale mid-clip
       const ms = Array.isArray(o.material) ? o.material : [o.material];
-      for (const m of ms) if (m && m.map) m.map.colorSpace = THREE.SRGBColorSpace;
+      const maxAniso = renderer.capabilities.getMaxAnisotropy();
+      for (const m of ms) {
+        if (!m) continue;
+        if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
+        // Every map on the material, not just the colour one.
+        for (const slot of ['map','normalMap','roughnessMap','metalnessMap','aoMap','emissiveMap']) {
+          const t = m[slot];
+          if (t) { t.anisotropy = maxAniso; t.needsUpdate = true; }
+        }
+        m.envMapIntensity = 0.85;
+        m.needsUpdate = true;
+      }
     });
     this.root.add(this.model);
     this.mixer = new THREE.AnimationMixer(this.model);
@@ -522,7 +580,7 @@ function setInput(mode) {
 }
 setInput(matchMedia('(hover: none) and (pointer: coarse)').matches ? 'touch' : 'keys');
 
-const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, dodgeKey:null, dodgeUntil:0, dodgeAnimT:0, lastDodgeKey:null, deadT:0 };
+const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, dodgeKey:null, dodgeUntil:0, dodgeAnimT:0, lastDodgeKey:null, deadT:0, deathClip:'defeat_03' };
 const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0, phase:null, act:null };
 let phase = 'cine', cineT = 0, overT = 0;
 
@@ -667,7 +725,8 @@ function damageHero(d) {
   php.style.width = (100*P.hp/PLAYER.hp) + '%';
   if (P.hp <= 0) {
     P.dead = true; P.state = 'dead'; P.deadT = 0;
-    hero.play(A('defeat_03'), { once:true, fade:0.15 });
+    P.deathClip = STEPHEN_DEATHS[(Math.random() * STEPHEN_DEATHS.length) | 0];
+    hero.play(A(P.deathClip), { once:true, fade:0.15 });
     if (!B.dead) { B.state = 'victory'; B.t = 0; B.lunged = true;
       bug.model.rotation.x = 0;
       if (B.kickYaw) { bug.model.rotation.y -= B.kickYaw; B.kickYaw = 0; } }
@@ -752,7 +811,7 @@ function endCine() {
 const ndc = new THREE.Vector3();
 const fwd = new THREE.Vector3(), tmp = new THREE.Vector3(), dodgeAxis = new THREE.Vector3(), dodgeTarget = new THREE.Vector3();
 function player(dt) {
-  if (P.dead) { P.deadT += dt; liftBody(hero, 'stephen', P.deadT); return; }
+  if (P.dead) { P.deadT += dt; liftBody(hero, 'stephen', P.deathClip, P.deadT); return; }
   if (P.state === 'celebrate') return;
   if (P.invuln > 0) P.invuln -= dt;
 
@@ -834,7 +893,7 @@ function player(dt) {
 // ── the bug ───────────────────────────────────────────────────────────────────
 function bugAI(dt) {
   if (B.hurtCd > 0) B.hurtCd -= dt;
-  if (B.dead) { B.deadT += dt; liftBody(bug, opponent, B.deadT); return; }
+  if (B.dead) { B.deadT += dt; liftBody(bug, opponent, bare(ENEMY_ANIM.death), B.deadT); return; }
   if (UNBEATABLE && B.hp < BUG.hp) {               // it knits itself back together
     B.hp = Math.min(BUG.hp, B.hp + BUG.regen * dt);
     ehp.style.width = (100*B.hp/BUG.hp) + '%';
@@ -865,7 +924,7 @@ function bugAI(dt) {
         bug.root.position.z += toHero.z * BUG.walk * 1.35 * dt;
         bug.play(ENEMY_ANIM.walk, { fade:0.25, rate:1.35 });
       } else {
-        bug.play(ENEMY_ANIM.taunt, { fade:0.3, rate:1.0 });
+        bug.play(ENEMY_ANIM.victory, { fade:0.3, rate:1.0 });
       }
       break;
     }
@@ -1020,7 +1079,7 @@ window.__heroPos = () => hero ? {
   w: hero.cur? +hero.cur.getEffectiveWeight().toFixed(2):null
 } : null;
 // Headless test hook: ?probe lets a harness drive damage directly.
-if (Q.has('probe')) Object.assign(window, { damageBug, damageHero, P, B, BUG, rigs:()=>({hero,bug}), THREE });
+if (Q.has('probe')) Object.assign(window, { damageBug, damageHero, P, B, BUG, rigs:()=>({hero,bug}), THREE, camera, scene, renderer });
 
 function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
