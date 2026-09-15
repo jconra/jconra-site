@@ -173,6 +173,8 @@ const ATTACKS = ['box_01','box_03','front_kick_01','front_kick_02'];
 // playback AND the state timer together, otherwise the state outlasts the animation and he stands
 // frozen at the end of a swing.
 const ATTACK_RATE = 1.7, HURT_RATE = 1.5;
+// The jump clip is a leisurely 1.75s float; a dodge is a quick hop out of the way.
+const DODGE_RATE = 1.75;
 
 // ── renderer ──────────────────────────────────────────────────────────────────
 const FORCE_GL1 = Q.has('gl1');
@@ -569,7 +571,7 @@ function setInput(mode) {
 }
 setInput(matchMedia('(hover: none) and (pointer: coarse)').matches ? 'touch' : 'keys');
 
-const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, dodgeKey:null, dodgeUntil:0, dodgeAnimT:0, deadT:0 };
+const P = { hp: PLAYER.hp, state:'intro', t:0, atk:null, dead:false, invuln:0, home:null, dodgeKey:null, dodgeUntil:0, dodgeAnimT:0, lastDodgeKey:null, deadT:0 };
 const B = { hp: BUG.hp, state:'idle', t:2.2, dead:false, hitFlash:0, lunged:false, home:null, bite:false, lungeDur:0.55, hurtCd:0, deadT:0, kickYaw:0 };
 let phase = 'cine', cineT = 0, overT = 0;
 
@@ -848,17 +850,22 @@ function player(dt) {
   if (dodgeAxis.lengthSq() > 0) {
     dodgeTarget.copy(P.home).addScaledVector(dodgeAxis, 2.1);
     hero.root.position.lerp(dodgeTarget, 1 - Math.pow(0.0001, dt));
-    if (P.state !== 'dodge') {
-      const jump = hero.play(A('jump'), { once:true, fade:0.1 });
-      P.dodgeAnimT = jump ? jump.getClip().duration : 0;
+    // Replay on every fresh dodge: a new press, or a change of direction. Keying it on the state
+    // alone meant a second dodge inside the clip's own length silently skipped the hop, because
+    // the state was still 'dodge' and play() returns early when the action is already current.
+    if (P.state !== 'dodge' || dodgeKey !== P.lastDodgeKey) {
+      const jump = hero.play(A('jump'), { once:true, fade:0.07, rate:DODGE_RATE, force:true });
+      P.dodgeAnimT = jump ? jump.getClip().duration / DODGE_RATE : 0;
     } else if (P.dodgeAnimT > 0) {
       P.dodgeAnimT -= dt;
     } else {
       hero.play(A('idle'), { fade:0.2 });
     }
+    P.lastDodgeKey = dodgeKey;
     P.state = 'dodge';
   } else {
     hero.root.position.lerp(P.home, 1 - Math.pow(0.0001, dt));
+    P.lastDodgeKey = null;
     if (P.state === 'dodge' && P.dodgeAnimT > 0) {
       P.dodgeAnimT -= dt;
     } else {
