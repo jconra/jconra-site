@@ -348,15 +348,13 @@ fill.position.set(6, 3, -2); scene.add(fill);
 // `decay` is left at 1 rather than the physical 2 on purpose: at 2 the intensity needed to reach
 // the canvas from 18 units up blows the fighters' heads out long before the floor is lit, because
 // they are a third of the way up the cone.
-const SPOT_H = 18, SPOT_ANGLE = 0.42;
+const SPOT_H = 18, SPOT_ANGLE = 0.20;      // tight enough to sit on the fight and nothing else
 // 130 by eye against 0 / 70 / 130 / 220 rendered side by side: enough to draw the pool and let the
 // canvas fall away into the dark at the rim, without flattening the night out of the rest of it.
-// PENUMBRA 0.08, not the 0.55 it started at. At 0.55 the falloff is so gradual that the pool has no
-// edge at all - the canvas just gets gradually less dark toward the middle, which reads as ambient
-// light rather than as a lamp pointed at something. Rendered 0.55 / 0.25 / 0.08 / 0 side by side:
-// 0.08 puts a definite rim on the circle while keeping a few pixels of feather, where a flat 0 is
-// crisp but aliases along the edge as the camera turns.
-const spot = new THREE.SpotLight(0xffeccd, 130, 46, SPOT_ANGLE, 0.08, 1);
+// PENUMBRA 0.30: an edge you can see, with enough softness left that it does not alias along the
+// rim as the camera turns. 0.55, where this started, was gradual enough that the pool had no edge
+// at all and simply read as ambient light.
+const spot = new THREE.SpotLight(0xffeccd, 130, 46, SPOT_ANGLE, 0.30, 1);
 spot.position.set(0, SPOT_H, 1.5);          // just off the camera side of centre, so faces are lit
 spot.target.position.set(0, 0, 0); scene.add(spot.target);
 spot.castShadow = true;
@@ -373,7 +371,7 @@ const beamGeo = new THREE.ConeGeometry(SPOT_H * Math.tan(SPOT_ANGLE) * 1.02, SPO
 const beam = new THREE.Mesh(beamGeo, new THREE.ShaderMaterial({
   transparent: true, depthWrite: false, side: THREE.DoubleSide,
   blending: THREE.AdditiveBlending,
-  uniforms: { uColor: { value: new THREE.Color(0xffe3b4) }, uStrength: { value: 0.085 } },
+  uniforms: { uColor: { value: new THREE.Color(0xffe3b4) }, uStrength: { value: 0.26 } },
   vertexShader: `
     varying vec3 vN; varying vec3 vV; varying float vH;
     void main() {
@@ -389,14 +387,29 @@ const beam = new THREE.Mesh(beamGeo, new THREE.ShaderMaterial({
     void main() {
       float graze = 1.0 - abs(dot(normalize(vN), normalize(vV)));
       float a = pow(graze, 2.0) * uStrength;
-      a *= smoothstep(0.0, 0.42, vH);          // gone by the time it reaches the canvas
-      a *= mix(0.55, 1.0, vH);                 // and denser up near the lamp
+      // THE ONLY VIEW THAT MATTERS IS THE LOW ONE. This used to fade out below 0.42 of the way up
+      // and get denser toward the lamp, which is a perfectly good shaft of light from across the
+      // roof and completely invisible from where the fight is actually watched: at eye level only
+      // the bottom quarter of the cone is ever on screen, and that was the quarter being faded to
+      // nothing. It now holds most of its density all the way down and only drops in the last
+      // fraction, where the geometry meets the canvas and an abrupt end would show as a rim.
+      a *= smoothstep(0.0, 0.09, vH);
+      a *= mix(0.80, 1.0, vH);
       gl_FragColor = vec4(uColor, a);
     }`,
 }));
 beam.position.set(spot.position.x, SPOT_H / 2, spot.position.z);
 beam.renderOrder = 2;
 scene.add(beam);
+// The cone is built at SPOT_ANGLE, so it has to be rescaled whenever the width slider moves or the
+// haze stops lining up with the pool it is supposed to be pouring into.
+let beamAngleCache = -1;
+function syncBeam() {
+  if (spot.angle === beamAngleCache) return;
+  beamAngleCache = spot.angle;
+  const k = Math.tan(spot.angle) / Math.tan(SPOT_ANGLE);
+  beam.scale.set(k, 1, k);
+}
 
 // Image-based lighting, which is what the model is actually missing. PMREM wants half-float
 // render targets, so it is WebGL 2 only; on WebGL 1 the lights above carry it alone.
@@ -2020,6 +2033,7 @@ if (Q.has('tune')) buildTunePanel();
 function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
   swayT += dt;
+  syncBeam();
   if (phase === 'cine') cine(dt);
   else {
     player(dt); bugAI(dt);
