@@ -256,6 +256,7 @@ function pickFidget(have) {
 const SQUEEZE = { upper: 0.42, fore: 0.26 };
 
 const GRAB = { reach:0.42, latch:0.20, shake:1.95, release:0.55,
+               shakeYaw:0.17, shakeRate:12, shakePitch:0.09,
                // Held ACROSS the jaws, not pointing into them. Head-first drove his whole body
                // through the inside of the skull; crosswise he sticks out either side, which is
                // both what a bug carrying prey looks like and free of clipping.
@@ -1615,8 +1616,16 @@ function anchorToMouth(dt, k) {
   mouthPoint(mouth);
   P.grabPitch = THREE.MathUtils.lerp(P.grabPitch, GRAB.pitch, 1 - Math.pow(0.004, dt));
   hero.model.rotation.x = P.grabPitch;
-  tmp.copy(bug.root.position).sub(hero.root.position); tmp.y = 0;
-  if (tmp.lengthSq() > 1e-6) hero.root.rotation.y = Math.atan2(tmp.x, tmp.z) + GRAB.cross;
+  // DRIVEN BY THE BUG'S OWN FACING, never by the line between the two. Taking the angle from
+  // bug-minus-hero fed this frame's output back in as next frame's input: he is held CROSSWISE, so
+  // his chest sits a long way off his root at ninety degrees to wherever he faces, and the root
+  // then has to be shoved to put that chest on the mouth. Shove the root, and the bug-to-hero line
+  // has moved, so next frame the angle differs, so the shove differs. It ran away. Measured through
+  // the hold: the bug's head swung 32 degrees, whose arc at the mouth is about 0.66 units, and he
+  // came out travelling 2.18 - three times the input - reversing direction 28 times in 61 frames.
+  // The bug's yaw is an independent driver and cannot be fed back into, and held across its jaws is
+  // what the pose was always meant to be anyway.
+  hero.root.rotation.y = bug.root.rotation.y + GRAB.cross;
   hero.root.updateMatrixWorld(true);
   if (heroChest) {
     heroChest.getWorldPosition(vB);
@@ -1829,8 +1838,16 @@ function bugAI(dt) {
         }
         const sh = el - GRAB.reach - GRAB.latch;
         if (sh > 0) {                                         // worry it like a dog with a rag
-          bug.root.rotation.y = B.grabYaw + Math.sin(sh * 24) * 0.42;
-          bug.model.rotation.x = Math.sin(sh * 17) * 0.17;
+          // MEASURED, because this was reported as the screen shaking and the camera turned out to
+          // be innocent: through the whole grab the camera moves 0.15u and its aim swings 2.6
+          // degrees, LESS than it does while the two are just standing idle. What was actually
+          // thrashing was Stephen. At 0.42rad the bug's head swings 48 degrees, and because he is
+          // pinned by the chest to a mouth a unit out in front of it - and turned to face it, so
+          // his own chest offset swings too - that came out as 2.5 units of him travelling side to
+          // side, four times a second, filling a phone screen. It reads as the picture tearing
+          // rather than as a bug worrying its catch. Halved and slowed; still a shake, not a fit.
+          bug.root.rotation.y = B.grabYaw + Math.sin(sh * GRAB.shakeRate) * GRAB.shakeYaw;
+          bug.model.rotation.x = Math.sin(sh * GRAB.shakeRate * 0.72) * GRAB.shakePitch;
           // No chipping. The bar drains over the shake as a read-out of what is happening and
           // the kill lands once at the end - it is a finisher, not damage over time.
           if (B.caught) {
@@ -2065,6 +2082,8 @@ function buildTunePanel() {
     ['spot edge',  0, 0.80, 0.01,  () => spot.penumbra, v => spot.penumbra = v],
     ['spot width', 0.15, 0.75, 0.01, () => spot.angle, v => spot.angle = v],
     ['chimp dodge', 0, 0.75, 0.01, () => EVADE.chance, v => EVADE.chance = v],
+    ['shake size',  0, 0.50, 0.01, () => GRAB.shakeYaw,  v => GRAB.shakeYaw = v],
+    ['shake speed', 4, 26,   0.5,  () => GRAB.shakeRate, v => GRAB.shakeRate = v],
     ['haze width', 0.25, 1.20, 0.01, () => BEAM.narrow, v => BEAM.narrow = v],
     ['haze edge',  0.35, 3.00, 0.05, () => beam.material.uniforms.uSoft.value,
                                      v => beam.material.uniforms.uSoft.value = v],
