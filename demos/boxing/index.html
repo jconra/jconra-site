@@ -282,6 +282,9 @@ const ATTACK_RATE = 1.7, HURT_RATE = 1.5;
 // every single time - dodge backwards, hit back, and the blow could not reach by construction,
 // however well it was timed. 2.4 covers the worst case with room for both of them drifting.
 const DRIVE_MAX = 2.4;
+// How high each attacker leaves the ground at the top of its lunge. The insect's was 1.35, which on
+// a creature this size reads as it jumping over him rather than at him.
+const LUNGE_ARC = { insect: Q.has('arc') ? +Q.get('arc') : 0.55, bite: 0.55 };
 // THE JUMP CLIP IS FIVE HOPS. Measured off the foot height, `jump` runs 2.25s and bounces at
 // 0.13, 0.61, 1.13, 1.57 and 1.99 - which is why a dodge looked like a kangaroo however the
 // trigger behaved. Hop 1 is the tallest, so the dodge uses a subclip cut from just after hop 0
@@ -1999,7 +2002,7 @@ function bugAI(dt) {
       const progress = Math.min(1, (B.lungeDur - B.t) / B.hitAt);
       bug.root.position.lerpVectors(B.jumpFrom, B.jumpTo, progress);
       // Punches stay on the ground; the insect leaps; the chimp's bite is a low jump at the face.
-      const arc = opponent !== 'chimp' ? 1.35 : B.bite ? 0.55 : 0;
+      const arc = opponent !== 'chimp' ? LUNGE_ARC.insect : B.bite ? LUNGE_ARC.bite : 0;
       bug.root.position.y = Math.sin(progress * Math.PI) * arc;
       if (!B.lunged && B.lungeDur - B.t >= B.hitAt) {
         B.lunged = true;
@@ -2155,6 +2158,7 @@ function buildTunePanel() {
     ['spot edge',  0, 0.80, 0.01,  () => spot.penumbra, v => spot.penumbra = v],
     ['spot width', 0.15, 0.75, 0.01, () => spot.angle, v => spot.angle = v],
     ['chimp dodge', 0, 0.75, 0.01, () => EVADE.chance, v => EVADE.chance = v],
+    ['lunge height', 0, 1.6, 0.05, () => LUNGE_ARC.insect, v => LUNGE_ARC.insect = v],
     ['spike upper X', -2, 2, 0.05, () => SPIKE.rx, v => SPIKE.rx = v],
     ['spike upper Y', -2, 2, 0.05, () => SPIKE.ry, v => SPIKE.ry = v],
     ['spike upper Z', -2, 2, 0.05, () => SPIKE.rz, v => SPIKE.rz = v],
