@@ -53,17 +53,10 @@
     transition:opacity .6s ease;
   }
   #boot.gone { opacity:0; pointer-events:none; }
-  #opponent-picker {
-    position:fixed; bottom:18px; right:22px; z-index:45; color:#8fa0ad;
-    font:11px ui-monospace,monospace; letter-spacing:.08em; text-shadow:0 1px 4px #000;
-  }
-  #opponent-picker button { margin-left:7px; padding:6px 8px; color:#dce6ed; background:#101820;
-    border:1px solid rgba(255,255,255,.25); border-radius:4px; font:inherit; cursor:pointer; }
 </style>
 </head>
 <body>
 <div id="boot">LOADING…</div>
-<div id="opponent-picker"><button id="opponent-switch" type="button">SWITCH FOE</button></div>
 <div id="hud">
   <div class="bar p"><div class="who">Stephen</div><div class="track"><div class="fill" id="php"></div></div></div>
   <div class="bar e"><div class="who" id="enemy-name">Warrior Bug</div><div class="track"><div class="fill" id="ehp"></div></div></div>
@@ -90,7 +83,14 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const A = n => 'preset:biped:' + n;              // Stephen's clips carry this prefix
 const C = n => 'preset:biped:' + n + '.001';      // Chimpanzee clips have a Blender suffix
-const opponent = new URLSearchParams(location.search).get('opponent') === 'insect' ? 'insect' : 'chimp';
+const Q = new URLSearchParams(location.search);
+// TWO ROUNDS. The chimp is round 1 and can be beaten; the warrior bug is round 2 and cannot -
+// it regenerates faster than anyone can cut it down and will not drop below a floor, so the round
+// is a question of how long you last, not whether you win. `?fair` makes it killable.
+const round = Q.get('round') === '2' ? 2 : 1;
+const opponent = round === 2 ? 'insect' : 'chimp';
+const UNBEATABLE = round === 2 && !Q.has('fair');
+const HP_FLOOR = 0.09;                             // fraction of max the bug never falls below
 const ARENA = 11;
 const INTRO_START_Z = -11, INTRO_END_Z = -0.8, INTRO_DURATION = 7;
 // The opponent walks on from its own side rather than being planted there from frame one.
@@ -128,6 +128,12 @@ const PLAYER = {
 };
 const BUG = {
   scale: 2.2, walk: 1.7, hp: 420, lungeSpeed: 9.5, lungeDamage: 16, biteDamage: 22, reach: 3.2,
+  // Round 2: it hits for more and knits itself back together. Regen sits BELOW what a player can
+  // land (Stephen averages 16 a hit, about one a second), so pressing the attack really does
+  // drive the bar down - it just stops at HP_FLOOR and climbs back the moment you breathe.
+  // Hope, then the floor: that reads as a boss, where out-regenerating the player reads as a
+  // health bar that ignores you.
+  regen: 11, boss: { lungeDamage: 27, biteDamage: 27 },
 };
 // The chimp has biped clips, but not the insect-specific names.
 const CHIMP_ANIM = {
@@ -141,12 +147,10 @@ const CHIMP_ANIM = {
 const INSECT_ANIM = {idle:'Idle', walk:'Walk', rear:'RearUp', strike:'Strike', strikeSet:['Strike'], death:'Death'};
 const ENEMY_ANIM = opponent === 'chimp' ? CHIMP_ANIM : INSECT_ANIM;
 const ENEMY_FILE = opponent === 'chimp' ? 'chimpanzee.glb' : 'insect_animated.glb';
-document.getElementById('opponent-switch').textContent = opponent === 'chimp' ? 'SWITCH TO BUG' : 'SWITCH TO CHIMP';
-document.getElementById('enemy-name').textContent = opponent === 'chimp' ? 'Chimpanzee' : 'Warrior Bug';
-document.getElementById('opponent-switch').addEventListener('click', () => {
-  const query = opponent === 'chimp' ? '?opponent=insect' : '';
-  location.search = query;
-});
+const FOE_NAME = opponent === 'chimp' ? 'Chimpanzee' : 'Warrior Bug';
+document.getElementById('enemy-name').textContent = FOE_NAME;
+const nextRound = () => { location.search = '?round=2' + (FORCE_GL1 ? '&gl1' : ''); };
+const DMG = UNBEATABLE ? BUG.boss : BUG;
 const ATTACKS = ['box_01','box_03','front_kick_01','front_kick_02'];
 // The preset clips are performed at a leisurely pace; a fight wants them snappy. Rate scales the
 // playback AND the state timer together, otherwise the state outlasts the animation and he stands
@@ -154,7 +158,7 @@ const ATTACKS = ['box_01','box_03','front_kick_01','front_kick_02'];
 const ATTACK_RATE = 1.7, HURT_RATE = 1.5;
 
 // ── renderer ──────────────────────────────────────────────────────────────────
-const FORCE_GL1 = new URLSearchParams(location.search).has('gl1');
+const FORCE_GL1 = Q.has('gl1');
 let renderer;
 if (FORCE_GL1) {
   const cv = document.createElement('canvas');
@@ -546,7 +550,7 @@ let phase = 'cine', cineT = 0, overT = 0;
 const keys = {};
 // ANY INPUT SKIPS THE INTRO. It replaces a button that had to be aimed at, and the same press
 // must not also throw a punch, so every handler returns once it has skipped.
-const chrome = e => !!(e.target.closest && e.target.closest('#opponent-picker'));
+const chrome = e => !!(e.target.closest && false);
 function skipIntro() { if (phase !== 'cine') return false; endCine(); return true; }
 
 addEventListener('keydown', e => {
@@ -580,7 +584,7 @@ addEventListener('wheel', e => {
   cameraDistance = THREE.MathUtils.clamp(cameraDistance + e.deltaY * 0.012, 4.2, 30);
 }, {passive:false});
 addEventListener('mousedown', e => {
-  if (e.button === 0 && !chrome(e)) { if (skipIntro()) return; tryAttack((Math.random() * ATTACKS.length) | 0); }
+  if (e.button === 0) { if (skipIntro()) return; tryAttack((Math.random() * ATTACKS.length) | 0); }
   if (e.button === 2) { dragging = true; lastX = e.clientX; }
 });
 addEventListener('mouseup',   e => { if (e.button === 2) dragging = false; });
@@ -604,7 +608,6 @@ addEventListener('touchend', e => {
   const touch = e.changedTouches[0];
   const dx = touch.clientX - touchStart.x, dy = touch.clientY - touchStart.y;
   touchStart = null;
-  if (chrome(e)) return;
   if (skipIntro()) return;
   if (Math.hypot(dx,dy) < 28) {
     tryAttack((Math.random() * ATTACKS.length) | 0);
@@ -650,11 +653,15 @@ function damageBug(d) {
   bug.model.traverse(o => { if (o.isMesh && o.material && o.material.emissive) {
     o.material.emissive.setHex(0x883322); o.material.emissiveIntensity = 1;
     setTimeout(()=>o.material.emissive.setHex(0x000000), 130); } });
+  if (UNBEATABLE) B.hp = Math.max(B.hp, BUG.hp * HP_FLOOR);
   ehp.style.width = (100*B.hp/BUG.hp) + '%';
   if (B.hp <= 0) {
     B.dead = true; B.state = 'dead';
     bug.play(ENEMY_ANIM.death, { once:true, fade:0.15 });
-    setTimeout(()=>{ if (!P.dead) { say('BUG DOWN', 'you win'); } }, 900);
+    setTimeout(()=>{ if (!P.dead) {
+      if (round === 1) { say('ROUND 1 CLEARED', 'something worse is coming'); setTimeout(nextRound, 2600); }
+      else say('BUG DOWN', 'you actually did it');
+    } }, 900);
   }
 }
 function damageHero(d) {
@@ -666,7 +673,7 @@ function damageHero(d) {
   if (P.hp <= 0) {
     P.dead = true; P.state = 'dead';
     hero.play(A('defeat_03'), { once:true, fade:0.15 });
-    say('DEFEATED', 'reload to try again');
+    say('DEFEATED', UNBEATABLE ? 'nothing beats the bug' : 'reload to try again');
   } else {
     P.state = 'hurt';
     const n = Math.random() < 0.5 ? 'hit_to_body_01' : 'hit_to_side';
@@ -703,7 +710,7 @@ function cine(dt) {
     // between the fighters as Stephen walks into the arena.
     camera.position.copy(behind);
     camera.lookAt(between.x, 1.2, between.z);
-    if (t < 0.1) say('THE ARENA', '');
+    if (t < 0.1) say('ROUND ' + round, FOE_NAME);
     if (t > 2.8) hide();
   } else if (t < INTRO_DURATION) {
     // Move to a side-on position and aim directly at the space between them.
@@ -813,6 +820,10 @@ function player(dt) {
 // ── the bug ───────────────────────────────────────────────────────────────────
 function bugAI(dt) {
   if (B.dead) return;
+  if (UNBEATABLE && B.hp < BUG.hp) {               // it knits itself back together
+    B.hp = Math.min(BUG.hp, B.hp + BUG.regen * dt);
+    ehp.style.width = (100*B.hp/BUG.hp) + '%';
+  }
   if (B.hitFlash > 0) B.hitFlash -= dt;
   B.t -= dt;
 
@@ -876,7 +887,7 @@ function bugAI(dt) {
         B.lunged = true;
         // it connects only if the player is still on the line - stepping aside beats it
         if (contact(bug.root.position, B.dir, B.strike.ext, hero.root.position, HALF_DEPTH.stephen, LATERAL[opponent]))
-          damageHero(B.bite ? BUG.biteDamage : BUG.lungeDamage);
+          damageHero(DMG[B.bite ? 'biteDamage' : 'lungeDamage']);
       }
       if (B.t <= 0) {
         if (B.kickYaw) { bug.model.rotation.y -= B.kickYaw; B.kickYaw = 0; }
@@ -936,6 +947,9 @@ window.__heroPos = () => hero ? {
   ct: hero.cur? +hero.cur.time.toFixed(3):null, ts: hero.cur? hero.cur.timeScale:null,
   w: hero.cur? +hero.cur.getEffectiveWeight().toFixed(2):null
 } : null;
+// Headless test hook: ?probe lets a harness drive damage directly.
+if (Q.has('probe')) Object.assign(window, { damageBug, damageHero, P, B, BUG });
+
 function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
   if (phase === 'cine') cine(dt);
@@ -954,7 +968,7 @@ function tick() {
   }
   hero.mixer.update(dt);
   bug.mixer.update(dt);
-  window.__dbg = { phase, dist:cameraDistance, aspect:camera.aspect, bstate:B.state, bt:B.t, bhit:B.hitAt, blen:B.lungeDur, pstate:P.state, pt:P.t, phit:P.hitAt, patk:P.atk, gap:Math.hypot(hero.root.position.x-bug.root.position.x, hero.root.position.z-bug.root.position.z),
+  window.__dbg = { phase, round, unbeatable:UNBEATABLE, bhp:B.hp, bmax:BUG.hp, php:P.hp, bdead:B.dead, dist:cameraDistance, aspect:camera.aspect, bstate:B.state, bt:B.t, bhit:B.hitAt, blen:B.lungeDur, pstate:P.state, pt:P.t, phit:P.hitAt, patk:P.atk, gap:Math.hypot(hero.root.position.x-bug.root.position.x, hero.root.position.z-bug.root.position.z),
     heroZ:hero.root.position.z, bugZ:bug.root.position.z,
     cam:[camera.position.x, camera.position.y, camera.position.z] };
   renderer.render(scene, camera);
