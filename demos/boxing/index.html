@@ -94,9 +94,9 @@ const A = n => 'preset:biped:' + n;              // Stephen's clips carry this p
 const C = n => 'preset:biped:' + n + '.001';      // Chimpanzee clips have a Blender suffix
 const opponent = new URLSearchParams(location.search).get('opponent') === 'insect' ? 'insect' : 'chimp';
 const ARENA = 11;
-const INTRO_START_Z = -11, INTRO_END_Z = -2.3, INTRO_DURATION = 7;
+const INTRO_START_Z = -11, INTRO_END_Z = -1.6, INTRO_DURATION = 7;
 // The opponent walks on from its own side rather than being planted there from frame one.
-const ENEMY_START_Z = 10, ENEMY_END_Z = 2.3;
+const ENEMY_START_Z = 10, ENEMY_END_Z = 1.6;
 const PLAYER = {
   scale: 1.8, walk: 2.4, run: 5.6, back: 1.8, side: 3.8,
   hp: 100, reach: 3.6, damage: [12, 20],
@@ -106,9 +106,13 @@ const BUG = {
 };
 // The chimp has biped clips, but not the insect-specific names.
 const CHIMP_ANIM = {
-  idle: C('idle'), walk: C('walk'), rear: C('dance_05'), strike: C('press-up'), death: C('defeat_03'),
+  idle: C('idle'), walk: C('walk'),
+  rear: C('box_02'),                              // the low crouching wind-up
+  strike: C('box_01'),                            // default; strikeSet cycles
+  strikeSet: ['box_01','box_03','front_kick_02'].map(C),
+  death: C('defeat_03'),
 };
-const INSECT_ANIM = {idle:'Idle', walk:'Walk', rear:'RearUp', strike:'Strike', death:'Death'};
+const INSECT_ANIM = {idle:'Idle', walk:'Walk', rear:'RearUp', strike:'Strike', strikeSet:['Strike'], death:'Death'};
 const ENEMY_ANIM = opponent === 'chimp' ? CHIMP_ANIM : INSECT_ANIM;
 const ENEMY_FILE = opponent === 'chimp' ? 'chimpanzee.glb' : 'insect_animated.glb';
 document.getElementById('opponent-switch').textContent = opponent === 'chimp' ? 'SWITCH TO BUG' : 'SWITCH TO CHIMP';
@@ -764,21 +768,29 @@ function bugAI(dt) {
       break;
     }
     case 'rear':
+      // Late in the tell, glide half a step toward the hero — a visible commit
+      // that gives the player a beat to move.
+      if (B.t < 0.30) {
+        const step = 1.8 * dt;              // ~0.55u over the final 0.3s
+        bug.root.position.x += toHero.x * step;
+        bug.root.position.z += toHero.z * step;
+      }
       if (B.t <= 0) {
-        B.state='lunge'; B.t = 0.85; B.lunged = false;
-        B.dir = toHero.clone();                    // committed direction, locked at launch
+        B.state='lunge'; B.t = 0.55; B.lunged = false;
+        B.dir = toHero.clone();
         B.jumpFrom = bug.root.position.clone();
-        // Land at striking distance instead of putting both fighters inside
-        // the same point in space.
-        B.jumpTo = hero.root.position.clone().addScaledVector(B.dir, -2.8);
-        bug.play(ENEMY_ANIM.strike, { once:true, fade:0.08, rate:1.6 });
+        B.jumpTo = hero.root.position.clone().addScaledVector(B.dir, -BUG.reach * 0.85);
+        const set = ENEMY_ANIM.strikeSet;
+        const pick = set[(Math.random() * set.length) | 0];
+        bug.play(pick, { once:true, fade:0.08, rate:1.55, force:true });
       }
       break;
     case 'lunge': {
-      const progress = Math.min(1, 1 - B.t / 0.85);
+      const progress = Math.min(1, 1 - B.t / 0.55);
       bug.root.position.lerpVectors(B.jumpFrom, B.jumpTo, progress);
-      bug.root.position.y = Math.sin(progress * Math.PI) * 1.35;
-      if (!B.lunged && B.t < 0.55) {
+      // Chimp punches on the ground; the insect leaps.
+      bug.root.position.y = opponent === 'chimp' ? 0 : Math.sin(progress * Math.PI) * 1.35;
+      if (!B.lunged && B.t < 0.30) {
         B.lunged = true;
         // it connects only if the player is still in the path — stepping aside beats it
         tmp.copy(hero.root.position).sub(bug.root.position); tmp.y=0;
@@ -842,7 +854,7 @@ function tick() {
     // standing inside each other. Pushing only the bug (as a first pass did) lets the player walk
     // straight through it.
     tmp.copy(hero.root.position).sub(bug.root.position); tmp.y = 0;
-    const gap = tmp.length(), MIN = 3.0;
+    const gap = tmp.length(), MIN = 2.7;
     if (B.state !== 'lunge' && B.state !== 'rear' && B.state !== 'return' && gap > 1e-4 && gap < MIN) {
       const push = tmp.normalize().multiplyScalar((MIN - gap) * 0.5);
       if (!B.dead) bug.root.position.sub(push);
