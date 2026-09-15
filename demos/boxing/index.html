@@ -687,38 +687,22 @@ function applyStance(clip, pose) {
   return clip;
 }
 
-// THROW THE SPIKES OUT WHEN IT STRIKES. The insect's Strike clip lunges the body about 0.36 units
-// (0.79 at game scale) and leaves the raptorial arms folded, so it arrives near Stephen without
-// anything actually reaching him - the hit registers but nothing on the model touches anything.
+// THROW THE SPIKES OUT WHEN IT STRIKES. The insect arrived near Stephen and swung at nothing.
 //
-// The rig is To-Upper-Head -> Top-*-Rear -> Top-*-Forward, the second of which is a leaf, so the
-// spike's extension lives entirely in the skinned mesh and cannot be read off bone positions.
-// Measured on the joint that CAN be read: rotating Top-Left-Rear about its local -X carries the
-// forearm's origin forward, which is the direction the body lunges.
+// Measured what each bone actually drives, by skinning the vertices and watching them move rather
+// than reading bone origins: Top-*-Forward owns 209 vertices but a full radian on it shifts them
+// 0.021 units, so it is a stub at the point; Top-*-Rear moves the same vertices 0.36. And rotation
+// alone cannot close the gap - swept both bones through every axis and sign and the reach ahead of
+// the body stays between 1.44 and 1.50 units, a spread of four percent, because at the clip's
+// midpoint the arm is already near full extension and turning it only changes where it points. It
+// needs about 1.71 to touch him. Lengthening the bone does get there: 1.74 at 1.6x.
 //
-// Baked onto the clip rather than applied per frame, and weighted by a half-sine so the arms are
-// folded at both ends and fully out at the moment of contact - the same treatment the chimp's
-// press-up gets, and for the same reason: nothing may touch a bone at runtime.
-const SPIKE = { rear: 0.62, fore: 0.50 };
-const SPIKE_X = new THREE.Vector3(1, 0, 0);
-function reachOut(clip) {
-  const dur = clip.duration || 1;
-  const extra = new THREE.Quaternion(), q = new THREE.Quaternion();
-  for (const [names, amount] of [[['Top-Left-Rear','Top-Right-Rear'], SPIKE.rear],
-                                 [['Top-Left-Forward','Top-Right-Forward'], SPIKE.fore]]) {
-    for (const n of names) {
-      const tr = clip.tracks.find(t => t.name === n + '.quaternion');
-      if (!tr) continue;
-      for (let i = 0; i < tr.times.length; i++) {
-        const w = Math.sin(Math.PI * (tr.times[i] / dur));
-        extra.setFromAxisAngle(SPIKE_X, -amount * w);
-        q.fromArray(tr.values, i * 4).multiply(extra).toArray(tr.values, i * 4);
-      }
-    }
-  }
-  return clip;
-}
-
+// Applied LIVE rather than baked into the clip, unlike the other corrections here, because the
+// angles depend on how the rig was authored and are quicker to find by dragging than by search.
+// Same save-and-restore as the chimp's tell, so nothing accumulates.
+const SPIKE = { rx:0, ry:0, rz:0, fx:0, fy:0, fz:0, stretch:1.6 };
+const SPIKE_BONES = { rear:['Top-Left-Rear','Top-Right-Rear'],
+                      fore:['Top-Left-Forward','Top-Right-Forward'] };
 function stripTravel(clip) {
   for (const tr of clip.tracks) {
     if (!/\.position$/.test(tr.name)) continue;
@@ -765,7 +749,6 @@ class Rig {
       const clip = c.clone();          // always clone: stripTravel edits track values in place
       if (entrance) clip.tracks = clip.tracks.filter(track => track.name !== 'Root.position');
       if (c.name === A('idle')) applyStance(clip, stance);   // stand him up in a guard
-      if (c.name === 'Strike') reachOut(clip);               // the insect's arms, thrown forward
       if (corrected) {
         // STAND THE PUSH-UP UP. Measured raw: the body lies horizontal with the Hip at its normal
         // standing height (0.305), head 0.29 forward of it, feet 0.27 behind, hands under the chest.
@@ -1492,6 +1475,47 @@ function clearTellPose() {
   for (let i = TELL_SAVE.length - 1; i >= 0; i--) TELL_SAVE[i].b.quaternion.copy(TELL_SAVE[i].q);
   TELL_SAVE.length = 0;
 }
+const SPIKE_SAVE = [];
+function clearSpikePose() {
+  for (let i = SPIKE_SAVE.length - 1; i >= 0; i--) {
+    SPIKE_SAVE[i].b.quaternion.copy(SPIKE_SAVE[i].q);
+    SPIKE_SAVE[i].b.scale.copy(SPIKE_SAVE[i].s);
+  }
+  SPIKE_SAVE.length = 0;
+}
+// Full at the moment of contact and nothing at either end, so the arms gather and throw.
+function applySpikePose() {
+  if (B.state !== 'lunge' || !B.lungeDur) return;
+  const el = B.lungeDur - B.t;
+  const k = Math.sin(Math.PI * THREE.MathUtils.clamp(el / B.lungeDur, 0, 1));
+  if (k <= 0.001) return;
+  const q = new THREE.Quaternion(), t = new THREE.Quaternion();
+  for (const [group, ax] of [['rear', [SPIKE.rx, SPIKE.ry, SPIKE.rz]],
+                             ['fore', [SPIKE.fx, SPIKE.fy, SPIKE.fz]]]) {
+    for (const n of SPIKE_BONES[group]) {
+      const bone = bug.model.getObjectByName(n);
+      if (!bone) continue;
+      SPIKE_SAVE.push({ b: bone, q: bone.quaternion.clone(), s: bone.scale.clone() });
+      q.identity();
+      for (let i = 0; i < 3; i++) if (ax[i]) {
+        t.setFromAxisAngle(i === 0 ? AX_X : i === 1 ? AX_Y : AX_Z, ax[i] * k);
+        q.multiply(t);
+      }
+      bone.quaternion.multiply(q);
+      if (group === 'rear' && SPIKE.stretch !== 1) {
+        // along the bone only - the axis its own child sits furthest out on - so it thrusts
+        // rather than inflating
+        const kid = bone.children.find(c => c.isBone);
+        let axis = 1;
+        if (kid) { const o = kid.position, a = [Math.abs(o.x), Math.abs(o.y), Math.abs(o.z)];
+                   axis = a.indexOf(Math.max(...a)); }
+        const g = 1 + (SPIKE.stretch - 1) * k;
+        bone.scale.setComponent(axis, bone.scale.getComponent(axis) * g);
+      }
+    }
+  }
+}
+
 function applyTellPose() {
   const k = B.tellPose || 0;
   if (k <= 0.001) return;
@@ -2046,7 +2070,7 @@ window.__heroPos = () => hero ? {
   w: hero.cur? +hero.cur.getEffectiveWeight().toFixed(2):null
 } : null;
 // Headless test hook: ?probe lets a harness drive damage directly.
-if (Q.has('probe')) Object.assign(window, { damageBug, damageHero, P, B, BUG, rigs:()=>({hero,bug}), THREE, camera, scene, renderer, requestDodge, FIGHT, currentSlot, isUnsafe, slotPos, SLOTS, __markYaw: markLookYaw, BEAM, SWAY, FIDGET, spot, beam, syncBeam });
+if (Q.has('probe')) Object.assign(window, { damageBug, damageHero, P, B, BUG, rigs:()=>({hero,bug}), THREE, camera, scene, renderer, requestDodge, FIGHT, currentSlot, isUnsafe, slotPos, SLOTS, __markYaw: markLookYaw, BEAM, SWAY, FIDGET, spot, beam, syncBeam, SPIKE, EVADE, GRAB });
 
 // ── tuning panel (?tune) ───────────────────────────────────────────────
 // Feel is not a thing you can reason your way to from a diff - it has to be dialled in while the
@@ -2120,6 +2144,13 @@ function buildTunePanel() {
     ['spot edge',  0, 0.80, 0.01,  () => spot.penumbra, v => spot.penumbra = v],
     ['spot width', 0.15, 0.75, 0.01, () => spot.angle, v => spot.angle = v],
     ['chimp dodge', 0, 0.75, 0.01, () => EVADE.chance, v => EVADE.chance = v],
+    ['spike upper X', -2, 2, 0.05, () => SPIKE.rx, v => SPIKE.rx = v],
+    ['spike upper Y', -2, 2, 0.05, () => SPIKE.ry, v => SPIKE.ry = v],
+    ['spike upper Z', -2, 2, 0.05, () => SPIKE.rz, v => SPIKE.rz = v],
+    ['spike tip X',   -2, 2, 0.05, () => SPIKE.fx, v => SPIKE.fx = v],
+    ['spike tip Y',   -2, 2, 0.05, () => SPIKE.fy, v => SPIKE.fy = v],
+    ['spike tip Z',   -2, 2, 0.05, () => SPIKE.fz, v => SPIKE.fz = v],
+    ['spike length',   1, 3, 0.05, () => SPIKE.stretch, v => SPIKE.stretch = v],
     ['shake size',  0, 0.50, 0.01, () => GRAB.shakeYaw,  v => GRAB.shakeYaw = v],
     ['shake speed', 4, 26,   0.5,  () => GRAB.shakeRate, v => GRAB.shakeRate = v],
     ['haze width', 0.25, 1.20, 0.01, () => BEAM.narrow, v => BEAM.narrow = v],
@@ -2161,6 +2192,9 @@ function buildTunePanel() {
       '// spot ' + spot.intensity.toFixed(0) +
       '  penumbra ' + spot.penumbra.toFixed(2) + '  angle ' + spot.angle.toFixed(2) +
       '  evadeChance ' + EVADE.chance.toFixed(2) +
+      '\n// SPIKE = { rx:' + SPIKE.rx + ', ry:' + SPIKE.ry + ', rz:' + SPIKE.rz +
+      ', fx:' + SPIKE.fx + ', fy:' + SPIKE.fy + ', fz:' + SPIKE.fz +
+      ', stretch:' + SPIKE.stretch + ' }' +
       '  hazeWidth ' + BEAM.narrow.toFixed(2) +
       '  hazeEdge ' + beam.material.uniforms.uSoft.value.toFixed(2) +
       '  beam ' + beam.material.uniforms.uStrength.value.toFixed(3) +
@@ -2246,9 +2280,11 @@ function tick() {
   }
   if (debris.length) stepDebris(dt);
   clearTellPose();            // hand the bones back before the mixer writes them
+  clearSpikePose();
   hero.mixer.update(dt);
   bug.mixer.update(dt);
   applyTellPose();            // and lay the tell back on top of what it wrote
+  applySpikePose();
   // KICK YAW IS ABSOLUTE. Some attacks strike sideways, so the model is turned to aim them at the
   // target. That used to be done by adding to the rotation on the way in and subtracting on the
   // way out, across seven different places - and any path that skipped its subtraction, or ran it
