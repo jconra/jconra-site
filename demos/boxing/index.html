@@ -94,9 +94,36 @@ const A = n => 'preset:biped:' + n;              // Stephen's clips carry this p
 const C = n => 'preset:biped:' + n + '.001';      // Chimpanzee clips have a Blender suffix
 const opponent = new URLSearchParams(location.search).get('opponent') === 'insect' ? 'insect' : 'chimp';
 const ARENA = 11;
-const INTRO_START_Z = -11, INTRO_END_Z = -1.6, INTRO_DURATION = 7;
+const INTRO_START_Z = -11, INTRO_END_Z = -0.8, INTRO_DURATION = 7;
 // The opponent walks on from its own side rather than being planted there from frame one.
-const ENEMY_START_Z = 10, ENEMY_END_Z = 1.6;
+// The chimp squares up at a 1.6 gap, derived from its punch reach below; the insect is a much
+// longer body and keeps the 3.2 it was tuned at.
+const ENEMY_START_Z = 10, ENEMY_END_Z = opponent === 'chimp' ? 0.8 : 2.4;
+const MIN_GAP = opponent === 'chimp' ? 0.9 : 2.7;   // bodies touch at 0.47 for the chimp
+// MEASURED CONTACT GEOMETRY. For each strike: how far the fist or foot travels from the root at
+// full extension (game units, model scale applied), where in the clip that peak sits, and for the
+// kicks the direction they actually go - the front_kick clips extend along local +X (kick_01) or
+// 48 degrees off forward (kick_02), so the model is turned by `yaw` for the swing. These numbers
+// come from stepping the clips and reading the end-effector positions; the gap, the drive and the
+// hit test are all derived from them rather than tuned by eye.
+const STRIKE = {
+  stephen: { box_01:{ext:1.13, peak:0.28}, box_03:{ext:0.96, peak:0.27},
+             front_kick_01:{ext:1.65, peak:0.55, yaw:-1.55}, front_kick_02:{ext:0.93, peak:0.63, yaw:-0.85} },
+  chimp:   { box_01:{ext:1.28, peak:0.30}, box_03:{ext:1.14, peak:0.27},
+             front_kick_02:{ext:0.83, peak:0.63, yaw:-0.85}, 'press-up':{ext:0.42, peak:0.60} },
+  insect:  { Strike:{ext:2.61, peak:0.5} },          // keeps the insect's landing spot where it was
+};
+const HALF_DEPTH = { stephen:0.21, chimp:0.26, insect:1.1 };   // root to chest surface (insect estimated)
+const LATERAL    = { stephen:0.7,  chimp:0.75, insect:1.2 };   // how far off the line still connects
+const PEN = 0.1;                                               // how deep a landed blow sinks in
+const bare = n => n.replace(/^preset:biped:/, '').replace(/\.001$/, '');
+// Did a strike from `from` along `dir`, reaching `ext`, land on a body at `to`?
+function contact(from, dir, ext, to, targetHalf, lateral) {
+  const d = new THREE.Vector3().subVectors(to, from); d.y = 0;
+  const along = d.dot(dir);
+  const off = Math.hypot(d.x - dir.x*along, d.z - dir.z*along);
+  return along > 0 && along < ext + targetHalf + 0.15 && off < lateral;
+}
 const PLAYER = {
   scale: 1.8, walk: 2.4, run: 5.6, back: 1.8, side: 3.8,
   hp: 100, reach: 3.6, damage: [12, 20],
@@ -525,7 +552,7 @@ function fitDistance() {
   const sep = Math.abs(ENEMY_END_Z - INTRO_END_Z) + 1.8;   // they close the gap, never widen it
   const vFov = camera.fov * Math.PI / 180;
   const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
-  return THREE.MathUtils.clamp((sep / 2) / Math.tan(hFov / 2) + 1.2, 5, 14);
+  return THREE.MathUtils.clamp((sep / 2) / Math.tan(hFov / 2) + 1.2, 4, 14);
 }
 cameraDistance = fitDistance();
 addEventListener('contextmenu', e => e.preventDefault());
@@ -580,13 +607,22 @@ function tryAttack(index) {
   if (phase !== 'fight' || P.dead || P.state === 'attack' || P.state === 'hurt') return;
   const n = ATTACKS[index];
   if (!n) return;
-  P.kickYaw = n.startsWith('front_kick') ? -Math.PI/2 : 0;
+  const st = STRIKE.stephen[n];
+  P.kickYaw = st.yaw || 0;
   if (P.kickYaw) hero.model.rotation.y += P.kickYaw;
   P.state = 'attack'; P.atk = n;
   const a = hero.play(A(n), { once:true, fade:0.07, rate:ATTACK_RATE, force:true });
   P.t = (a ? a.getClip().duration : 0.8) / ATTACK_RATE;
-  P.hitAt = P.t * 0.45;                            // land the blow partway through the swing
+  P.dur = P.t;
+  P.hitAt = P.t - P.t * st.peak;                   // fires when the fist is furthest out
   P.didHit = false;
+  // DRIVE. The blow has to arrive at the other body, not at a radius. From the actual gap right
+  // now, how much further than this swing's extension is the chest surface? Step that far in
+  // on the way to the peak and back out afterwards, like a lunging jab.
+  tmp.copy(bug.root.position).sub(hero.root.position); tmp.y = 0;
+  P.drive = THREE.MathUtils.clamp(tmp.length() - HALF_DEPTH[opponent] + PEN - st.ext, 0, 1.4);
+  P.driveDir = tmp.normalize().clone();
+  P.driveFrom = hero.root.position.clone();
 }
 
 function damageBug(d) {
@@ -693,13 +729,16 @@ function player(dt) {
 
   if (P.state === 'attack' || P.state === 'hurt') {
     P.t -= dt;
+    if (P.state === 'attack' && P.drive > 0) {
+      // in to the peak, out over the rest
+      const peakT = P.dur - P.hitAt, el = P.dur - P.t;
+      const k = el < peakT ? el / peakT : Math.max(0, 1 - (el - peakT) / Math.max(0.05, P.hitAt));
+      hero.root.position.copy(P.driveFrom).addScaledVector(P.driveDir, P.drive * k);
+    }
     if (P.state === 'attack' && !P.didHit && P.t <= P.hitAt) {
       P.didHit = true;
-      // does the swing actually reach the bug, and is it in front?
-      tmp.copy(bug.root.position).sub(hero.root.position); tmp.y = 0;
-      const d = tmp.length();
       fwd.set(0,0,1).applyQuaternion(hero.root.quaternion);
-      if (d < PLAYER.reach && tmp.normalize().dot(fwd) > 0.45) {
+      if (contact(hero.root.position, fwd, STRIKE.stephen[P.atk].ext, bug.root.position, HALF_DEPTH[opponent], LATERAL.stephen)) {
         damageBug(PLAYER.damage[0] + Math.random()*(PLAYER.damage[1]-PLAYER.damage[0]));
       }
     }
@@ -775,7 +814,7 @@ function bugAI(dt) {
       // Late in the tell, glide half a step toward the hero — a visible commit
       // that gives the player a beat to move.
       if (B.t < 0.30) {
-        const step = 1.8 * dt;              // ~0.55u over the final 0.3s
+        const step = 0.83 * dt;             // ~0.25u over the final 0.3s
         bug.root.position.x += toHero.x * step;
         bug.root.position.z += toHero.z * step;
       }
@@ -783,29 +822,37 @@ function bugAI(dt) {
         const set = ENEMY_ANIM.strikeSet;
         const pick = set[(Math.random() * set.length) | 0];
         B.bite = pick === ENEMY_ANIM.bite;
-        // A punch lands from reach; the bite has to get to the face, so it jumps in close and
-        // stays on the clip long enough for the heave-and-pull to read.
-        B.lungeDur = B.bite ? 0.85 : 0.55;
+        B.strike = STRIKE[opponent][bare(pick)];
+        const rate = B.bite ? 1.3 : 1.55;
+        const a = bug.play(pick, { once:true, fade:0.08, rate, force:true });
+        // The blow registers at the clip's measured peak; the state lasts just past it.
+        B.hitAt = (a ? a.getClip().duration : 1) / rate * B.strike.peak;
+        B.lungeDur = B.hitAt + 0.12;
         B.state='lunge'; B.t = B.lungeDur; B.lunged = false;
         B.dir = toHero.clone();
         B.jumpFrom = bug.root.position.clone();
-        B.jumpTo = hero.root.position.clone().addScaledVector(B.dir, -BUG.reach * (B.bite ? 0.5 : 0.85));
-        bug.play(pick, { once:true, fade:0.08, rate: B.bite ? 1.3 : 1.55, force:true });
+        // Land where this strike's extension meets Stephen's chest - never backing up to do it.
+        const gapNow = dist, want = B.strike.ext - PEN + HALF_DEPTH.stephen;
+        B.jumpTo = hero.root.position.clone().addScaledVector(B.dir, -Math.min(gapNow, want));
+        B.kickYaw = B.strike.yaw || 0;
+        if (B.kickYaw) bug.model.rotation.y += B.kickYaw;
       }
       break;
     case 'lunge': {
-      const progress = Math.min(1, 1 - B.t / B.lungeDur);
+      // arrive by the peak, then hold
+      const progress = Math.min(1, (B.lungeDur - B.t) / B.hitAt);
       bug.root.position.lerpVectors(B.jumpFrom, B.jumpTo, progress);
       // Punches stay on the ground; the insect leaps; the chimp's bite is a low jump at the face.
       const arc = opponent !== 'chimp' ? 1.35 : B.bite ? 0.55 : 0;
       bug.root.position.y = Math.sin(progress * Math.PI) * arc;
-      if (!B.lunged && B.t < 0.30) {
+      if (!B.lunged && B.lungeDur - B.t >= B.hitAt) {
         B.lunged = true;
-        // it connects only if the player is still in the path — stepping aside beats it
-        tmp.copy(hero.root.position).sub(bug.root.position); tmp.y=0;
-        if (tmp.length() < BUG.reach && tmp.normalize().dot(B.dir) > 0.3) damageHero(B.bite ? BUG.biteDamage : BUG.lungeDamage);
+        // it connects only if the player is still on the line - stepping aside beats it
+        if (contact(bug.root.position, B.dir, B.strike.ext, hero.root.position, HALF_DEPTH.stephen, LATERAL[opponent]))
+          damageHero(B.bite ? BUG.biteDamage : BUG.lungeDamage);
       }
       if (B.t <= 0) {
+        if (B.kickYaw) { bug.model.rotation.y -= B.kickYaw; B.kickYaw = 0; }
         bug.root.position.copy(B.jumpTo).setY(0);
         B.returnFrom = bug.root.position.clone();
         B.returnTo = B.home.clone();
@@ -863,7 +910,7 @@ function tick() {
     // standing inside each other. Pushing only the bug (as a first pass did) lets the player walk
     // straight through it.
     tmp.copy(hero.root.position).sub(bug.root.position); tmp.y = 0;
-    const gap = tmp.length(), MIN = 2.7;
+    const gap = tmp.length(), MIN = MIN_GAP;
     if (B.state !== 'lunge' && B.state !== 'rear' && B.state !== 'return' && gap > 1e-4 && gap < MIN) {
       const push = tmp.normalize().multiplyScalar((MIN - gap) * 0.5);
       if (!B.dead) bug.root.position.sub(push);
@@ -872,7 +919,7 @@ function tick() {
   }
   hero.mixer.update(dt);
   bug.mixer.update(dt);
-  window.__dbg = { phase, dist:cameraDistance, aspect:camera.aspect,
+  window.__dbg = { phase, dist:cameraDistance, aspect:camera.aspect, bstate:B.state, bt:B.t, bhit:B.hitAt, blen:B.lungeDur, pstate:P.state, pt:P.t, phit:P.hitAt, patk:P.atk, gap:Math.hypot(hero.root.position.x-bug.root.position.x, hero.root.position.z-bug.root.position.z),
     heroZ:hero.root.position.z, bugZ:bug.root.position.z,
     cam:[camera.position.x, camera.position.y, camera.position.z] };
   renderer.render(scene, camera);
