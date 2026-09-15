@@ -81,7 +81,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-const A = n => 'preset:biped:' + n;              // Stephen's clips carry this prefix
+const A = n => 'preset:biped:' + n + '.001';     // both models carry the Blender suffix now
 const C = n => 'preset:biped:' + n + '.001';      // Chimpanzee clips have a Blender suffix
 const Q = new URLSearchParams(location.search);
 // TWO ROUNDS. The chimp is round 1 and can be beaten; the warrior bug is round 2 and cannot -
@@ -101,9 +101,8 @@ const WALK_T = 3.6, CELEBRATE = 1.7, INTRO_DURATION = WALK_T + CELEBRATE;
 // 10.2 units in WALK_T (2.83 a second against his 2.4 walk) and the opponent 9.2 (2.56 against
 // 1.7), so their feet keep up with the floor.
 const HERO_WALK_RATE = 1.18, FOE_WALK_RATE = 1.5;
-// `cheer` holds one arm straight up for the whole beat, which is the jitter. `angry_01` is 3.54s
-// and runs neutral -> both arms up -> fighting stance, so at this rate the entire clip plays
-// inside the beat and ends where the fight starts. Fists stay closed; they read right for it.
+// `greet_01` is 3.54s and runs walk-up into a raised-arm wave, so at this rate the whole clip
+// plays inside the beat and ends where the fight starts.
 const CHEER_RATE = 3.54 / CELEBRATE;
 // The opponent walks on from its own side rather than being planted there from frame one.
 // The chimp squares up at a 1.6 gap, derived from its punch reach below; the insect is a much
@@ -117,13 +116,16 @@ const MIN_GAP = opponent === 'chimp' ? 0.9 : 2.7;   // bodies touch at 0.47 for 
 // come from stepping the clips and reading the end-effector positions; the gap, the drive and the
 // hit test are all derived from them rather than tuned by eye.
 const STRIKE = {
-  stephen: { box_01:{ext:1.13, peak:0.28}, box_03:{ext:0.96, peak:0.27},
-             front_kick_01:{ext:1.65, peak:0.55, yaw:-1.55}, front_kick_02:{ext:0.93, peak:0.63, yaw:-0.85} },
+  // Re-measured on the replacement model: its punches are shorter than the old one's (0.68
+  // against 1.13) and front_kick_02 is now a back kick - its foot peaks behind him, so the yaw
+  // that points it at the target is most of a half turn.
+  stephen: { box_01:{ext:0.68, peak:0.28}, box_03:{ext:0.68, peak:0.25, yaw:-0.73},
+             front_kick_01:{ext:0.78, peak:0.40, yaw:-1.67}, front_kick_02:{ext:0.90, peak:0.50, yaw:-2.86} },
   chimp:   { box_01:{ext:1.28, peak:0.30}, box_03:{ext:1.14, peak:0.27},
              front_kick_02:{ext:0.83, peak:0.63, yaw:-0.85}, 'press-up':{ext:0.42, peak:0.60} },
   insect:  { Strike:{ext:2.61, peak:0.5} },          // keeps the insect's landing spot where it was
 };
-const HALF_DEPTH = { stephen:0.21, chimp:0.26, insect:1.1 };   // root to chest surface (insect estimated)
+const HALF_DEPTH = { stephen:0.20, chimp:0.26, insect:1.1 };   // root to chest surface (insect estimated)
 const LATERAL    = { stephen:0.7,  chimp:0.75, insect:1.2 };   // how far off the line still connects
 const PEN = 0.1;                                               // how deep a landed blow sinks in
 const bare = n => n.replace(/^preset:biped:/, '').replace(/\.001$/, '');
@@ -186,12 +188,13 @@ const BITE = {
   peak: 1.0,               // seconds into the clip where the squeeze is
 };
 BITE.dur = BITE.spring + BITE.hold + BITE.recoil;
-const DEATH_LIFT = { stephen: 0.27, chimp: 0.30, insect: 0 };
+const DEATH_LIFT = { stephen: 0.24, chimp: 0.30, insect: 0 };   // new model lies 0.222 deep
 const DEATH_RAMP = 1.6;
 function liftBody(rig, who, elapsed) {
   rig.root.position.y = DEATH_LIFT[who] * Math.min(1, elapsed / DEATH_RAMP);
 }
 const ATTACKS = ['box_01','box_03','front_kick_01','front_kick_02'];
+const HURTS = ['hit_to_body_01','hit_to_side','hit_to_head'];
 // The preset clips are performed at a leisurely pace; a fight wants them snappy. Rate scales the
 // playback AND the state timer together, otherwise the state outlasts the animation and he stands
 // frozen at the end of a swing.
@@ -394,80 +397,6 @@ for (let i = 0; i < 26; i++) {
   m.castShadow = m.receiveShadow = true; scene.add(m);
 }
 
-// ── animation helper ──────────────────────────────────────────────────────────
-// Add a distal mitten joint in the bind pose. Existing animation continues to
-// control the knuckles; this extra joint curls the fingertips into the palm.
-// The curl joints added below are held at -120 degrees so he makes a fist. That is right for
-// punching and wrong for waving, which is why the celebration clips looked broken - so the angle
-// is driven rather than fixed.
-const curlTips = [];
-function fistCurl(k) {
-  const a = THREE.MathUtils.degToRad(-120 * k);
-  for (const t of curlTips) t.rotation.x = a;
-}
-function closeStephenFists(model) {
-  model.updateMatrixWorld(true);
-  const fingers = ['L_Fingers', 'R_Fingers'].map(name => model.getObjectByName(name));
-  for (const finger of fingers) {
-    if (!finger) continue;
-    const meshes = [];
-    model.traverse(mesh => {
-      if (mesh.isSkinnedMesh && mesh.skeleton.bones.includes(finger)) meshes.push(mesh);
-    });
-    const inverse = finger.matrixWorld.clone().invert();
-    const point = new THREE.Vector3();
-    let length = 0;
-    for (const mesh of meshes) {
-      const {position, skinIndex, skinWeight} = mesh.geometry.attributes;
-      const index = mesh.skeleton.bones.indexOf(finger);
-      for (let v = 0; v < position.count; v++) {
-        let weight = 0;
-        for (let k = 0; k < 4; k++) if (skinIndex.getComponent(v, k) === index) weight += skinWeight.getComponent(v, k);
-        if (weight < 0.25) continue;
-        point.fromBufferAttribute(position, v).applyMatrix4(mesh.matrixWorld).applyMatrix4(inverse);
-        length = Math.max(length, point.y);
-      }
-    }
-    if (length <= 0) continue;
-    const tip = new THREE.Bone();
-    tip.name = finger.name + '_Curl';
-    tip.position.y = length * 0.5;
-    finger.add(tip);
-    model.updateMatrixWorld(true);
-    const tipInverse = tip.matrixWorld.clone().invert();
-    for (const mesh of meshes) {
-      mesh.geometry = mesh.geometry.clone();
-      const {position, skinIndex, skinWeight} = mesh.geometry.attributes;
-      const skeleton = mesh.skeleton, index = skeleton.bones.indexOf(finger);
-      const tipIndex = skeleton.bones.length;
-      for (let v = 0; v < position.count; v++) {
-        point.fromBufferAttribute(position, v).applyMatrix4(mesh.matrixWorld).applyMatrix4(inverse);
-        const blend = THREE.MathUtils.smoothstep(point.y, length * 0.25, length * 0.62);
-        const influences = [];
-        let tipWeight = 0;
-        for (let k = 0; k < 4; k++) {
-          const bone = skinIndex.getComponent(v, k), weight = skinWeight.getComponent(v, k);
-          const split = bone === index ? weight * blend : 0;
-          tipWeight += split;
-          influences.push({bone, weight:weight - split});
-        }
-        influences.push({bone:tipIndex, weight:tipWeight});
-        influences.sort((a, b) => b.weight - a.weight);
-        const total = influences.slice(0, 4).reduce((sum, item) => sum + item.weight, 0);
-        if (!total) continue;
-        for (let k = 0; k < 4; k++) {
-          skinIndex.setComponent(v, k, influences[k].bone);
-          skinWeight.setComponent(v, k, influences[k].weight / total);
-        }
-      }
-      mesh.skeleton = new THREE.Skeleton([...skeleton.bones, tip], [...skeleton.boneInverses, tipInverse]);
-      skinIndex.needsUpdate = skinWeight.needsUpdate = true;
-    }
-    tip.rotation.x = THREE.MathUtils.degToRad(-120);
-    curlTips.push(tip);
-  }
-}
-
 // STRIP ROOT MOTION. Tripo's clips travel: Stephen's walk moves the Hip 1.53 units over one
 // cycle and his run 3.53, monotonically — and when the clip loops the Hip snaps back to the start,
 // which is the teleport. The chimp's walk does the same (1.12). Attacks are fine; box_01 and
@@ -559,7 +488,6 @@ let hero, bug, clock;
 
 Promise.all([load('../../models/stephen.glb'), load('../../models/' + ENEMY_FILE)])
 .then(([s, i]) => {
-  closeStephenFists(s.scene);
   hero = new Rig(s, PLAYER.scale, 0);            // faces +Z after the glTF axis swap
   bug  = new Rig(i, BUG.scale, opponent === 'chimp' ? 0 : Math.PI/2);
   hero.root.position.set(0, 0, INTRO_START_Z);   // off-platform, walks on during the intro
@@ -676,7 +604,7 @@ function say(t, sub) {
 function hide(){ centre.classList.remove('on'); }
 
 function tryAttack(index) {
-  if (phase !== 'fight' || P.dead || P.state === 'attack' || P.state === 'hurt') return;
+  if (phase !== 'fight' || P.dead || P.state === 'attack' || P.state === 'hurt' || P.state === 'celebrate') return;
   const n = ATTACKS[index];
   if (!n) return;
   const st = STRIKE.stephen[n];
@@ -724,7 +652,9 @@ function damageBug(d) {
     B.dead = true; B.state = 'dead';
     bug.play(ENEMY_ANIM.death, { once:true, fade:0.15 });
     setTimeout(()=>{ if (!P.dead) {
-      if (round === 1) { say('ROUND 1 CLEARED', 'something worse is coming'); setTimeout(nextRound, 2600); }
+      P.state = 'celebrate';
+      hero.play(A('dance_04'), { fade:0.3, rate:1 });
+      if (round === 1) { say('ROUND 1 CLEARED', 'something worse is coming'); setTimeout(nextRound, 5200); }
       else say('BUG DOWN', 'you actually did it');
     } }, 900);
   }
@@ -744,7 +674,7 @@ function damageHero(d) {
     say('DEFEATED', UNBEATABLE ? 'nothing beats the bug' : 'reload to try again');
   } else {
     P.state = 'hurt';
-    const n = Math.random() < 0.5 ? 'hit_to_body_01' : 'hit_to_side';
+    const n = HURTS[(Math.random() * HURTS.length) | 0];
     const a = hero.play(A(n), { once:true, fade:0.08, rate:HURT_RATE, force:true });
     P.t = (a ? a.getClip().duration * 0.8 : 0.5) / HURT_RATE;
   }
@@ -768,7 +698,7 @@ function cine(dt) {
     // ON THE MARK. He cheers, the opponent shows off, and neither keeps walking on the spot.
     hero.root.position.z = INTRO_END_Z;
     bug.root.position.z = ENEMY_END_Z;
-    hero.play(A('angry_01'), { fade:0.18, rate:CHEER_RATE, once:true });
+    hero.play(A('greet_01'), { fade:0.18, rate:CHEER_RATE, once:true });
     bug.play(ENEMY_TAUNT, { fade:0.2, rate:1.5, once:true });
   }
 
@@ -811,7 +741,6 @@ function endCine() {
     cameraDistance = fitDistance();
   }
   hero.root.rotation.y = 0;
-  fistCurl(1);                                     // back to fists for the fight
   hero.play(A('idle'), { fade:0.2 });
   P.home = hero.root.position.clone();
   P.state = 'idle';
@@ -824,6 +753,7 @@ const ndc = new THREE.Vector3();
 const fwd = new THREE.Vector3(), tmp = new THREE.Vector3(), dodgeAxis = new THREE.Vector3(), dodgeTarget = new THREE.Vector3();
 function player(dt) {
   if (P.dead) { P.deadT += dt; liftBody(hero, 'stephen', P.deadT); return; }
+  if (P.state === 'celebrate') return;
   if (P.invuln > 0) P.invuln -= dt;
 
   // This is a one-dimensional fighter: the opponents stay squared up instead
