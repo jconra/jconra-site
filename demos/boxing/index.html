@@ -727,6 +727,14 @@ function applyStance(clip, pose) {
 // 1.961 units against 1.439 as animated. The gap to cross is about 1.75, so turning the arm does
 // reach him and nothing needs stretching. The angles are large and not remotely human-readable,
 // which is what a search over an arbitrarily authored rig produces.
+//
+// NOW BAKED INTO THE MODEL. These angles live in models/insect_animated.glb's Strike clip, so the
+// extension travels with the model to anything else that loads it, and nothing here poses the bones
+// at runtime any more. Weighted sin(pi*(t - first key)/(last key - first key)): nothing at either
+// end of the clip, full at the contact frame. Checked against the live pose it replaced, vertex by
+// vertex over the whole strike: worst difference 0.0026 against 1.77 of spike travel. To change
+// them, edit and re-run demos/rig/bake-spike.cjs against a model that has not been baked yet.
+// Kept here as the record, and for ?probe.
 const SPIKE = { rx:-3.07, ry:-2.03, rz:-1.27, fx:2.62, fy:-2.32, fz:0.63, stretch:1 };
 const SPIKE_BONES = { rear:['Top-Left-Rear','Top-Right-Rear'],
                       fore:['Top-Left-Forward','Top-Right-Forward'] };
@@ -1542,52 +1550,6 @@ function clearTellPose() {
   for (let i = TELL_SAVE.length - 1; i >= 0; i--) TELL_SAVE[i].b.quaternion.copy(TELL_SAVE[i].q);
   TELL_SAVE.length = 0;
 }
-const SPIKE_SAVE = [];
-function clearSpikePose() {
-  for (let i = SPIKE_SAVE.length - 1; i >= 0; i--) {
-    SPIKE_SAVE[i].b.quaternion.copy(SPIKE_SAVE[i].q);
-    SPIKE_SAVE[i].b.scale.copy(SPIKE_SAVE[i].s);
-  }
-  SPIKE_SAVE.length = 0;
-}
-// Full at the moment of contact and nothing at either end, so the arms gather and throw.
-function applySpikePose() {
-  if (B.state !== 'lunge' || !B.lungeDur) return;
-  const el = B.lungeDur - B.t;
-  const k = Math.sin(Math.PI * THREE.MathUtils.clamp(el / B.lungeDur, 0, 1));
-  if (k <= 0.001) return;
-  const q = new THREE.Quaternion(), t = new THREE.Quaternion();
-  for (const [group, ax] of [['rear', [SPIKE.rx, SPIKE.ry, SPIKE.rz]],
-                             ['fore', [SPIKE.fx, SPIKE.fy, SPIKE.fz]]]) {
-    for (const n of SPIKE_BONES[group]) {
-      const bone = bug.model.getObjectByName(n);
-      if (!bone) continue;
-      SPIKE_SAVE.push({ b: bone, q: bone.quaternion.clone(), s: bone.scale.clone() });
-      // BUILD THE POSE AT FULL SIZE, THEN SLERP INTO IT. Scaling the three angles by k and
-      // rebuilding takes a different, wandering path through the turn - at angles this close to a
-      // half turn it reads as the arm swinging round rather than reaching out. Slerping from rest
-      // to the finished pose takes the short way there.
-      q.identity();
-      for (let i = 0; i < 3; i++) if (ax[i]) {
-        t.setFromAxisAngle(i === 0 ? AX_X : i === 1 ? AX_Y : AX_Z, ax[i]);
-        q.multiply(t);
-      }
-      t.identity().slerp(q, k);
-      bone.quaternion.multiply(t);
-      if (group === 'rear' && SPIKE.stretch !== 1) {
-        // along the bone only - the axis its own child sits furthest out on - so it thrusts
-        // rather than inflating
-        const kid = bone.children.find(c => c.isBone);
-        let axis = 1;
-        if (kid) { const o = kid.position, a = [Math.abs(o.x), Math.abs(o.y), Math.abs(o.z)];
-                   axis = a.indexOf(Math.max(...a)); }
-        const g = 1 + (SPIKE.stretch - 1) * k;
-        bone.scale.setComponent(axis, bone.scale.getComponent(axis) * g);
-      }
-    }
-  }
-}
-
 function applyTellPose() {
   const k = B.tellPose || 0;
   if (k <= 0.001) return;
@@ -2243,13 +2205,6 @@ function buildTunePanel() {
     ['grab forward', -0.2, 0.7, 0.01, () => GRAB.holdFore, v => GRAB.holdFore = v],
     ['grab down',    -0.2, 0.5, 0.01, () => GRAB.holdDown, v => GRAB.holdDown = v],
     ['lunge height', 0, 1.6, 0.05, () => LUNGE_ARC.insect, v => LUNGE_ARC.insect = v],
-    ['spike upper X', -2, 2, 0.05, () => SPIKE.rx, v => SPIKE.rx = v],
-    ['spike upper Y', -2, 2, 0.05, () => SPIKE.ry, v => SPIKE.ry = v],
-    ['spike upper Z', -2, 2, 0.05, () => SPIKE.rz, v => SPIKE.rz = v],
-    ['spike tip X',   -2, 2, 0.05, () => SPIKE.fx, v => SPIKE.fx = v],
-    ['spike tip Y',   -2, 2, 0.05, () => SPIKE.fy, v => SPIKE.fy = v],
-    ['spike tip Z',   -2, 2, 0.05, () => SPIKE.fz, v => SPIKE.fz = v],
-    ['spike length',   1, 3, 0.05, () => SPIKE.stretch, v => SPIKE.stretch = v],
     ['shake size',  0, 0.50, 0.01, () => GRAB.shakeYaw,  v => GRAB.shakeYaw = v],
     ['shake speed', 4, 26,   0.5,  () => GRAB.shakeRate, v => GRAB.shakeRate = v],
     ['haze width', 0.25, 1.20, 0.01, () => BEAM.narrow, v => BEAM.narrow = v],
@@ -2293,9 +2248,6 @@ function buildTunePanel() {
       '  evadeChance ' + EVADE.chance.toFixed(2) +
       '  squeeze ' + BITE.squeezes + 'x' + BITE.squeezeRate + '@' + BITE.squeezeWindow +
       '  grabHold ' + GRAB.holdFore.toFixed(2) + '/' + GRAB.holdDown.toFixed(2) +
-      '\n// SPIKE = { rx:' + SPIKE.rx + ', ry:' + SPIKE.ry + ', rz:' + SPIKE.rz +
-      ', fx:' + SPIKE.fx + ', fy:' + SPIKE.fy + ', fz:' + SPIKE.fz +
-      ', stretch:' + SPIKE.stretch + ' }' +
       '  hazeWidth ' + BEAM.narrow.toFixed(2) +
       '  hazeEdge ' + beam.material.uniforms.uSoft.value.toFixed(2) +
       '  beam ' + beam.material.uniforms.uStrength.value.toFixed(3) +
@@ -2381,11 +2333,9 @@ function tick() {
   }
   if (debris.length) stepDebris(dt);
   clearTellPose();            // hand the bones back before the mixer writes them
-  clearSpikePose();
   hero.mixer.update(dt);
   bug.mixer.update(dt);
   applyTellPose();            // and lay the tell back on top of what it wrote
-  applySpikePose();
   // KICK YAW IS ABSOLUTE. Some attacks strike sideways, so the model is turned to aim them at the
   // target. That used to be done by adding to the rotation on the way in and subtracting on the
   // way out, across seven different places - and any path that skipped its subtraction, or ran it
