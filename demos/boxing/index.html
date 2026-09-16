@@ -143,7 +143,9 @@ const PLAYER = {
   hp: 100, reach: 3.6, damage: [12, 20],
 };
 const BUG = {
-  scale: 2.2, walk: 1.7, hp: 420, lungeSpeed: 9.5, lungeDamage: 16, biteDamage: 22, reach: 3.2,
+  // Round 1 damage, dialled to 70% of what it was (16 and 22) - the chimp punished a missed read
+  // harder than a first fight should. Round 2's `boss` numbers below are untouched.
+  scale: 2.2, walk: 1.7, hp: 420, lungeSpeed: 9.5, lungeDamage: 11, biteDamage: 15, reach: 3.2,
   // Round 2: it hits for more and knits itself back together. Regen sits BELOW what a player can
   // land (Stephen averages 16 a hit, about one a second), so pressing the attack really does
   // drive the bar down - it just stops at HP_FLOOR and climbs back the moment you breathe.
