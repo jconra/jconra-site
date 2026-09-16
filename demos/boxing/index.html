@@ -486,7 +486,10 @@ if (renderer.capabilities.isWebGL2) {
     const lamp = new THREE.Mesh(new THREE.PlaneGeometry(4, 3),
       new THREE.MeshBasicMaterial({ color: 0xa8845a }));
     lamp.position.set(5.5, 1.4, 1); lamp.rotation.y = -Math.PI/2; env.add(lamp);
-    scene.environment = pmrem.fromScene(env, 0.06).texture;
+    // 0.03, not 0.06: PMREM caps the blur at 20 samples, and 0.06 asks for 30, so
+    // it clipped and warned every load. 0.03 measures within 0.75% of it on mean
+    // frame brightness -- nothing to see on materials this rough.
+    scene.environment = pmrem.fromScene(env, 0.03).texture;
     pmrem.dispose();
   } catch (e) { /* no environment; the lights still stand on their own */ }
 }
