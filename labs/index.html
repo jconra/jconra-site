@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Labs — jconra.com</title>
+<style>
+  @font-face { font-family: nasa; src: url("../fonts/nasalization-rg.ttf"); font-display: swap; }
+  :root {
+    --ground:#07090c; --panel:#10141a; --panel-hi:#151b23;
+    --line:#212a34; --line-hi:#2f7d55;
+    --ink:#ccd6de; --ink-dim:#7f8d99; --ink-faint:#59656f;
+    --accent:#35e07d;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:var(--ground); color:var(--ink); min-height:100vh;
+    font:15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    /* faint grid, echoing the wireframe look of the labs themselves */
+    background-image:
+      linear-gradient(rgba(53,224,125,.026) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(53,224,125,.026) 1px, transparent 1px);
+    background-size: 46px 46px;
+  }
+  .wrap { max-width:1020px; margin:0 auto; padding:56px 22px 80px; }
+
+  header { border-bottom:1px solid var(--line); padding-bottom:22px; margin-bottom:34px; }
+  .back {
+    display:inline-block; font:11px/1 ui-monospace, "Courier New", monospace;
+    letter-spacing:.18em; text-transform:uppercase; color:var(--ink-faint);
+    text-decoration:none; margin-bottom:16px;
+  }
+  .back:hover { color:var(--accent); }
+  h1 {
+    font-family:nasa, ui-sans-serif, system-ui, sans-serif; font-weight:400;
+    font-size:clamp(28px,5.5vw,42px); letter-spacing:.06em; color:#e8f1f5;
+  }
+  .lede { margin-top:10px; color:var(--ink-dim); max-width:56ch; font-size:14.5px; }
+
+  .grid { display:grid; gap:14px; grid-template-columns:repeat(auto-fill, minmax(290px,1fr)); }
+  a.card {
+    display:block; text-decoration:none; color:inherit;
+    background:var(--panel); border:1px solid var(--line); border-radius:7px;
+    padding:18px 19px 16px; position:relative; overflow:hidden;
+    transition:border-color .16s ease, background .16s ease, transform .16s ease;
+  }
+  a.card:hover { border-color:var(--line-hi); background:var(--panel-hi); transform:translateY(-2px); }
+  a.card:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .card h2 {
+    font-family:nasa, ui-sans-serif, sans-serif; font-weight:400; font-size:18px;
+    letter-spacing:.05em; color:#e8f1f5; margin-bottom:7px;
+  }
+  a.card:hover h2 { color:var(--accent); }
+  .card p { color:var(--ink-dim); font-size:13.5px; line-height:1.55; min-height:3.1em; }
+  .meta {
+    margin-top:13px; padding-top:11px; border-top:1px solid var(--line);
+    display:flex; gap:9px; flex-wrap:wrap; align-items:center;
+    font:10.5px/1 ui-monospace, "Courier New", monospace; letter-spacing:.09em;
+    color:var(--ink-faint); text-transform:uppercase;
+  }
+  .tag { border:1px solid var(--line); border-radius:3px; padding:3px 6px; }
+  .tag.v { color:var(--accent); border-color:rgba(53,224,125,.32); }
+  footer {
+    margin-top:46px; padding-top:18px; border-top:1px solid var(--line);
+    font:11.5px/1.7 ui-monospace, "Courier New", monospace;
+    color:var(--ink-faint); letter-spacing:.05em;
+  }
+  footer a { color:var(--ink-dim); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="back" href="../">&larr; jconra.com</a>
+    <h1>Labs</h1>
+    <p class="lede">Three.js experiments, each self-contained. They were written at different times
+      against different versions of the library, so the version each one pins is listed with it.</p>
+  </header>
+
+  <div class="grid">
+    <a class="card" href="rig/">
+      <h2>Rig Lab</h2>
+      <p>Pose any rigged glTF in the browser, measure what each bone <i>actually</i> drives once
+         skinning is applied, and search for the pose that reaches furthest. Drop your own .glb in.</p>
+      <div class="meta"><span class="tag v">three 0.158</span><span class="tag">skinned glTF</span><span class="tag">tool</span></div>
+    </a>
+
+    <a class="card" href="hoodies/">
+      <h2>Hoodie Lab</h2>
+      <p>Two Tripo generations of the city skyline hoodie side by side under a spotlight. Move the
+         mouse to spin them and compare the two.</p>
+      <div class="meta"><span class="tag v">three 0.158</span><span class="tag">glTF</span><span class="tag">compare</span></div>
+    </a>
+
+    <a class="card" href="boxing/">
+      <h2>Bug Fight</h2>
+      <p>Stephen versus a warrior bug. A cinematic opener, then WASD and click to punch or kick.
+         The bug rears before it lunges — that tell is your cue to move.</p>
+      <div class="meta"><span class="tag v">three 0.158</span><span class="tag">skinned glTF</span><span class="tag">playable</span></div>
+    </a>
+
+    <a class="card" href="bugs/">
+      <h2>Bug Lab</h2>
+      <p>Two rigged bugs wander an arena. When one catches the other in its sight cone it squares
+         up, rears as a threat display, then lunges. Five baked animations each.</p>
+      <div class="meta"><span class="tag v">three 0.158</span><span class="tag">skinned glTF</span><span class="tag">webgl 1 safe</span></div>
+    </a>
+
+    <a class="card" href="map/">
+      <h2>Raycast Map</h2>
+      <p>An SVG map of the United States in 3D, with a raycaster picking out whichever region sits
+         under the cursor.</p>
+      <div class="meta"><span class="tag v">three 0.156</span><span class="tag">raycasting</span><span class="tag">svg</span></div>
+    </a>
+
+    <a class="card" href="tree/">
+      <h2>Tree</h2>
+      <p>A procedurally grown tree — branches recursing down to leaf geometry. Leaf count, leaf
+         size and age are live sliders, so it regrows as you drag.</p>
+      <div class="meta"><span class="tag v">three r99</span><span class="tag">procedural</span></div>
+    </a>
+  </div>
+
+  <footer>
+    Source: <a href="https://github.com/jconra/jconra-site">github.com/jconra/jconra-site</a><br>
+    Shared models live in <code>/models/</code> and are loaded by path, so one lab can reuse another's.
+  </footer>
+</div>
+</body>
+</html>

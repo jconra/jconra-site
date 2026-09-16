@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Demo</title>
+<style>
+body {margin:0px; overflow:hidden;}
+div {position:fixed; top:0px; width:100%; text-align:center; font-size:50px; color:white;}
+</style>
+</head>
+<body>
+<div id="state_name"></div>
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.156.1/build/three.module.js",
+      "orbit": "https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js",
+        "svg": "https://threejs.org/examples/jsm/loaders/SVGLoader.js"
+    }
+  }
+</script>
+<script type="module">
+import * as THREE from 'three'; 
+import { OrbitControls } from 'orbit';
+import { SVGLoader } from 'svg';
+
+let width = window.innerWidth;
+let height = window.innerHeight;
+const states = [];
+
+// Create a renderer and add it to the DOM.
+let renderer = new THREE.WebGLRenderer();
+renderer.setSize(width, height);
+document.body.appendChild(renderer.domElement);
+// Create the scene 
+let scene = new THREE.Scene();
+// Create a camera
+let camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
+camera.position.z = 1000;
+
+scene.add(camera);
+
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+
+// Add OrbitControls so that we can pan around with the mouse.
+var controls = new OrbitControls(camera, renderer.domElement);
+
+// instantiate a loader
+const loader = new SVGLoader();
+
+// load a SVG resource
+loader.load(
+	// resource URL
+	'us.svg',
+	// called when the resource is loaded
+	function ( data ) {
+		const paths = data.paths;
+	  const group = new THREE.Group();
+		for ( let i = 0; i < paths.length; i ++ ) {
+      const parts = new THREE.Group();
+			const path = paths[ i ];
+			const material = new THREE.MeshBasicMaterial( {
+				color: 0xffffff,
+				side: THREE.DoubleSide,
+				depthWrite: false,
+        transparent: true,
+        opacity: 0.2
+			} );
+			const shapes = SVGLoader.createShapes( path );
+			for ( let j = 0; j < shapes.length; j ++ ) {
+				const geometry = new THREE.ShapeGeometry( shapes[j] );
+				const mesh = new THREE.Mesh( geometry, material );
+        mesh.parent = parts;
+        parts.add( mesh );
+        const shape3d = new THREE.BufferGeometry().setFromPoints(shapes[j].getPoints());
+        const line = new THREE.Line(shape3d, new THREE.LineBasicMaterial());
+        parts.add( line );
+        parts.opacity = 0.2;
+        parts.name = path.userData.node.dataset.name;
+        }
+      parts.position.add(new THREE.Vector3(-570,-256,0));
+  		group.add( parts );
+      states.push( parts );
+		}
+    group.rotateX(Math.PI);
+		scene.add( group );
+	},
+	// called when loading is in progresses
+	function ( xhr ) {
+		console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
+	},
+	// called when loading has errors
+	function ( error ) {
+		console.log( 'An error happened' );
+	}
+);
+
+resize();
+animate();
+window.addEventListener('resize',resize);
+
+window.addEventListener( 'pointermove', function (e) {
+  pointer.x = ( e.clientX / window.innerWidth) * 2 - 1;
+  pointer.y = 1 - ( e.clientY / window.innerHeight) * 2;
+});
+
+function raycast() {
+  raycaster.setFromCamera( pointer, camera);
+  const intersects = raycaster.intersectObjects( states );
+  for (let i=0; i<states.length; i++) {
+    if (states[i].opacity > 0.2) {
+      changeOpacity(states[i], -0.01);
+    }
+  }
+  for (let i=0; i<intersects.length; i++) {
+    if (intersects[i].object.parent.opacity < 1)
+      changeOpacity(intersects[i].object.parent, 0.02);
+    const name = intersects[i].object.parent.name;
+    document.getElementById("state_name").innerHTML = name;
+  }
+}
+
+function changeOpacity(group, amt) {
+  group.opacity += amt;
+  for (let i=0; i<group.children.length; i++) {
+    group.children[i].material.opacity = group.opacity;
+    group.children[i].material.needsUpdate = true;
+  }
+}
+
+function resize(){
+  let w = window.innerWidth;
+  let h = window.innerHeight;
+  
+  renderer.setSize(w,h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+// Renders the scene
+function animate() {
+  renderer.render( scene, camera );
+  controls.update();
+  raycast();
+  requestAnimationFrame( animate );
+}
+</script>
+</body>
+</html>
