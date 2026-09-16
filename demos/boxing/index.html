@@ -901,7 +901,10 @@ const php = document.getElementById('php'), ehp = document.getElementById('ehp')
 // Show only the controls the player is actually using. Start from what the device looks like,
 // then switch on the first real key or touch - a laptop with a touchscreen reports both.
 const HELP = {
-  keys:  '<b>W</b> far · <b>S</b> close · <b>D</b> back · <b>A</b> attack',
+  // Named by where he actually goes ON SCREEN. The lateral axis is taken across the camera, so
+  // W and S are always up and down the view whatever angle it has been dragged to, and D is the
+  // retreat straight back down the fight line.
+  keys:  'Dodge <b>W</b> up · <b>S</b> down · <b>D</b> back — Attack <b>A</b>',
   touch: '<b>SWIPE</b> to move · <b>TAP</b> to attack',
 };
 const keysEl = document.getElementById('keys');
