@@ -889,8 +889,8 @@ const php = document.getElementById('php'), ehp = document.getElementById('ehp')
 // Show only the controls the player is actually using. Start from what the device looks like,
 // then switch on the first real key or touch - a laptop with a touchscreen reports both.
 const HELP = {
-  keys:  '<b>W</b> far · <b>S</b> close · <b>D</b> back · <b>1–4</b> attacks · <b>CLICK</b> attack — <i>centre is never safe</i>',
-  touch:  '<b>SWIPE</b> to a slot · <b>TAP</b> to attack · <b>PINCH</b> to zoom — <i>centre is never safe</i>',
+  keys:  '<b>W</b> far · <b>S</b> close · <b>D</b> back · <b>A</b> attack',
+  touch: '<b>SWIPE</b> to move · <b>TAP</b> to attack',
 };
 const keysEl = document.getElementById('keys');
 let inputMode = null;
@@ -921,6 +921,12 @@ addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.code === 'Space') e.preventDefault();
   if (!e.repeat && (e.code === 'KeyW' || e.code === 'KeyS' || e.code === 'KeyD')) requestDodge(e.code);
+  // A throws one at random, the same as a click - the digits are there to pick a specific one,
+  // but most of the time you just want to hit him and not choose which way.
+  if (!e.repeat && e.code === 'KeyA') {
+    e.preventDefault();
+    tryAttack((Math.random() * ATTACKS.length) | 0);
+  }
   const attack = ['Digit1','Digit2','Digit3','Digit4','Digit5'].indexOf(e.code);
   if (attack >= 0) { e.preventDefault(); tryAttack(attack); }
 });
