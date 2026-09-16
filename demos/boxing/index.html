@@ -200,7 +200,16 @@ const BITE = {
   gap: 0.74,               // root to root at the hold; bodies touch at 0.47
   lean: THREE.MathUtils.degToRad(25),
   peak: 1.0,               // seconds into the clip where the squeeze is
+  // IT CLAMPS DOWN REPEATEDLY INSTEAD OF HOLDING STILL. The hold used to freeze the clip on its
+  // tightest frame, which is a fine still and a poor second of screen time: it had him caught and
+  // then nothing happened. The window either side of the peak IS the squeeze - the arms closing and
+  // opening - so the playhead is driven back and forth across it by hand, three times, at three
+  // times life. The hold's length falls out of that rather than being set separately, or the last
+  // squeeze gets cut off mid-clamp.
+  squeezes: 3, squeezeRate: 3, squeezeWindow: 0.45,
 };
+BITE.holdOf = () => BITE.squeezes * 2 * BITE.squeezeWindow / BITE.squeezeRate;
+BITE.hold = BITE.holdOf();
 BITE.dur = BITE.spring + BITE.hold + BITE.recoil;
 // MEASURED per death clip: the lowest skinned vertex at game scale, and how long the clip takes
 // to get there. `fall` lies deeper than `defeat_03` (0.254 against 0.222) and drops more than
@@ -1914,6 +1923,7 @@ function bugAI(dt) {
           // EVERY ATTACK LANDS AT FIGHT.strike. The spring is stretched or squeezed to that, and
           // the clip is played at whatever rate puts its measured peak exactly on the end of it.
           BITE.spring = FIGHT.strike;
+          BITE.hold = BITE.holdOf();
           BITE.dur = BITE.spring + BITE.hold + BITE.recoil;
           B.act = bug.play(pick, { once:true, fade:0.06, rate: BITE.peak / BITE.spring, force:true });
           B.phase = 'spring';
@@ -2013,11 +2023,21 @@ function bugAI(dt) {
         bug.root.position.lerpVectors(B.jumpFrom, B.jumpTo, e);
         bug.model.rotation.x = BITE.lean * e;          // pitch the face down and forward
       } else if (el < BITE.spring + BITE.hold) {
-        if (B.phase === 'spring') {                    // freeze on the squeeze and hold it
+        if (B.phase === 'spring') {
           B.phase = 'hold';
+          // The mixer stops advancing the playhead so this can drive it; the clip is still applied
+          // every frame, at whatever time is set below.
           if (B.act) B.act.setEffectiveTimeScale(0);
           damageHero(DMG.biteDamage);          // it tracked him; it does not miss
           B.lunged = true;
+        }
+        // Back and forth across the squeeze: open to shut and out again, once per cycle.
+        if (B.act) {
+          const into = el - BITE.spring;
+          const cycle = 2 * BITE.squeezeWindow / BITE.squeezeRate;
+          const k = (into % cycle) / cycle;
+          const shut = k < 0.5 ? k * 2 : (1 - k) * 2;        // 0 open, 1 clamped
+          B.act.time = BITE.peak - BITE.squeezeWindow * (1 - shut);
         }
         bug.root.position.copy(B.jumpTo);
         bug.model.rotation.x = BITE.lean;
@@ -2135,7 +2155,7 @@ window.__heroPos = () => hero ? {
   w: hero.cur? +hero.cur.getEffectiveWeight().toFixed(2):null
 } : null;
 // Headless test hook: ?probe lets a harness drive damage directly.
-if (Q.has('probe')) Object.assign(window, { damageBug, damageHero, P, B, BUG, rigs:()=>({hero,bug}), THREE, camera, scene, renderer, requestDodge, FIGHT, currentSlot, isUnsafe, slotPos, SLOTS, __markYaw: markLookYaw, BEAM, SWAY, FIDGET, spot, beam, syncBeam, SPIKE, EVADE, GRAB });
+if (Q.has('probe')) Object.assign(window, { damageBug, damageHero, P, B, BUG, rigs:()=>({hero,bug}), THREE, camera, scene, renderer, requestDodge, FIGHT, currentSlot, isUnsafe, slotPos, SLOTS, __markYaw: markLookYaw, BEAM, SWAY, FIDGET, spot, beam, syncBeam, SPIKE, EVADE, GRAB, BITE });
 
 // ── tuning panel (?tune) ───────────────────────────────────────────────
 // Feel is not a thing you can reason your way to from a diff - it has to be dialled in while the
@@ -2209,6 +2229,9 @@ function buildTunePanel() {
     ['spot edge',  0, 0.80, 0.01,  () => spot.penumbra, v => spot.penumbra = v],
     ['spot width', 0.15, 0.75, 0.01, () => spot.angle, v => spot.angle = v],
     ['chimp dodge', 0, 0.75, 0.01, () => EVADE.chance, v => EVADE.chance = v],
+    ['squeezes',    1, 6, 1,      () => BITE.squeezes,      v => BITE.squeezes = v],
+    ['squeeze rate',1, 6, 0.25,   () => BITE.squeezeRate,   v => BITE.squeezeRate = v],
+    ['squeeze size',0.1, 0.9, 0.05, () => BITE.squeezeWindow, v => BITE.squeezeWindow = v],
     ['grab forward', -0.2, 0.7, 0.01, () => GRAB.holdFore, v => GRAB.holdFore = v],
     ['grab down',    -0.2, 0.5, 0.01, () => GRAB.holdDown, v => GRAB.holdDown = v],
     ['lunge height', 0, 1.6, 0.05, () => LUNGE_ARC.insect, v => LUNGE_ARC.insect = v],
@@ -2260,6 +2283,7 @@ function buildTunePanel() {
       '// spot ' + spot.intensity.toFixed(0) +
       '  penumbra ' + spot.penumbra.toFixed(2) + '  angle ' + spot.angle.toFixed(2) +
       '  evadeChance ' + EVADE.chance.toFixed(2) +
+      '  squeeze ' + BITE.squeezes + 'x' + BITE.squeezeRate + '@' + BITE.squeezeWindow +
       '  grabHold ' + GRAB.holdFore.toFixed(2) + '/' + GRAB.holdDown.toFixed(2) +
       '\n// SPIKE = { rx:' + SPIKE.rx + ', ry:' + SPIKE.ry + ', rz:' + SPIKE.rz +
       ', fx:' + SPIKE.fx + ', fy:' + SPIKE.fy + ', fz:' + SPIKE.fz +
