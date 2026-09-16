@@ -890,7 +890,7 @@ const php = document.getElementById('php'), ehp = document.getElementById('ehp')
 // then switch on the first real key or touch - a laptop with a touchscreen reports both.
 const HELP = {
   keys:  '<b>W</b> far · <b>S</b> close · <b>D</b> back · <b>1–4</b> attacks · <b>CLICK</b> attack — <i>centre is never safe</i>',
-  touch: '<b>SWIPE</b> up/down/back to a slot · <b>TAP</b> to attack — <i>centre is never safe</i>',
+  touch:  '<b>SWIPE</b> to a slot · <b>TAP</b> to attack · <b>PINCH</b> to zoom — <i>centre is never safe</i>',
 };
 const keysEl = document.getElementById('keys');
 let inputMode = null;
@@ -960,15 +960,42 @@ addEventListener('mousemove', e => {
   camYaw -= (e.clientX - lastX) * 0.006;     // drag right, scene spins right
   lastX = e.clientX;
 });
-let touchStart = null;
+let touchStart = null, pinch = null;
+const touchGap = e => Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
+                                 e.touches[0].clientY - e.touches[1].clientY);
 addEventListener('touchstart', e => {
   setInput('touch');
+  // A SECOND FINGER IS A PINCH AND NEVER A DODGE. The first one has already recorded a start
+  // point, and if that is left standing the lift at the end of the pinch reads as a swipe - so
+  // the player zooms in and Stephen hops sideways for no reason he can see. Dropping it here
+  // cancels the gesture that was in progress rather than letting the two compete.
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    touchStart = null;
+    pinch = { gap: touchGap(e), from: cameraDistance };
+    return;
+  }
   if (e.touches.length !== 1) return;
   e.preventDefault();
   const touch = e.touches[0];
   touchStart = {x:touch.clientX, y:touch.clientY};
 }, {passive:false});
+addEventListener('touchmove', e => {
+  if (!pinch || e.touches.length !== 2) return;
+  e.preventDefault();
+  const gap = touchGap(e);
+  if (gap < 6) return;                       // two fingers on the same spot: ratio goes to nonsense
+  zoomedByUser = true;                       // and a resize must stop refitting it afterwards
+  cameraDistance = THREE.MathUtils.clamp(pinch.from * (pinch.gap / gap), 2.0, 30);
+}, {passive:false});
 addEventListener('touchend', e => {
+  // Unwind the pinch without letting either finger's lift be read as a tap or a swipe.
+  if (pinch) {
+    e.preventDefault();
+    if (e.touches.length < 2) pinch = null;
+    touchStart = null;
+    return;
+  }
   if (!touchStart) return;
   e.preventDefault();
   const touch = e.changedTouches[0];
@@ -981,6 +1008,7 @@ addEventListener('touchend', e => {
   }
   requestDodge(Math.abs(dy) > Math.abs(dx) ? (dy < 0 ? 'KeyW' : 'KeyS') : 'KeyD');
 }, {passive:false});
+addEventListener('touchcancel', () => { pinch = null; touchStart = null; });
 
 function say(t, sub) {
   centre.innerHTML = t + (sub ? `<small>${sub}</small>` : '');
