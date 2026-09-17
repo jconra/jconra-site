@@ -100,7 +100,7 @@
 
     <h2>Animation</h2>
     <div class="btns" id="clips"></div>
-    <label class="check" for="inPlace"><input id="inPlace" type="checkbox" checked> Walk in place</label>
+    <label class="check" for="inPlace"><input id="inPlace" type="checkbox" checked> Walk and climb in place</label>
     <div class="row"><label for="speed">Speed</label><output id="speedOut"></output><input id="speed" type="range" min="0" max="2" step="0.05" value="1"></div>
 
     <h2>Hair</h2>
@@ -946,16 +946,18 @@ const followPrev = new THREE.Vector3(), followNow = new THREE.Vector3();
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
-  const inPlace = document.getElementById('inPlace').checked && clipName === 'walk';
+  const travels = clipName === 'walk' || clipName === 'climb';
+  const inPlace = document.getElementById('inPlace').checked && travels;
   for (const r of rigs) {
     r.mixer.update(dt * +speedEl.value);
-    // WALK IN PLACE. The walk clip carries the body forward and snaps back when it loops. Pinning the
-    // hip over its rest spot on the floor plane cancels the travel and leaves the bob and sway alone.
+    // IN PLACE. Walk carries the body forward and climb carries it upward, and both snap back when
+    // they loop. Pinning the hip over its rest spot cancels the travel and leaves the bob and sway
+    // alone; climbing pins the height too, so he climbs without leaving the plinth.
     r.model.position.set(0, 0, 0);
     if (inPlace) {
       r.pivot.updateMatrixWorld(true);
       r.pivot.worldToLocal(r.hip.getWorldPosition(tmp));
-      r.model.position.set(r.hipRest.x - tmp.x, 0, r.hipRest.z - tmp.z);
+      r.model.position.set(r.hipRest.x - tmp.x, clipName === 'climb' ? r.hipRest.y - tmp.y : 0, r.hipRest.z - tmp.z);
     }
   }
   if (focus) {
