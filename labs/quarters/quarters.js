@@ -67,6 +67,28 @@ placeEarth();
   scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xdfe8f0, size: 1.5, sizeAttenuation: false })));
 }
 
+// EARTH AS A PICTURE. The cheap version: one unlit rectangle hung outside the window with the same
+// NASA map on it, sliding sideways to suggest the orbit. Two triangles against the globe's 55k, and
+// no lighting to get wrong, but it has edges and it does not shift between the two windows the way a
+// real globe does.
+const picture = new THREE.Mesh(
+  new THREE.PlaneGeometry(1, 1),
+  new THREE.MeshBasicMaterial({ map: new THREE.TextureLoader().load('../../textures/earth_atmos_2048.jpg', t => {
+    t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.repeat.set(0.35, 0.5);
+  }) })
+);
+picture.scale.set(420, 210, 1);
+picture.position.set(0, -70, -230);
+picture.rotation.x = -0.28;
+scene.add(picture);
+let earthMode = 'Globe';
+function setEarthMode(mode) {
+  earthMode = mode;
+  earth.visible = mode === 'Globe';
+  picture.visible = mode === 'Picture';
+  document.querySelectorAll('#earthMode button').forEach(b => b.classList.toggle('on', b.textContent === mode));
+}
+
 const post = new Post(renderer, scene, camera, { far: FAR, sunDirection: sun.position });
 post.setSize(innerWidth, innerHeight);
 
@@ -104,8 +126,11 @@ function loadRoom(name) {
   model.position.set(-box.min.x * scale - (size.x * scale) / 2, -box.min.y * scale, -box.min.z * scale - (size.z * scale) / 2);
   room.add(model);
 
-  model.traverse(o => {
-    if (!o.isMesh) return;
+  // Collect first, then process: re-parenting the chair below changes the list that traverse walks,
+  // which makes it step over the rest of the room.
+  const meshes = [];
+  model.traverse(o => { if (o.isMesh) meshes.push(o); });
+  for (const o of meshes) {
     o.castShadow = o.receiveShadow = true;
     const mats = Array.isArray(o.material) ? o.material : [o.material];
     for (const m of mats) {
@@ -114,21 +139,38 @@ function loadRoom(name) {
     }
     if (/^Windows/.test(o.name)) windows = o;
     else if (/^Chair/.test(o.name)) {
-      // spin the chair about its own axis: a holder at the seat's centre, on the floor
-      const b = new THREE.Box3().setFromObject(o), c = b.getCenter(new THREE.Vector3());
+      // Swivel about the post, not the middle of the bounding box: the chair stands at an angle to
+      // the desk, so that box is a diagonal and its centre sits well off the post. The wheel base is
+      // centred on the post, so the lowest slice of the chair gives the axis.
+      const g = o.geometry; g.computeBoundingBox();
+      const pos = g.attributes.position, lo = g.boundingBox.min.y, h = g.boundingBox.max.y - lo;
+      let sx = 0, sz = 0, n = 0;
+      for (let i = 0; i < pos.count; i++) {
+        if (pos.getY(i) > lo + 0.12 * h) continue;
+        sx += pos.getX(i); sz += pos.getZ(i); n++;
+      }
+      const axis = new THREE.Vector3(n ? sx / n : 0, lo, n ? sz / n : 0).applyMatrix4(o.matrixWorld);
+      // the holder hangs off the room, whose scale is 1, so that world position means what it says:
+      // inside the model group it would be read in that group's own scaled frame
       chairPivot = new THREE.Group();
-      chairPivot.position.set(c.x, b.min.y, c.z);
-      o.parent.add(chairPivot); chairPivot.attach(o);
+      room.add(chairPivot);
+      chairPivot.position.copy(axis);
+      chairPivot.updateMatrixWorld(true);
+      chairPivot.attach(o);
     } else props.push(o);
-  });
+  }
   buildPropList();
   applyWindows();
   if (chairPivot && !CHAIR.swivel) chairPivot.rotation.y = THREE.MathUtils.degToRad(CHAIR.angle);
   $('boot')?.remove();
   if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; },
-     (e) => { const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
+     (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
+for (const mode of ['Globe', 'Picture']) {
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = mode; b.onclick = () => setEarthMode(mode); $('earthMode').appendChild(b);
+}
+setEarthMode(earthMode);
 for (const name of Object.keys(BUILDS)) {
   const b = document.createElement('button'); b.type = 'button'; b.textContent = name; b.onclick = () => loadRoom(name); $('builds').appendChild(b);
 }
@@ -222,7 +264,8 @@ renderer.setAnimationLoop(() => {
   renderer.info.reset();
   clock.update?.();
   const raw = clock.getDelta(), dt = Math.min(raw, 0.1);
-  earth.update(dt);
+  if (earthMode === 'Globe') earth.update(dt);
+  else picture.material.map.offset.x = (picture.material.map.offset.x + dt * EARTH.spin * 0.004) % 1;
   if (chairPivot && CHAIR.swivel) chairPivot.rotation.y += THREE.MathUtils.degToRad(CHAIR.speed) * dt;
   controls.update();
   if ($('autoFocus').checked) post.focus = camera.position.distanceTo(controls.target);
