@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Station Lab</title>
+<title>Station Lab r186</title>
 <style>
   @font-face { font-family: nasa; src: url("../../fonts/nasalization-rg.ttf"); font-display: swap; }
   * { margin:0; padding:0; box-sizing:border-box; }
@@ -38,14 +38,14 @@
   @media (max-width:700px) { #panel, #panel.min { width:auto; left:12px; top:auto; bottom:12px; max-height:46vh; } }
 </style>
 </head>
-<body data-gl="1">
+<body data-gl="2">
 <div id="boot">LOADING STATION… <span id="pct"></span></div>
 <a id="back" href="../">&larr; labs</a>
 <div id="panel">
-  <h1>Station Lab <button id="min" type="button">hide</button></h1>
+  <h1>Station Lab r186 <button id="min" type="button">hide</button></h1>
   <div class="body">
-    <p class="note">three.js 0.158 on <b>WebGL1</b>, the version the site can run anywhere.
-      <a href="../station-next/">Compare: 0.186 on WebGL2</a></p>
+    <p class="note">three.js 0.186 on <b>WebGL2</b>: environment lighting, multisampled effects and half-float everywhere.
+      <a href="../station/">Compare: 0.158 on WebGL1</a></p>
     <div class="readout" style="grid-template-columns:1fr"><b id="fxInfo"></b><span id="fps"></span></div>
 
     <h2>Lamps</h2>
@@ -105,10 +105,10 @@
 <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
 <script type="importmap">
 { "imports": {
-    "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+    "three": "https://unpkg.com/three@0.186.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.186.0/examples/jsm/"
 } }
 </script>
-<script type="module" src="./lab.js"></script>
+<script type="module" src="../station/lab.js"></script>
 </body>
 </html>
