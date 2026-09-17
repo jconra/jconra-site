@@ -621,6 +621,11 @@ Promise.all([...SPOTS.map((_, i) => load(`../../models/jacob${i + 1}.glb`, i)), 
       const box = new THREE.Box3().setFromBufferAttribute(headMesh.geometry.attributes.position);
       const holder = new THREE.Group(); holder.position.copy(box.getCenter(new THREE.Vector3()));
       headMesh.parent.add(holder); holder.attach(headMesh);
+      // A skinned mesh normally cancels out its own transform (the bones already place it in the
+      // world), so moving the holder did nothing. Detached binding keeps the bind pose fixed and lets
+      // the mesh's transform through, which is what these controls need.
+      headMesh.bindMode = THREE.DetachedBindMode ?? 'detached';
+      headMesh.bindMatrixInverse.copy(headMesh.bindMatrix).invert();
       headFit = { holder, base: holder.position.clone() };
     }
     const seat = new THREE.Mesh(new THREE.BoxGeometry(SEAT.w, SEAT.top, SEAT.d), seatMat);
