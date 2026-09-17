@@ -224,7 +224,9 @@ renderer.setAnimationLoop(() => {
   if (raw > 0) fps += (1 / raw - fps) * 0.05;
   if ((shown += raw) > 0.5) {
     shown = 0;
-    $('fps').textContent = Math.round(fps) + ' fps · ' + renderer.info.render.calls + ' draws · ' +
+    const line = '<b>' + Math.round(fps) + ' fps</b> · ' + renderer.info.render.calls + ' draws · ' +
       (renderer.info.render.triangles / 1000).toFixed(0) + 'k triangles';
+    $('hud').innerHTML = line;
+    $('fps').innerHTML = line;
   }
 });
