@@ -498,7 +498,7 @@ const N = SPOTS.length;
 // Measured in Blender at the middle of each sitting clip, in model units: the lowest point of the
 // seat of the trousers, and where the hip sits over the floor. The stool goes just under it.
 const SEAT = { top: 0.232, z: 0.015 - 0.06, w: 0.30, d: 0.28 };
-const CLIPS = [ ['idle', 'Idle'], ['pose', 'T-pose'], ['walk', 'Walk'], ['sit', 'Sit'], ['play_video_game', 'Video game'] ];
+const CLIPS = [ ['idle', 'Idle'], ['pose', 'T-pose'], ['walk', 'Walk'], ['climb', 'Climb'], ['sit', 'Sit'], ['play_video_game', 'Video game'] ];
 const SITTING = new Set(['sit', 'play_video_game']);
 if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, renderer });
 
@@ -577,8 +577,17 @@ const load = (f, i) => new Promise((res, rej) => loader.load(f, res, (e) => {
 }, rej));
 const seatMat = new THREE.MeshStandardMaterial({ color:0x2e363e, roughness:0.6, metalness:0.4 });
 
-Promise.all([...SPOTS.map((_, i) => load(`../../models/jacob${i + 1}.glb`, i)), load('../../models/idle_clip.glb', 0)]).then(all => {
-  const idleClip = all.pop().animations.find(c => /idle/.test(c.name));
+// Clips that live in their own small files and are shared by every model: idle came from Stephen,
+// climb from Mixamo, retargeted onto this same Tripo skeleton.
+const SHARED_CLIPS = [['idle', 'idle_clip.glb'], ['climb', 'climb_clip.glb']];
+Promise.all([...SPOTS.map((_, i) => load(`../../models/jacob${i + 1}.glb`, i)),
+             ...SHARED_CLIPS.map(([, file]) => load(`../../models/${file}`, 0))]).then(all => {
+  const shared = {};
+  for (let i = SHARED_CLIPS.length - 1; i >= 0; i--) {
+    const [name] = SHARED_CLIPS[i], g = all.pop();
+    const clip = g.animations.find(c => new RegExp(name, 'i').test(c.name)) || g.animations[0];
+    if (clip) shared[name] = clip;
+  }
   const list = all;
   list.forEach((g, i) => {
     const { x, z } = SPOTS[i];
@@ -638,7 +647,7 @@ Promise.all([...SPOTS.map((_, i) => load(`../../models/jacob${i + 1}.glb`, i)), 
     const actions = {};
     // Tripo names its clips like 'preset:biped:sit.001'; keep only the 'sit'.
     for (const clip of g.animations) actions[clip.name.replace(/^preset:biped:/, '').replace(/\.\d+$/, '')] = mixer.clipAction(clip);
-    if (idleClip) actions.idle = mixer.clipAction(idleClip);
+    for (const [name, clip] of Object.entries(shared)) actions[name] = mixer.clipAction(clip);
     const hip = model.getObjectByName('Hip'), head = model.getObjectByName('Head');
     pivot.updateMatrixWorld(true);
     const hipRest = pivot.worldToLocal(hip.getWorldPosition(new THREE.Vector3()));
