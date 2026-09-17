@@ -63,6 +63,10 @@
     <div class="row"><label for="speed">Speed</label><output id="speedOut"></output><input id="speed" type="range" min="0" max="2" step="0.05" value="1"></div>
 
     <h2>Hair</h2>
+    <div id="styleBox" hidden>
+      <div class="btns" id="styles"></div>
+      <p class="note">Model 3 only: Tripo's hair, or new hair built in Blender from photos &mdash; clipped sides and a longer top swept to the left.</p>
+    </div>
     <div class="btns" id="who"></div>
     <label class="check" for="show"><input id="show" type="checkbox"> Show what counts as hair</label>
     <div class="row"><label for="dark">Brightness</label><output id="darkOut"></output><input id="dark" type="range" min="0.1" max="1.5" step="0.01" value="1"></div>
@@ -471,11 +475,15 @@ function plinth(x, z) {
 const HAIR_DEFAULT = { dark: 1, sat: 1, tint: '#2a211b', tintAmt: 0, pick: 1 };
 const HAIR = [0, 1, 2].map(() => ({ ...HAIR_DEFAULT }));
 const showMask = { value: 0 };
-function hairMaterial(mat, i) {
-  const u = {
+function hairUniforms() {
+  return {
     uHairDark: { value: 1 }, uHairSat: { value: 1 }, uHairTint: { value: new THREE.Color() },
     uHairTintAmt: { value: 0 }, uHairPick: { value: 1 }, uHairShow: showMask,
   };
+}
+// One set of uniforms per model, shared by every mesh on it that carries the attribute: the body,
+// and on model 3 the scalp and each hair style too.
+function hairMaterial(mat, u) {
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, u);
     shader.vertexShader = shader.vertexShader
@@ -503,7 +511,6 @@ function hairMaterial(mat, i) {
         }`);
   };
   mat.customProgramCacheKey = () => 'hair-v1';
-  return u;
 }
 function applyHair(i) {
   const s = HAIR[i], u = rigs[i]?.hair;
@@ -535,7 +542,10 @@ Promise.all([1, 2, 3].map((n, i) => load(`../../models/jacob${n}.glb`, i))).then
     pivot.scale.setScalar(HEIGHT);
     scene.add(pivot);
     const model = g.scene; pivot.add(model);
-    let hair = null;
+    const hair = hairUniforms();
+    // HAIR STYLES. Model 3 carries Tripo's own hair split off as HairTripo, a scalp with the clipped
+    // sides, and new styles named Hair_*. Only one is ever shown.
+    const styles = {};
     model.traverse(o => {
       if (!o.isMesh) return;
       o.castShadow = true; o.receiveShadow = true;
@@ -545,7 +555,16 @@ Promise.all([1, 2, 3].map((n, i) => load(`../../models/jacob${n}.glb`, i))).then
       for (const slot of ['map', 'normalMap', 'roughnessMap', 'metalnessMap'])
         if (mat[slot]) { mat[slot].anisotropy = renderer.capabilities.getMaxAnisotropy(); mat[slot].needsUpdate = true; }
       mat.envMapIntensity = 0.35;
-      if (o.geometry.attributes._hair) hair = hairMaterial(mat, i);
+      if (o.geometry.attributes._hair) hairMaterial(mat, hair);
+      if (mat.alphaTest > 0) {
+        // STRAND CARDS. Soft edges from coverage, no mirror sheen, and no mipmaps: shrinking the strand
+        // texture averages each strand into its gap, the alpha drops under the cutoff and the hair vanishes.
+        mat.alphaToCoverage = true; mat.envMapIntensity = 0.15;
+        if (mat.map) { mat.map.generateMipmaps = false; mat.map.minFilter = THREE.LinearFilter; mat.map.needsUpdate = true; }
+      }
+      if (o.name === 'HairTripo') styles.tripo = o;
+      else if (o.name === 'Scalp') styles.scalp = o;
+      else if (o.name.startsWith('Hair_')) styles[o.name.slice(5).toLowerCase()] = o;
     });
     const seat = new THREE.Mesh(new THREE.BoxGeometry(SEAT.w, SEAT.top, SEAT.d), seatMat);
     seat.position.set(0, SEAT.top / 2, SEAT.z); seat.castShadow = seat.receiveShadow = true;
@@ -557,12 +576,13 @@ Promise.all([1, 2, 3].map((n, i) => load(`../../models/jacob${n}.glb`, i))).then
     const hip = model.getObjectByName('Hip'), head = model.getObjectByName('Head');
     pivot.updateMatrixWorld(true);
     const hipRest = pivot.worldToLocal(hip.getWorldPosition(new THREE.Vector3()));
-    rigs.push({ pivot, model, mixer, actions, seat, hip, head, hipRest, hair,
+    rigs.push({ pivot, model, mixer, actions, seat, hip, head, hipRest, hair, styles,
                 skeletons: [...new Set(collectSkeletons(model))] });
     applyHair(i);
   });
   buildUi();
   setClip('walk');
+  setStyle('wavy');
   document.getElementById('boot').classList.add('gone');
   setTimeout(() => document.getElementById('boot').remove(), 700);
   for (let i = 0; i < 3; i++) document.getElementById('tag' + i).classList.add('on');
@@ -572,6 +592,20 @@ function collectSkeletons(root) {
   const out = [];
   root.traverse(o => { if (o.isSkinnedMesh) out.push(o.skeleton); });
   return out;
+}
+
+// ── hair styles ───────────────────────────────────────────────────────────────
+const STYLE_LABELS = [['tripo', 'Tripo'], ['wavy', 'Wavy sweep'], ['curly', 'Curly'], ['neat', 'Neat sweep']];
+let styleName = 'wavy';
+function setStyle(name) {
+  styleName = name;
+  for (const r of rigs) {
+    const st = r.styles;
+    if (!st.scalp) continue;
+    for (const [key] of STYLE_LABELS) if (st[key]) st[key].visible = key === name;
+    st.scalp.visible = name !== 'tripo';
+  }
+  document.querySelectorAll('#styles button').forEach(b => b.classList.toggle('on', b.dataset.style === name));
 }
 
 // ── animation ─────────────────────────────────────────────────────────────────
@@ -591,6 +625,7 @@ function setClip(name) {
 // ── camera ────────────────────────────────────────────────────────────────────
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true; controls.dampingFactor = 0.08;
+if (Q.has('probe')) Object.assign(window, { controls, rigs });
 controls.minDistance = 0.35; controls.maxDistance = 16;
 controls.maxPolarAngle = Math.PI * 0.53;                       // a little below the plinths, never under the floor
 let focus = null;                                             // { rig, part: 'face' | 'body' } while the camera follows someone
@@ -650,6 +685,14 @@ function buildUi() {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.dataset.clip = name;
     b.onclick = () => setClip(name); clips.appendChild(b);
   }
+  if (rigs.some(r => r.styles.scalp)) {
+    document.getElementById('styleBox').hidden = false;
+    const stylesEl = document.getElementById('styles');
+    for (const [name, label] of STYLE_LABELS) {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.dataset.style = name;
+      b.onclick = () => setStyle(name); stylesEl.appendChild(b);
+    }
+  }
   const whoEl = document.getElementById('who');
   for (const [key, label] of [['all', 'All'], ['0', 'Model 1'], ['1', 'Model 2'], ['2', 'Model 3']]) {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.dataset.who = key;
@@ -688,7 +731,7 @@ document.getElementById('min').onclick = () => {
 };
 document.getElementById('copy').onclick = () => {
   const out = document.getElementById('out');
-  const text = JSON.stringify(HAIR.map((s, i) => ({ model: i + 1, ...s })), null, 1);
+  const text = JSON.stringify({ style: styleName, hair: HAIR.map((s, i) => ({ model: i + 1, ...s })) }, null, 1);
   out.value = text; out.style.display = 'block'; out.select();
   navigator.clipboard?.writeText(text).then(() => { document.getElementById('copy').textContent = 'Copied'; },
     () => { document.getElementById('copy').textContent = 'Select and copy below'; });
