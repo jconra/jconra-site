@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Station Lab</title>
+<style>
+  @font-face { font-family: nasa; src: url("../../fonts/nasalization-rg.ttf"); font-display: swap; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; background:#000; color:#ccd6de; font:13px/1.45 ui-sans-serif, system-ui, sans-serif; }
+  canvas { display:block; touch-action:none; }
+  #panel { position:fixed; top:12px; right:12px; bottom:12px; width:290px; overflow-y:auto; z-index:5;
+           background:rgba(10,13,17,.9); border:1px solid #212a34; border-radius:6px; padding:12px 14px; }
+  #panel.min { bottom:auto; }
+  #panel.min .body { display:none; }
+  h1 { font:400 17px/1 nasa, ui-sans-serif, sans-serif; letter-spacing:.05em; color:#e8f1f5; display:flex; justify-content:space-between; align-items:center; }
+  h1 button { font:600 11px ui-monospace,monospace; background:none; border:1px solid #212a34; color:#8494a0; border-radius:3px; padding:3px 7px; cursor:pointer; }
+  h2 { font:600 10.5px/1 ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:#5b6873; margin:16px 0 8px; }
+  .row { display:grid; grid-template-columns:1fr auto; gap:2px 8px; align-items:center; margin:6px 0; }
+  .row label { color:#aeb9c2; }
+  .row output { font:12px ui-monospace,monospace; color:#e8f1f5; font-variant-numeric:tabular-nums; }
+  .row input[type=range] { grid-column:1 / -1; width:100%; accent-color:#35e07d; }
+  .check { display:flex; gap:8px; align-items:center; margin:6px 0; color:#aeb9c2; cursor:pointer; }
+  .check input { accent-color:#35e07d; }
+  .readout { display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font:12px ui-monospace,monospace; margin:6px 0; }
+  .readout b { color:#e8f1f5; font-weight:600; }
+  .btns { display:flex; flex-wrap:wrap; gap:6px; }
+  .btns button, #copy { font:600 11px ui-monospace,monospace; letter-spacing:.05em; text-transform:uppercase; background:rgba(53,224,125,.12);
+                  color:#35e07d; border:1px solid #2f7d55; border-radius:4px; padding:6px 8px; cursor:pointer; }
+  .parts { display:grid; grid-template-columns:repeat(3,1fr); gap:2px 6px; }
+  .parts label { display:flex; gap:5px; align-items:center; font:11.5px ui-monospace,monospace; color:#aeb9c2; cursor:pointer; }
+  #copy { width:100%; margin-top:14px; }
+  #out { display:none; width:100%; height:120px; margin-top:6px; background:#05070a; color:#ccd6de; border:1px solid #212a34; font:11px ui-monospace,monospace; }
+  #boot { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; font:13px nasa, monospace; letter-spacing:4px; color:#b9c8d2; background:#000; z-index:9; }
+  #back { position:fixed; top:14px; left:16px; z-index:6; font:11px ui-monospace,monospace; letter-spacing:.14em; color:#8494a0; text-decoration:none; text-transform:uppercase; }
+  @media (max-width:700px) { #panel { width:auto; left:12px; top:auto; bottom:12px; max-height:46vh; } }
+</style>
+</head>
+<body>
+<div id="boot">LOADING STATION… <span id="pct"></span></div>
+<a id="back" href="../">&larr; labs</a>
+<div id="panel">
+  <h1>Station Lab <button id="min" type="button">hide</button></h1>
+  <div class="body">
+    <h2>Spin</h2>
+    <div class="row"><label for="radius">Ring radius</label><output id="radiusOut"></output><input id="radius" type="range" min="100" max="2000" step="10" value="1000"></div>
+    <div class="readout"><b id="period"></b><span>per turn for 1 g</span><b id="rim"></b><span>rim speed</span><b id="span"></b><span>across the arms</span></div>
+    <label class="check" for="spin"><input id="spin" type="checkbox" checked> Ring spins</label>
+    <div class="row"><label for="speed">Time speed</label><output id="speedOut"></output><input id="speed" type="range" min="1" max="30" step="1" value="1"></div>
+
+    <h2>Surface</h2>
+    <label class="check" for="layer"><input id="layer" type="checkbox" checked> Layered material (off = Tripo only)</label>
+    <label class="check" for="hash"><input id="hash" type="checkbox" checked> Randomise tiles</label>
+    <div class="row"><label for="tile">Plate tile size</label><output id="tileOut"></output><input id="tile" type="range" min="1" max="40" step="0.5" value="8"></div>
+    <div class="row"><label for="paint">Tripo paint</label><output id="paintOut"></output><input id="paint" type="range" min="0" max="1" step="0.01" value="0.8"></div>
+    <div class="row"><label for="detail">Tile detail through paint</label><output id="detailOut"></output><input id="detail" type="range" min="0" max="1" step="0.01" value="0.9"></div>
+    <div class="row"><label for="grime">Dirt pass</label><output id="grimeOut"></output><input id="grime" type="range" min="0" max="1" step="0.01" value="0.35"></div>
+    <div class="row"><label for="dirtScale">Dirt scale (tiles)</label><output id="dirtScaleOut"></output><input id="dirtScale" type="range" min="1" max="20" step="0.5" value="2.5"></div>
+    <div class="row"><label for="grate">Grating coverage</label><output id="grateOut"></output><input id="grate" type="range" min="0" max="1" step="0.01" value="0.38"></div>
+    <div class="row"><label for="metal">Metalness</label><output id="metalOut"></output><input id="metal" type="range" min="0" max="1" step="0.01" value="0.35"></div>
+    <div class="row"><label for="rough">Roughness</label><output id="roughOut"></output><input id="rough" type="range" min="0.05" max="1" step="0.01" value="0.62"></div>
+
+    <h2>Parts that spin</h2>
+    <label class="check" for="tint"><input id="tint" type="checkbox"> Tint spinning parts green</label>
+    <div class="parts" id="parts"></div>
+
+    <h2>Camera</h2>
+    <div class="btns" id="cams"></div>
+    <button id="copy" type="button">Copy settings</button>
+    <textarea id="out" readonly></textarea>
+  </div>
+</div>
+
+<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+<script type="importmap">
+{ "imports": {
+    "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+// STATION LAB. The real station module with sliders around it: nothing here is copied from src/.
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Station, RING_RADIUS_UNITS } from '../../src/objects/station.js';
+
+const Q = new URLSearchParams(location.search);
+const renderer = new THREE.WebGLRenderer({ antialias:true, logarithmicDepthBuffer:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.5, 5e7);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+// Space light: one hard sun, a faint blue fill from the planet side, almost no ambient.
+const sun = new THREE.DirectionalLight(0xfff4e6, 3.2); sun.position.set(1, 0.6, 0.45); scene.add(sun);
+const fill = new THREE.DirectionalLight(0x6f8fb8, 0.55); fill.position.set(-0.6, -0.8, -0.3); scene.add(fill);
+scene.add(new THREE.HemisphereLight(0x8aa0b8, 0x0b0e12, 0.25));
+if (renderer.capabilities.isWebGL2) {
+  try {
+    const pmrem = new THREE.PMREMGenerator(renderer), env = new THREE.Scene();
+    env.add(new THREE.Mesh(new THREE.SphereGeometry(10, 16, 8), new THREE.MeshBasicMaterial({ color:0x05070a, side:THREE.BackSide })));
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), new THREE.MeshBasicMaterial({ color:0x3a5a86 }));
+    glow.position.set(0, -6, 0); glow.rotation.x = -Math.PI/2; env.add(glow);
+    const lamp = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), new THREE.MeshBasicMaterial({ color:0xfff0d8 }));
+    lamp.position.set(6, 4, 3); lamp.lookAt(0, 0, 0); env.add(lamp);
+    scene.environment = pmrem.fromScene(env, 0.03).texture; pmrem.dispose();
+  } catch (e) { /* lights carry it */ }
+}
+
+// Stars on a far sphere.
+{
+  const n = 6000, pos = new Float32Array(n * 3), R = 2e7;
+  for (let i = 0; i < n; i++) {
+    const u = Math.random() * 2 - 1, t = Math.random() * Math.PI * 2, s = Math.sqrt(1 - u * u);
+    pos[i*3] = R * s * Math.cos(t); pos[i*3+1] = R * u; pos[i*3+2] = R * s * Math.sin(t);
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color:0xdfe8f0, size:1.4, sizeAttenuation:false })));
+}
+
+const station = new Station({ renderer });
+scene.add(station);
+const $ = (id) => document.getElementById(id);
+
+// ── camera presets, in metres, derived from the ring radius ─────────────────────
+const U = () => station.ringRadius / RING_RADIUS_UNITS;      // metres per model unit
+// The close shots find the hull by casting a ray straight down onto it, then stand off the surface by a
+// fixed number of METRES - so they are genuinely close whatever size the station is set to, which is
+// exactly where a stretched texture shows and where the layered material has to earn its keep.
+const ray = new THREE.Raycaster();
+function surfaceBelow(xUnits, zUnits) {
+  ray.set(new THREE.Vector3(xUnits * U(), U() * 2, zUnits * U()), new THREE.Vector3(0, -1, 0));
+  const hit = ray.intersectObject(station, true)[0];
+  return hit ? hit.point : null;
+}
+function standOff(point, up, out, side) {
+  return [[point.x + side, point.y + up, point.z + out], [point.x, point.y, point.z]];
+}
+const CAMS = {
+  'Whole station': () => [[U()*1.25, U()*0.95, U()*1.35], [0, U()*0.45, 0]],
+  'Ring, 30 m':    () => { const p = surfaceBelow(0.0, -0.153) || new THREE.Vector3(0, U()*0.53, -U()*0.153); return standOff(p, 14, -22, 18); },
+  'Arm, 30 m':     () => { const p = surfaceBelow(0.30, 0.0) || new THREE.Vector3(U()*0.3, U()*0.5, 0); return standOff(p, 16, 20, 14); },
+  'Hub deck, 60 m':() => { const p = surfaceBelow(0.04, 0.05) || new THREE.Vector3(0, U()*0.6, 0); return standOff(p, 35, 45, 20); },
+};
+function go(name) {
+  const [p, t] = CAMS[name]();
+  camera.position.set(...p); controls.target.set(...t); controls.update();
+}
+for (const name of Object.keys(CAMS)) {
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = name; b.onclick = () => go(name); $('cams').appendChild(b);
+}
+
+// ── controls ────────────────────────────────────────────────────────────────────
+const U_ = station.uniforms;
+const SLIDERS = {
+  tile:      [v => U_.uTileMeters.value = v, v => v + ' m'],
+  paint:     [v => U_.uPaint.value = v, v => v.toFixed(2)],
+  detail:    [v => U_.uDetail.value = v, v => v.toFixed(2)],
+  grime:     [v => U_.uGrime.value = v, v => v.toFixed(2)],
+  dirtScale: [v => U_.uDirtScale.value = v, v => v],
+  grate:     [v => U_.uGrateAmount.value = 1 - v, v => Math.round(v * 100) + '%'],
+  metal:     [v => station.parts.forEach(m => m.material.metalness = v), v => v.toFixed(2)],
+  rough:     [v => station.parts.forEach(m => m.material.roughness = v), v => v.toFixed(2)],
+  speed:     [v => station.timeScale = v, v => v + '×'],
+};
+for (const [id, [apply, fmt]] of Object.entries(SLIDERS)) {
+  const run = () => { const v = +$(id).value; apply(v); $(id + 'Out').textContent = fmt(v); };
+  $(id).addEventListener('input', run); run.bind(null);
+  SLIDERS[id].run = run;
+}
+function radius() {
+  const r = +$('radius').value, prev = station.ringRadius;
+  station.setRingRadius(r);
+  // keep the view where it was, relative to the station's new size
+  const k = r / prev; camera.position.multiplyScalar(k); controls.target.multiplyScalar(k); controls.update();
+  $('radiusOut').textContent = r.toLocaleString() + ' m';
+  $('period').textContent = station.period.toFixed(0) + ' s';
+  $('rim').textContent = station.rimSpeed.toFixed(0) + ' m/s';
+  $('span').textContent = (0.97 * U() / 1000).toFixed(1) + ' km';
+}
+$('radius').addEventListener('input', radius);
+$('spin').addEventListener('change', () => station.spinning = $('spin').checked);
+$('layer').addEventListener('change', () => U_.uLayerOn.value = $('layer').checked ? 1 : 0);
+$('hash').addEventListener('change', () => U_.uHash.value = $('hash').checked ? 1 : 0);
+const GREEN = new THREE.Color(0x0e4a26), BLACK = new THREE.Color(0);
+function tint() { station.parts.forEach((m, n) => m.material.emissive.copy($('tint').checked && station.isSpinning(n) ? GREEN : BLACK)); }
+$('tint').addEventListener('change', tint);
+$('min').addEventListener('click', () => { $('panel').classList.toggle('min'); $('min').textContent = $('panel').classList.contains('min') ? 'show' : 'hide'; });
+$('copy').addEventListener('click', () => {
+  const settings = {
+    ringRadius: station.ringRadius,
+    spinning: [...station.parts.keys()].filter(n => station.isSpinning(n)).sort((a, b) => a - b),
+    tileMeters: U_.uTileMeters.value, paint: U_.uPaint.value, detail: U_.uDetail.value, grime: U_.uGrime.value,
+    dirtScale: U_.uDirtScale.value, grateAmount: +(U_.uGrateAmount.value).toFixed(2),
+    metalness: +$('metal').value, roughness: +$('rough').value,
+  };
+  $('out').style.display = 'block'; $('out').value = JSON.stringify(settings, null, 2); $('out').select();
+  try { navigator.clipboard.writeText($('out').value); } catch (e) {}
+});
+
+addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+// ── load ────────────────────────────────────────────────────────────────────────
+station.load('../../models/station_tripo.glb', (e) => { if (e.total) $('pct').textContent = Math.round(e.loaded / e.total * 100) + '%'; })
+.then(() => {
+  const list = $('parts');
+  [...station.parts.keys()].sort((a, b) => a - b).forEach((n) => {
+    const l = document.createElement('label'); l.htmlFor = 'part' + n;
+    l.innerHTML = `<input type="checkbox" id="part${n}"${station.isSpinning(n) ? ' checked' : ''}> P${n}`;
+    l.querySelector('input').addEventListener('change', (e) => { station.setSpinning(n, e.target.checked); tint(); });
+    list.appendChild(l);
+  });
+  for (const s of Object.values(SLIDERS)) s.run();
+  radius(); go('Whole station');
+  $('boot').remove();
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, station, go });
+})
+.catch((e) => { $('boot').textContent = 'LOAD FAILED — ' + e.message; });
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.1);
+  station.update(dt);
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
