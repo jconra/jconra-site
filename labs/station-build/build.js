@@ -86,6 +86,11 @@ const CONTROLS = {
   armTilt:      [v => layout.towerArms.tilt = v, v => v + '°'],
   hangarEvery:  [v => layout.hangars.every = v, v => v === 0 ? 'none' : 'every ' + v],
   hangarScale:  [v => layout.hangars.scale = v, v => v + ' m'],
+  panelCount:   [v => layout.panels.count = v, v => v],
+  panelY:       [v => layout.panels.y = v, v => v + ' m'],
+  panelScale:   [v => layout.panels.scale = v, v => v + ' m'],
+  panelRadius:  [v => layout.panels.radius = v, v => v === 0 ? 'on the tower' : v + ' m'],
+  panelTilt:    [v => layout.panels.tilt = v, v => v + '°'],
   satCount:     [v => layout.satellites.count = v, v => v],
   satRadius:    [v => layout.satellites.radius = v, v => v.toLocaleString() + ' m'],
   satScale:     [v => layout.satellites.scale = v, v => v + ' m'],
@@ -115,6 +120,13 @@ for (const [id, [apply, fmt]] of Object.entries(CONTROLS)) {
 $('armKind').addEventListener('change', e => { layout.towerArms.kind = e.target.value; queueRebuild(); });
 $('ringArmKind').addEventListener('change', e => { layout.ringArms.kind = e.target.value; queueRebuild(); });
 $('collar').addEventListener('change', e => { layout.collar = e.target.checked; queueRebuild(); });
+$('collarAuto').addEventListener('change', e => {
+  layout.collarAuto = e.target.checked;
+  $('collarRadius').disabled = $('collarLength').disabled = e.target.checked;
+  queueRebuild();
+});
+layout.collarAuto = true;
+$('collarRadius').disabled = $('collarLength').disabled = true;
 $('spin').addEventListener('change', e => { layout.spin = e.target.checked; });
 $('speed').addEventListener('input', e => { layout.timeScale = +e.target.value; $('speedOut').textContent = e.target.value + '×'; });
 

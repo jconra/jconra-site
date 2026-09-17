@@ -12,30 +12,34 @@ export const PART_FILES = ['ring', 'tower', 'arm1', 'arm2', 'hangar', 'satellite
 export const G = 9.81;
 
 export const DEFAULT_LAYOUT = {
-  ringRadius: 600,        // metres, to the outside of the rim
+  ringRadius: 700,        // metres, to the outside of the rim
   rings: 1,
   ringGap: 420,           // metres between rings, when there is more than one
   ringY: 0,               // metres, first ring above the tower's middle
   hubCut: 0.22,           // cut the ring's middle inside this fraction of its radius
   collar: true,
-  collarRadius: 90,       // metres
-  collarLength: 900,      // metres, the cylinder the rings turn on
-  towerHeight: 1800,      // metres
+  collarRadius: 120,      // metres
+  collarLength: 1100,     // metres, the cylinder the rings turn on
+  towerHeight: 1000,      // metres (the tower part is about 0.4 as wide as it is tall)
   // arms mounted on the ring, which turn with it
   ringArms: { count: 8, kind: 'arm2', scale: 260, inset: 40, y: -40, tilt: 0 },
   // arms out from the tower, which stay put; every nth one carries a hangar on its end
-  towerArms: { count: 6, kind: 'arm1', radius: 300, y: -420, scale: 460, tilt: 0 },
+  towerArms: { count: 6, kind: 'arm1', radius: 330, y: -300, scale: 460, tilt: 0 },
   hangars: { every: 2, scale: 240 },
-  satellites: { count: 14, radius: 1400, scale: 120, seed: 7 },
+  // solar panels mounted on the tower, standing out from it like wings
+  panels: { count: 4, y: 300, scale: 520, tilt: 0, radius: 0 },
+  // a few free-flying craft, off by default
+  satellites: { count: 0, radius: 1400, scale: 120, seed: 7 },
   spin: true,
   timeScale: 1,
 };
 
-function measure(object) {
-  const box = new THREE.Box3().setFromObject(object);
-  const size = box.getSize(new THREE.Vector3());
-  const centre = box.getCenter(new THREE.Vector3());
-  return { box, size, centre };
+// Measured from the geometry, which already carries the part's own transform: measuring the mesh
+// instead would apply that transform a second time (it made the tower twice its size, and rotated).
+function measure(geometry) {
+  geometry.computeBoundingBox();
+  const box = geometry.boundingBox.clone();
+  return { box, size: box.getSize(new THREE.Vector3()), centre: box.getCenter(new THREE.Vector3()) };
 }
 
 // The outer radius of a flat, round part, ignoring the few points that stick out furthest.
@@ -65,6 +69,33 @@ function cutHub(geometry, fraction, rim) {
   return out;
 }
 
+// The height of the ring's deck: the middle of its rim, not of its bounding box, which is dragged
+// upward by the masts. This is the plane the ring should turn in.
+function deckHeight(geometry, rim) {
+  const p = geometry.attributes.position, ys = [];
+  for (let i = 0; i < p.count; i++) {
+    const r = Math.hypot(p.getX(i), p.getZ(i));
+    if (r > rim * 0.82 && r < rim * 0.99) ys.push(p.getY(i));
+  }
+  ys.sort((a, b) => a - b);
+  return ys.length ? ys[Math.floor(ys.length / 2)] : 0;
+}
+
+// The radius of the tower's central column, as a fraction of its height: the bounding box is much
+// wider, because booms and dishes stick out, and a collar sized to that swallows the whole tower.
+function coreFraction(geometry) {
+  const p = geometry.attributes.position;
+  geometry.computeBoundingBox();
+  const lo = geometry.boundingBox.min.y, hi = geometry.boundingBox.max.y, h = hi - lo;
+  const r = [];
+  for (let i = 0; i < p.count; i++) {
+    const y = p.getY(i);
+    if (y > lo + 0.35 * h && y < lo + 0.65 * h) r.push(Math.hypot(p.getX(i), p.getZ(i)));
+  }
+  r.sort((a, b) => a - b);
+  return r.length ? r[Math.floor(r.length * 0.75)] / h : 0.1;
+}
+
 export async function loadKit(base = '../../models/kit/', onProgress) {
   const loader = new GLTFLoader();
   const loaded = {}, totals = {};
@@ -84,11 +115,13 @@ export async function loadKit(base = '../../models/kit/', onProgress) {
       const mat = mesh.material;
       if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
       mat.metalness = 0.35; mat.roughness = 0.62;
-      parts[name] = { geometry: mesh.geometry, material: mat, ...measure(mesh) };
+      parts[name] = { geometry: mesh.geometry, material: mat, ...measure(mesh.geometry) };
       res();
     }, (e) => { loaded[name] = e.loaded; totals[name] = e.total || totals[name] || 0; report(); }, rej);
   })));
   parts.ring.rim = rimRadius(parts.ring.geometry);
+  parts.ring.deckY = deckHeight(parts.ring.geometry, parts.ring.rim);
+  parts.tower.coreFraction = coreFraction(parts.tower.geometry);
   return parts;
 }
 
@@ -99,7 +132,7 @@ export class StationKit extends THREE.Group {
     this.spinners = [];          // the rings, each with its own turn rate
     this.built = new THREE.Group();
     this.add(this.built);
-    this.collarMaterial = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, metalness: 0.45, roughness: 0.5 });
+    this.collarMaterial = new THREE.MeshStandardMaterial({ color: 0x4e565f, metalness: 0.65, roughness: 0.45 });
     this.layout = { ...DEFAULT_LAYOUT };
     this.lampMeshes = [];        // the unique (non-repeated) meshes, where hull lamps can go
   }
@@ -127,12 +160,17 @@ export class StationKit extends THREE.Group {
     // COLLAR, the cylinder the rings turn on. It runs past them at both ends so the join reads as a
     // mounting, not a gap.
     if (L.collar) {
-      const geo = new THREE.CylinderGeometry(L.collarRadius, L.collarRadius, L.collarLength, 48, 1);
+      const core = P.tower.coreFraction * L.towerHeight;
+      const radius = L.collarAuto === false ? L.collarRadius : core * 1.15;
+      const span = (L.rings - 1) * L.ringGap;
+      const length = L.collarAuto === false ? L.collarLength : span + L.ringRadius * 0.55;
+      const geo = new THREE.CylinderGeometry(radius, radius, length, 48, 1);
       geo.userData.temp = true;
       const collar = new THREE.Mesh(geo, this.collarMaterial);
       collar.position.y = L.ringY + (L.rings - 1) * L.ringGap / 2;
       collar.castShadow = collar.receiveShadow = true;
-      this.built.add(collar); this.lampMeshes.push(collar);
+      // no lamps on the collar: it is a plain cylinder, and a row of glows on it reads as a lit tube
+      this.built.add(collar);
     }
 
     // RINGS, each on its own turntable so they can spin at their own rate
@@ -143,7 +181,7 @@ export class StationKit extends THREE.Group {
       turntable.position.y = L.ringY + i * L.ringGap;
       const ring = new THREE.Mesh(ringGeo, P.ring.material);
       ring.scale.setScalar(S);
-      ring.position.set(-P.ring.centre.x * S, -P.ring.centre.y * S, -P.ring.centre.z * S);
+      ring.position.set(-P.ring.centre.x * S, -P.ring.deckY * S, -P.ring.centre.z * S);
       ring.castShadow = ring.receiveShadow = true;
       turntable.add(ring);
       // arms on the ring: mounted just inside the rim, pointing outward, turning with it
@@ -162,6 +200,12 @@ export class StationKit extends THREE.Group {
       const angles = [];
       for (let i = 0; i < TA.count; i += L.hangars.every) angles.push((i / TA.count) * Math.PI * 2);
       this.addRing(this.built, 'hangar', angles.length, reach, TA.y, L.hangars.scale, 0, angles);
+    }
+    // SOLAR PANELS on the tower: at the tower's surface unless pushed further out
+    const PA = L.panels;
+    if (PA.count) {
+      const core = P.tower.coreFraction * L.towerHeight;
+      this.addRing(this.built, 'satellite', PA.count, PA.radius || core + PA.scale / 2, PA.y, PA.scale, PA.tilt);
     }
     this.addSatellites(L.satellites);
     return this;
