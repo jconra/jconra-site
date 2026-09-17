@@ -68,6 +68,17 @@
 <div id="panel">
   <h1>Character Lab <button id="min" type="button">hide</button></h1>
   <div class="body">
+    <div id="headBox" hidden>
+      <h2>Head fit</h2>
+      <div class="btns" id="headWho"></div>
+      <div class="row"><label for="headZ">Forward / back</label><output id="headZOut"></output><input id="headZ" type="range" min="-8" max="8" step="0.1" value="0"></div>
+      <div class="row"><label for="headY">Up / down</label><output id="headYOut"></output><input id="headY" type="range" min="-8" max="8" step="0.1" value="0"></div>
+      <div class="row"><label for="headX">Left / right</label><output id="headXOut"></output><input id="headX" type="range" min="-6" max="6" step="0.1" value="0"></div>
+      <div class="row"><label for="headS">Size</label><output id="headSOut"></output><input id="headS" type="range" min="0.8" max="1.2" step="0.005" value="1"></div>
+      <div class="row"><label for="headT">Tilt (nod)</label><output id="headTOut"></output><input id="headT" type="range" min="-15" max="15" step="0.5" value="0"></div>
+      <p class="note">Models 4 and 5 only, in centimetres on a 1.8 m person. Copy settings when it looks right and I will bake it into the model.</p>
+    </div>
+
     <h2>Lighting</h2>
     <div class="btns" id="lightPresets"></div>
     <div class="row"><label for="ambient">Ambient</label><output id="ambientOut"></output><input id="ambient" type="range" min="0" max="3" step="0.01" value="0.52"></div>
@@ -487,7 +498,7 @@ const N = SPOTS.length;
 // Measured in Blender at the middle of each sitting clip, in model units: the lowest point of the
 // seat of the trousers, and where the hip sits over the floor. The stool goes just under it.
 const SEAT = { top: 0.232, z: 0.015 - 0.06, w: 0.30, d: 0.28 };
-const CLIPS = [ ['pose', 'T-pose'], ['walk', 'Walk'], ['sit', 'Sit'], ['play_video_game', 'Video game'] ];
+const CLIPS = [ ['idle', 'Idle'], ['pose', 'T-pose'], ['walk', 'Walk'], ['sit', 'Sit'], ['play_video_game', 'Video game'] ];
 const SITTING = new Set(['sit', 'play_video_game']);
 if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, renderer });
 
@@ -566,7 +577,9 @@ const load = (f, i) => new Promise((res, rej) => loader.load(f, res, (e) => {
 }, rej));
 const seatMat = new THREE.MeshStandardMaterial({ color:0x2e363e, roughness:0.6, metalness:0.4 });
 
-Promise.all(SPOTS.map((_, i) => load(`../../models/jacob${i + 1}.glb`, i))).then(list => {
+Promise.all([...SPOTS.map((_, i) => load(`../../models/jacob${i + 1}.glb`, i)), load('../../models/idle_clip.glb', 0)]).then(all => {
+  const idleClip = all.pop().animations.find(c => /idle/.test(c.name));
+  const list = all;
   list.forEach((g, i) => {
     const { x, z } = SPOTS[i];
     plinth(x, z);
@@ -600,6 +613,17 @@ Promise.all(SPOTS.map((_, i) => load(`../../models/jacob${i + 1}.glb`, i))).then
       else if (o.name === 'Scalp') styles.scalp = o;
       else if (o.name.startsWith('Hair_')) styles[o.name.slice(5).toLowerCase()] = o;
     });
+    // a swapped-in head (models 4 and 5) gets a holder at its own centre, so the fit controls can
+    // move, scale and tilt it without dragging the body with it
+    let headMesh = null;
+    model.traverse(o => { if (o.isMesh && /^Head(_\d+)?$/.test(o.name)) headMesh = o; });
+    let headFit = null;
+    if (headMesh) {
+      const box = new THREE.Box3().setFromBufferAttribute(headMesh.geometry.attributes.position);
+      const holder = new THREE.Group(); holder.position.copy(box.getCenter(new THREE.Vector3()));
+      headMesh.parent.add(holder); holder.attach(headMesh);
+      headFit = { holder, base: holder.position.clone() };
+    }
     const seat = new THREE.Mesh(new THREE.BoxGeometry(SEAT.w, SEAT.top, SEAT.d), seatMat);
     seat.position.set(0, SEAT.top / 2, SEAT.z); seat.castShadow = seat.receiveShadow = true;
     seat.visible = false; pivot.add(seat);
@@ -607,15 +631,17 @@ Promise.all(SPOTS.map((_, i) => load(`../../models/jacob${i + 1}.glb`, i))).then
     const actions = {};
     // Tripo names its clips like 'preset:biped:sit.001'; keep only the 'sit'.
     for (const clip of g.animations) actions[clip.name.replace(/^preset:biped:/, '').replace(/\.\d+$/, '')] = mixer.clipAction(clip);
+    if (idleClip) actions.idle = mixer.clipAction(idleClip);
     const hip = model.getObjectByName('Hip'), head = model.getObjectByName('Head');
     pivot.updateMatrixWorld(true);
     const hipRest = pivot.worldToLocal(hip.getWorldPosition(new THREE.Vector3()));
-    rigs.push({ pivot, model, mixer, actions, seat, hip, head, hipRest, hair, styles,
+    rigs.push({ pivot, model, mixer, actions, seat, hip, head, hipRest, hair, styles, headFit,
                 skeletons: [...new Set(collectSkeletons(model))] });
     applyHair(i);
   });
   buildUi();
-  setClip('walk');
+  initHeadFit();
+  setClip('idle');
   setStyle('wavy');
   document.getElementById('boot').classList.add('gone');
   setTimeout(() => document.getElementById('boot').remove(), 700);
@@ -775,12 +801,57 @@ document.getElementById('min').onclick = () => {
 };
 document.getElementById('copy').onclick = () => {
   const out = document.getElementById('out');
-  const text = JSON.stringify({ style: styleName, hair: HAIR.map((s, i) => ({ model: i + 1, ...s })) }, null, 1);
+  const text = JSON.stringify({ style: styleName, hair: HAIR.map((s, i) => ({ model: i + 1, ...s })),
+    headFit: HEADFIT.map((f, i) => (rigs[i] && rigs[i].headFit ? { model: i + 1, ...f } : null)).filter(Boolean) }, null, 1);
   out.value = text; out.style.display = 'block'; out.select();
   navigator.clipboard?.writeText(text).then(() => { document.getElementById('copy').textContent = 'Copied'; },
     () => { document.getElementById('copy').textContent = 'Select and copy below'; });
 };
 
+
+
+// ── head fit ──────────────────────────────────────────────────────────────────
+// Models 4 and 5 wear a head from another generation. These move, resize and tilt that head on the
+// body, around the head's own centre, so the numbers can be baked into the model afterwards.
+let HEADFIT = [];
+const CM = 0.01 / HEIGHT;                                  // model units per centimetre
+let headWho = -1;
+function applyHeadFit(i) {
+  const r = rigs[i], f = HEADFIT[i];
+  if (!r || !r.headFit) return;
+  r.headFit.holder.position.copy(r.headFit.base).add(new THREE.Vector3(f.x * CM, f.y * CM, f.z * CM));
+  r.headFit.holder.scale.setScalar(f.s);
+  r.headFit.holder.rotation.x = -THREE.MathUtils.degToRad(f.t);
+}
+// Called once the models are in: before that, rigs is still empty.
+function initHeadFit() {
+  HEADFIT = rigs.map(() => ({ x: 0, y: 0, z: 0, s: 1, t: 0 }));
+  headWho = rigs.findIndex(r => r.headFit);
+  if (headWho < 0) return;
+  document.getElementById('headBox').hidden = false;
+  const whoEl = document.getElementById('headWho');
+  rigs.forEach((r, i) => {
+    if (!r.headFit) return;
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = 'Model ' + (i + 1); b.dataset.head = i;
+    b.onclick = () => { headWho = i; syncHeadUi(); flyTo('face:' + i); }; whoEl.appendChild(b);
+  });
+  const FIT = { headX: ['x', v => v.toFixed(1) + ' cm'], headY: ['y', v => v.toFixed(1) + ' cm'], headZ: ['z', v => v.toFixed(1) + ' cm'],
+                headS: ['s', v => Math.round(v * 100) + '%'], headT: ['t', v => v.toFixed(1) + '°'] };
+  for (const [id, [key, fmt]] of Object.entries(FIT)) {
+    document.getElementById(id).addEventListener('input', e => {
+      HEADFIT[headWho][key] = +e.target.value; applyHeadFit(headWho);
+      document.getElementById(id + 'Out').textContent = fmt(+e.target.value);
+    });
+  }
+  window.syncHeadUi = () => {
+    document.querySelectorAll('#headWho button').forEach(b => b.classList.toggle('on', +b.dataset.head === headWho));
+    for (const [id, [key, fmt]] of Object.entries(FIT)) {
+      const v = HEADFIT[headWho][key];
+      document.getElementById(id).value = v; document.getElementById(id + 'Out').textContent = fmt(v);
+    }
+  };
+  syncHeadUi();
+}
 
 // ── lighting ──────────────────────────────────────────────────────────────────
 // Every light on the stage gets a slider, and the presets set them all at once. Ambient is the
