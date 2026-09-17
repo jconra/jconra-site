@@ -19,6 +19,16 @@
   #boot.gone { opacity:0; pointer-events:none; }
   #back { position:fixed; top:14px; left:16px; z-index:6; font:11px ui-monospace,monospace; letter-spacing:.14em; color:#8494a0; text-decoration:none; text-transform:uppercase; }
   #back:hover { color:#e0c07a; }
+  /* big side arrows for stepping between models, so a phone never has to open the panel */
+  .step { position:fixed; top:50%; transform:translateY(-50%); z-index:4; width:52px; height:84px; border:1px solid #2a3440;
+          background:rgba(10,13,17,.55); color:#dbe6ee; font:34px/1 system-ui, sans-serif; border-radius:8px; cursor:pointer; }
+  .step:focus-visible { outline:2px solid #35e07d; }
+  #prev { left:10px; } #next { right:10px; }
+  #panel:not(.min) ~ #next, body:has(#panel:not(.min)) #next { right:314px; }
+  #caption { position:fixed; left:50%; top:14px; transform:translateX(-50%); z-index:4; pointer-events:none;
+             font:12px/1 nasa, ui-monospace, monospace; letter-spacing:.18em; text-transform:uppercase; color:#dbe6ee;
+             text-shadow:0 2px 8px #000; white-space:nowrap; }
+  @media (max-width:700px) { body:has(#panel:not(.min)) #next { right:10px; } .step { top:38%; } }
   #panel { position:fixed; top:12px; right:12px; bottom:12px; width:290px; overflow-y:auto; z-index:5;
            background:rgba(10,13,17,.9); border:1px solid #212a34; border-radius:6px; padding:12px 14px; }
   #panel.min { bottom:auto; }
@@ -50,6 +60,11 @@
 <div class="tag" id="tag0">Model 1</div>
 <div class="tag" id="tag1">Model 2</div>
 <div class="tag" id="tag2">Model 3</div>
+<div class="tag" id="tag3">Model 4</div>
+<div class="tag" id="tag4">Model 5</div>
+<button class="step" id="prev" type="button" aria-label="Previous model">&lsaquo;</button>
+<button class="step" id="next" type="button" aria-label="Next model">&rsaquo;</button>
+<div id="caption"></div>
 <div id="panel">
   <h1>Character Lab r186 <button id="min" type="button">hide</button></h1>
   <div class="body">
@@ -450,7 +465,10 @@ for (let i = 0; i < 26; i++) {
 // All three were exported T-posed at a height of exactly 1, standing on the origin and facing +z,
 // so one scale and one set of seat numbers fits every one of them.
 const HEIGHT = 1.8, PLINTH_TOP = 0.42;
-const SPOTS = [ { x: -1.9, z: 0.45 }, { x: 0, z: 0 }, { x: 1.9, z: 0.45 } ];   // a shallow arc toward the camera
+// five plinths in a shallow arc toward the camera
+const SPOTS = [ { x: -3.6, z: 1.0 }, { x: -1.8, z: 0.25 }, { x: 0, z: 0 }, { x: 1.8, z: 0.25 }, { x: 3.6, z: 1.0 } ];
+const NAMES = ['Model 1', 'Model 2', 'Model 3 · new hair', 'Model 4 · sharp head', 'Model 5 · head bust'];
+const N = SPOTS.length;
 // Measured in Blender at the middle of each sitting clip, in model units: the lowest point of the
 // seat of the trousers, and where the hip sits over the floor. The stool goes just under it.
 const SEAT = { top: 0.232, z: 0.015 - 0.06, w: 0.30, d: 0.28 };
@@ -474,7 +492,7 @@ function plinth(x, z) {
 // skin-coloured - skin is bright and clearly redder than it is blue, while this hair is black, navy
 // or green. "Skip skin-coloured pixels" fades that second test in and out.
 const HAIR_DEFAULT = { dark: 1, sat: 1, tint: '#2a211b', tintAmt: 0, pick: 1 };
-const HAIR = [0, 1, 2].map(() => ({ ...HAIR_DEFAULT }));
+const HAIR = SPOTS.map(() => ({ ...HAIR_DEFAULT }));
 const showMask = { value: 0 };
 function hairUniforms() {
   return {
@@ -524,7 +542,7 @@ function applyHair(i) {
 // ── loading ───────────────────────────────────────────────────────────────────
 const rigs = [];
 const loader = new GLTFLoader();
-const loaded = [0, 0, 0], totals = [0, 0, 0];
+const loaded = SPOTS.map(() => 0), totals = SPOTS.map(() => 0);
 const pct = document.getElementById('pct');
 const load = (f, i) => new Promise((res, rej) => loader.load(f, res, (e) => {
   loaded[i] = e.loaded; totals[i] = e.total || totals[i];
@@ -533,7 +551,7 @@ const load = (f, i) => new Promise((res, rej) => loader.load(f, res, (e) => {
 }, rej));
 const seatMat = new THREE.MeshStandardMaterial({ color:0x2e363e, roughness:0.6, metalness:0.4 });
 
-Promise.all([1, 2, 3].map((n, i) => load(`../../models/jacob${n}.glb`, i))).then(list => {
+Promise.all(SPOTS.map((_, i) => load(`../../models/jacob${i + 1}.glb`, i))).then(list => {
   list.forEach((g, i) => {
     const { x, z } = SPOTS[i];
     plinth(x, z);
@@ -586,7 +604,7 @@ Promise.all([1, 2, 3].map((n, i) => load(`../../models/jacob${n}.glb`, i))).then
   setStyle('wavy');
   document.getElementById('boot').classList.add('gone');
   setTimeout(() => document.getElementById('boot').remove(), 700);
-  for (let i = 0; i < 3; i++) document.getElementById('tag' + i).classList.add('on');
+  for (let i = 0; i < N; i++) document.getElementById('tag' + i).classList.add('on');
 }).catch(e => { document.getElementById('boot').textContent = 'LOAD FAILED — ' + e.message; });
 
 function collectSkeletons(root) {
@@ -638,7 +656,7 @@ function wholeView(pos, tgt) {
   camera.fov = camera.aspect < 1 ? 62 : 44;
   camera.updateProjectionMatrix();
   tgt.set(0, PLINTH_TOP + HEIGHT * 0.52, 0.2);
-  const halfW = 1.9 + 0.9, halfH = (HEIGHT + PLINTH_TOP) * 0.6;
+  const halfW = 3.6 + 0.9, halfH = (HEIGHT + PLINTH_TOP) * 0.6;
   const v = camera.fov * Math.PI / 360, h = Math.atan(Math.tan(v) * camera.aspect);
   const d = Math.max(halfW / Math.tan(h), halfH / Math.tan(v)) + 1.0;
   pos.set(0, tgt.y + 0.5, d);
@@ -662,9 +680,19 @@ function flyTo(view) {
     tween.toPos.copy(tween.toTgt).add(off);
   }
   tween.t = 0;
+  document.getElementById('caption').textContent = focus ? NAMES[rigs.indexOf(focus.rig)] : '';
   document.querySelectorAll('#cams button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
 }
-controls.addEventListener('start', () => { tween.t = 1; });     // grabbing the view cancels a flight, not the follow
+controls.addEventListener('start', () => { tween.t = 1; });
+// SIDE ARROWS. Step to the next or previous model, keeping a face close-up a face close-up.
+function stepModel(dir) {
+  const at = focus ? rigs.indexOf(focus.rig) : (dir > 0 ? -1 : N);
+  const part = focus ? focus.part : 'body';
+  flyTo(part + ':' + ((at + dir + N) % N));
+}
+document.getElementById('prev').onclick = () => stepModel(-1);
+document.getElementById('next').onclick = () => stepModel(1);
+addEventListener('keydown', e => { if (e.key === 'ArrowLeft') stepModel(-1); if (e.key === 'ArrowRight') stepModel(1); });     // grabbing the view cancels a flight, not the follow
 wholeView(camera.position, controls.target); controls.update();
 addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
@@ -675,7 +703,7 @@ addEventListener('resize', () => {
 let who = 'all';
 function buildUi() {
   const cams = document.getElementById('cams');
-  const views = [['all', 'All'], ['body:0', '1'], ['body:1', '2'], ['body:2', '3'], ['face:0', 'Face 1'], ['face:1', 'Face 2'], ['face:2', 'Face 3']];
+  const views = [['all', 'All'], ...SPOTS.map((_, i) => ['body:' + i, String(i + 1)]), ...SPOTS.map((_, i) => ['face:' + i, 'Face ' + (i + 1)])];
   for (const [view, label] of views) {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.dataset.view = view;
     b.onclick = () => flyTo(view); cams.appendChild(b);
@@ -695,13 +723,13 @@ function buildUi() {
     }
   }
   const whoEl = document.getElementById('who');
-  for (const [key, label] of [['all', 'All'], ['0', 'Model 1'], ['1', 'Model 2'], ['2', 'Model 3']]) {
+  for (const [key, label] of [['all', 'All'], ...SPOTS.map((_, i) => [String(i), 'Model ' + (i + 1)])]) {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.dataset.who = key;
     b.onclick = () => { who = key; syncHairUi(); }; whoEl.appendChild(b);
   }
   syncHairUi();
 }
-const targets = () => who === 'all' ? [0, 1, 2] : [+who];
+const targets = () => who === 'all' ? SPOTS.map((_, i) => i) : [+who];
 const fmt = { dark: v => v.toFixed(2) + '×', sat: v => Math.round(v * 100) + '%', tintAmt: v => Math.round(v * 100) + '%', pick: v => Math.round(v * 100) + '%' };
 function syncHairUi() {
   document.querySelectorAll('#who button').forEach(b => b.classList.toggle('on', b.dataset.who === who));
