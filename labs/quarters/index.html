@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quarters Lab</title>
+<style>
+  @font-face { font-family: nasa; src: url("../../fonts/nasalization-rg.ttf"); font-display: swap; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; background:#000; color:#ccd6de; font:13px/1.45 ui-sans-serif, system-ui, sans-serif; }
+  canvas { display:block; touch-action:none; }
+  #panel { position:fixed; top:12px; right:12px; bottom:12px; width:290px; overflow-y:auto; z-index:5;
+           background:rgba(10,13,17,.9); border:1px solid #212a34; border-radius:6px; padding:12px 14px; }
+  #panel.min { bottom:auto; }
+  #panel.min .body { display:none; }
+  h1 { font:400 17px/1 nasa, ui-sans-serif, sans-serif; letter-spacing:.05em; color:#e8f1f5; display:flex; justify-content:space-between; align-items:center; }
+  h1 button { font:600 11px ui-monospace,monospace; background:none; border:1px solid #212a34; color:#8494a0; border-radius:3px; padding:3px 7px; cursor:pointer; }
+  h2 { font:600 10.5px/1 ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:#5b6873; margin:16px 0 8px; }
+  .row { display:grid; grid-template-columns:1fr auto; gap:2px 8px; align-items:center; margin:6px 0; }
+  .row label { color:#aeb9c2; }
+  .row output { font:12px ui-monospace,monospace; color:#e8f1f5; font-variant-numeric:tabular-nums; }
+  .row input[type=range] { grid-column:1 / -1; width:100%; accent-color:#35e07d; }
+  .check { display:flex; gap:8px; align-items:center; margin:6px 0; color:#aeb9c2; cursor:pointer; }
+  .check input { accent-color:#35e07d; }
+  .note { color:#6d7a85; font-size:11.5px; margin:8px 0 4px; }
+  .btns { display:flex; flex-wrap:wrap; gap:6px; }
+  .btns button, #copy { font:600 11px ui-monospace,monospace; letter-spacing:.05em; text-transform:uppercase; background:rgba(53,224,125,.12);
+                  color:#35e07d; border:1px solid #2f7d55; border-radius:4px; padding:6px 8px; cursor:pointer; }
+  #props { display:grid; grid-template-columns:repeat(3,1fr); gap:2px 6px; max-height:170px; overflow-y:auto; }
+  #props label { display:flex; gap:4px; align-items:center; font:11px ui-monospace,monospace; color:#aeb9c2; cursor:pointer; }
+  #copy { width:100%; margin-top:14px; }
+  #out { display:none; width:100%; height:140px; margin-top:6px; background:#05070a; color:#ccd6de; border:1px solid #212a34; font:11px ui-monospace,monospace; }
+  #boot { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; font:13px nasa, monospace; letter-spacing:4px; color:#b9c8d2; background:#000; z-index:9; }
+  #back { position:fixed; top:14px; left:16px; z-index:6; font:11px ui-monospace,monospace; letter-spacing:.14em; color:#8494a0; text-decoration:none; text-transform:uppercase; }
+  @media (max-width:700px) { #panel, #panel.min { width:auto; left:12px; top:auto; bottom:12px; max-height:46vh; } }
+</style>
+</head>
+<body>
+<div id="boot">LOADING QUARTERS… <span id="pct"></span></div>
+<a id="back" href="../">&larr; labs</a>
+<div id="panel">
+  <h1>Quarters Lab <button id="min" type="button">hide</button></h1>
+  <div class="body">
+    <p class="note">Jacob's cabin on the station: the chair swivels, the window glass lifts out, and Earth turns past outside.</p>
+    <div class="row" style="grid-template-columns:1fr"><span id="fps"></span></div>
+
+    <h2>Camera</h2>
+    <div class="btns" id="cams"></div>
+
+    <h2>Chair and windows</h2>
+    <label class="check" for="swivel"><input id="swivel" type="checkbox" checked> Chair swivels</label>
+    <div class="row"><label for="chairSpeed">Swivel speed</label><output id="chairSpeedOut"></output><input id="chairSpeed" type="range" min="-90" max="90" step="1" value="12"></div>
+    <div class="row"><label for="chairAngle">Chair angle (when still)</label><output id="chairAngleOut"></output><input id="chairAngle" type="range" min="-180" max="180" step="1" value="0"></div>
+    <label class="check" for="openWindows"><input id="openWindows" type="checkbox" checked> Take the window glass out</label>
+
+    <h2>Earth outside</h2>
+    <div class="row"><label for="earthSpin">Turn speed</label><output id="earthSpinOut"></output><input id="earthSpin" type="range" min="0" max="6" step="0.05" value="0.35"></div>
+    <div class="row"><label for="earthAlt">Altitude</label><output id="earthAltOut"></output><input id="earthAlt" type="range" min="120" max="2000" step="10" value="420"></div>
+    <div class="row"><label for="earthTilt">Angle below the window</label><output id="earthTiltOut"></output><input id="earthTilt" type="range" min="0" max="80" step="1" value="18"></div>
+    <div class="row"><label for="earthGlow">Air glow</label><output id="earthGlowOut"></output><input id="earthGlow" type="range" min="0" max="3" step="0.05" value="1"></div>
+
+    <h2>Light</h2>
+    <div class="row"><label for="cabinLight">Cabin lights</label><output id="cabinLightOut"></output><input id="cabinLight" type="range" min="0" max="30" step="0.5" value="6"></div>
+    <div class="row"><label for="screenLight">Screen glow</label><output id="screenLightOut"></output><input id="screenLight" type="range" min="0" max="20" step="0.5" value="3"></div>
+    <div class="row"><label for="sunLight">Sunlight through the window</label><output id="sunLightOut"></output><input id="sunLight" type="range" min="0" max="10" step="0.1" value="2.6"></div>
+    <div class="row"><label for="ambient">Ambient</label><output id="ambientOut"></output><input id="ambient" type="range" min="0" max="3" step="0.01" value="0.45"></div>
+    <div class="row"><label for="exposure">Exposure</label><output id="exposureOut"></output><input id="exposure" type="range" min="0.3" max="2.5" step="0.01" value="1.1"></div>
+
+    <h2>Camera effects</h2>
+    <label class="check" for="post"><input id="post" type="checkbox" checked> Post-processing</label>
+    <label class="check" for="bloomOn"><input id="bloomOn" type="checkbox" checked> Bloom</label>
+    <div class="row"><label for="bloomStr">Bloom strength</label><output id="bloomStrOut"></output><input id="bloomStr" type="range" min="0" max="3" step="0.01" value="0.5"></div>
+    <label class="check" for="dofOn"><input id="dofOn" type="checkbox" checked> Depth of field</label>
+    <label class="check" for="autoFocus"><input id="autoFocus" type="checkbox" checked> Focus on the orbit centre</label>
+    <div class="row"><label for="dofBlur">Background blur</label><output id="dofBlurOut"></output><input id="dofBlur" type="range" min="0" max="16" step="0.1" value="3"></div>
+    <label class="check" for="flareOn"><input id="flareOn" type="checkbox"> Lens flare</label>
+    <div class="row"><label for="vignette">Vignette</label><output id="vignetteOut"></output><input id="vignette" type="range" min="0" max="1" step="0.01" value="0.4"></div>
+    <div class="row"><label for="grain">Film grain</label><output id="grainOut"></output><input id="grain" type="range" min="0" max="1" step="0.01" value="0.25"></div>
+
+    <h2>Props</h2>
+    <div id="props"></div>
+    <button id="copy" type="button">Copy settings</button>
+    <textarea id="out" readonly></textarea>
+  </div>
+</div>
+
+<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+<script type="importmap">
+{ "imports": {
+    "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+} }
+</script>
+<script type="module" src="./quarters.js"></script>
+</body>
+</html>
