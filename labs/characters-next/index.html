@@ -497,7 +497,7 @@ const N = SPOTS.length;
 // Measured in Blender at the middle of each sitting clip, in model units: the lowest point of the
 // seat of the trousers, and where the hip sits over the floor. The stool goes just under it.
 const SEAT = { top: 0.232, z: 0.015 - 0.06, w: 0.30, d: 0.28 };
-const CLIPS = [ ['idle', 'Idle'], ['pose', 'T-pose'], ['walk', 'Walk'], ['climb', 'Climb'], ['sit', 'Sit'], ['play_video_game', 'Video game'] ];
+const CLIPS = [ ['idle', 'Idle'], ['pose', 'T-pose'], ['walk', 'Walk'], ['climb', 'Climb'], ['sit_down', 'Sit down'], ['sit', 'Sit'], ['play_video_game', 'Video game'] ];
 const SITTING = new Set(['sit', 'play_video_game']);
 if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, renderer });
 
@@ -578,7 +578,7 @@ const seatMat = new THREE.MeshStandardMaterial({ color:0x2e363e, roughness:0.6, 
 
 // Clips that live in their own small files and are shared by every model: idle came from Stephen,
 // climb from Mixamo, retargeted onto this same Tripo skeleton.
-const SHARED_CLIPS = [['idle', 'idle_clip.glb'], ['climb', 'climb_clip.glb']];
+const SHARED_CLIPS = [['idle', 'idle_clip.glb'], ['climb', 'climb_clip.glb'], ['sit_down', 'sit_down_clip.glb']];
 Promise.all([...SPOTS.map((_, i) => load(`../../models/jacob${i + 1}.glb`, i)),
              ...SHARED_CLIPS.map(([, file]) => load(`../../models/${file}`, 0))]).then(all => {
   const shared = {};
@@ -690,7 +690,13 @@ function setClip(name) {
   for (const r of rigs) {
     const next = r.actions[name];
     for (const a of Object.values(r.actions)) if (a !== next) a.fadeOut(0.25);
-    if (next) next.reset().setEffectiveWeight(1).fadeIn(0.25).play();
+    if (next) {
+      // Sitting down ends in a pose and should stay there; the looping clips carry on.
+      const once = name === 'sit_down';
+      next.reset().setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
+      next.clampWhenFinished = once;
+      next.setEffectiveWeight(1).fadeIn(0.25).play();
+    }
     else { r.mixer.stopAllAction(); r.skeletons.forEach(s => s.pose()); }
     r.seat.visible = SITTING.has(name);
   }
