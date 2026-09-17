@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Station Builder</title>
+<style>
+  @font-face { font-family: nasa; src: url("../../fonts/nasalization-rg.ttf"); font-display: swap; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; background:#000; color:#ccd6de; font:13px/1.45 ui-sans-serif, system-ui, sans-serif; }
+  canvas { display:block; touch-action:none; }
+  #panel { position:fixed; top:12px; right:12px; bottom:12px; width:300px; overflow-y:auto; z-index:5;
+           background:rgba(10,13,17,.9); border:1px solid #212a34; border-radius:6px; padding:12px 14px; }
+  #panel.min { bottom:auto; }
+  #panel.min .body { display:none; }
+  h1 { font:400 17px/1 nasa, ui-sans-serif, sans-serif; letter-spacing:.05em; color:#e8f1f5; display:flex; justify-content:space-between; align-items:center; }
+  h1 button { font:600 11px ui-monospace,monospace; background:none; border:1px solid #212a34; color:#8494a0; border-radius:3px; padding:3px 7px; cursor:pointer; }
+  h2 { font:600 10.5px/1 ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:#5b6873; margin:16px 0 8px; }
+  .row { display:grid; grid-template-columns:1fr auto; gap:2px 8px; align-items:center; margin:6px 0; }
+  .row label { color:#aeb9c2; }
+  .row output { font:12px ui-monospace,monospace; color:#e8f1f5; font-variant-numeric:tabular-nums; }
+  .row input[type=range] { grid-column:1 / -1; width:100%; accent-color:#35e07d; }
+  .row select { grid-column:1 / -1; width:100%; background:#05070a; color:#ccd6de; border:1px solid #212a34; padding:4px; font:12px ui-monospace,monospace; }
+  .check { display:flex; gap:8px; align-items:center; margin:6px 0; color:#aeb9c2; cursor:pointer; }
+  .check input { accent-color:#35e07d; }
+  .readout { display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font:12px ui-monospace,monospace; margin:6px 0; }
+  .readout b { color:#e8f1f5; font-weight:600; }
+  .note { color:#6d7a85; font-size:11.5px; margin:8px 0 4px; }
+  .btns { display:flex; flex-wrap:wrap; gap:6px; }
+  .btns button, #copy { font:600 11px ui-monospace,monospace; letter-spacing:.05em; text-transform:uppercase; background:rgba(53,224,125,.12);
+                  color:#35e07d; border:1px solid #2f7d55; border-radius:4px; padding:6px 8px; cursor:pointer; }
+  #copy { width:100%; margin-top:14px; }
+  #out { display:none; width:100%; height:150px; margin-top:6px; background:#05070a; color:#ccd6de; border:1px solid #212a34; font:11px ui-monospace,monospace; }
+  #boot { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; font:13px nasa, monospace; letter-spacing:4px; color:#b9c8d2; background:#000; z-index:9; }
+  #back { position:fixed; top:14px; left:16px; z-index:6; font:11px ui-monospace,monospace; letter-spacing:.14em; color:#8494a0; text-decoration:none; text-transform:uppercase; }
+  @media (max-width:700px) { #panel, #panel.min { width:auto; left:12px; top:auto; bottom:12px; max-height:46vh; } }
+</style>
+</head>
+<body>
+<div id="boot">BUILDING STATION… <span id="pct"></span></div>
+<a id="back" href="../">&larr; labs</a>
+<div id="panel">
+  <h1>Station Builder <button id="min" type="button">hide</button></h1>
+  <div class="body">
+    <p class="note">One station from separate parts: a tower on the axis, rings turning on a collar, arms on both, hangars on the tower's arms.</p>
+    <div class="readout"><b id="across"></b><span>across the ring</span><b id="period"></b><span>per turn for 1 g</span><b id="rim"></b><span>rim speed</span></div>
+    <div class="readout" style="grid-template-columns:1fr"><b id="fxInfo"></b><span id="fps"></span></div>
+
+    <h2>Rings</h2>
+    <div class="row"><label for="ringRadius">Ring radius</label><output id="ringRadiusOut"></output><input id="ringRadius" type="range" min="100" max="2000" step="10" value="600"></div>
+    <div class="row"><label for="rings">How many rings</label><output id="ringsOut"></output><input id="rings" type="range" min="1" max="3" step="1" value="1"></div>
+    <div class="row"><label for="ringGap">Gap between rings</label><output id="ringGapOut"></output><input id="ringGap" type="range" min="100" max="1500" step="10" value="420"></div>
+    <div class="row"><label for="ringY">Ring height on the tower</label><output id="ringYOut"></output><input id="ringY" type="range" min="-900" max="900" step="10" value="0"></div>
+    <div class="row"><label for="hubCut">Cut out the ring's middle</label><output id="hubCutOut"></output><input id="hubCut" type="range" min="0" max="0.6" step="0.01" value="0.22"></div>
+    <label class="check" for="spin"><input id="spin" type="checkbox" checked> Rings spin (1 g at the rim)</label>
+    <div class="row"><label for="speed">Time speed</label><output id="speedOut"></output><input id="speed" type="range" min="1" max="40" step="1" value="1"></div>
+
+    <h2>Collar and tower</h2>
+    <label class="check" for="collar"><input id="collar" type="checkbox" checked> Collar cylinder through the rings</label>
+    <div class="row"><label for="collarRadius">Collar radius</label><output id="collarRadiusOut"></output><input id="collarRadius" type="range" min="20" max="400" step="5" value="90"></div>
+    <div class="row"><label for="collarLength">Collar length</label><output id="collarLengthOut"></output><input id="collarLength" type="range" min="200" max="3000" step="20" value="900"></div>
+    <div class="row"><label for="towerHeight">Tower height</label><output id="towerHeightOut"></output><input id="towerHeight" type="range" min="400" max="4000" step="20" value="1800"></div>
+
+    <h2>Arms on the rings</h2>
+    <div class="row"><label for="ringArmKind">Which part</label><select id="ringArmKind"><option value="arm2" selected>arm2 (long truss)</option><option value="arm1">arm1 (truss + module)</option><option value="satellite">satellite</option></select></div>
+    <div class="row"><label for="ringArmCount">How many</label><output id="ringArmCountOut"></output><input id="ringArmCount" type="range" min="0" max="24" step="1" value="8"></div>
+    <div class="row"><label for="ringArmScale">Arm length</label><output id="ringArmScaleOut"></output><input id="ringArmScale" type="range" min="40" max="800" step="10" value="260"></div>
+    <div class="row"><label for="ringArmInset">Set in from the rim</label><output id="ringArmInsetOut"></output><input id="ringArmInset" type="range" min="-200" max="400" step="5" value="40"></div>
+    <div class="row"><label for="ringArmY">Height above the ring</label><output id="ringArmYOut"></output><input id="ringArmY" type="range" min="-300" max="300" step="5" value="-40"></div>
+    <div class="row"><label for="ringArmTilt">Tilt</label><output id="ringArmTiltOut"></output><input id="ringArmTilt" type="range" min="-90" max="90" step="1" value="0"></div>
+
+    <h2>Arms on the tower</h2>
+    <div class="row"><label for="armKind">Which part</label><select id="armKind"><option value="arm1" selected>arm1 (truss + module)</option><option value="arm2">arm2 (long truss)</option><option value="satellite">satellite</option></select></div>
+    <div class="row"><label for="armCount">How many</label><output id="armCountOut"></output><input id="armCount" type="range" min="0" max="16" step="1" value="6"></div>
+    <div class="row"><label for="armRadius">Out from the axis</label><output id="armRadiusOut"></output><input id="armRadius" type="range" min="0" max="1200" step="10" value="300"></div>
+    <div class="row"><label for="armY">Height on the tower</label><output id="armYOut"></output><input id="armY" type="range" min="-1800" max="1800" step="10" value="-420"></div>
+    <div class="row"><label for="armScale">Arm length</label><output id="armScaleOut"></output><input id="armScale" type="range" min="60" max="1200" step="10" value="460"></div>
+    <div class="row"><label for="armTilt">Tilt</label><output id="armTiltOut"></output><input id="armTilt" type="range" min="-90" max="90" step="1" value="0"></div>
+    <div class="row"><label for="hangarEvery">Hangar on the end of</label><output id="hangarEveryOut"></output><input id="hangarEvery" type="range" min="0" max="6" step="1" value="2"></div>
+    <div class="row"><label for="hangarScale">Hangar size</label><output id="hangarScaleOut"></output><input id="hangarScale" type="range" min="40" max="600" step="10" value="240"></div>
+
+    <h2>Satellites</h2>
+    <div class="row"><label for="satCount">How many</label><output id="satCountOut"></output><input id="satCount" type="range" min="0" max="60" step="1" value="14"></div>
+    <div class="row"><label for="satRadius">How far out</label><output id="satRadiusOut"></output><input id="satRadius" type="range" min="200" max="6000" step="50" value="1400"></div>
+    <div class="row"><label for="satScale">Size</label><output id="satScaleOut"></output><input id="satScale" type="range" min="20" max="400" step="5" value="120"></div>
+    <div class="row"><label for="satSeed">Scatter</label><output id="satSeedOut"></output><input id="satSeed" type="range" min="1" max="40" step="1" value="7"></div>
+
+    <h2>Lamps</h2>
+    <label class="check" for="lampsOn"><input id="lampsOn" type="checkbox" checked> Hull lamps</label>
+    <div class="row"><label for="lampCount">Count</label><output id="lampCountOut"></output><input id="lampCount" type="range" min="0" max="3000" step="50" value="600"></div>
+    <div class="row"><label for="lampSize">Bulb size</label><output id="lampSizeOut"></output><input id="lampSize" type="range" min="0.3" max="12" step="0.1" value="2"></div>
+    <div class="row"><label for="lampGlow">Brightness</label><output id="lampGlowOut"></output><input id="lampGlow" type="range" min="1" max="30" step="0.5" value="10"></div>
+
+    <h2>Camera effects</h2>
+    <label class="check" for="post"><input id="post" type="checkbox" checked> Post-processing</label>
+    <div class="row"><label for="exposure">Exposure</label><output id="exposureOut"></output><input id="exposure" type="range" min="0.3" max="2" step="0.01" value="1.05"></div>
+    <label class="check" for="bloomOn"><input id="bloomOn" type="checkbox" checked> Bloom</label>
+    <div class="row"><label for="bloomStr">Bloom strength</label><output id="bloomStrOut"></output><input id="bloomStr" type="range" min="0" max="3" step="0.01" value="0.9"></div>
+    <label class="check" for="dofOn"><input id="dofOn" type="checkbox" checked> Depth of field</label>
+    <label class="check" for="autoFocus"><input id="autoFocus" type="checkbox" checked> Focus on the orbit centre (click to focus)</label>
+    <div class="row"><label for="dofBlur">Background blur</label><output id="dofBlurOut"></output><input id="dofBlur" type="range" min="0" max="16" step="0.1" value="4"></div>
+    <label class="check" for="flareOn"><input id="flareOn" type="checkbox" checked> Lens flare</label>
+    <div class="row"><label for="flareStr">Flare strength</label><output id="flareStrOut"></output><input id="flareStr" type="range" min="0" max="2" step="0.01" value="0.6"></div>
+    <div class="row"><label for="vignette">Vignette</label><output id="vignetteOut"></output><input id="vignette" type="range" min="0" max="1" step="0.01" value="0.5"></div>
+    <div class="row"><label for="grain">Film grain</label><output id="grainOut"></output><input id="grain" type="range" min="0" max="1" step="0.01" value="0.3"></div>
+
+    <h2>Camera</h2>
+    <div class="btns" id="cams"></div>
+    <button id="copy" type="button">Copy layout</button>
+    <textarea id="out" readonly></textarea>
+  </div>
+</div>
+
+<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+<script type="importmap">
+{ "imports": {
+    "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+} }
+</script>
+<script type="module" src="./build.js"></script>
+</body>
+</html>
