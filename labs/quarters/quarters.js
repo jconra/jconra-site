@@ -76,7 +76,24 @@ scene.add(room);
 let windows = null, chairPivot = null, props = [];
 const CHAIR = { swivel: true, speed: 12, angle: 0 };
 
-new GLTFLoader().load('../../models/quarters.glb', (gltf) => {
+// Two builds of the same cabin, to compare: the full Tripo export, and a lighter one whose props
+// share a single texture atlas and one mesh, with the flat panels merged and the rest collapsed.
+const BUILDS = {
+  Full:  { file: '../../models/quarters.glb', note: '448k triangles · 58 meshes · 18.5 MB' },
+  Light: { file: '../../models/quarters_lite.glb', note: '185k triangles · 4 meshes · 8.0 MB' },
+};
+let build = 'Light';
+const loader = new GLTFLoader();
+function loadRoom(name) {
+  build = name;
+  document.querySelectorAll('#builds button').forEach(b => b.classList.toggle('on', b.textContent === name));
+  $('buildNote').textContent = BUILDS[name].note;
+  for (const child of [...room.children]) {
+    room.remove(child);
+    child.traverse(o => { if (o.isMesh) { o.geometry.dispose(); const m = Array.isArray(o.material) ? o.material : [o.material]; m.forEach(x => { x.map?.dispose(); x.dispose(); }); } });
+  }
+  windows = null; chairPivot = null; props = [];
+  loader.load(BUILDS[name].file, (gltf) => {
   const model = gltf.scene;
   model.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(model);
@@ -106,11 +123,15 @@ new GLTFLoader().load('../../models/quarters.glb', (gltf) => {
   });
   buildPropList();
   applyWindows();
-  frame('Desk');
-  $('boot').remove();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame });
-}, (e) => { if (e.total) $('pct').textContent = Math.round(e.loaded / e.total * 100) + '%'; },
-   (e) => { $('boot').textContent = 'LOAD FAILED — ' + e.message; });
+  if (chairPivot && !CHAIR.swivel) chairPivot.rotation.y = THREE.MathUtils.degToRad(CHAIR.angle);
+  $('boot')?.remove();
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build });
+  }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; },
+     (e) => { const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
+}
+for (const name of Object.keys(BUILDS)) {
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = name; b.onclick = () => loadRoom(name); $('builds').appendChild(b);
+}
 
 function applyWindows() {
   if (!windows) return;
@@ -189,6 +210,9 @@ addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight); post.setSize(innerWidth, innerHeight);
 });
+
+frame('Desk');
+loadRoom(build);
 
 // ── loop ────────────────────────────────────────────────────────────────────────
 const clock = THREE.Timer ? new THREE.Timer() : new THREE.Clock();
