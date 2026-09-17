@@ -621,24 +621,11 @@ Promise.all([...SPOTS.map((_, i) => load(`../../models/jacob${i + 1}.glb`, i)),
       else if (o.name === 'Scalp') styles.scalp = o;
       else if (o.name.startsWith('Hair_')) styles[o.name.slice(5).toLowerCase()] = o;
     });
-    // a swapped-in head (models 4 and 5) gets a holder at its own centre, so the fit controls can
-    // move, scale and tilt it without dragging the body with it
+    // A swapped-in head (models 4 and 5) is fitted by moving the head BONE, not the mesh. A skinned
+    // mesh is placed entirely by its bones; letting its own transform through instead means rebinding
+    // it, which breaks the frame its skeleton is measured against and leaves the body headless.
     let headMesh = null;
     model.traverse(o => { if (o.isMesh && /^Head(_\d+)?$/.test(o.name)) headMesh = o; });
-    let headFit = null;
-    if (headMesh) {
-      const box = new THREE.Box3().setFromBufferAttribute(headMesh.geometry.attributes.position);
-      const holder = new THREE.Group(); holder.position.copy(box.getCenter(new THREE.Vector3()));
-      headMesh.parent.add(holder); holder.attach(headMesh);
-      // A skinned mesh normally cancels out its own transform (the bones already place it in the
-      // world), so moving the holder did nothing. Detached binding lets the transform through, but it
-      // measures from wherever the mesh was bound: bind it here, after the model is scaled and stood
-      // on its plinth, or the head lands a plinth away from its body.
-      pivot.updateMatrixWorld(true);
-      headMesh.bindMode = THREE.DetachedBindMode ?? 'detached';
-      headMesh.bind(headMesh.skeleton, headMesh.matrixWorld.clone());
-      headFit = { holder, base: holder.position.clone() };
-    }
     const seat = new THREE.Mesh(new THREE.BoxGeometry(SEAT.w, SEAT.top, SEAT.d), seatMat);
     seat.position.set(0, SEAT.top / 2, SEAT.z); seat.castShadow = seat.receiveShadow = true;
     seat.visible = false; pivot.add(seat);
@@ -648,6 +635,7 @@ Promise.all([...SPOTS.map((_, i) => load(`../../models/jacob${i + 1}.glb`, i)),
     for (const clip of g.animations) actions[clip.name.replace(/^preset:biped:/, '').replace(/\.\d+$/, '')] = mixer.clipAction(clip);
     for (const [name, clip] of Object.entries(shared)) actions[name] = mixer.clipAction(clip);
     const hip = model.getObjectByName('Hip'), head = model.getObjectByName('Head');
+    const headFit = headMesh ? { bone: head } : null;
     pivot.updateMatrixWorld(true);
     const hipRest = pivot.worldToLocal(hip.getWorldPosition(new THREE.Vector3()));
     rigs.push({ pivot, model, mixer, actions, seat, hip, head, hipRest, hair, styles, headFit,
@@ -864,12 +852,45 @@ function setTone(key) {
 let HEADFIT = [];
 const CM = 0.01 / HEIGHT;                                  // model units per centimetre
 let headWho = -1;
+// Runs every frame, right after the animation has posed the skeleton: the clip writes the bone, then
+// this adds the fit on top, so the head keeps its offset while it nods and turns with the body.
+//
+// The offset is added to the pose the ANIMATION wrote, never to the bone's current value: with no
+// clip playing nothing resets the bone, so adding to it each frame would walk the head away a little
+// further every frame. `base` holds that pose, refreshed whenever something other than this function
+// has written the bone.
+const fitOff = new THREE.Vector3(), fitQuat = new THREE.Quaternion(), fitAxis = new THREE.Vector3(),
+      fitInv = new THREE.Matrix4(), fitScale = new THREE.Vector3();
 function applyHeadFit(i) {
   const r = rigs[i], f = HEADFIT[i];
   if (!r || !r.headFit) return;
-  r.headFit.holder.position.copy(r.headFit.base).add(new THREE.Vector3(f.x * CM, f.y * CM, f.z * CM));
-  r.headFit.holder.scale.setScalar(f.s);
-  r.headFit.holder.rotation.x = -THREE.MathUtils.degToRad(f.t);
+  const fit = r.headFit, bone = fit.bone, parent = bone.parent;
+  if (!parent) return;
+  if (!fit.base) fit.base = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), written: null };
+  const base = fit.base;
+  if (!base.written || !bone.position.equals(base.written.pos) || !bone.quaternion.equals(base.written.quat)) {
+    base.pos.copy(bone.position); base.quat.copy(bone.quaternion);
+  }
+  parent.updateMatrixWorld(true);
+  bone.position.copy(base.pos);
+  bone.quaternion.copy(base.quat);
+  if (f.x || f.y || f.z) {
+    // centimetres along the body's own axes, turned into the parent bone's frame
+    fitOff.set(f.x * 0.01, f.y * 0.01, f.z * 0.01).applyQuaternion(r.pivot.quaternion);
+    const length = fitOff.length();
+    fitInv.copy(parent.matrixWorld).invert();
+    parent.getWorldScale(fitScale);
+    fitOff.transformDirection(fitInv).multiplyScalar(length / (fitScale.x || 1));
+    bone.position.add(fitOff);
+  }
+  if (f.t) {
+    fitAxis.set(1, 0, 0).applyQuaternion(r.pivot.quaternion).transformDirection(fitInv.copy(parent.matrixWorld).invert());
+    fitQuat.setFromAxisAngle(fitAxis, -THREE.MathUtils.degToRad(f.t));
+    bone.quaternion.premultiply(fitQuat);
+  }
+  bone.scale.setScalar(f.s);
+  base.written = base.written || { pos: new THREE.Vector3(), quat: new THREE.Quaternion() };
+  base.written.pos.copy(bone.position); base.written.quat.copy(bone.quaternion);
 }
 // Called once the models are in: before that, rigs is still empty.
 function initHeadFit() {
@@ -971,8 +992,10 @@ renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
   const travels = clipName === 'walk' || clipName === 'climb' || clipName === 'ladder';
   const inPlace = document.getElementById('inPlace').checked && travels;
-  for (const r of rigs) {
+  for (let i = 0; i < rigs.length; i++) {
+    const r = rigs[i];
     r.mixer.update(dt * +speedEl.value);
+    applyHeadFit(i);
     // IN PLACE. Walk carries the body forward and climb carries it upward, and both snap back when
     // they loop. Pinning the hip over its rest spot cancels the travel and leaves the bob and sway
     // alone; climbing pins the height too, so he climbs without leaving the plinth.
