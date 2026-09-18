@@ -282,7 +282,7 @@ function placeSitter() {
 // function of one time T, so it plays forward on its own or scrubs either way with the wheel.
 const SEQ = { hold: 0.9, turn: 1.1, draw: 1.8, waveLead: 0.3, waveLen: 1.5,
               T: 0, playing: false, active: false, scrub: true, from: 0, to: 0,
-              camera: [[0.85, 1.55, 1.5], [-0.15, 1.05, -0.35]] };      // just inside the door
+              camera: [[0.85, 1.55, 1.5], [-0.15, 1.14, -0.35]] };      // just inside the door
 const total = () => Math.max(SEQ.hold + SEQ.turn + SEQ.draw, SEQ.hold + SEQ.turn - SEQ.waveLead + SEQ.waveLen);
 function activateIntro() {
   if (!chairPivot) return;
@@ -339,14 +339,21 @@ renderer.domElement.addEventListener('wheel', (e) => {
 // fill in, stood a little toward the door and turned to face whoever came in. Over his head rather
 // than beside him because it has to fit a phone held upright, and beside him it either runs off
 // the edge or ends up behind his head.
-const holo = new Hologram({ lines: ['HEY, YOU FOUND', 'MY STATION'], size: 0.055 });
+// The words are the old site's welcome panel, in its green, until there are better ones.
+const holo = new Hologram({ size: 0.044, gap: 1.28, color: 0x2dff9e, lines: [
+  'Welcome To', 'Jconra.com', { text: '', size: 0.010 },
+  { text: 'Hello! I am Jacob Conrads,', size: 0.021 },
+  { text: 'a Systems Engineer. This is a project', size: 0.021 },
+  { text: 'to play around with and highlight', size: 0.021 },
+  { text: 'my skills. Thank you for visiting!', size: 0.021 },
+] });
 scene.add(holo);
 function placeHolo() {
   if (!chairPivot) return;
   const cw = chairPivot.getWorldPosition(new THREE.Vector3());
   const toCam = new THREE.Vector3(camera.position.x - cw.x, 0, camera.position.z - cw.z).normalize();
-  holo.position.copy(cw).addScaledVector(toCam, 0.25);
-  holo.position.y = 1.64;
+  holo.position.copy(cw).addScaledVector(toCam, 0.12);
+  holo.position.y = 1.6;
   holo.rotation.y = Math.atan2(toCam.x, toCam.z);
 }
 

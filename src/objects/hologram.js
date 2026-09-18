@@ -72,17 +72,22 @@ export class Hologram extends THREE.Group {
                   uTime: { value: 0 }, uMode: { value: mode }, uTop: { value: 1 } },
     });
     this.wireMat = mk(0); this.solidMat = mk(1);
-    // build from the bottom line up, each line centred, so the sweep runs up through the whole block
+    // build from the bottom line up, each line centred, so the sweep runs up through the whole block.
+    // A line is a string, or { text, size } for a line at its own size (a heading over small print).
     let y = 0;
     for (let i = lines.length - 1; i >= 0; i--) {
-      const geo = new TextGeometry(lines[i], { font, size, height: depth, curveSegments: 6, bevelEnabled: false });
-      geo.computeBoundingBox();
-      const b = geo.boundingBox;
-      geo.translate(-(b.max.x + b.min.x) / 2, y - b.min.y, -depth / 2);
-      const solid = new THREE.Mesh(geo, this.solidMat);
-      const wire = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), this.wireMat);
-      this.add(solid, wire);
-      y += size * gap;
+      const line = typeof lines[i] === 'string' ? { text: lines[i] } : lines[i];
+      const sz = line.size || size;
+      if (line.text) {
+        const geo = new TextGeometry(line.text, { font, size: sz, height: depth * (sz / size), curveSegments: 6, bevelEnabled: false });
+        geo.computeBoundingBox();
+        const b = geo.boundingBox;
+        geo.translate(-(b.max.x + b.min.x) / 2, y - b.min.y, -depth / 2);
+        const solid = new THREE.Mesh(geo, this.solidMat);
+        const wire = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), this.wireMat);
+        this.add(solid, wire);
+      }
+      y += sz * gap;                                     // an empty line is a gap
     }
     this.height = y;
     this.wireMat.uniforms.uTop.value = this.solidMat.uniforms.uTop.value = y;
