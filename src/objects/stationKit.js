@@ -42,17 +42,42 @@ function measure(geometry) {
   return { box, size: box.getSize(new THREE.Vector3()), centre: box.getCenter(new THREE.Vector3()) };
 }
 
-// The outer radius of a flat, round part, ignoring the few points that stick out furthest.
-function rimRadius(geometry) {
-  const p = geometry.attributes.position, r = [];
-  for (let i = 0; i < p.count; i++) r.push(Math.hypot(p.getX(i), p.getZ(i)));
-  r.sort((a, b) => a - b);
-  return r[Math.floor(r.length * 0.99)];
+// The centre and outer radius of a flat, round part, from a circle fitted to its outer shell. The
+// bounding box will not do: masts and pods pull it off the axis the part actually turns about, and
+// everything else here (where the ring sits, where its middle is cut away) is measured from this.
+function rimCircle(geometry) {
+  const p = geometry.attributes.position, n = p.count;
+  let gx = 0, gz = 0;
+  for (let i = 0; i < n; i++) { gx += p.getX(i); gz += p.getZ(i); }
+  gx /= n; gz /= n;
+  const r = [];
+  for (let i = 0; i < n; i++) r.push(Math.hypot(p.getX(i) - gx, p.getZ(i) - gz));
+  const sorted = [...r].sort((a, b) => a - b);
+  const cut = sorted[Math.floor(n * 0.88)];
+  // least squares circle through the outer shell
+  let Sxx = 0, Sxz = 0, Szz = 0, Sx = 0, Sz = 0, Sxb = 0, Szb = 0, Sb = 0, m = 0;
+  for (let i = 0; i < n; i++) {
+    if (r[i] < cut) continue;
+    const x = p.getX(i), z = p.getZ(i), b = x * x + z * z;
+    Sxx += x * x; Sxz += x * z; Szz += z * z; Sx += x; Sz += z; Sxb += x * b; Szb += z * b; Sb += b; m++;
+  }
+  const A = [[2 * Sxx, 2 * Sxz, Sx], [2 * Sxz, 2 * Szz, Sz], [2 * Sx, 2 * Sz, m]];
+  const rhs = [Sxb, Szb, Sb];
+  // 3x3 solve
+  const det = A[0][0] * (A[1][1] * A[2][2] - A[1][2] * A[2][1]) - A[0][1] * (A[1][0] * A[2][2] - A[1][2] * A[2][0]) + A[0][2] * (A[1][0] * A[2][1] - A[1][1] * A[2][0]);
+  const solve = (col) => {
+    const M = A.map((row, i) => row.map((v, j) => (j === col ? rhs[i] : v)));
+    return (M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1]) - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0]) + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0])) / det;
+  };
+  const cx = det ? solve(0) : gx, cz = det ? solve(1) : gz;
+  let radius = 0;
+  for (let i = 0; i < n; i++) radius = Math.max(radius, Math.hypot(p.getX(i) - cx, p.getZ(i) - cz));
+  return { x: cx, z: cz, radius };
 }
 
 // A copy of the ring without its middle: the tower and collar fill that space, and two surfaces in
 // the same place flicker against each other.
-function cutHub(geometry, fraction, rim) {
+function cutHub(geometry, fraction, rim, centre) {
   if (fraction <= 0) return geometry;
   const limit = fraction * rim;
   const pos = geometry.attributes.position, idx = geometry.index;
@@ -61,7 +86,7 @@ function cutHub(geometry, fraction, rim) {
   const mid = new THREE.Vector3();
   for (let t = 0; t < n; t += 3) {
     const a = idx ? idx.getX(t) : t, b = idx ? idx.getX(t + 1) : t + 1, c = idx ? idx.getX(t + 2) : t + 2;
-    mid.set((pos.getX(a) + pos.getX(b) + pos.getX(c)) / 3, 0, (pos.getZ(a) + pos.getZ(b) + pos.getZ(c)) / 3);
+    mid.set((pos.getX(a) + pos.getX(b) + pos.getX(c)) / 3 - centre.x, 0, (pos.getZ(a) + pos.getZ(b) + pos.getZ(c)) / 3 - centre.z);
     if (Math.hypot(mid.x, mid.z) >= limit) keep.push(a, b, c);
   }
   const out = geometry.clone();
@@ -119,7 +144,8 @@ export async function loadKit(base = '../../models/kit/', onProgress) {
       res();
     }, (e) => { loaded[name] = e.loaded; totals[name] = e.total || totals[name] || 0; report(); }, rej);
   })));
-  parts.ring.rim = rimRadius(parts.ring.geometry);
+  parts.ring.circle = rimCircle(parts.ring.geometry);
+  parts.ring.rim = parts.ring.circle.radius;
   parts.ring.deckY = deckHeight(parts.ring.geometry, parts.ring.rim);
   parts.tower.coreFraction = coreFraction(parts.tower.geometry);
   return parts;
@@ -174,14 +200,15 @@ export class StationKit extends THREE.Group {
     }
 
     // RINGS, each on its own turntable so they can spin at their own rate
-    const ringGeo = cutHub(P.ring.geometry, L.hubCut, P.ring.rim);
+    const ringGeo = cutHub(P.ring.geometry, L.hubCut, P.ring.rim, P.ring.circle);
     ringGeo.userData.temp = L.hubCut > 0;
     for (let i = 0; i < L.rings; i++) {
       const turntable = new THREE.Group();
       turntable.position.y = L.ringY + i * L.ringGap;
       const ring = new THREE.Mesh(ringGeo, P.ring.material);
       ring.scale.setScalar(S);
-      ring.position.set(-P.ring.centre.x * S, -P.ring.deckY * S, -P.ring.centre.z * S);
+      // stand it on the axis its rim turns about, not the middle of its bounding box
+      ring.position.set(-P.ring.circle.x * S, -P.ring.deckY * S, -P.ring.circle.z * S);
       ring.castShadow = ring.receiveShadow = true;
       turntable.add(ring);
       // arms on the ring: mounted just inside the rim, pointing outward, turning with it
