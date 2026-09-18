@@ -129,6 +129,7 @@ for (const [id, [apply, fmt]] of Object.entries(CONTROLS)) {
   CONTROLS[id].run = () => { apply(+el.value); $(id + 'Out').textContent = fmt(+el.value); };
 }
 $('ringStyle').addEventListener('change', e => { layout.ringStyle = e.target.value; queueRebuild(); });
+$('towerFlip').addEventListener('change', e => { layout.towerFlip = e.target.checked; queueRebuild(); });
 $('armKind').addEventListener('change', e => { layout.towerArms.kind = e.target.value; queueRebuild(); });
 $('ringArmKind').addEventListener('change', e => { layout.ringArms.kind = e.target.value; queueRebuild(); });
 $('collar').addEventListener('change', e => { layout.collar = e.target.checked; queueRebuild(); });

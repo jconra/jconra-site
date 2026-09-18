@@ -28,6 +28,7 @@ export const DEFAULT_LAYOUT = {
   collarRadius: 120,      // metres
   collarLength: 1100,     // metres, the cylinder the rings turn on
   towerHeight: 1000,      // metres (the tower part is about 0.4 as wide as it is tall)
+  towerFlip: true,        // the tower part upside down: its wide end at the top, above the ring
   // arms mounted on the ring, which turn with it
   ringArms: { count: 8, kind: 'arm2', scale: 260, inset: 40, y: -40, tilt: 0 },
   // arms out from the tower, which stay put; every nth one carries a hangar on its end
@@ -196,7 +197,9 @@ export class StationKit extends THREE.Group {
     const tower = new THREE.Mesh(P.tower.geometry, P.tower.material);
     const towerScale = L.towerHeight / P.tower.size.y;
     tower.scale.setScalar(towerScale);
-    tower.position.set(-P.tower.centre.x * towerScale, -L.towerHeight / 2, -P.tower.centre.z * towerScale);
+    // flipped, the part turns over about its own middle, so its centre lands in the same place
+    tower.rotation.x = L.towerFlip ? Math.PI : 0;
+    tower.position.set(-P.tower.centre.x * towerScale, (L.towerFlip ? 1 : -1) * L.towerHeight / 2, (L.towerFlip ? 1 : -1) * P.tower.centre.z * towerScale);
     tower.castShadow = tower.receiveShadow = true;
     this.built.add(tower); this.lampMeshes.push(tower);
 
