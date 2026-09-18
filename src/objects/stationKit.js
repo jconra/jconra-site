@@ -12,8 +12,13 @@ export const PART_FILES = ['ring', 'ringSegment', 'tower', 'arm1', 'arm2', 'hang
 export const G = 9.81;
 
 export const DEFAULT_LAYOUT = {
-  ringStyle: 'segments',  // 'segments' (four quarter pieces, exactly round) or 'whole' (one model)
+  ringStyle: 'whole',     // 'whole' (one ring model) or 'segments' (four quarter pieces)
   ringSegments: 4,
+  // Fine fit for those quarter pieces. A 90-degree arc cannot pin down its own centre: a circle
+  // fitted to it is a couple of units out either way, and each copy then carries that error in a
+  // different direction, so the pieces step against each other at the seams. These nudge the centre
+  // the copies turn about, in the part's own units, and open or close the spacing between them.
+  segmentFit: { x: 0, z: 0, spacing: 0 },
   ringRadius: 700,        // metres, to the outside of the rim
   rings: 1,
   ringGap: 420,           // metres between rings, when there is more than one
@@ -225,10 +230,15 @@ export class StationKit extends THREE.Group {
         const n = L.ringSegments || 4;
         ring = new THREE.InstancedMesh(P.ringSegment.geometry, P.ringSegment.material, n);
         const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
-        const sc = new THREE.Vector3(segScale, segScale, segScale), zero = new THREE.Vector3();
+        const sc = new THREE.Vector3(segScale, segScale, segScale), off = new THREE.Vector3();
+        const F = L.segmentFit || { x: 0, z: 0, spacing: 0 };
+        const step = Math.PI * 2 / n + THREE.MathUtils.degToRad(F.spacing);
         for (let k = 0; k < n; k++) {
-          e.set(0, (k / n) * Math.PI * 2, 0);
-          ring.setMatrixAt(k, m.compose(zero, q.setFromEuler(e), sc));
+          e.set(0, k * step, 0);
+          q.setFromEuler(e);
+          // the centre correction is measured on the part, so it turns with the copy
+          off.set(-F.x * segScale, 0, -F.z * segScale).applyQuaternion(q);
+          ring.setMatrixAt(k, m.compose(off, q, sc));
         }
         ring.instanceMatrix.needsUpdate = true;
       } else {
