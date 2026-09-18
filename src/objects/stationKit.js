@@ -8,10 +8,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-export const PART_FILES = ['ring', 'tower', 'arm1', 'arm2', 'hangar', 'satellite'];
+export const PART_FILES = ['ring', 'ringSegment', 'tower', 'arm1', 'arm2', 'hangar', 'satellite', 'fighter', 'freighter'];
 export const G = 9.81;
 
 export const DEFAULT_LAYOUT = {
+  ringStyle: 'segments',  // 'segments' (four quarter pieces, exactly round) or 'whole' (one model)
+  ringSegments: 4,
   ringRadius: 700,        // metres, to the outside of the rim
   rings: 1,
   ringGap: 420,           // metres between rings, when there is more than one
@@ -30,6 +32,9 @@ export const DEFAULT_LAYOUT = {
   panels: { count: 4, y: 300, scale: 520, tilt: 0, radius: 0 },
   // a few free-flying craft, off by default
   satellites: { count: 0, radius: 1400, scale: 120, seed: 7 },
+  // traffic: fighters parked around the hangars, freighters standing off the station
+  fighters: { count: 4, radius: 900, y: -260, scale: 40 },
+  freighters: { count: 1, radius: 2200, y: 240, scale: 260 },
   spin: true,
   timeScale: 1,
 };
@@ -146,6 +151,13 @@ export async function loadKit(base = '../../models/kit/', onProgress) {
   })));
   parts.ring.circle = rimCircle(parts.ring.geometry);
   parts.ring.rim = parts.ring.circle.radius;
+  // the segment is a quarter of a ring, already centred on the axis it turns about
+  if (parts.ringSegment) {
+    const p = parts.ringSegment.geometry.attributes.position;
+    let rim = 0;
+    for (let i = 0; i < p.count; i++) rim = Math.max(rim, Math.hypot(p.getX(i), p.getZ(i)));
+    parts.ringSegment.rim = rim;
+  }
   parts.ring.deckY = deckHeight(parts.ring.geometry, parts.ring.rim);
   parts.tower.coreFraction = coreFraction(parts.tower.geometry);
   return parts;
@@ -199,16 +211,32 @@ export class StationKit extends THREE.Group {
       this.built.add(collar);
     }
 
-    // RINGS, each on its own turntable so they can spin at their own rate
-    const ringGeo = cutHub(P.ring.geometry, L.hubCut, P.ring.rim, P.ring.circle);
-    ringGeo.userData.temp = L.hubCut > 0;
+    // RINGS, each on its own turntable so they can spin at their own rate. Built either from one
+    // whole model or from quarter segments repeated around the axis, which is exactly round.
+    const segments = L.ringStyle === 'segments' && P.ringSegment;
+    const ringGeo = segments ? null : cutHub(P.ring.geometry, L.hubCut, P.ring.rim, P.ring.circle);
+    if (ringGeo) ringGeo.userData.temp = L.hubCut > 0;
+    const segScale = segments ? L.ringRadius / P.ringSegment.rim : 1;
     for (let i = 0; i < L.rings; i++) {
       const turntable = new THREE.Group();
       turntable.position.y = L.ringY + i * L.ringGap;
-      const ring = new THREE.Mesh(ringGeo, P.ring.material);
-      ring.scale.setScalar(S);
-      // stand it on the axis its rim turns about, not the middle of its bounding box
-      ring.position.set(-P.ring.circle.x * S, -P.ring.deckY * S, -P.ring.circle.z * S);
+      let ring;
+      if (segments) {
+        const n = L.ringSegments || 4;
+        ring = new THREE.InstancedMesh(P.ringSegment.geometry, P.ringSegment.material, n);
+        const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
+        const sc = new THREE.Vector3(segScale, segScale, segScale), zero = new THREE.Vector3();
+        for (let k = 0; k < n; k++) {
+          e.set(0, (k / n) * Math.PI * 2, 0);
+          ring.setMatrixAt(k, m.compose(zero, q.setFromEuler(e), sc));
+        }
+        ring.instanceMatrix.needsUpdate = true;
+      } else {
+        ring = new THREE.Mesh(ringGeo, P.ring.material);
+        ring.scale.setScalar(S);
+        // stand it on the axis its rim turns about, not the middle of its bounding box
+        ring.position.set(-P.ring.circle.x * S, -P.ring.deckY * S, -P.ring.circle.z * S);
+      }
       ring.castShadow = ring.receiveShadow = true;
       turntable.add(ring);
       // arms on the ring: mounted just inside the rim, pointing outward, turning with it
@@ -216,7 +244,7 @@ export class StationKit extends THREE.Group {
       if (RA.count) this.addRing(turntable, RA.kind, RA.count, L.ringRadius - RA.inset, RA.y, RA.scale, RA.tilt);
       this.built.add(turntable);
       this.spinners.push({ turntable, radius: L.ringRadius, sign: i % 2 ? -1 : 1 });
-      this.lampMeshes.push(ring);
+      if (ring.isMesh && !ring.isInstancedMesh) this.lampMeshes.push(ring);
     }
 
     // ARMS on the tower, which stay put, with a hangar on the end of every nth one
@@ -234,6 +262,9 @@ export class StationKit extends THREE.Group {
       const core = P.tower.coreFraction * L.towerHeight;
       this.addRing(this.built, 'satellite', PA.count, PA.radius || core + PA.scale / 2, PA.y, PA.scale, PA.tilt);
     }
+    // TRAFFIC: fighters parked around the station, freighters standing off it
+    if (L.fighters?.count) this.addRing(this.built, 'fighter', L.fighters.count, L.fighters.radius, L.fighters.y, L.fighters.scale, 0);
+    if (L.freighters?.count) this.addRing(this.built, 'freighter', L.freighters.count, L.freighters.radius, L.freighters.y, L.freighters.scale, 0);
     this.addSatellites(L.satellites);
     return this;
   }

@@ -51,6 +51,7 @@
     <div class="readout" style="grid-template-columns:1fr"><b id="fxInfo"></b><span id="fps"></span></div>
 
     <h2>Rings</h2>
+    <div class="row"><label for="ringStyle">Ring built from</label><select id="ringStyle"><option value="segments" selected>four quarter segments (exactly round)</option><option value="whole">one whole model</option></select></div>
     <div class="row"><label for="ringRadius">Ring radius</label><output id="ringRadiusOut"></output><input id="ringRadius" type="range" min="100" max="2000" step="10" value="700"></div>
     <div class="row"><label for="rings">How many rings</label><output id="ringsOut"></output><input id="rings" type="range" min="1" max="3" step="1" value="1"></div>
     <div class="row"><label for="ringGap">Gap between rings</label><output id="ringGapOut"></output><input id="ringGap" type="range" min="100" max="1500" step="10" value="420"></div>
@@ -83,6 +84,16 @@
     <div class="row"><label for="armTilt">Tilt</label><output id="armTiltOut"></output><input id="armTilt" type="range" min="-90" max="90" step="1" value="0"></div>
     <div class="row"><label for="hangarEvery">Hangar on the end of</label><output id="hangarEveryOut"></output><input id="hangarEvery" type="range" min="0" max="6" step="1" value="2"></div>
     <div class="row"><label for="hangarScale">Hangar size</label><output id="hangarScaleOut"></output><input id="hangarScale" type="range" min="40" max="600" step="10" value="240"></div>
+
+    <h2>Traffic</h2>
+    <div class="row"><label for="fighterCount">Fighters</label><output id="fighterCountOut"></output><input id="fighterCount" type="range" min="0" max="16" step="1" value="4"></div>
+    <div class="row"><label for="fighterRadius">Fighters out from the axis</label><output id="fighterRadiusOut"></output><input id="fighterRadius" type="range" min="200" max="3000" step="20" value="900"></div>
+    <div class="row"><label for="fighterY">Fighters height</label><output id="fighterYOut"></output><input id="fighterY" type="range" min="-1200" max="1200" step="10" value="-260"></div>
+    <div class="row"><label for="fighterScale">Fighter length</label><output id="fighterScaleOut"></output><input id="fighterScale" type="range" min="10" max="200" step="2" value="40"></div>
+    <div class="row"><label for="freighterCount">Freighters</label><output id="freighterCountOut"></output><input id="freighterCount" type="range" min="0" max="8" step="1" value="1"></div>
+    <div class="row"><label for="freighterRadius">Freighters out from the axis</label><output id="freighterRadiusOut"></output><input id="freighterRadius" type="range" min="400" max="6000" step="50" value="2200"></div>
+    <div class="row"><label for="freighterY">Freighters height</label><output id="freighterYOut"></output><input id="freighterY" type="range" min="-2000" max="2000" step="20" value="240"></div>
+    <div class="row"><label for="freighterScale">Freighter length</label><output id="freighterScaleOut"></output><input id="freighterScale" type="range" min="40" max="800" step="10" value="260"></div>
 
     <h2>Solar panels</h2>
     <div class="row"><label for="panelCount">How many</label><output id="panelCountOut"></output><input id="panelCount" type="range" min="0" max="12" step="1" value="4"></div>

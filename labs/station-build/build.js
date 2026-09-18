@@ -91,6 +91,14 @@ const CONTROLS = {
   panelScale:   [v => layout.panels.scale = v, v => v + ' m'],
   panelRadius:  [v => layout.panels.radius = v, v => v === 0 ? 'on the tower' : v + ' m'],
   panelTilt:    [v => layout.panels.tilt = v, v => v + '°'],
+  fighterCount:   [v => layout.fighters.count = v, v => v],
+  fighterRadius:  [v => layout.fighters.radius = v, v => v + ' m'],
+  fighterY:       [v => layout.fighters.y = v, v => v + ' m'],
+  fighterScale:   [v => layout.fighters.scale = v, v => v + ' m'],
+  freighterCount: [v => layout.freighters.count = v, v => v],
+  freighterRadius:[v => layout.freighters.radius = v, v => v + ' m'],
+  freighterY:     [v => layout.freighters.y = v, v => v + ' m'],
+  freighterScale: [v => layout.freighters.scale = v, v => v + ' m'],
   satCount:     [v => layout.satellites.count = v, v => v],
   satRadius:    [v => layout.satellites.radius = v, v => v.toLocaleString() + ' m'],
   satScale:     [v => layout.satellites.scale = v, v => v + ' m'],
@@ -117,6 +125,7 @@ for (const [id, [apply, fmt]] of Object.entries(CONTROLS)) {
   el.addEventListener('input', run);
   CONTROLS[id].run = () => { apply(+el.value); $(id + 'Out').textContent = fmt(+el.value); };
 }
+$('ringStyle').addEventListener('change', e => { layout.ringStyle = e.target.value; queueRebuild(); });
 $('armKind').addEventListener('change', e => { layout.towerArms.kind = e.target.value; queueRebuild(); });
 $('ringArmKind').addEventListener('change', e => { layout.ringArms.kind = e.target.value; queueRebuild(); });
 $('collar').addEventListener('change', e => { layout.collar = e.target.checked; queueRebuild(); });
