@@ -55,7 +55,7 @@ const FRAG = `
   }`;
 
 export class Hologram extends THREE.Group {
-  constructor({ lines = ['HELLO'], size = 0.09, depth = 0.012, gap = 1.35, color = 0x5ee0ff } = {}) {
+  constructor({ lines = ['HELLO'], size = 0.09, depth = 0.012, gap = 1.35, color = 0x62b8ff } = {}) {
     super();
     this.fill = 0;
     this.time = 0;

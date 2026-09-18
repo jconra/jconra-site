@@ -10,6 +10,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Earth } from '../../src/objects/earth.js';
 import { Post } from '../../src/fx/post.js';
 import { Hologram } from '../../src/objects/hologram.js';
+import { Screen } from '../../src/objects/screens.js';
 
 const Q = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -169,7 +170,7 @@ function loadRoom(name) {
   if (chairPivot && !CHAIR.swivel) chairPivot.rotation.y = THREE.MathUtils.degToRad(CHAIR.angle);
   placeSitter();
   $('boot')?.remove();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, seek, playIntro, activateIntro, setLight, holo, placeHolo, getWave: () => waveAction });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, PARTS, PATH, SCREENS, seek, playIntro, activateIntro, setLight, holos, getWave: () => waveAction });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -280,31 +281,47 @@ function placeSitter() {
 // The site's first shot: he is at the desk with his back to the door, someone comes in, and he
 // turns the chair round to see who, waves, and a greeting forms beside him. Everything is a
 // function of one time T, so it plays forward on its own or scrubs either way with the wheel.
-const SEQ = { hold: 0.9, turn: 1.1, draw: 1.8, waveLead: 0.3, waveLen: 1.5,
-              T: 0, playing: false, active: false, scrub: true, from: 0, to: 0,
-              camera: [[0.85, 1.55, 1.5], [-0.15, 1.14, -0.35]] };      // just inside the door
-const total = () => Math.max(SEQ.hold + SEQ.turn + SEQ.draw, SEQ.hold + SEQ.turn - SEQ.waveLead + SEQ.waveLen);
+const SEQ = { hold: 0.9, turn: 1.1, draw: 1.8, waveLead: 0.3, waveLen: 1.5, total: 9,
+              T: 0, playing: false, active: false, scrub: true, from: 0, to: 0 };
+// The camera never stops: it comes in at the door, drifts past his side and ends at the window,
+// looking at him the whole way. Three points, one smooth curve through them.
+const PATH = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(0.85, 1.3, 1.55),     // just inside the door, a little below his eye line
+  new THREE.Vector3(1.3, 1.28, 0.35),     // past his side
+  new THREE.Vector3(1.15, 1.3, -1.0),     // at the window, looking back at him
+]);
+// The greeting comes in parts as the scene goes on: each is its own hologram over his head, which
+// forms, holds, and dissolves again as the next one forms.
+const PARTS = [
+  { start: 2.0, end: 5.8, size: 0.07, lines: ['Welcome To', 'Jconra.com'] },
+  { start: 5.4, end: 9.0, size: 0.034, lines: ['Hello! I am Jacob Conrads,', 'a Systems Engineer.', 'This is a project to play around', 'with and highlight my skills.', 'Thank you for visiting!'] },
+];
+const holos = PARTS.map(part => { const h = new Hologram({ lines: part.lines, size: part.size, gap: 1.28 }); scene.add(h); return h; });
+const total = () => SEQ.total;
 function activateIntro() {
   if (!chairPivot) return;
   if (!chairInfo) chairInfo = measureChair();
   $('swivel').checked = false; CHAIR.swivel = false;
   SEQ.active = true;
-  const [p, t] = SEQ.camera;
-  camera.position.set(...p); controls.target.set(...t); controls.update();
-  post.focus = camera.position.distanceTo(controls.target);
-  // the holder's turn that brings the chair's own facing round to the camera, the short way
-  const cw = chairPivot.getWorldPosition(new THREE.Vector3());
-  let want = Math.atan2(camera.position.x - cw.x, camera.position.z - cw.z) - (chairInfo ? chairInfo.facing : 0);
+  controls.enabled = false;                       // the timeline owns the camera until a camera button is pressed
+  camera.position.copy(PATH.getPoint(0)); controls.target.copy(lookAtHim()); camera.lookAt(controls.target);
+  // the holder's turn that brings the chair's own facing round to the door camera, the short way
+  const cw = chairPivot.getWorldPosition(new THREE.Vector3()), door = PATH.getPoint(0);
+  let want = Math.atan2(door.x - cw.x, door.z - cw.z) - (chairInfo ? chairInfo.facing : 0);
   SEQ.from = 0; SEQ.to = Math.atan2(Math.sin(want), Math.cos(want));
-  placeHolo();
   $('seqTime').max = total().toFixed(2);
 }
 function playIntro() { activateIntro(); SEQ.T = 0; SEQ.playing = true; seek(0); }
+// where the camera looks: his head, a touch below, so he sits in the upper part of the frame
+function lookAtHim() {
+  const head = sitter && sitter.getObjectByName('Head');
+  const p = head ? head.getWorldPosition(new THREE.Vector3()) : chairPivot.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 1.3, 0));
+  p.y += 0.14; return p;
+}
 const ease = (u) => { u = Math.min(1, Math.max(0, u)); return u * u * u * (u * (u * 6 - 15) + 10); };   // brisk both ends
 function seek(T) {
   SEQ.T = T = Math.min(total(), Math.max(0, T));
   chairPivot.rotation.y = SEQ.from + (SEQ.to - SEQ.from) * ease((T - SEQ.hold) / SEQ.turn);
-  holo.fill = Math.min(1, Math.max(0, (T - SEQ.hold - SEQ.turn) / SEQ.draw));
   if (sitterMixer && sitAction) {
     sitAction.time = T % sitAction.getClip().duration;
     if (waveAction) {
@@ -314,6 +331,20 @@ function seek(T) {
     }
     sitterMixer.update(0);
   }
+  // the camera: always on the move, easing only at the very ends of the path
+  const u = T / total(), k = u < 0.08 ? u * u / 0.16 : (u > 0.92 ? 1 - (1 - u) * (1 - u) / 0.16 : u - 0.04);
+  camera.position.copy(PATH.getPoint(Math.min(1, Math.max(0, k))));
+  controls.target.copy(lookAtHim()); camera.lookAt(controls.target);
+  post.focus = camera.position.distanceTo(controls.target);
+  // the parts of the greeting: over his head, turned to the camera, each one forming then dissolving
+  const over = lookAtHim(); over.y += 0.14;
+  const toCam = new THREE.Vector3().subVectors(camera.position, over); toCam.y = 0; toCam.normalize();
+  holos.forEach((h, n) => {
+    const part = PARTS[n];
+    h.fill = Math.min(1, Math.max(0, (T - part.start) / SEQ.draw, 0), Math.max(0, (part.end - T) / 0.7));
+    h.position.copy(over).addScaledVector(toCam, 0.15);
+    h.rotation.y = Math.atan2(toCam.x, toCam.z);
+  });
   const el = $('seqTime'); if (el && document.activeElement !== el) el.value = T.toFixed(2);
   $('seqTimeOut').textContent = T.toFixed(1) + ' s';
 }
@@ -324,7 +355,8 @@ function stepSequence(dt) {
     if (chairPivot && CHAIR.swivel) chairPivot.rotation.y += THREE.MathUtils.degToRad(CHAIR.speed) * dt;
     if (sitterMixer) sitterMixer.update(dt);
   }
-  holo.update(dt);
+  for (const h of holos) h.update(dt);
+  for (const sc of SCREENS) sc.update(dt);
 }
 // the wheel scrubs time instead of zooming, when that is switched on; a first scroll starts the intro
 renderer.domElement.addEventListener('wheel', (e) => {
@@ -334,28 +366,6 @@ renderer.domElement.addEventListener('wheel', (e) => {
   SEQ.playing = false;
   seek(SEQ.T + e.deltaY * 0.0025);
 }, { passive: false });
-
-// The greeting is a hologram over his head: lines of letters that draw in as a wireframe and then
-// fill in, stood a little toward the door and turned to face whoever came in. Over his head rather
-// than beside him because it has to fit a phone held upright, and beside him it either runs off
-// the edge or ends up behind his head.
-// The words are the old site's welcome panel, in its green, until there are better ones.
-const holo = new Hologram({ size: 0.044, gap: 1.28, color: 0x2dff9e, lines: [
-  'Welcome To', 'Jconra.com', { text: '', size: 0.010 },
-  { text: 'Hello! I am Jacob Conrads,', size: 0.021 },
-  { text: 'a Systems Engineer. This is a project', size: 0.021 },
-  { text: 'to play around with and highlight', size: 0.021 },
-  { text: 'my skills. Thank you for visiting!', size: 0.021 },
-] });
-scene.add(holo);
-function placeHolo() {
-  if (!chairPivot) return;
-  const cw = chairPivot.getWorldPosition(new THREE.Vector3());
-  const toCam = new THREE.Vector3(camera.position.x - cw.x, 0, camera.position.z - cw.z).normalize();
-  holo.position.copy(cw).addScaledVector(toCam, 0.12);
-  holo.position.y = 1.6;
-  holo.rotation.y = Math.atan2(toCam.x, toCam.z);
-}
 
 function buildPropList() {
   const list = $('props');
@@ -369,6 +379,27 @@ function buildPropList() {
   }
 }
 
+// ── the monitors ────────────────────────────────────────────────────────────────
+// Each monitor's face was measured off the mesh: centre, the way it faces, width and height.
+// The middle one is the site's front page and opens it when tapped.
+const SCREENS = [
+  new Screen({ centre: [-0.026, 1.284, -1.233], normal: [-0.03, 0.077, 0.997], width: 0.562, height: 0.444, kind: 'site', href: '../../' }),
+  new Screen({ centre: [-0.655, 1.301, -1.143], normal: [0.308, 0.216, 0.926], width: 0.615, height: 0.463, kind: 'telemetry' }),
+  new Screen({ centre: [0.46, 1.279, -1.174], normal: [-0.229, 0.113, 0.967], width: 0.363, height: 0.416, kind: 'orbit' }),
+];
+for (const sc of SCREENS) scene.add(sc);
+{
+  // a tap on a screen that has a link opens it; a drag is the camera, not a tap
+  const ray = new THREE.Raycaster(), down = new THREE.Vector2();
+  renderer.domElement.addEventListener('pointerdown', e => down.set(e.clientX, e.clientY));
+  renderer.domElement.addEventListener('pointerup', e => {
+    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) return;
+    ray.setFromCamera(new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
+    const hit = ray.intersectObjects(SCREENS, false)[0];
+    if (hit && hit.object.href) location.href = hit.object.href;
+  });
+}
+
 // ── camera views, in metres inside the cabin ────────────────────────────────────
 const VIEWS = {
   'Desk':       [[0.20, 1.55, 0.75], [0.10, 1.55, -1.55]],
@@ -377,6 +408,8 @@ const VIEWS = {
   'Whole room': [[2.4, 2.5, 2.7], [0, 1.15, -0.6]],
 };
 function frame(name) {
+  SEQ.active = false; SEQ.playing = false; controls.enabled = true;
+  for (const h of holos) h.fill = 0;
   const [p, t] = VIEWS[name];
   camera.position.set(...p); controls.target.set(...t); controls.update();
   post.focus = camera.position.distanceTo(controls.target);
