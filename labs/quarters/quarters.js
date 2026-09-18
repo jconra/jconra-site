@@ -67,19 +67,19 @@ placeEarth();
   scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xdfe8f0, size: 1.5, sizeAttenuation: false })));
 }
 
-// EARTH AS A PICTURE. The cheap version: one unlit rectangle hung outside the window with the same
-// NASA map on it, sliding sideways to suggest the orbit. Two triangles against the globe's 55k, and
-// no lighting to get wrong, but it has edges and it does not shift between the two windows the way a
-// real globe does.
+// EARTH AS A PICTURE: what the old site did. textures/earth.jpg is a photograph of the whole globe,
+// hung on one flat rectangle lying below the station (modules/SceneModels.js sized it 833 x 827 and
+// put it 500 below). Two triangles against the globe's 55k, and nothing to light, but it is a fixed
+// picture: it cannot turn, and it stays the same seen from either window.
 const picture = new THREE.Mesh(
-  new THREE.PlaneGeometry(1, 1),
-  new THREE.MeshBasicMaterial({ map: new THREE.TextureLoader().load('../../textures/earth_atmos_2048.jpg', t => {
-    t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.repeat.set(0.35, 0.5);
-  }) })
+  new THREE.PlaneGeometry(833, 827),
+  new THREE.MeshBasicMaterial({ map: new THREE.TextureLoader().load('../../textures/earth.jpg', t => { t.colorSpace = THREE.SRGBColorSpace; }),
+                                transparent: true, depthWrite: false })
 );
-picture.scale.set(420, 210, 1);
-picture.position.set(0, -70, -230);
-picture.rotation.x = -0.28;
+// The old site laid it flat far below and looked down on it. This window looks out sideways, where a
+// flat sheet is edge-on and invisible, so it hangs below and outside, tilted to face the window.
+picture.position.set(0, -150, -600);                               // about 14 degrees below the window's line of sight
+picture.rotation.x = -(Math.PI / 2 - Math.atan2(150, 600));
 scene.add(picture);
 let earthMode = 'Globe';
 function setEarthMode(mode) {
@@ -265,7 +265,8 @@ renderer.setAnimationLoop(() => {
   clock.update?.();
   const raw = clock.getDelta(), dt = Math.min(raw, 0.1);
   if (earthMode === 'Globe') earth.update(dt);
-  else picture.material.map.offset.x = (picture.material.map.offset.x + dt * EARTH.spin * 0.004) % 1;
+  // drifting past, as if in orbit, wrapping around without jumping to one end on the first frame
+  else picture.position.x = ((picture.position.x + dt * EARTH.spin * 12 + 1200) % 2400) - 1200;
   if (chairPivot && CHAIR.swivel) chairPivot.rotation.y += THREE.MathUtils.degToRad(CHAIR.speed) * dt;
   controls.update();
   if ($('autoFocus').checked) post.focus = camera.position.distanceTo(controls.target);
