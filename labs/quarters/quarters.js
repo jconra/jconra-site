@@ -171,7 +171,7 @@ function loadRoom(name) {
   if (chairPivot && !CHAIR.swivel) chairPivot.rotation.y = THREE.MathUtils.degToRad(CHAIR.angle);
   placeSitter();
   $('boot')?.remove();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, PARTS, PATH, SCREENS, seek, playIntro, activateIntro, setLight, holos, getWave: () => waveAction });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, playIntro, activateIntro, setLight, holos, getWave: () => waveAction });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -235,7 +235,7 @@ function applyWindows() {
 const HEIGHT = 1.8;
 const SEAT = { up: 0.232 * HEIGHT, back: 0.045 * HEIGHT };
 const SITTER = { on: true, height: 0, forward: 0, turn: 0 };     // nudges in cm and degrees
-let sitter = null, sitterMixer = null, sitterLoading = false, sitAction = null, waveAction = null;
+let sitter = null, sitterMixer = null, sitterLoading = false, sitAction = null, waveAction = null, standAction = null, walkAction = null;
 function loadSitter() {
   if (sitter || sitterLoading) return;
   sitterLoading = true;
@@ -252,6 +252,9 @@ function loadSitter() {
     sitter = new THREE.Group();
     sitter.scale.setScalar(HEIGHT);
     sitter.add(model);
+    model.updateMatrixWorld(true);
+    const hipBone = model.getObjectByName('Hip');
+    sitter.userData.hipRest = hipBone ? model.worldToLocal(hipBone.getWorldPosition(new THREE.Vector3())) : null;
     sitterMixer = new THREE.AnimationMixer(model);
     const clip = gltf.animations.find(c => /sit/i.test(c.name));
     if (clip) { sitAction = sitterMixer.clipAction(clip); sitAction.play(); }
@@ -269,6 +272,15 @@ function loadSitter() {
       waveAction.enabled = true; waveAction.setEffectiveWeight(0); waveAction.play();
       SEQ.waveLen = wave.duration;
     });
+    // standing up (Mixamo, retargeted) and Tripo's own walk; both start silent and the timeline drives them
+    loader.load('../../models/stand_up_clip.glb', (g) => {
+      const clip = g.animations.find(c => /stand/i.test(c.name)) || g.animations[0];
+      if (!clip) return;
+      standAction = sitterMixer.clipAction(clip); standAction.setLoop(THREE.LoopOnce, 1); standAction.clampWhenFinished = true;
+      standAction.setEffectiveWeight(0); standAction.play(); SEQ.standLen = clip.duration;
+    });
+    const walk = gltf.animations.find(c => /walk/i.test(c.name));
+    if (walk) { walkAction = sitterMixer.clipAction(walk); walkAction.setEffectiveWeight(0); walkAction.play(); }
   }, undefined, (e) => console.error(e));
 }
 // The chair, measured in the holder's own frame so it holds while the chair turns: the seat pan is
@@ -314,68 +326,127 @@ function placeSitter() {
   const f = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
   sitter.position.set(seat.x, seatY - SEAT.up + SITTER.height / 100, seat.z).addScaledVector(f, SEAT.back + SITTER.forward / 100);
   sitter.rotation.y = yaw;
+  sitter.userData.seatPos = sitter.position.clone(); sitter.userData.seatYaw = yaw;
   sitter.visible = SITTER.on;
 }
 
-// ── the intro, as a timeline ──────────────────────────────────────────────────────
-// The site's first shot: he is at the desk with his back to the door, someone comes in, and he
-// turns the chair round to see who, waves, and a greeting forms beside him. Everything is a
-// function of one time T, so it plays forward on its own or scrubs either way with the wheel.
-const SEQ = { hold: 0.9, turn: 1.1, draw: 1.8, waveLead: 0.3, waveLen: 1.5, total: 9,
-              T: 0, playing: false, active: false, scrub: true, from: 0, to: 0 };
-// The camera never stops: it comes in at the door, drifts past his side and ends at the window,
-// looking at him the whole way. Three points, one smooth curve through them.
-const PATH = new THREE.CatmullRomCurve3([
-  new THREE.Vector3(0.85, 1.3, 1.55),     // just inside the door, a little below his eye line
-  new THREE.Vector3(1.3, 1.28, 0.35),     // past his side
-  new THREE.Vector3(1.15, 1.3, -1.0),     // at the window, looking back at him
-]);
-// The greeting comes in parts as the scene goes on: each is its own hologram over his head, which
-// forms, holds, and dissolves again as the next one forms.
+// ── the intro, as a keyframed timeline ────────────────────────────────────────────
+// Everything is a function of one time T, so it plays forward on its own or scrubs either way.
+// KEYS hold the camera, where it looks, the chair's angle and how hard he faces the camera, at
+// moments along the way; between keys the camera runs on a smooth curve and the chair turns
+// briskly at both ends. ACTS are the things he does, each at its own moment. All of it is
+// editable from the panel while it plays, and Copy settings writes it out to be baked.
+// The camera keeps facing the window side: the cabin has no back wall, and looking the other
+// way is looking at stars.
+const WINDOW = [0.05, 1.8, -1.62];
+const KEYS = [
+  { t: 0.0,  cam: [0.85, 1.30, 1.55], look: 'him',    chair: 0,        face: 0 },   // at the door
+  { t: 1.2,  cam: [0.90, 1.30, 1.40], look: 'him',    chair: 0,        face: 0 },   // the beat before he turns
+  { t: 2.5,  cam: [1.05, 1.30, 1.05], look: 'him',    chair: 'turned', face: 1 },   // turned, on the camera
+  { t: 7.0,  cam: [1.35, 1.30, 0.20], look: 'him',    chair: 'turned', face: 1 },
+  { t: 9.5,  cam: [1.10, 1.40, -0.40], look: 'him',   chair: 'turned', face: 0.6 }, // he is up
+  { t: 12.0, cam: [0.40, 1.55, -1.00], look: 'window', chair: 'turned', face: 0 },  // over the computer
+  { t: 14.0, cam: [0.05, 1.80, -1.75], look: 'window', chair: 'turned', face: 0 },  // through the glass
+];
+const ACTS = { wave: 1.9, stand: 8.2, walk: 10.0, walkSpeed: 1.1, walkDir: 35 };   // seconds; m/s; degrees from +z toward +x
+// The greeting comes in parts: each is its own hologram over his head, which forms, holds, and
+// dissolves again as the next one forms.
 const PARTS = [
-  { start: 2.0, end: 5.8, size: 0.07, lines: ['Welcome To', 'Jconra.com'] },
-  { start: 5.4, end: 9.0, size: 0.034, lines: ['Hello! I am Jacob Conrads,', 'a Systems Engineer.', 'This is a project to play around', 'with and highlight my skills.', 'Thank you for visiting!'] },
+  { start: 2.4, end: 6.2, size: 0.07, lines: ['Welcome To', 'Jconra.com'] },
+  { start: 5.8, end: 9.6, size: 0.034, lines: ['Hello! I am Jacob Conrads,', 'a Systems Engineer.', 'This is a project to play around', 'with and highlight my skills.', 'Thank you for visiting!'] },
 ];
 const holos = PARTS.map(part => { const h = new Hologram({ lines: part.lines, size: part.size, gap: 1.28 }); scene.add(h); return h; });
-const total = () => SEQ.total;
+const SEQ = { hold: 0.9, turn: 1.3, draw: 1.8, waveLen: 1.5, standLen: 2.0, T: 0, playing: false, active: false, scrub: true, turned: 0 };
+const total = () => KEYS[KEYS.length - 1].t;
+
 function activateIntro() {
   if (!chairPivot) return;
   if (!chairInfo) chairInfo = measureChair();
   $('swivel').checked = false; CHAIR.swivel = false;
   SEQ.active = true;
   controls.enabled = false;                       // the timeline owns the camera until a camera button is pressed
-  camera.position.copy(PATH.getPoint(0)); controls.target.copy(lookAtHim()); camera.lookAt(controls.target);
   // the holder's turn that brings the chair's own facing round to the door camera, the short way
-  const cw = chairPivot.getWorldPosition(new THREE.Vector3()), door = PATH.getPoint(0);
-  let want = Math.atan2(door.x - cw.x, door.z - cw.z) - (chairInfo ? chairInfo.facing : 0);
-  SEQ.from = 0; SEQ.to = Math.atan2(Math.sin(want), Math.cos(want));
+  const cw = chairPivot.getWorldPosition(new THREE.Vector3()), door = KEYS[0].cam;
+  let want = Math.atan2(door[0] - cw.x, door[2] - cw.z) - (chairInfo ? chairInfo.facing : 0);
+  SEQ.turned = THREE.MathUtils.radToDeg(Math.atan2(Math.sin(want), Math.cos(want)));
   $('seqTime').max = total().toFixed(2);
+  buildKeyList();
 }
 function playIntro() { activateIntro(); SEQ.T = 0; SEQ.playing = true; seek(0); }
-// where the camera looks: his head, a touch below, so he sits in the upper part of the frame
+// where the camera looks when a key says 'him': his head, a touch above, so he sits low in the frame
 function lookAtHim() {
   const head = sitter && sitter.getObjectByName('Head');
   const p = head ? head.getWorldPosition(new THREE.Vector3()) : chairPivot.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 1.3, 0));
   p.y += 0.14; return p;
 }
+const lookPoint = (l) => l === 'him' ? lookAtHim() : new THREE.Vector3(...(l === 'window' ? WINDOW : l));
+const chairDeg = (c) => c === 'turned' ? SEQ.turned : c;
 const ease = (u) => { u = Math.min(1, Math.max(0, u)); return u * u * u * (u * (u * 6 - 15) + 10); };   // brisk both ends
+
+// The camera between keys: a cubic through the key positions, with tangents from the neighbours
+// (a Catmull-Rom in time), so it never stops and never kinks. Everything else eases key to key.
+function keysAround(T) {
+  let k = 0; while (k < KEYS.length - 2 && KEYS[k + 1].t <= T) k++;
+  const a = KEYS[k], b = KEYS[k + 1];
+  return { a, b, u: Math.min(1, Math.max(0, (T - a.t) / Math.max(1e-6, b.t - a.t))), k };
+}
+function cameraAt(T) {
+  const { a, b, u, k } = keysAround(T);
+  const P = (i) => new THREE.Vector3(...KEYS[Math.min(KEYS.length - 1, Math.max(0, i))].cam);
+  const p0 = P(k - 1), p1 = P(k), p2 = P(k + 1), p3 = P(k + 2);
+  const d = Math.max(1e-6, b.t - a.t);
+  const m1 = p2.clone().sub(p0).multiplyScalar(0.5 * d / Math.max(1e-6, KEYS[Math.min(KEYS.length - 1, k + 1)].t - KEYS[Math.max(0, k - 1)].t) * 2);
+  const m2 = p3.clone().sub(p1).multiplyScalar(0.5 * d / Math.max(1e-6, KEYS[Math.min(KEYS.length - 1, k + 2)].t - KEYS[k].t) * 2);
+  const u2 = u * u, u3 = u2 * u;
+  return p1.clone().multiplyScalar(2 * u3 - 3 * u2 + 1).add(m1.multiplyScalar(u3 - 2 * u2 + u)).add(p2.clone().multiplyScalar(-2 * u3 + 3 * u2)).add(m2.multiplyScalar(u3 - u2));
+}
 function seek(T) {
   SEQ.T = T = Math.min(total(), Math.max(0, T));
-  chairPivot.rotation.y = SEQ.from + (SEQ.to - SEQ.from) * ease((T - SEQ.hold) / SEQ.turn);
+  const { a, b, u } = keysAround(T);
+  // the chair turns key to key, briskly
+  chairPivot.rotation.y = THREE.MathUtils.degToRad(chairDeg(a.chair) + (chairDeg(b.chair) - chairDeg(a.chair)) * ease(u));
+  // him: sitting until he stands, then up on his feet, then walking off out of the frame
+  const standing = T >= ACTS.stand, walking = T >= ACTS.walk;
   if (sitterMixer && sitAction) {
-    sitAction.time = T % sitAction.getClip().duration;
+    if (standing) {
+      // he is on his own feet now, where the chair left him
+      if (sitter.parent !== room) room.add(sitter);
+      const at = ACTS.stand, { a: ka, b: kb, u: ku } = keysAround(at);
+      const chairThen = THREE.MathUtils.degToRad(chairDeg(ka.chair) + (chairDeg(kb.chair) - chairDeg(ka.chair)) * ease(ku));
+      const saved = chairPivot.rotation.y; chairPivot.rotation.y = chairThen; chairPivot.updateMatrixWorld(true);
+      const feet = chairPivot.localToWorld(sitter.userData.seatPos.clone()), yaw = sitter.userData.seatYaw + chairThen;
+      chairPivot.rotation.y = saved;
+      let dirYaw = THREE.MathUtils.degToRad(ACTS.walkDir);
+      const w = walking ? Math.min(1, (T - ACTS.walk) / 0.5) : 0;                     // turns to go over the first half second
+      const y = yaw + (Math.atan2(Math.sin(dirYaw - yaw), Math.cos(dirYaw - yaw))) * w;
+      sitter.position.copy(feet);
+      if (walking) sitter.position.add(new THREE.Vector3(Math.sin(dirYaw), 0, Math.cos(dirYaw)).multiplyScalar(ACTS.walkSpeed * Math.max(0, T - ACTS.walk - 0.25)));
+      sitter.rotation.y = y;
+    } else if (sitter.parent !== chairPivot) { chairPivot.add(sitter); placeSitter(); }
+    sitAction.setEffectiveWeight(standing ? 0 : 1); sitAction.time = T % sitAction.getClip().duration;
+    if (standAction) { standAction.setEffectiveWeight(standing && !walking ? 1 : 0); standAction.time = Math.min(SEQ.standLen, Math.max(0, T - ACTS.stand)); }
+    if (walkAction) { walkAction.setEffectiveWeight(walking ? 1 : 0); walkAction.time = Math.max(0, T - ACTS.walk) % walkAction.getClip().duration; }
     if (waveAction) {
-      const w = T - (SEQ.hold + SEQ.turn - SEQ.waveLead);
-      waveAction.setEffectiveWeight(w >= 0 ? 1 : 0);
+      const w = T - ACTS.wave;
+      waveAction.setEffectiveWeight(w >= 0 && !standing ? 1 : 0);
       waveAction.time = Math.min(SEQ.waveLen, Math.max(0, w));
     }
     sitterMixer.update(0);
+    const model = sitter.children[0], rest = sitter.userData.hipRest, hipBone = model.getObjectByName('Hip');
+    if (walking && rest && hipBone) {
+      model.updateMatrixWorld(true);
+      const now = model.worldToLocal(hipBone.getWorldPosition(new THREE.Vector3()));
+      model.position.set(rest.x - now.x, 0, rest.z - now.z);    // the clip's own travel cancelled; he moves by the timeline
+    } else model.position.set(0, 0, 0);
   }
-  // the camera: always on the move, easing only at the very ends of the path
-  const u = T / total(), k = u < 0.08 ? u * u / 0.16 : (u > 0.92 ? 1 - (1 - u) * (1 - u) / 0.16 : u - 0.04);
-  camera.position.copy(PATH.getPoint(Math.min(1, Math.max(0, k))));
-  controls.target.copy(lookAtHim()); camera.lookAt(controls.target);
+  // the camera
+  camera.position.copy(cameraAt(T));
+  controls.target.copy(lookPoint(a.look).lerp(lookPoint(b.look), u)); camera.lookAt(controls.target);
   post.focus = camera.position.distanceTo(controls.target);
+  // he keeps his eyes on the camera: the head turns toward it after the clips have posed it, by
+  // as much as the keys ask for, and never further than a neck goes
+  const face = a.face + (b.face - a.face) * u;
+  if (face > 0 && sitter) faceCamera(face);
   // the parts of the greeting: over his head, turned to the camera, each one forming then dissolving
   const over = lookAtHim(); over.y += 0.14;
   const toCam = new THREE.Vector3().subVectors(camera.position, over); toCam.y = 0; toCam.normalize();
@@ -387,6 +458,22 @@ function seek(T) {
   });
   const el = $('seqTime'); if (el && document.activeElement !== el) el.value = T.toFixed(2);
   $('seqTimeOut').textContent = T.toFixed(1) + ' s';
+  if (document.activeElement && document.activeElement.dataset && document.activeElement.dataset.key === undefined) showKey();
+}
+function faceCamera(amount) {
+  const head = sitter.getObjectByName('Head'); if (!head) return;
+  head.updateWorldMatrix(true, false);
+  const hp = head.getWorldPosition(new THREE.Vector3());
+  // his body's forward in the world, and the way to the camera; the head turns from one toward the other
+  const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(sitter.getWorldQuaternion(new THREE.Quaternion()));
+  const to = camera.position.clone().sub(hp).normalize();
+  const yaw = Math.atan2(fwd.x * to.z - fwd.z * to.x, fwd.x * to.x + fwd.z * to.z);      // signed, about +y
+  const pitch = Math.asin(Math.max(-1, Math.min(1, to.y))) - Math.asin(Math.max(-1, Math.min(1, fwd.y)));
+  const turn = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+    -THREE.MathUtils.clamp(pitch, -0.35, 0.35) * amount, -THREE.MathUtils.clamp(yaw, -1.0, 1.0) * amount, 0, 'YXZ'));
+  const parentQ = head.parent.getWorldQuaternion(new THREE.Quaternion());
+  const worldQ = head.getWorldQuaternion(new THREE.Quaternion());
+  head.quaternion.copy(parentQ.clone().invert().multiply(turn.multiply(worldQ)));
 }
 function stepSequence(dt) {
   if (SEQ.active) {
@@ -406,6 +493,47 @@ renderer.domElement.addEventListener('wheel', (e) => {
   SEQ.playing = false;
   seek(SEQ.T + e.deltaY * 0.0025);
 }, { passive: false });
+
+// ── editing the keys ────────────────────────────────────────────────────────────
+// Pick a key, and its sliders show; move one and the scene jumps to that key so the change is seen.
+let keyIndex = 2;
+const KEYFIELDS = { keyT: ['t'], camX: ['cam', 0], camY: ['cam', 1], camZ: ['cam', 2], keyChair: ['chair'], keyFace: ['face'] };
+function buildKeyList() {
+  const list = $('keys'); if (!list) return;
+  list.innerHTML = '';
+  KEYS.forEach((k, i) => {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = k.t.toFixed(1) + ' s';
+    b.classList.toggle('on', i === keyIndex); b.onclick = () => { keyIndex = i; buildKeyList(); showKey(); seek(KEYS[i].t); };
+    list.appendChild(b);
+  });
+}
+function showKey() {
+  const k = KEYS[keyIndex]; if (!k) return;
+  const set = (id, v) => { const el = $(id); if (!el) return; el.value = v; $(id + 'Out').textContent = SLIDERS[id][1](+v); };
+  set('keyT', k.t); set('camX', k.cam[0]); set('camY', k.cam[1]); set('camZ', k.cam[2]);
+  set('keyChair', chairDeg(k.chair).toFixed(0)); set('keyFace', k.face);
+  const look = $('keyLook'); if (look) look.value = typeof k.look === 'string' ? k.look : 'point';
+}
+function editKey(id, v) {
+  const k = KEYS[keyIndex], [field, idx] = KEYFIELDS[id];
+  if (field === 'cam') k.cam[idx] = v; else k[field] = v;
+  if (field === 't') { KEYS.sort((x, y) => x.t - y.t); keyIndex = KEYS.indexOf(k); buildKeyList(); $('seqTime').max = total().toFixed(2); }
+  if (!SEQ.active) activateIntro();
+  SEQ.playing = false; seek(k.t);
+}
+function addKeyHere() {
+  if (!SEQ.active) activateIntro();
+  const T = SEQ.T, { a, b, u } = keysAround(T);
+  const k = { t: +T.toFixed(2), cam: cameraAt(T).toArray().map(x => +x.toFixed(3)), look: a.look,
+              chair: +(chairDeg(a.chair) + (chairDeg(b.chair) - chairDeg(a.chair)) * ease(u)).toFixed(1), face: +(a.face + (b.face - a.face) * u).toFixed(2) };
+  KEYS.push(k); KEYS.sort((x, y) => x.t - y.t); keyIndex = KEYS.indexOf(k);
+  buildKeyList(); showKey();
+}
+function deleteKey() {
+  if (KEYS.length <= 2) return;
+  KEYS.splice(keyIndex, 1); keyIndex = Math.max(0, keyIndex - 1);
+  buildKeyList(); showKey(); $('seqTime').max = total().toFixed(2); seek(Math.min(SEQ.T, total()));
+}
 
 function buildPropList() {
   const list = $('props');
@@ -470,9 +598,16 @@ const SLIDERS = {
   sitHeight:  [v => { SITTER.height = v; placeSitter(); }, v => v + ' cm'],
   sitForward: [v => { SITTER.forward = v; placeSitter(); }, v => v + ' cm'],
   sitTurn:    [v => { SITTER.turn = v; placeSitter(); }, v => v + '°'],
-  introHold:  [v => SEQ.hold = v, v => v.toFixed(1) + ' s'],
-  introTurn:  [v => SEQ.turn = v, v => v.toFixed(1) + ' s'],
-  holoTime:   [v => SEQ.draw = v, v => v.toFixed(1) + ' s'],
+  keyT:       [v => editKey('keyT', v), v => v.toFixed(2) + ' s'],
+  camX:       [v => editKey('camX', v), v => v.toFixed(2) + ' m'],
+  camY:       [v => editKey('camY', v), v => v.toFixed(2) + ' m'],
+  camZ:       [v => editKey('camZ', v), v => v.toFixed(2) + ' m'],
+  keyChair:   [v => editKey('keyChair', v), v => v.toFixed(0) + '°'],
+  keyFace:    [v => editKey('keyFace', v), v => Math.round(v * 100) + '%'],
+  actWave:    [v => ACTS.wave = v, v => v.toFixed(1) + ' s'],
+  actStand:   [v => ACTS.stand = v, v => v.toFixed(1) + ' s'],
+  actWalk:    [v => ACTS.walk = v, v => v.toFixed(1) + ' s'],
+  walkDir:    [v => ACTS.walkDir = v, v => v.toFixed(0) + '°'],
   seqTime:    [v => { if (chairPivot) { if (!SEQ.active) activateIntro(); SEQ.playing = false; seek(v); } }, v => v.toFixed(1) + ' s'],
   earthSpin:  [v => { EARTH.spin = v; earth.spin = v; }, v => v.toFixed(2) + '°/s'],
   earthAlt:   [v => { EARTH.altitude = v * 1000; placeEarth(); }, v => v + ' km'],
@@ -486,8 +621,11 @@ const SLIDERS = {
 for (const [id, [apply, fmt]] of Object.entries(SLIDERS)) {
   const el = $(id);
   const run = () => { apply(+el.value); $(id + 'Out').textContent = fmt(+el.value); };
-  el.addEventListener('input', run); run();
+  el.addEventListener('input', run);
+  if (id in KEYFIELDS) $(id + 'Out').textContent = fmt(+el.value); else run();   // the key sliders read from the key, they do not write it at start
 }
+$('keyLook').addEventListener('change', e => { const v = e.target.value; KEYS[keyIndex].look = v === 'point' ? controls.target.toArray() : v; seek(KEYS[keyIndex].t); });
+$('addKey').onclick = addKeyHere; $('delKey').onclick = deleteKey;
 // Flat is the default. The face's colour map already carries light and shade, painted in by Tripo,
 // and a strong key lays a second set of shadows over it that disagree with the first. Soft light
 // from everywhere leaves the painted light to do the work; the cabin's own look is kept as Cabin.
@@ -521,7 +659,7 @@ const CHECKS = {
 for (const [id, fn] of Object.entries(CHECKS)) { $(id).addEventListener('change', fn); fn({ target: $(id) }); }
 $('min').onclick = () => { $('panel').classList.toggle('min'); $('min').textContent = $('panel').classList.contains('min') ? 'show' : 'hide'; };
 $('copy').onclick = () => {
-  const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, intro: { hold: SEQ.hold, turn: SEQ.turn, hologram: SEQ.draw, waveLead: SEQ.waveLead }, earth: { ...EARTH },
+  const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) }, earth: { ...EARTH },
     light: { cabin: cabin.intensity, screens: screens.intensity, sun: sun.intensity, ambient: ambient.intensity, exposure: renderer.toneMappingExposure },
     openWindows: $('openWindows').checked };
   $('out').style.display = 'block'; $('out').value = JSON.stringify(out, null, 2); $('out').select();
