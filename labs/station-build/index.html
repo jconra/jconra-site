@@ -54,18 +54,18 @@
     <div class="row"><label for="ringStyle">Ring built from</label><select id="ringStyle"><option value="whole" selected>one whole ring (no seams)</option><option value="segments">four quarter segments</option></select></div>
     <div class="row"><label for="ringRadius">Ring radius</label><output id="ringRadiusOut"></output><input id="ringRadius" type="range" min="100" max="2000" step="10" value="700"></div>
     <div class="row"><label for="rings">How many rings</label><output id="ringsOut"></output><input id="rings" type="range" min="1" max="3" step="1" value="1"></div>
-    <div class="row"><label for="ringGap">Gap between rings</label><output id="ringGapOut"></output><input id="ringGap" type="range" min="100" max="1500" step="10" value="420"></div>
-    <div class="row"><label for="ringY">Ring height on the tower</label><output id="ringYOut"></output><input id="ringY" type="range" min="-900" max="900" step="10" value="0"></div>
-    <div class="row"><label for="hubCut">Cut out the ring's middle</label><output id="hubCutOut"></output><input id="hubCut" type="range" min="0" max="0.6" step="0.01" value="0.22"></div>
-    <div class="row"><label for="segFitX">Quarter centre, across</label><output id="segFitXOut"></output><input id="segFitX" type="range" min="-8" max="8" step="0.1" value="0"></div>
-    <div class="row"><label for="segFitZ">Quarter centre, along</label><output id="segFitZOut"></output><input id="segFitZ" type="range" min="-8" max="8" step="0.1" value="0"></div>
-    <div class="row"><label for="segSpacing">Quarter spacing</label><output id="segSpacingOut"></output><input id="segSpacing" type="range" min="-3" max="3" step="0.05" value="0"></div>
+    <div class="row"><label for="ringGap">Gap between rings</label><output id="ringGapOut"></output><input id="ringGap" type="range" min="100" max="1500" step="10" value="100"></div>
+    <div class="row"><label for="ringY">Ring height on the tower</label><output id="ringYOut"></output><input id="ringY" type="range" min="-900" max="900" step="10" value="680"></div>
+    <div class="row"><label for="hubCut">Cut out the ring's middle</label><output id="hubCutOut"></output><input id="hubCut" type="range" min="0" max="0.6" step="0.01" value="0"></div>
+    <div class="row"><label for="segFitX">Quarter centre, across</label><output id="segFitXOut"></output><input id="segFitX" type="range" min="-8" max="8" step="0.1" value="8"></div>
+    <div class="row"><label for="segFitZ">Quarter centre, along</label><output id="segFitZOut"></output><input id="segFitZ" type="range" min="-8" max="8" step="0.1" value="7.8"></div>
+    <div class="row"><label for="segSpacing">Quarter spacing</label><output id="segSpacingOut"></output><input id="segSpacing" type="range" min="-3" max="3" step="0.05" value="-0.85"></div>
     <p class="note">The quarters only meet exactly if the copies turn about the arc's true centre. Nudge these until the seams line up, then Copy layout and I will bake the numbers into the model.</p>
     <label class="check" for="spin"><input id="spin" type="checkbox" checked> Rings spin (1 g at the rim)</label>
     <div class="row"><label for="speed">Time speed</label><output id="speedOut"></output><input id="speed" type="range" min="1" max="40" step="1" value="1"></div>
 
     <h2>Collar and tower</h2>
-    <label class="check" for="collar"><input id="collar" type="checkbox" checked> Collar cylinder through the rings</label>
+    <label class="check" for="collar"><input id="collar" type="checkbox"> Collar cylinder through the rings</label>
     <label class="check" for="collarAuto"><input id="collarAuto" type="checkbox" checked> Size the collar to the tower automatically</label>
     <div class="row"><label for="collarRadius">Collar radius</label><output id="collarRadiusOut"></output><input id="collarRadius" type="range" min="20" max="400" step="5" value="120"></div>
     <div class="row"><label for="collarLength">Collar length</label><output id="collarLengthOut"></output><input id="collarLength" type="range" min="200" max="3000" step="20" value="1100"></div>
@@ -75,26 +75,30 @@
     <h2>Arms on the rings</h2>
     <div class="row"><label for="ringArmKind">Which part</label><select id="ringArmKind"><option value="arm2" selected>arm2 (long truss)</option><option value="arm1">arm1 (truss + module)</option><option value="satellite">satellite</option></select></div>
     <div class="row"><label for="ringArmCount">How many</label><output id="ringArmCountOut"></output><input id="ringArmCount" type="range" min="0" max="24" step="1" value="8"></div>
-    <div class="row"><label for="ringArmScale">Arm length</label><output id="ringArmScaleOut"></output><input id="ringArmScale" type="range" min="40" max="800" step="10" value="260"></div>
-    <div class="row"><label for="ringArmInset">Set in from the rim</label><output id="ringArmInsetOut"></output><input id="ringArmInset" type="range" min="-200" max="400" step="5" value="40"></div>
-    <div class="row"><label for="ringArmY">Height above the ring</label><output id="ringArmYOut"></output><input id="ringArmY" type="range" min="-300" max="300" step="5" value="-40"></div>
+    <div class="row"><label for="ringArmScale">Arm length</label><output id="ringArmScaleOut"></output><input id="ringArmScale" type="range" min="40" max="800" step="10" value="500"></div>
+    <div class="row"><label for="ringArmInset">Set in from the rim</label><output id="ringArmInsetOut"></output><input id="ringArmInset" type="range" min="-200" max="400" step="5" value="-145"></div>
+    <div class="row"><label for="ringArmY">Height above the ring</label><output id="ringArmYOut"></output><input id="ringArmY" type="range" min="-300" max="300" step="5" value="0"></div>
     <div class="row"><label for="ringArmTilt">Tilt</label><output id="ringArmTiltOut"></output><input id="ringArmTilt" type="range" min="-90" max="90" step="1" value="0"></div>
 
     <h2>Arms on the tower</h2>
     <div class="row"><label for="armKind">Which part</label><select id="armKind"><option value="arm1" selected>arm1 (truss + module)</option><option value="arm2">arm2 (long truss)</option><option value="satellite">satellite</option></select></div>
     <div class="row"><label for="armCount">How many</label><output id="armCountOut"></output><input id="armCount" type="range" min="0" max="16" step="1" value="6"></div>
-    <div class="row"><label for="armRadius">Out from the axis</label><output id="armRadiusOut"></output><input id="armRadius" type="range" min="0" max="1200" step="10" value="330"></div>
-    <div class="row"><label for="armY">Height on the tower</label><output id="armYOut"></output><input id="armY" type="range" min="-1800" max="1800" step="10" value="-300"></div>
-    <div class="row"><label for="armScale">Arm length</label><output id="armScaleOut"></output><input id="armScale" type="range" min="60" max="1200" step="10" value="460"></div>
+    <div class="row"><label for="armRadius">Out from the axis</label><output id="armRadiusOut"></output><input id="armRadius" type="range" min="0" max="1200" step="10" value="290"></div>
+    <div class="row"><label for="armY">Height on the tower</label><output id="armYOut"></output><input id="armY" type="range" min="-1800" max="1800" step="10" value="180"></div>
+    <div class="row"><label for="armScale">Arm length</label><output id="armScaleOut"></output><input id="armScale" type="range" min="60" max="1200" step="10" value="650"></div>
     <div class="row"><label for="armTilt">Tilt</label><output id="armTiltOut"></output><input id="armTilt" type="range" min="-90" max="90" step="1" value="0"></div>
     <div class="row"><label for="hangarEvery">Hangar on the end of</label><output id="hangarEveryOut"></output><input id="hangarEvery" type="range" min="0" max="6" step="1" value="2"></div>
-    <div class="row"><label for="hangarScale">Hangar size</label><output id="hangarScaleOut"></output><input id="hangarScale" type="range" min="40" max="600" step="10" value="240"></div>
+    <div class="row"><label for="hangarScale">Hangar size</label><output id="hangarScaleOut"></output><input id="hangarScale" type="range" min="40" max="600" step="10" value="250"></div>
+    <p class="note">Hangars hang off the arm tips: the middle of the tip meets the middle of the hangar's back, measured off the parts. These nudge from there.</p>
+    <div class="row"><label for="hangarY">Hangar up / down</label><output id="hangarYOut"></output><input id="hangarY" type="range" min="-200" max="200" step="1" value="0"></div>
+    <div class="row"><label for="hangarSide">Hangar sideways</label><output id="hangarSideOut"></output><input id="hangarSide" type="range" min="-200" max="200" step="1" value="0"></div>
+    <div class="row"><label for="hangarReach">Hangar in / out</label><output id="hangarReachOut"></output><input id="hangarReach" type="range" min="-200" max="200" step="1" value="0"></div>
 
     <h2>Traffic</h2>
-    <div class="row"><label for="fighterCount">Fighters</label><output id="fighterCountOut"></output><input id="fighterCount" type="range" min="0" max="16" step="1" value="4"></div>
-    <div class="row"><label for="fighterRadius">Fighters out from the axis</label><output id="fighterRadiusOut"></output><input id="fighterRadius" type="range" min="200" max="3000" step="20" value="900"></div>
-    <div class="row"><label for="fighterY">Fighters height</label><output id="fighterYOut"></output><input id="fighterY" type="range" min="-1200" max="1200" step="10" value="-260"></div>
-    <div class="row"><label for="fighterScale">Fighter length</label><output id="fighterScaleOut"></output><input id="fighterScale" type="range" min="10" max="200" step="2" value="40"></div>
+    <div class="row"><label for="fighterCount">Fighters</label><output id="fighterCountOut"></output><input id="fighterCount" type="range" min="0" max="16" step="1" value="0"></div>
+    <div class="row"><label for="fighterRadius">Fighters out from the axis</label><output id="fighterRadiusOut"></output><input id="fighterRadius" type="range" min="200" max="3000" step="20" value="200"></div>
+    <div class="row"><label for="fighterY">Fighters height</label><output id="fighterYOut"></output><input id="fighterY" type="range" min="-1200" max="1200" step="10" value="-1200"></div>
+    <div class="row"><label for="fighterScale">Fighter length</label><output id="fighterScaleOut"></output><input id="fighterScale" type="range" min="10" max="200" step="2" value="10"></div>
     <div class="row"><label for="freighterCount">Freighters</label><output id="freighterCountOut"></output><input id="freighterCount" type="range" min="0" max="8" step="1" value="1"></div>
     <div class="row"><label for="freighterRadius">Freighters out from the axis</label><output id="freighterRadiusOut"></output><input id="freighterRadius" type="range" min="400" max="6000" step="50" value="2200"></div>
     <div class="row"><label for="freighterY">Freighters height</label><output id="freighterYOut"></output><input id="freighterY" type="range" min="-2000" max="2000" step="20" value="240"></div>
@@ -102,9 +106,9 @@
 
     <h2>Solar panels</h2>
     <div class="row"><label for="panelCount">How many</label><output id="panelCountOut"></output><input id="panelCount" type="range" min="0" max="12" step="1" value="4"></div>
-    <div class="row"><label for="panelY">Height on the tower</label><output id="panelYOut"></output><input id="panelY" type="range" min="-1800" max="1800" step="10" value="300"></div>
+    <div class="row"><label for="panelY">Height on the tower</label><output id="panelYOut"></output><input id="panelY" type="range" min="-1800" max="1800" step="10" value="-550"></div>
     <div class="row"><label for="panelScale">Wing span</label><output id="panelScaleOut"></output><input id="panelScale" type="range" min="60" max="1500" step="10" value="520"></div>
-    <div class="row"><label for="panelRadius">Push out from the tower</label><output id="panelRadiusOut"></output><input id="panelRadius" type="range" min="0" max="1200" step="10" value="0"></div>
+    <div class="row"><label for="panelRadius">Push out from the tower</label><output id="panelRadiusOut"></output><input id="panelRadius" type="range" min="0" max="1200" step="10" value="250"></div>
     <div class="row"><label for="panelTilt">Tilt</label><output id="panelTiltOut"></output><input id="panelTilt" type="range" min="-90" max="90" step="1" value="0"></div>
 
     <h2>Free-flying craft</h2>

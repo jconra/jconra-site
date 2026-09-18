@@ -12,34 +12,36 @@ export const PART_FILES = ['ring', 'ringSegment', 'tower', 'arm1', 'arm2', 'hang
 export const G = 9.81;
 
 export const DEFAULT_LAYOUT = {
+  // Jacob's station, as he set it in the builder (2026-09-18)
   ringStyle: 'whole',     // 'whole' (one ring model) or 'segments' (four quarter pieces)
   ringSegments: 4,
   // Fine fit for those quarter pieces. A 90-degree arc cannot pin down its own centre: a circle
   // fitted to it is a couple of units out either way, and each copy then carries that error in a
   // different direction, so the pieces step against each other at the seams. These nudge the centre
   // the copies turn about, in the part's own units, and open or close the spacing between them.
-  segmentFit: { x: 0, z: 0, spacing: 0 },
+  segmentFit: { x: 8, z: 7.8, spacing: -0.85 },
   ringRadius: 700,        // metres, to the outside of the rim
   rings: 1,
-  ringGap: 420,           // metres between rings, when there is more than one
-  ringY: 0,               // metres, first ring above the tower's middle
-  hubCut: 0.22,           // cut the ring's middle inside this fraction of its radius
-  collar: true,
+  ringGap: 100,           // metres between rings, when there is more than one
+  ringY: 680,             // metres, first ring above the tower's middle
+  hubCut: 0,              // cut the ring's middle inside this fraction of its radius
+  collar: false,
+  collarAuto: true,
   collarRadius: 120,      // metres
   collarLength: 1100,     // metres, the cylinder the rings turn on
   towerHeight: 1000,      // metres (the tower part is about 0.4 as wide as it is tall)
   towerFlip: true,        // the tower part upside down: its wide end at the top, above the ring
   // arms mounted on the ring, which turn with it
-  ringArms: { count: 8, kind: 'arm2', scale: 260, inset: 40, y: -40, tilt: 0 },
+  ringArms: { count: 8, kind: 'arm2', scale: 500, inset: -145, y: 0, tilt: 0 },
   // arms out from the tower, which stay put; every nth one carries a hangar on its end
-  towerArms: { count: 6, kind: 'arm1', radius: 330, y: -300, scale: 460, tilt: 0 },
-  hangars: { every: 2, scale: 240 },
+  towerArms: { count: 6, kind: 'arm1', radius: 290, y: 180, scale: 650, tilt: 0 },
+  hangars: { every: 2, scale: 250, y: 0, side: 0, reach: 0 },   // nudges in metres on top of the measured fit
   // solar panels mounted on the tower, standing out from it like wings
-  panels: { count: 4, y: 300, scale: 520, tilt: 0, radius: 0 },
+  panels: { count: 4, y: -550, scale: 520, tilt: 0, radius: 250 },
   // a few free-flying craft, off by default
   satellites: { count: 0, radius: 1400, scale: 120, seed: 7 },
   // traffic: fighters parked around the hangars, freighters standing off the station
-  fighters: { count: 4, radius: 900, y: -260, scale: 40 },
+  fighters: { count: 0, radius: 200, y: -1200, scale: 10 },
   freighters: { count: 1, radius: 2200, y: 240, scale: 260 },
   spin: true,
   timeScale: 1,
@@ -132,6 +134,18 @@ function coreFraction(geometry) {
   return r.length ? r[Math.floor(r.length * 0.75)] / h : 0.1;
 }
 
+// The middle of one end of a part: the median of the vertices in the last 6% of its long axis.
+function endFace(part, axis, end) {
+  const pos = part.geometry.attributes.position, lo = part.box.min[axis], hi = part.box.max[axis];
+  const get = 'get' + axis.toUpperCase(), ys = [], zs = [], xs = [];
+  for (let i = 0; i < pos.count; i++) {
+    const v = pos[get](i);
+    if (end === 'max' ? v > hi - 0.06 * (hi - lo) : v < lo + 0.06 * (hi - lo)) { xs.push(pos.getX(i)); ys.push(pos.getY(i)); zs.push(pos.getZ(i)); }
+  }
+  const med = (a) => { a.sort((u, w) => u - w); return a.length ? a[a.length >> 1] : 0; };
+  return new THREE.Vector3(med(xs), med(ys), med(zs));
+}
+
 export async function loadKit(base = '../../models/kit/', onProgress) {
   const loader = new GLTFLoader();
   const loaded = {}, totals = {};
@@ -164,6 +178,11 @@ export async function loadKit(base = '../../models/kit/', onProgress) {
     for (let i = 0; i < p.count; i++) rim = Math.max(rim, Math.hypot(p.getX(i), p.getZ(i)));
     parts.ringSegment.rim = rim;
   }
+  // Where the parts meet: the middle of an arm's far end, and the middle of the hangar's back face,
+  // in the part's own units. The hangar hangs off the arm's tip, and its back is not centred on
+  // its base, so placing both by their origins left every hangar low and off to one side.
+  for (const k of ['arm1', 'arm2']) if (parts[k]) parts[k].tip = endFace(parts[k], k === 'arm2' ? 'z' : 'x', 'max');
+  if (parts.hangar) parts.hangar.back = endFace(parts.hangar, 'x', 'min');
   parts.ring.deckY = deckHeight(parts.ring.geometry, parts.ring.rim);
   parts.tower.coreFraction = coreFraction(parts.tower.geometry);
   return parts;
@@ -263,11 +282,16 @@ export class StationKit extends THREE.Group {
     // ARMS on the tower, which stay put, with a hangar on the end of every nth one
     const TA = L.towerArms;
     this.addRing(this.built, TA.kind, TA.count, TA.radius, TA.y, TA.scale, TA.tilt);
-    if (L.hangars.every > 0 && TA.count) {
-      const reach = TA.radius + TA.scale / 2 + L.hangars.scale * 0.45;
+    if (L.hangars.every > 0 && TA.count && P.hangar) {
+      const arm = P[TA.kind], armUnit = TA.scale / (TA.kind === 'arm2' ? arm.size.z : arm.size.x), hUnit = L.hangars.scale / P.hangar.size.x;
+      const tip = arm.tip || new THREE.Vector3(), back = P.hangar.back || new THREE.Vector3();
+      // the hangar's back face meets the arm's tip: same height, same line, a little overlap
+      const reach = TA.radius + TA.scale / 2 + L.hangars.scale * 0.45 + (L.hangars.reach || 0);
+      const y = TA.y + tip.y * armUnit - back.y * hUnit + (L.hangars.y || 0);
+      const side = -back.z * hUnit + (L.hangars.side || 0);
       const angles = [];
       for (let i = 0; i < TA.count; i += L.hangars.every) angles.push((i / TA.count) * Math.PI * 2);
-      this.addRing(this.built, 'hangar', angles.length, reach, TA.y, L.hangars.scale, 0, angles);
+      this.addRing(this.built, 'hangar', angles.length, reach, y, L.hangars.scale, 0, angles, side);
     }
     // SOLAR PANELS on the tower: at the tower's surface unless pushed further out
     const PA = L.panels;
@@ -284,7 +308,7 @@ export class StationKit extends THREE.Group {
 
   // `count` copies of a part standing out from the axis, each turned to face outward. `parent` is
   // the built group for anything fixed, or a ring's turntable for parts that turn with it.
-  addRing(parent, kind, count, radius, y, scale, tiltDeg, angles = null) {
+  addRing(parent, kind, count, radius, y, scale, tiltDeg, angles = null, side = 0) {
     if (!count || !this.parts[kind]) return;
     const part = this.parts[kind];
     const along = kind === 'arm2' ? 'z' : 'x';                    // which way the part is long
@@ -299,6 +323,7 @@ export class StationKit extends THREE.Group {
       e.set(THREE.MathUtils.degToRad(tiltDeg), along === 'z' ? a : a - Math.PI / 2, 0);
       q.setFromEuler(e);
       pos.set(Math.sin(a) * radius, y, Math.cos(a) * radius);
+      if (side) pos.add(new THREE.Vector3(-Math.cos(a), 0, Math.sin(a)).multiplyScalar(side));   // along the part's own z, sideways
       mesh.setMatrixAt(i, m.compose(pos, q, sc));
     }
     mesh.instanceMatrix.needsUpdate = true;
