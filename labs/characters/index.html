@@ -79,6 +79,15 @@
       <p class="note">Models 4 and 5 only, in centimetres on a 1.8 m person. Copy settings when it looks right and I will bake it into the model.</p>
     </div>
 
+    <h2>Touch up</h2>
+    <p class="note">Paint on model 5's face. Rough patches are ripples in the normal map: <b>smooth bumps</b> blurs them away under the brush, <b>flatten bumps</b> takes the bump out entirely, <b>smooth colour</b> blurs the colour map instead. Set the T-pose first so he holds still. Undo takes a stroke back. Download the map when it looks right and I will bake it into the model.</p>
+    <label class="check" for="touchOn"><input id="touchOn" type="checkbox"> Touch-up brush (orbit is off while painting)</label>
+    <div class="row"><label for="touchMode">Brush</label><select id="touchMode"><option value="smooth">smooth bumps</option><option value="flatten">flatten bumps</option><option value="colour">smooth colour</option></select></div>
+    <div class="row"><label for="touchSize">Brush size</label><output id="touchSizeOut"></output><input id="touchSize" type="range" min="8" max="240" step="1" value="48"></div>
+    <div class="row"><label for="touchStrength">Strength</label><output id="touchStrengthOut"></output><input id="touchStrength" type="range" min="0.05" max="1" step="0.05" value="0.6"></div>
+    <div class="btns"><button id="touchUndo" type="button">Undo</button><button id="touchNormal" type="button">Download normal map</button><button id="touchColour" type="button">Download colour map</button></div>
+    <p class="note" id="touchNote"></p>
+
     <h2>Lighting</h2>
     <div class="btns" id="lightPresets"></div>
     <div class="row"><label for="ambient">Ambient</label><output id="ambientOut"></output><input id="ambient" type="range" min="0" max="3" step="0.01" value="0.52"></div>
@@ -1011,6 +1020,102 @@ renderer.setAnimationLoop(() => {
   placeTags();
   renderer.render(scene, camera);
 });
+
+// ── touch up ──────────────────────────────────────────────────────────────────
+// Paint on model 5's face to smooth its maps where they are rough. A stroke blurs the normal map
+// (or flattens it toward no bump, or blurs the colour map) under a soft round brush, on a copy of
+// the map that the material then uses, so the result shows at once. Undo steps back a stroke;
+// Download saves the map to be baked into the model.
+const TOUCH = { on: false, mode: 'smooth', size: 48, strength: 0.6, maps: {}, undo: [], painting: false, last: null };
+const touchNote = (t) => { const el = document.getElementById('touchNote'); if (el) el.textContent = t; };
+function touchMesh() { const r = rigs[4]; let m = null; if (r) r.model.traverse(o => { if (o.isMesh && /^Head/.test(o.name)) m = o; }); return m; }
+function workingMap(slot) {
+  if (TOUCH.maps[slot]) return TOUCH.maps[slot];
+  const mesh = touchMesh(), tex = mesh && mesh.material[slot];
+  if (!tex || !tex.image) return null;
+  const c = document.createElement('canvas'); c.width = tex.image.width; c.height = tex.image.height;
+  const ctx = c.getContext('2d', { willReadFrequently: true }); ctx.drawImage(tex.image, 0, 0);
+  const ct = new THREE.CanvasTexture(c);
+  ct.flipY = tex.flipY; ct.colorSpace = tex.colorSpace; ct.wrapS = tex.wrapS; ct.wrapT = tex.wrapT; ct.anisotropy = tex.anisotropy;
+  mesh.material[slot] = ct; mesh.material.needsUpdate = true;
+  return (TOUCH.maps[slot] = { canvas: c, ctx, tex: ct });
+}
+// one dab: the pixels under the brush move toward their blurred (or flat) selves, most at the middle
+function dab(slot, u, v) {
+  const m = workingMap(slot); if (!m) return;
+  const W = m.canvas.width, H = m.canvas.height, r = TOUCH.size;
+  const cx = Math.round(u * W), cy = Math.round((m.tex.flipY ? 1 - v : v) * H);
+  const x0 = Math.max(0, cx - r), y0 = Math.max(0, cy - r), w = Math.min(W, cx + r) - x0, h = Math.min(H, cy + r) - y0;
+  if (w <= 0 || h <= 0) return;
+  const src = m.ctx.getImageData(x0, y0, w, h), d = src.data, out = new Uint8ClampedArray(d);
+  const flat = TOUCH.mode === 'flatten', k = Math.max(1, Math.round(r / 5));
+  // a box blur in two passes over the patch, only when it is wanted
+  let blur = null;
+  if (!flat) {
+    const tmp = new Float32Array(d.length); blur = new Float32Array(d.length);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) for (let ch = 0; ch < 3; ch++) {
+      let sum = 0, n = 0; for (let i = -k; i <= k; i++) { const xx = x + i; if (xx >= 0 && xx < w) { sum += d[(y * w + xx) * 4 + ch]; n++; } }
+      tmp[(y * w + x) * 4 + ch] = sum / n;
+    }
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) for (let ch = 0; ch < 3; ch++) {
+      let sum = 0, n = 0; for (let i = -k; i <= k; i++) { const yy = y + i; if (yy >= 0 && yy < h) { sum += tmp[(yy * w + x) * 4 + ch]; n++; } }
+      blur[(y * w + x) * 4 + ch] = sum / n;
+    }
+  }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const dx = x0 + x - cx, dy = y0 + y - cy, q = (dx * dx + dy * dy) / (r * r);
+    if (q >= 1) continue;
+    const f = (1 - q) * (1 - q) * TOUCH.strength, i = (y * w + x) * 4;
+    for (let ch = 0; ch < 3; ch++) {
+      const target = flat ? (ch === 2 ? 255 : 128) : blur[i + ch];
+      out[i + ch] = d[i + ch] + (target - d[i + ch]) * f;
+    }
+  }
+  m.ctx.putImageData(new ImageData(out, w, h), x0, y0);
+  m.tex.needsUpdate = true;
+}
+function touchAt(ev) {
+  const mesh = touchMesh(); if (!mesh) return false;
+  const rc = new THREE.Raycaster();
+  rc.setFromCamera(new THREE.Vector2((ev.clientX / innerWidth) * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1), camera);
+  const hit = rc.intersectObject(mesh, false)[0];
+  if (!hit || !hit.uv) return false;
+  const slot = TOUCH.mode === 'colour' ? 'map' : 'normalMap';
+  // dabs along the way from the last point, so a fast stroke is a line, not dots
+  const uv = hit.uv, last = TOUCH.last, m = workingMap(slot);
+  if (last && m) {
+    const steps = Math.max(1, Math.round(Math.hypot((uv.x - last.x) * m.canvas.width, (uv.y - last.y) * m.canvas.height) / (TOUCH.size * 0.35)));
+    for (let i = 1; i <= steps; i++) dab(slot, last.x + (uv.x - last.x) * i / steps, last.y + (uv.y - last.y) * i / steps);
+  } else dab(slot, uv.x, uv.y);
+  TOUCH.last = { x: uv.x, y: uv.y };
+  return true;
+}
+{
+  const $t = (id) => document.getElementById(id);
+  if ($t('touchOn')) {
+    $t('touchOn').addEventListener('change', e => { TOUCH.on = e.target.checked; touchNote(TOUCH.on ? 'Drag on his face. Orbit comes back when you let go.' : ''); });
+    $t('touchMode').addEventListener('change', e => TOUCH.mode = e.target.value);
+    const wire = (id, key, fmt) => { const el = $t(id); const run = () => { TOUCH[key] = +el.value; $t(id + 'Out').textContent = fmt(+el.value); }; el.addEventListener('input', run); run(); };
+    wire('touchSize', 'size', v => v + ' px'); wire('touchStrength', 'strength', v => Math.round(v * 100) + '%');
+    renderer.domElement.addEventListener('pointerdown', ev => {
+      if (!TOUCH.on) return;
+      const slot = TOUCH.mode === 'colour' ? 'map' : 'normalMap', m = workingMap(slot); if (!m) { touchNote('No ' + (slot === 'map' ? 'colour' : 'normal') + ' map on this head.'); return; }
+      TOUCH.last = null;
+      if (touchAt(ev)) {
+        TOUCH.undo.push({ slot, data: m.ctx.getImageData(0, 0, m.canvas.width, m.canvas.height) }); if (TOUCH.undo.length > 6) TOUCH.undo.shift();
+        TOUCH.painting = true; controls.enabled = false; ev.preventDefault();
+      }
+    });
+    renderer.domElement.addEventListener('pointermove', ev => { if (TOUCH.painting) touchAt(ev); });
+    const done = () => { if (TOUCH.painting) { TOUCH.painting = false; controls.enabled = true; TOUCH.last = null; } };
+    renderer.domElement.addEventListener('pointerup', done); renderer.domElement.addEventListener('pointerleave', done);
+    $t('touchUndo').onclick = () => { const u = TOUCH.undo.pop(); if (!u) return; const m = TOUCH.maps[u.slot]; m.ctx.putImageData(u.data, 0, 0); m.tex.needsUpdate = true; };
+    const save = (slot, name) => { const m = workingMap(slot); if (!m) return; m.canvas.toBlob(blob => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); }, 'image/png'); };
+    $t('touchNormal').onclick = () => save('normalMap', 'jacob5_normal.png');
+    $t('touchColour').onclick = () => save('map', 'jacob5_basecolor.png');
+    if (Q.has('probe')) Object.assign(window, { TOUCH, touchAt, touchMesh, workingMap, dab });
+  }
+}
 </script>
 </body>
 </html>
