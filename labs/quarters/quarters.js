@@ -9,6 +9,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Earth } from '../../src/objects/earth.js';
 import { Post } from '../../src/fx/post.js';
+import { Hologram } from '../../src/objects/hologram.js';
 
 const Q = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -81,7 +82,7 @@ const picture = new THREE.Mesh(
 picture.position.set(0, -150, -600);                               // about 14 degrees below the window's line of sight
 picture.rotation.x = -(Math.PI / 2 - Math.atan2(150, 600));
 scene.add(picture);
-let earthMode = 'Globe';
+let earthMode = 'Picture';
 function setEarthMode(mode) {
   earthMode = mode;
   earth.visible = mode === 'Globe';
@@ -168,7 +169,7 @@ function loadRoom(name) {
   if (chairPivot && !CHAIR.swivel) chairPivot.rotation.y = THREE.MathUtils.degToRad(CHAIR.angle);
   placeSitter();
   $('boot')?.remove();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, INTRO, playIntro, setLight });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, seek, playIntro, activateIntro, setLight, holo, placeHolo, getWave: () => waveAction });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -193,7 +194,7 @@ function applyWindows() {
 const HEIGHT = 1.8;
 const SEAT = { up: 0.232 * HEIGHT, back: 0.045 * HEIGHT };
 const SITTER = { on: true, height: 0, forward: 0, turn: 0 };     // nudges in cm and degrees
-let sitter = null, sitterMixer = null, sitterLoading = false;
+let sitter = null, sitterMixer = null, sitterLoading = false, sitAction = null, waveAction = null;
 function loadSitter() {
   if (sitter || sitterLoading) return;
   sitterLoading = true;
@@ -212,8 +213,21 @@ function loadSitter() {
     sitter.add(model);
     sitterMixer = new THREE.AnimationMixer(model);
     const clip = gltf.animations.find(c => /sit/i.test(c.name));
-    if (clip) sitterMixer.clipAction(clip).play();
+    if (clip) { sitAction = sitterMixer.clipAction(clip); sitAction.play(); }
     placeSitter();
+    // The wave came from Mixamo standing up, so only its upper body is kept, and it is made
+    // additive: the arm's movement is laid over the sitting pose instead of replacing it.
+    loader.load('../../models/wave_clip.glb', (g) => {
+      const src = g.animations[0];
+      if (!src) return;
+      const upper = /^(Waist|Spine01|Spine02|NeckTwist01|Head|[LR]_(Clavicle|Upperarm|Forearm|Hand))\.quaternion$/;   // turns only: nothing moves or grows
+      const wave = new THREE.AnimationClip('wave', src.duration, src.tracks.filter(t => upper.test(t.name)));
+      THREE.AnimationUtils.makeClipAdditive(wave);
+      waveAction = sitterMixer.clipAction(wave);
+      waveAction.setLoop(THREE.LoopOnce, 1); waveAction.clampWhenFinished = true;
+      waveAction.enabled = true; waveAction.setEffectiveWeight(0); waveAction.play();
+      SEQ.waveLen = wave.duration;
+    });
   }, undefined, (e) => console.error(e));
 }
 // The chair, measured in the holder's own frame so it holds while the chair turns: the seat pan is
@@ -262,34 +276,78 @@ function placeSitter() {
   sitter.visible = SITTER.on;
 }
 
-// ── the intro ───────────────────────────────────────────────────────────────────
-// The first shot of the site: he is at the desk with his back to the door, someone comes in, and he
-// turns the chair round to see who. The turn is brisk at both ends - it starts at once and stops
-// at once, with the travel in the middle - and then the greeting appears.
-const INTRO = { hold: 0.9, turnTime: 1.1, playing: false, t: 0, from: 0, to: 0,
-                camera: [[0.85, 1.55, 1.5], [-0.15, 1.05, -0.35]] };      // just inside the door
-function playIntro() {
+// ── the intro, as a timeline ──────────────────────────────────────────────────────
+// The site's first shot: he is at the desk with his back to the door, someone comes in, and he
+// turns the chair round to see who, waves, and a greeting forms beside him. Everything is a
+// function of one time T, so it plays forward on its own or scrubs either way with the wheel.
+const SEQ = { hold: 0.9, turn: 1.1, draw: 1.8, waveLead: 0.3, waveLen: 1.5,
+              T: 0, playing: false, active: false, scrub: true, from: 0, to: 0,
+              camera: [[0.85, 1.55, 1.5], [-0.15, 1.05, -0.35]] };      // just inside the door
+const total = () => Math.max(SEQ.hold + SEQ.turn + SEQ.draw, SEQ.hold + SEQ.turn - SEQ.waveLead + SEQ.waveLen);
+function activateIntro() {
   if (!chairPivot) return;
   if (!chairInfo) chairInfo = measureChair();
   $('swivel').checked = false; CHAIR.swivel = false;
-  chairPivot.rotation.y = 0;                                    // as built: facing the desk
-  const [p, t] = INTRO.camera;
+  SEQ.active = true;
+  const [p, t] = SEQ.camera;
   camera.position.set(...p); controls.target.set(...t); controls.update();
   post.focus = camera.position.distanceTo(controls.target);
   // the holder's turn that brings the chair's own facing round to the camera, the short way
   const cw = chairPivot.getWorldPosition(new THREE.Vector3());
   let want = Math.atan2(camera.position.x - cw.x, camera.position.z - cw.z) - (chairInfo ? chairInfo.facing : 0);
-  want = Math.atan2(Math.sin(want), Math.cos(want));
-  INTRO.from = 0; INTRO.to = want; INTRO.t = -INTRO.hold; INTRO.playing = true;
-  $('welcome').classList.remove('on');
+  SEQ.from = 0; SEQ.to = Math.atan2(Math.sin(want), Math.cos(want));
+  placeHolo();
+  $('seqTime').max = total().toFixed(2);
 }
-function stepIntro(dt) {
-  if (!INTRO.playing) return;
-  INTRO.t += dt;
-  const u = Math.min(1, Math.max(0, INTRO.t / INTRO.turnTime));
-  const e = u * u * u * (u * (u * 6 - 15) + 10);
-  chairPivot.rotation.y = INTRO.from + (INTRO.to - INTRO.from) * e;
-  if (u >= 1) { INTRO.playing = false; $('welcome').classList.add('on'); }
+function playIntro() { activateIntro(); SEQ.T = 0; SEQ.playing = true; seek(0); }
+const ease = (u) => { u = Math.min(1, Math.max(0, u)); return u * u * u * (u * (u * 6 - 15) + 10); };   // brisk both ends
+function seek(T) {
+  SEQ.T = T = Math.min(total(), Math.max(0, T));
+  chairPivot.rotation.y = SEQ.from + (SEQ.to - SEQ.from) * ease((T - SEQ.hold) / SEQ.turn);
+  holo.fill = Math.min(1, Math.max(0, (T - SEQ.hold - SEQ.turn) / SEQ.draw));
+  if (sitterMixer && sitAction) {
+    sitAction.time = T % sitAction.getClip().duration;
+    if (waveAction) {
+      const w = T - (SEQ.hold + SEQ.turn - SEQ.waveLead);
+      waveAction.setEffectiveWeight(w >= 0 ? 1 : 0);
+      waveAction.time = Math.min(SEQ.waveLen, Math.max(0, w));
+    }
+    sitterMixer.update(0);
+  }
+  const el = $('seqTime'); if (el && document.activeElement !== el) el.value = T.toFixed(2);
+  $('seqTimeOut').textContent = T.toFixed(1) + ' s';
+}
+function stepSequence(dt) {
+  if (SEQ.active) {
+    if (SEQ.playing) { seek(SEQ.T + dt); if (SEQ.T >= total()) SEQ.playing = false; }
+  } else {
+    if (chairPivot && CHAIR.swivel) chairPivot.rotation.y += THREE.MathUtils.degToRad(CHAIR.speed) * dt;
+    if (sitterMixer) sitterMixer.update(dt);
+  }
+  holo.update(dt);
+}
+// the wheel scrubs time instead of zooming, when that is switched on; a first scroll starts the intro
+renderer.domElement.addEventListener('wheel', (e) => {
+  if (!SEQ.scrub || !chairPivot) return;
+  e.preventDefault();
+  if (!SEQ.active) activateIntro();
+  SEQ.playing = false;
+  seek(SEQ.T + e.deltaY * 0.0025);
+}, { passive: false });
+
+// The greeting is a hologram over his head: lines of letters that draw in as a wireframe and then
+// fill in, stood a little toward the door and turned to face whoever came in. Over his head rather
+// than beside him because it has to fit a phone held upright, and beside him it either runs off
+// the edge or ends up behind his head.
+const holo = new Hologram({ lines: ['HEY, YOU FOUND', 'MY STATION'], size: 0.055 });
+scene.add(holo);
+function placeHolo() {
+  if (!chairPivot) return;
+  const cw = chairPivot.getWorldPosition(new THREE.Vector3());
+  const toCam = new THREE.Vector3(camera.position.x - cw.x, 0, camera.position.z - cw.z).normalize();
+  holo.position.copy(cw).addScaledVector(toCam, 0.25);
+  holo.position.y = 1.64;
+  holo.rotation.y = Math.atan2(toCam.x, toCam.z);
 }
 
 function buildPropList() {
@@ -332,8 +390,10 @@ const SLIDERS = {
   sitHeight:  [v => { SITTER.height = v; placeSitter(); }, v => v + ' cm'],
   sitForward: [v => { SITTER.forward = v; placeSitter(); }, v => v + ' cm'],
   sitTurn:    [v => { SITTER.turn = v; placeSitter(); }, v => v + '°'],
-  introHold:  [v => INTRO.hold = v, v => v.toFixed(1) + ' s'],
-  introTurn:  [v => INTRO.turnTime = v, v => v.toFixed(1) + ' s'],
+  introHold:  [v => SEQ.hold = v, v => v.toFixed(1) + ' s'],
+  introTurn:  [v => SEQ.turn = v, v => v.toFixed(1) + ' s'],
+  holoTime:   [v => SEQ.draw = v, v => v.toFixed(1) + ' s'],
+  seqTime:    [v => { if (chairPivot) { if (!SEQ.active) activateIntro(); SEQ.playing = false; seek(v); } }, v => v.toFixed(1) + ' s'],
   earthSpin:  [v => { EARTH.spin = v; earth.spin = v; }, v => v.toFixed(2) + '°/s'],
   earthAlt:   [v => { EARTH.altitude = v * 1000; placeEarth(); }, v => v + ' km'],
   earthTilt:  [v => { EARTH.tilt = v; placeEarth(); }, v => v + '°'],
@@ -371,6 +431,7 @@ $('playIntro').onclick = playIntro;
 const CHECKS = {
   openWindows: () => applyWindows(),
   swivel: e => { CHAIR.swivel = e.target.checked; },
+  scrubOn: e => { SEQ.scrub = e.target.checked; controls.enableZoom = !SEQ.scrub; },
   sitterOn: e => { SITTER.on = e.target.checked; if (SITTER.on) loadSitter(); if (sitter) sitter.visible = SITTER.on; },
   post: e => { post.enabled = e.target.checked; },
   bloomOn: e => { post.bloom.enabled = e.target.checked; },
@@ -380,7 +441,7 @@ const CHECKS = {
 for (const [id, fn] of Object.entries(CHECKS)) { $(id).addEventListener('change', fn); fn({ target: $(id) }); }
 $('min').onclick = () => { $('panel').classList.toggle('min'); $('min').textContent = $('panel').classList.contains('min') ? 'show' : 'hide'; };
 $('copy').onclick = () => {
-  const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, intro: { hold: INTRO.hold, turnTime: INTRO.turnTime }, earth: { ...EARTH },
+  const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, intro: { hold: SEQ.hold, turn: SEQ.turn, hologram: SEQ.draw, waveLead: SEQ.waveLead }, earth: { ...EARTH },
     light: { cabin: cabin.intensity, screens: screens.intensity, sun: sun.intensity, ambient: ambient.intensity, exposure: renderer.toneMappingExposure },
     openWindows: $('openWindows').checked };
   $('out').style.display = 'block'; $('out').value = JSON.stringify(out, null, 2); $('out').select();
@@ -405,9 +466,7 @@ renderer.setAnimationLoop(() => {
   if (earthMode === 'Globe') earth.update(dt);
   // drifting past, as if in orbit, wrapping around without jumping to one end on the first frame
   else picture.position.x = ((picture.position.x + dt * EARTH.spin * 12 + 1200) % 2400) - 1200;
-  if (chairPivot && CHAIR.swivel) chairPivot.rotation.y += THREE.MathUtils.degToRad(CHAIR.speed) * dt;
-  if (chairPivot) stepIntro(dt);
-  if (sitterMixer) sitterMixer.update(dt);
+  stepSequence(dt);
   controls.update();
   if ($('autoFocus').checked) post.focus = camera.position.distanceTo(controls.target);
   post.render(dt);
