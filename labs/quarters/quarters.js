@@ -115,7 +115,7 @@ function loadRoom(name) {
     room.remove(child);
     child.traverse(o => { if (o.isMesh) { o.geometry.dispose(); const m = Array.isArray(o.material) ? o.material : [o.material]; m.forEach(x => { x.map?.dispose(); x.dispose(); }); } });
   }
-  windows = null; chairPivot = null; props = [];
+  windows = null; chairPivot = null; props = []; chairInfo = null;
   loader.load(BUILDS[name].file, (gltf) => {
   const model = gltf.scene;
   model.updateMatrixWorld(true);
@@ -168,7 +168,7 @@ function loadRoom(name) {
   if (chairPivot && !CHAIR.swivel) chairPivot.rotation.y = THREE.MathUtils.degToRad(CHAIR.angle);
   placeSitter();
   $('boot')?.remove();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, INTRO, playIntro, setLight });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -216,14 +216,13 @@ function loadSitter() {
     placeSitter();
   }, undefined, (e) => console.error(e));
 }
-// Where the seat is, in the holder's own frame, so it holds while the chair turns. The seat pan is
+// The chair, measured in the holder's own frame so it holds while the chair turns: the seat pan is
 // the busiest horizontal slice of the chair's lower half, the backrest is what stands well above
 // it, and back-to-seat is the way the chair faces.
-function placeSitter() {
-  if (!sitter || !chairPivot) return;
-  if (sitter.parent !== chairPivot) chairPivot.add(sitter);
-  const chair = chairPivot.children.find(c => c.isMesh);         // the chair itself, not him
-  if (!chair) return;
+let chairInfo = null;
+function measureChair() {
+  const chair = chairPivot && chairPivot.children.find(c => c.isMesh);
+  if (!chair) return null;
   chairPivot.updateMatrixWorld(true);
   const toLocal = new THREE.Matrix4().copy(chairPivot.matrixWorld).invert().multiply(chair.matrixWorld);
   const pos = chair.geometry.attributes.position, pts = [];
@@ -247,12 +246,50 @@ function placeSitter() {
     else if (q.y > seatY + 0.35) { back.add(q); nb++; }
   }
   seat.divideScalar(ns || 1); back.divideScalar(nb || 1);
-  const yaw = Math.atan2(seat.x - back.x, seat.z - back.z) + THREE.MathUtils.degToRad(SITTER.turn);
+  return { seat, seatY, facing: Math.atan2(seat.x - back.x, seat.z - back.z) };
+}
+function placeSitter() {
+  if (!sitter || !chairPivot) return;
+  if (sitter.parent !== chairPivot) chairPivot.add(sitter);
+  if (!chairInfo) chairInfo = measureChair();
+  if (!chairInfo) return;
+  const { seat, seatY, facing } = chairInfo;
+  const yaw = facing + THREE.MathUtils.degToRad(SITTER.turn);
   // he stands on his origin facing +z, so the seat of the trousers is SEAT.up above that and SEAT.back behind
   const f = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
   sitter.position.set(seat.x, seatY - SEAT.up + SITTER.height / 100, seat.z).addScaledVector(f, SEAT.back + SITTER.forward / 100);
   sitter.rotation.y = yaw;
   sitter.visible = SITTER.on;
+}
+
+// ── the intro ───────────────────────────────────────────────────────────────────
+// The first shot of the site: he is at the desk with his back to the door, someone comes in, and he
+// turns the chair round to see who. The turn is brisk at both ends - it starts at once and stops
+// at once, with the travel in the middle - and then the greeting appears.
+const INTRO = { hold: 0.9, turnTime: 1.1, playing: false, t: 0, from: 0, to: 0,
+                camera: [[0.85, 1.55, 1.5], [-0.15, 1.05, -0.35]] };      // just inside the door
+function playIntro() {
+  if (!chairPivot) return;
+  if (!chairInfo) chairInfo = measureChair();
+  $('swivel').checked = false; CHAIR.swivel = false;
+  chairPivot.rotation.y = 0;                                    // as built: facing the desk
+  const [p, t] = INTRO.camera;
+  camera.position.set(...p); controls.target.set(...t); controls.update();
+  post.focus = camera.position.distanceTo(controls.target);
+  // the holder's turn that brings the chair's own facing round to the camera, the short way
+  const cw = chairPivot.getWorldPosition(new THREE.Vector3());
+  let want = Math.atan2(camera.position.x - cw.x, camera.position.z - cw.z) - (chairInfo ? chairInfo.facing : 0);
+  want = Math.atan2(Math.sin(want), Math.cos(want));
+  INTRO.from = 0; INTRO.to = want; INTRO.t = -INTRO.hold; INTRO.playing = true;
+  $('welcome').classList.remove('on');
+}
+function stepIntro(dt) {
+  if (!INTRO.playing) return;
+  INTRO.t += dt;
+  const u = Math.min(1, Math.max(0, INTRO.t / INTRO.turnTime));
+  const e = u * u * u * (u * (u * 6 - 15) + 10);
+  chairPivot.rotation.y = INTRO.from + (INTRO.to - INTRO.from) * e;
+  if (u >= 1) { INTRO.playing = false; $('welcome').classList.add('on'); }
 }
 
 function buildPropList() {
@@ -295,6 +332,8 @@ const SLIDERS = {
   sitHeight:  [v => { SITTER.height = v; placeSitter(); }, v => v + ' cm'],
   sitForward: [v => { SITTER.forward = v; placeSitter(); }, v => v + ' cm'],
   sitTurn:    [v => { SITTER.turn = v; placeSitter(); }, v => v + '°'],
+  introHold:  [v => INTRO.hold = v, v => v.toFixed(1) + ' s'],
+  introTurn:  [v => INTRO.turnTime = v, v => v.toFixed(1) + ' s'],
   earthSpin:  [v => { EARTH.spin = v; earth.spin = v; }, v => v.toFixed(2) + '°/s'],
   earthAlt:   [v => { EARTH.altitude = v * 1000; placeEarth(); }, v => v + ' km'],
   earthTilt:  [v => { EARTH.tilt = v; placeEarth(); }, v => v + '°'],
@@ -309,6 +348,26 @@ for (const [id, [apply, fmt]] of Object.entries(SLIDERS)) {
   const run = () => { apply(+el.value); $(id + 'Out').textContent = fmt(+el.value); };
   el.addEventListener('input', run); run();
 }
+// Flat is the default. The face's colour map already carries light and shade, painted in by Tripo,
+// and a strong key lays a second set of shadows over it that disagree with the first. Soft light
+// from everywhere leaves the painted light to do the work; the cabin's own look is kept as Cabin.
+const LIGHT_PRESETS = {
+  Flat:  { cabinLight: 2.0, screenLight: 1.0, sunLight: 0.5, ambient: 2.2, exposure: 1.0, sky: 0xffffff, ground: 0xb8b8b8 },
+  Cabin: { cabinLight: 6,   screenLight: 3,   sunLight: 2.6, ambient: 0.45, exposure: 1.1, sky: 0x9fb6cc, ground: 0x20262d },
+};
+function setLight(name) {
+  const P = LIGHT_PRESETS[name];
+  ambient.color.setHex(P.sky); ambient.groundColor.setHex(P.ground);
+  for (const id of ['cabinLight', 'screenLight', 'sunLight', 'ambient', 'exposure']) {
+    const el = $(id); el.value = P[id]; el.dispatchEvent(new Event('input'));
+  }
+  document.querySelectorAll('#lights button').forEach(b => b.classList.toggle('on', b.textContent === name));
+}
+for (const name of Object.keys(LIGHT_PRESETS)) {
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = name; b.onclick = () => setLight(name); $('lights').appendChild(b);
+}
+setLight('Flat');
+$('playIntro').onclick = playIntro;
 const CHECKS = {
   openWindows: () => applyWindows(),
   swivel: e => { CHAIR.swivel = e.target.checked; },
@@ -321,7 +380,7 @@ const CHECKS = {
 for (const [id, fn] of Object.entries(CHECKS)) { $(id).addEventListener('change', fn); fn({ target: $(id) }); }
 $('min').onclick = () => { $('panel').classList.toggle('min'); $('min').textContent = $('panel').classList.contains('min') ? 'show' : 'hide'; };
 $('copy').onclick = () => {
-  const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, earth: { ...EARTH },
+  const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, intro: { hold: INTRO.hold, turnTime: INTRO.turnTime }, earth: { ...EARTH },
     light: { cabin: cabin.intensity, screens: screens.intensity, sun: sun.intensity, ambient: ambient.intensity, exposure: renderer.toneMappingExposure },
     openWindows: $('openWindows').checked };
   $('out').style.display = 'block'; $('out').value = JSON.stringify(out, null, 2); $('out').select();
@@ -347,6 +406,7 @@ renderer.setAnimationLoop(() => {
   // drifting past, as if in orbit, wrapping around without jumping to one end on the first frame
   else picture.position.x = ((picture.position.x + dt * EARTH.spin * 12 + 1200) % 2400) - 1200;
   if (chairPivot && CHAIR.swivel) chairPivot.rotation.y += THREE.MathUtils.degToRad(CHAIR.speed) * dt;
+  if (chairPivot) stepIntro(dt);
   if (sitterMixer) sitterMixer.update(dt);
   controls.update();
   if ($('autoFocus').checked) post.focus = camera.position.distanceTo(controls.target);
