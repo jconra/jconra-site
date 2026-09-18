@@ -41,7 +41,7 @@ controls.maxDistance = 14;
 // ── light ───────────────────────────────────────────────────────────────────────
 // A cabin is lit by its own strip lights and screens, with hard sunlight through the window.
 // The window wall is -z, so the sun comes from out there and the desk screens glow against it.
-const cabin = new THREE.PointLight(0xdfe9f5, 6, 12, 1.6); cabin.position.set(0, 2.2, 0.1); scene.add(cabin);
+const cabin = new THREE.PointLight(0xdfe9f5, 6, 12, 1.6); cabin.position.set(0, 1.75, 0.1); scene.add(cabin);   // below the roof, not pressed against it
 const screens = new THREE.PointLight(0x7fb4ff, 3, 6, 2); screens.position.set(0, 1.35, -1.05); scene.add(screens);
 const sun = new THREE.DirectionalLight(0xfff2e0, 2.6); sun.position.set(2.5, 2.0, -5); scene.add(sun);
 const ambient = new THREE.HemisphereLight(0x9fb6cc, 0x20262d, 0.45); scene.add(ambient);
@@ -143,6 +143,7 @@ function loadRoom(name) {
       if (m.map) { m.map.colorSpace = THREE.SRGBColorSpace; m.map.anisotropy = renderer.capabilities.getMaxAnisotropy(); }
       m.envMapIntensity = 0.4;
     }
+    if (/^Room/.test(o.name)) room.add(roofFrom(o));
     if (/^Windows/.test(o.name)) windows = o;
     else if (/^Chair/.test(o.name)) {
       // Swivel about the post, not the middle of the bounding box: the chair stands at an angle to
@@ -180,6 +181,45 @@ for (const mode of ['Globe', 'Picture']) {
 setEarthMode(earthMode);
 for (const name of Object.keys(BUILDS)) {
   const b = document.createElement('button'); b.type = 'button'; b.textContent = name; b.onclick = () => loadRoom(name); $('builds').appendChild(b);
+}
+
+// A ROOF. Tripo made the cabin open-topped, so from inside you look up at stars. The outside of
+// the walls is a plain panelled hull that is never seen, so the bed wall's outer skin is copied,
+// laid flat across the top, and stretched to the room's plan: its panels become the ceiling.
+function roofFrom(walls) {
+  walls.updateMatrixWorld(true);
+  const g = walls.geometry, pos = g.attributes.position, uv = g.attributes.uv, idx = g.index, M = walls.matrixWorld;
+  const box = new THREE.Box3().setFromObject(walls), top = box.max.y, half = (box.max.x - box.min.x) / 2;
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3();
+  const P = [], U = [], I = [], map = new Map();
+  const take = (i) => {
+    if (map.has(i)) return map.get(i);
+    const v = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(M);
+    // wall height runs across the room, depth of relief goes up out of the ceiling, length stays
+    P.push(-half + (v.y / (top - box.min.y)) * half * 2, top + Math.max(0, box.min.x + 0.03 - v.x) * 0.5, v.z);   // relief goes up, thickness sits on the plane
+    U.push(uv.getX(i), uv.getY(i));
+    const k = P.length / 3 - 1; map.set(i, k); return k;
+  };
+  const tri = idx ? idx.count / 3 : pos.count / 3;
+  for (let t = 0; t < tri; t++) {
+    const i0 = idx ? idx.getX(t * 3) : t * 3, i1 = idx ? idx.getX(t * 3 + 1) : t * 3 + 1, i2 = idx ? idx.getX(t * 3 + 2) : t * 3 + 2;
+    a.fromBufferAttribute(pos, i0).applyMatrix4(M); b.fromBufferAttribute(pos, i1).applyMatrix4(M); c.fromBufferAttribute(pos, i2).applyMatrix4(M);
+    if ((a.x + b.x + c.x) / 3 > box.min.x + 0.14) continue;                    // the bed wall's outer skin
+    n.crossVectors(b.clone().sub(a), c.clone().sub(a));
+    if (n.x > 0) continue;                                                       // facing outward
+    I.push(take(i0), take(i1), take(i2));
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+  geo.setIndex(I); geo.computeVertexNormals();
+  // the panels must face down into the room: flip the winding if the copy came out facing up
+  const nn = geo.attributes.normal; let sy = 0; for (let i = 0; i < nn.count; i++) sy += nn.getY(i);
+  if (sy > 0) { for (let i = 0; i < I.length; i += 3) { const t = I[i + 1]; I[i + 1] = I[i + 2]; I[i + 2] = t; } geo.setIndex(I); geo.computeVertexNormals(); }
+  const roof = new THREE.Mesh(geo, walls.material);
+  roof.name = 'Roof'; roof.receiveShadow = true;
+  console.log('roof from', I.length / 3, 'triangles of the outer wall');
+  return roof;
 }
 
 function applyWindows() {
