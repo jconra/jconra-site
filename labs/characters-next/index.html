@@ -111,7 +111,7 @@
     <h2>Hair</h2>
     <div id="styleBox" hidden>
       <div class="btns" id="styles"></div>
-      <p class="note">Model 3 only: Tripo's hair, or new hair built in Blender from photos &mdash; clipped sides and a longer top swept to the left.</p>
+      <p class="note">Hair built in Blender from photos: clipped sides and a longer top swept to the left. Tripo means the model's own hair.</p>
     </div>
     <div class="btns" id="who"></div>
     <label class="check" for="show"><input id="show" type="checkbox"> Show what counts as hair</label>
@@ -664,9 +664,11 @@ function setStyle(name) {
   styleName = name;
   for (const r of rigs) {
     const st = r.styles;
-    if (!st.scalp) continue;
+    // model 3 swaps a whole scalp; model 5 keeps its own short crop underneath and only adds the
+    // longer top, so a missing scalp is fine and "Tripo" simply means no added hair
+    if (!Object.keys(st).length) continue;
     for (const [key] of STYLE_LABELS) if (st[key]) st[key].visible = key === name;
-    st.scalp.visible = name !== 'tripo';
+    if (st.scalp) st.scalp.visible = name !== 'tripo';
   }
   document.querySelectorAll('#styles button').forEach(b => b.classList.toggle('on', b.dataset.style === name));
 }
@@ -764,7 +766,7 @@ function buildUi() {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.dataset.clip = name;
     b.onclick = () => setClip(name); clips.appendChild(b);
   }
-  if (rigs.some(r => r.styles.scalp)) {
+  if (rigs.some(r => Object.keys(r.styles).some(k => k !== 'tripo'))) {
     document.getElementById('styleBox').hidden = false;
     const stylesEl = document.getElementById('styles');
     for (const [name, label] of STYLE_LABELS) {
