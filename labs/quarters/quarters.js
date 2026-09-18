@@ -110,6 +110,7 @@ function loadRoom(name) {
   build = name;
   document.querySelectorAll('#builds button').forEach(b => b.classList.toggle('on', b.textContent === name));
   $('buildNote').textContent = BUILDS[name].note;
+  if (sitter && sitter.parent) sitter.parent.remove(sitter);   // he is not part of the room
   for (const child of [...room.children]) {
     room.remove(child);
     child.traverse(o => { if (o.isMesh) { o.geometry.dispose(); const m = Array.isArray(o.material) ? o.material : [o.material]; m.forEach(x => { x.map?.dispose(); x.dispose(); }); } });
@@ -125,6 +126,9 @@ function loadRoom(name) {
   model.scale.setScalar(scale);
   model.position.set(-box.min.x * scale - (size.x * scale) / 2, -box.min.y * scale, -box.min.z * scale - (size.z * scale) / 2);
   room.add(model);
+  // The chair's axis below is read through the meshes' world matrices, which still hold the raw
+  // export until this runs: without it the axis lands in raw units and the chair orbits the room.
+  room.updateMatrixWorld(true);
 
   // Collect first, then process: re-parenting the chair below changes the list that traverse walks,
   // which makes it step over the rest of the room.
@@ -162,8 +166,9 @@ function loadRoom(name) {
   buildPropList();
   applyWindows();
   if (chairPivot && !CHAIR.swivel) chairPivot.rotation.y = THREE.MathUtils.degToRad(CHAIR.angle);
+  placeSitter();
   $('boot')?.remove();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -178,6 +183,76 @@ for (const name of Object.keys(BUILDS)) {
 function applyWindows() {
   if (!windows) return;
   windows.visible = !$('openWindows').checked;
+}
+
+// ── Jacob in the chair ──────────────────────────────────────────────────────────
+// Model 5 from the Character Lab at 1.8 m, playing the sitting clip it carries, hung off the
+// chair's holder so he turns with it. The clip was measured in Blender: the seat of the trousers
+// is 0.232 model units above the feet and 0.045 behind them, and those two numbers put him on
+// the seat pan.
+const HEIGHT = 1.8;
+const SEAT = { up: 0.232 * HEIGHT, back: 0.045 * HEIGHT };
+const SITTER = { on: true, height: 0, forward: 0, turn: 0 };     // nudges in cm and degrees
+let sitter = null, sitterMixer = null, sitterLoading = false;
+function loadSitter() {
+  if (sitter || sitterLoading) return;
+  sitterLoading = true;
+  loader.load('../../models/jacob5.glb', (gltf) => {
+    const model = gltf.scene;
+    model.traverse(o => {
+      if (!o.isMesh) return;
+      o.castShadow = o.receiveShadow = true;
+      o.frustumCulled = false;                                   // skinned bounds go stale mid-clip
+      const m = o.material;
+      if (m.map) { m.map.colorSpace = THREE.SRGBColorSpace; m.map.anisotropy = renderer.capabilities.getMaxAnisotropy(); }
+      m.envMapIntensity = 0.35;
+    });
+    sitter = new THREE.Group();
+    sitter.scale.setScalar(HEIGHT);
+    sitter.add(model);
+    sitterMixer = new THREE.AnimationMixer(model);
+    const clip = gltf.animations.find(c => /sit/i.test(c.name));
+    if (clip) sitterMixer.clipAction(clip).play();
+    placeSitter();
+  }, undefined, (e) => console.error(e));
+}
+// Where the seat is, in the holder's own frame, so it holds while the chair turns. The seat pan is
+// the busiest horizontal slice of the chair's lower half, the backrest is what stands well above
+// it, and back-to-seat is the way the chair faces.
+function placeSitter() {
+  if (!sitter || !chairPivot) return;
+  if (sitter.parent !== chairPivot) chairPivot.add(sitter);
+  const chair = chairPivot.children.find(c => c.isMesh);         // the chair itself, not him
+  if (!chair) return;
+  chairPivot.updateMatrixWorld(true);
+  const toLocal = new THREE.Matrix4().copy(chairPivot.matrixWorld).invert().multiply(chair.matrixWorld);
+  const pos = chair.geometry.attributes.position, pts = [];
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < pos.count; i++) {
+    const v = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(toLocal);
+    pts.push(v); lo = Math.min(lo, v.y); hi = Math.max(hi, v.y);
+  }
+  const slice = 0.02, count = new Map();
+  for (const q of pts) {
+    const t = (q.y - lo) / (hi - lo);
+    if (t > 0.2 && t < 0.5) { const k = Math.round(q.y / slice); count.set(k, (count.get(k) || 0) + 1); }
+  }
+  let best = null;
+  for (const [k, n] of count) if (!best || n > best[1]) best = [k, n];
+  const seatY = best[0] * slice + slice / 2;
+  const seat = new THREE.Vector3(), back = new THREE.Vector3();
+  let ns = 0, nb = 0;
+  for (const q of pts) {
+    if (Math.abs(q.y - seatY) < 0.04) { seat.add(q); ns++; }
+    else if (q.y > seatY + 0.35) { back.add(q); nb++; }
+  }
+  seat.divideScalar(ns || 1); back.divideScalar(nb || 1);
+  const yaw = Math.atan2(seat.x - back.x, seat.z - back.z) + THREE.MathUtils.degToRad(SITTER.turn);
+  // he stands on his origin facing +z, so the seat of the trousers is SEAT.up above that and SEAT.back behind
+  const f = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+  sitter.position.set(seat.x, seatY - SEAT.up + SITTER.height / 100, seat.z).addScaledVector(f, SEAT.back + SITTER.forward / 100);
+  sitter.rotation.y = yaw;
+  sitter.visible = SITTER.on;
 }
 
 function buildPropList() {
@@ -217,6 +292,9 @@ const SLIDERS = {
   exposure:   [v => renderer.toneMappingExposure = v, v => v.toFixed(2)],
   chairSpeed: [v => CHAIR.speed = v, v => v + '°/s'],
   chairAngle: [v => { CHAIR.angle = v; if (chairPivot && !CHAIR.swivel) chairPivot.rotation.y = THREE.MathUtils.degToRad(v); }, v => v + '°'],
+  sitHeight:  [v => { SITTER.height = v; placeSitter(); }, v => v + ' cm'],
+  sitForward: [v => { SITTER.forward = v; placeSitter(); }, v => v + ' cm'],
+  sitTurn:    [v => { SITTER.turn = v; placeSitter(); }, v => v + '°'],
   earthSpin:  [v => { EARTH.spin = v; earth.spin = v; }, v => v.toFixed(2) + '°/s'],
   earthAlt:   [v => { EARTH.altitude = v * 1000; placeEarth(); }, v => v + ' km'],
   earthTilt:  [v => { EARTH.tilt = v; placeEarth(); }, v => v + '°'],
@@ -234,6 +312,7 @@ for (const [id, [apply, fmt]] of Object.entries(SLIDERS)) {
 const CHECKS = {
   openWindows: () => applyWindows(),
   swivel: e => { CHAIR.swivel = e.target.checked; },
+  sitterOn: e => { SITTER.on = e.target.checked; if (SITTER.on) loadSitter(); if (sitter) sitter.visible = SITTER.on; },
   post: e => { post.enabled = e.target.checked; },
   bloomOn: e => { post.bloom.enabled = e.target.checked; },
   dofOn: e => { post.dof.enabled = e.target.checked; },
@@ -242,7 +321,7 @@ const CHECKS = {
 for (const [id, fn] of Object.entries(CHECKS)) { $(id).addEventListener('change', fn); fn({ target: $(id) }); }
 $('min').onclick = () => { $('panel').classList.toggle('min'); $('min').textContent = $('panel').classList.contains('min') ? 'show' : 'hide'; };
 $('copy').onclick = () => {
-  const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, earth: { ...EARTH },
+  const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, earth: { ...EARTH },
     light: { cabin: cabin.intensity, screens: screens.intensity, sun: sun.intensity, ambient: ambient.intensity, exposure: renderer.toneMappingExposure },
     openWindows: $('openWindows').checked };
   $('out').style.display = 'block'; $('out').value = JSON.stringify(out, null, 2); $('out').select();
@@ -268,6 +347,7 @@ renderer.setAnimationLoop(() => {
   // drifting past, as if in orbit, wrapping around without jumping to one end on the first frame
   else picture.position.x = ((picture.position.x + dt * EARTH.spin * 12 + 1200) % 2400) - 1200;
   if (chairPivot && CHAIR.swivel) chairPivot.rotation.y += THREE.MathUtils.degToRad(CHAIR.speed) * dt;
+  if (sitterMixer) sitterMixer.update(dt);
   controls.update();
   if ($('autoFocus').checked) post.focus = camera.position.distanceTo(controls.target);
   post.render(dt);
