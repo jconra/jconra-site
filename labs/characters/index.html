@@ -1026,7 +1026,7 @@ renderer.setAnimationLoop(() => {
 // (or flattens it toward no bump, or blurs the colour map) under a soft round brush, on a copy of
 // the map that the material then uses, so the result shows at once. Undo steps back a stroke;
 // Download saves the map to be baked into the model.
-const TOUCH = { on: false, mode: 'smooth', size: 48, strength: 0.6, maps: {}, undo: [], painting: false, last: null };
+const TOUCH = { on: false, mode: 'smooth', size: 48, strength: 0.6, maps: {}, undo: [], painting: false, last: null, chart: null };
 const touchNote = (t) => { const el = document.getElementById('touchNote'); if (el) el.textContent = t; };
 function touchMesh() { const r = rigs[4]; let m = null; if (r) r.model.traverse(o => { if (o.isMesh && /^Head/.test(o.name)) m = o; }); return m; }
 function workingMap(slot) {
@@ -1040,29 +1040,74 @@ function workingMap(slot) {
   mesh.material[slot] = ct; mesh.material.needsUpdate = true;
   return (TOUCH.maps[slot] = { canvas: c, ctx, tex: ct });
 }
-// one dab: the pixels under the brush move toward their blurred (or flat) selves, most at the middle
+// The map is a patchwork of UV islands, and a blur that runs over the map's pixels pulls the
+// gutter and the next island's colour in at every island edge, which shows on the face as
+// straight-edged blocks. So each island is numbered once, drawn onto a map-sized canvas, and a
+// dab only reads and writes pixels on the island under the cursor.
+function chartMap(W, H) {
+  if (TOUCH.chart && TOUCH.chart.W === W) return TOUCH.chart;
+  const mesh = touchMesh(), g = mesh.geometry, uv = g.attributes.uv, idx = g.index;
+  const tri = idx ? idx.count / 3 : uv.count / 3;
+  const key = (i) => Math.round(uv.getX(i) * 8192) + ',' + Math.round(uv.getY(i) * 8192);
+  // islands: triangles joined through shared UV corners
+  const parent = new Map(), find = (a) => { while (parent.get(a) !== a) { parent.set(a, parent.get(parent.get(a))); a = parent.get(a); } return a; };
+  const union = (a, b) => { a = find(a); b = find(b); if (a !== b) parent.set(a, b); };
+  const corners = [];
+  for (let t = 0; t < tri; t++) {
+    const ks = [0, 1, 2].map(c => key(idx ? idx.getX(t * 3 + c) : t * 3 + c));
+    for (const k of ks) if (!parent.has(k)) parent.set(k, k);
+    union(ks[0], ks[1]); union(ks[1], ks[2]); corners.push(ks);
+  }
+  const ids = new Map(); let next = 1;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  const flip = touchMesh().material.map ? !touchMesh().material.map.flipY : true;
+  for (let t = 0; t < tri; t++) {
+    const root = find(corners[t][0]);
+    if (!ids.has(root)) ids.set(root, next++);
+    const id = ids.get(root);
+    ctx.fillStyle = `rgb(${id & 255},${(id >> 8) & 255},${(id >> 16) & 255})`; ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let cc = 0; cc < 3; cc++) { const i = idx ? idx.getX(t * 3 + cc) : t * 3 + cc; const x = uv.getX(i) * W, y = (flip ? uv.getY(i) : 1 - uv.getY(i)) * H; cc ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+  const d = ctx.getImageData(0, 0, W, H).data, id = new Uint32Array(W * H);
+  for (let i = 0; i < W * H; i++) id[i] = d[i * 4] | (d[i * 4 + 1] << 8) | (d[i * 4 + 2] << 16);
+  touchNote(`${next - 1} islands on the map`);
+  return (TOUCH.chart = { W, H, id, islands: next - 1 });
+}
+// one dab: the pixels under the brush, on the island under the cursor, move toward their blurred
+// (or flat) selves, most at the middle
 function dab(slot, u, v) {
   const m = workingMap(slot); if (!m) return;
   const W = m.canvas.width, H = m.canvas.height, r = TOUCH.size;
   const cx = Math.round(u * W), cy = Math.round((m.tex.flipY ? 1 - v : v) * H);
   const x0 = Math.max(0, cx - r), y0 = Math.max(0, cy - r), w = Math.min(W, cx + r) - x0, h = Math.min(H, cy + r) - y0;
   if (w <= 0 || h <= 0) return;
+  const chart = chartMap(W, H), here = chart.id[Math.min(H - 1, cy) * W + Math.min(W - 1, cx)];
+  if (!here) return;                                             // off the mesh on the map
+  const on = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) on[y * w + x] = chart.id[(y0 + y) * W + x0 + x] === here ? 1 : 0;
   const src = m.ctx.getImageData(x0, y0, w, h), d = src.data, out = new Uint8ClampedArray(d);
   const flat = TOUCH.mode === 'flatten', k = Math.max(1, Math.round(r / 5));
-  // a box blur in two passes over the patch, only when it is wanted
+  // a box blur in two passes over the patch, counting only this island's pixels
   let blur = null;
   if (!flat) {
-    const tmp = new Float32Array(d.length); blur = new Float32Array(d.length);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) for (let ch = 0; ch < 3; ch++) {
-      let sum = 0, n = 0; for (let i = -k; i <= k; i++) { const xx = x + i; if (xx >= 0 && xx < w) { sum += d[(y * w + xx) * 4 + ch]; n++; } }
-      tmp[(y * w + x) * 4 + ch] = sum / n;
+    const tmp = new Float32Array(d.length), tn = new Float32Array(w * h); blur = new Float32Array(d.length);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let n = 0, s0 = 0, s1 = 0, s2 = 0;
+      for (let i = -k; i <= k; i++) { const xx = x + i; if (xx >= 0 && xx < w && on[y * w + xx]) { const j = (y * w + xx) * 4; s0 += d[j]; s1 += d[j + 1]; s2 += d[j + 2]; n++; } }
+      const j = (y * w + x) * 4; tmp[j] = s0; tmp[j + 1] = s1; tmp[j + 2] = s2; tn[y * w + x] = n;
     }
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) for (let ch = 0; ch < 3; ch++) {
-      let sum = 0, n = 0; for (let i = -k; i <= k; i++) { const yy = y + i; if (yy >= 0 && yy < h) { sum += tmp[(yy * w + x) * 4 + ch]; n++; } }
-      blur[(y * w + x) * 4 + ch] = sum / n;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let n = 0, s0 = 0, s1 = 0, s2 = 0;
+      for (let i = -k; i <= k; i++) { const yy = y + i; if (yy >= 0 && yy < h) { const j = (yy * w + x) * 4; s0 += tmp[j]; s1 += tmp[j + 1]; s2 += tmp[j + 2]; n += tn[yy * w + x]; } }
+      const j = (y * w + x) * 4; blur[j] = n ? s0 / n : d[j]; blur[j + 1] = n ? s1 / n : d[j + 1]; blur[j + 2] = n ? s2 / n : d[j + 2];
     }
   }
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (!on[y * w + x]) continue;
     const dx = x0 + x - cx, dy = y0 + y - cy, q = (dx * dx + dy * dy) / (r * r);
     if (q >= 1) continue;
     const f = (1 - q) * (1 - q) * TOUCH.strength, i = (y * w + x) * 4;
