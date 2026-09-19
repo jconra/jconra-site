@@ -71,9 +71,6 @@ const CONTROLS = {
   ringGap:      [v => layout.ringGap = v, v => v + ' m'],
   ringY:        [v => layout.ringY = v, v => v + ' m'],
   hubCut:       [v => layout.hubCut = v, v => Math.round(v * 100) + '%'],
-  segFitX:      [v => layout.segmentFit.x = v, v => v.toFixed(1)],
-  segFitZ:      [v => layout.segmentFit.z = v, v => v.toFixed(1)],
-  segSpacing:   [v => layout.segmentFit.spacing = v, v => v.toFixed(2) + '°'],
   collarRadius: [v => layout.collarRadius = v, v => v + ' m'],
   collarLength: [v => layout.collarLength = v, v => v.toLocaleString() + ' m'],
   towerHeight:  [v => layout.towerHeight = v, v => v.toLocaleString() + ' m'],
@@ -131,7 +128,6 @@ for (const [id, [apply, fmt]] of Object.entries(CONTROLS)) {
   el.addEventListener('input', run);
   CONTROLS[id].run = () => { apply(+el.value); $(id + 'Out').textContent = fmt(+el.value); };
 }
-$('ringStyle').addEventListener('change', e => { layout.ringStyle = e.target.value; queueRebuild(); });
 $('towerFlip').addEventListener('change', e => { layout.towerFlip = e.target.checked; queueRebuild(); });
 $('armKind').addEventListener('change', e => { layout.towerArms.kind = e.target.value; queueRebuild(); });
 $('ringArmKind').addEventListener('change', e => { layout.ringArms.kind = e.target.value; queueRebuild(); });

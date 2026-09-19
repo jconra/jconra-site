@@ -11,6 +11,7 @@ import { Earth } from '../../src/objects/earth.js';
 import { Post } from '../../src/fx/post.js';
 import { Hologram } from '../../src/objects/hologram.js';
 import { Screen } from '../../src/objects/screens.js';
+import { loadKit, StationKit, DEFAULT_LAYOUT } from '../../src/objects/stationKit.js';
 
 const Q = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -45,6 +46,9 @@ const cabin = new THREE.PointLight(0xdfe9f5, 6, 12, 1.6); cabin.position.set(0, 
 const screens = new THREE.PointLight(0x7fb4ff, 3, 6, 2); screens.position.set(0, 1.35, -1.05); scene.add(screens);
 const sun = new THREE.DirectionalLight(0xfff2e0, 2.6); sun.position.set(2.5, 2.0, -5); scene.add(sun);
 const ambient = new THREE.HemisphereLight(0x9fb6cc, 0x20262d, 0.45); scene.add(ambient);
+// outside only: a faint fill from the planet side, so the station's undersides are not pitch black
+const spaceFill = new THREE.DirectionalLight(0x6f8fb8, 0); spaceFill.position.set(-0.6, -0.8, -0.3); scene.add(spaceFill);
+scene.add(sun.target); scene.add(spaceFill.target);   // a directional light shines at its target, and the station is not at the origin
 
 // ── Earth outside ───────────────────────────────────────────────────────────────
 const earth = new Earth({ radius: 6371000 });
@@ -171,7 +175,7 @@ function loadRoom(name) {
   if (chairPivot && !CHAIR.swivel) chairPivot.rotation.y = THREE.MathUtils.degToRad(CHAIR.angle);
   placeSitter();
   $('boot')?.remove();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, playIntro, activateIntro, setLight, holos, getWave: () => waveAction });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, getStation: () => station, getHangar: () => hangarAt, playIntro, activateIntro, setLight, holos, getWave: () => waveAction });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -347,6 +351,15 @@ const KEYS = [
   { t: 9.5,  cam: [1.10, 1.40, -0.40], look: 'him',   chair: 'turned', face: 0.6 }, // he is up
   { t: 12.0, cam: [0.40, 1.55, -1.00], look: 'window', chair: 'turned', face: 0 },  // over the computer
   { t: 14.0, cam: [0.05, 1.80, -1.75], look: 'window', chair: 'turned', face: 0 },  // through the glass
+  // OUTSIDE. The cabin is a room on the ring's side, so past the glass the camera is teleported to
+  // just outside the ring's flank, moving away from it; the ring is turning, so the window slides
+  // off and there is nothing to line up. It turns round to find the station, pulls out wide, then
+  // pans to a hangar and closes in. Station keys are in the station's own metres.
+  { t: 14.01, set: 'station', cam: [640, 440, 0],      look: [640, 0, 0] },
+  { t: 17.5,  set: 'station', cam: [1350, 620, 750],   look: 'station' },   // turned, level with the ring's rim, clear of its arms
+  { t: 22.0,  set: 'station', cam: [1750, 1000, 1150], look: 'station' },   // wide, from a little above the deck
+  { t: 26.0,  set: 'station', cam: [520, 340, 1550],   look: 'hangar' },
+  { t: 30.0,  set: 'station', cam: [70, 260, 1060],    look: 'hangar' },
 ];
 const ACTS = { wave: 1.9, stand: 8.2, walk: 10.0, walkSpeed: 1.1, walkDir: 35 };   // seconds; m/s; degrees from +z toward +x
 // The greeting comes in parts: each is its own hologram over his head, which forms, holds, and
@@ -355,6 +368,41 @@ const PARTS = [
   { start: 2.4, end: 6.2, size: 0.07, lines: ['Welcome To', 'Jconra.com'] },
   { start: 5.8, end: 9.6, size: 0.034, lines: ['Hello! I am Jacob Conrads,', 'a Systems Engineer.', 'This is a project to play around', 'with and highlight my skills.', 'Thank you for visiting!'] },
 ];
+// ── the station outside ──────────────────────────────────────────────────────────
+// The second set, 100 km from the cabin in the same scene, built from the kit with its default
+// layout (the one set in the Station Builder). Shown only while the timeline is outside.
+const STATION_AT = new THREE.Vector3(100000, 0, 0);
+let station = null, stationLoading = false, hangarAt = null, currentSet = 'cabin';
+function loadStation() {
+  if (station || stationLoading) return;
+  stationLoading = true;
+  loadKit('../../models/kit/').then(parts => {
+    station = new StationKit(parts).build(DEFAULT_LAYOUT);
+    station.position.copy(STATION_AT); station.visible = false; scene.add(station);
+    // the first hangar, to look at and fly into
+    station.traverse(o => { if (!hangarAt && o.isInstancedMesh && o.geometry === parts.hangar.geometry) {
+      const m = new THREE.Matrix4(); o.getMatrixAt(0, m); hangarAt = new THREE.Vector3().setFromMatrixPosition(m).add(STATION_AT); } });
+  }).catch(e => console.error(e));
+}
+const setOf = (k) => k.set || 'cabin';
+function showSet(name) {
+  if (name === currentSet) return;
+  currentSet = name;
+  const inCabin = name === 'cabin';
+  room.visible = inCabin; for (const sc of SCREENS) sc.visible = inCabin;
+  if (sitter) sitter.visible = inCabin && SITTER.on;
+  if (station) station.visible = !inCabin;
+  // space light: a hard sun and almost nothing else; the cabin gets its preset back
+  spaceFill.intensity = inCabin ? 0 : 1.8;      // earthshine: the planet below lights the undersides blue
+  if (inCabin) setLight(lightName);
+  if (inCabin) { sun.position.set(2.5, 2.0, -5); sun.target.position.set(0, 0, 0); spaceFill.target.position.set(0, 0, 0); }
+  else {
+    // aimed at the station, not the cabin: from 100 km away a light aimed at the origin arrives sideways
+    sun.position.copy(STATION_AT).add(new THREE.Vector3(1, 0.6, 0.45).multiplyScalar(5000)); sun.target.position.copy(STATION_AT);
+    spaceFill.position.copy(STATION_AT).add(new THREE.Vector3(-0.6, -0.8, -0.3).multiplyScalar(5000)); spaceFill.target.position.copy(STATION_AT);
+    sun.intensity = 3.2; sun.color.setHex(0xfff4e6); cabin.intensity = 0; screens.intensity = 0;
+         ambient.intensity = 0.35; ambient.color.setHex(0x8aa0b8); ambient.groundColor.setHex(0x2a3340); renderer.toneMappingExposure = 1.05; }
+}
 const holos = PARTS.map(part => { const h = new Hologram({ lines: part.lines, size: part.size, gap: 1.28 }); scene.add(h); return h; });
 const SEQ = { hold: 0.9, turn: 1.3, draw: 1.8, waveLen: 1.5, standLen: 2.0, T: 0, playing: false, active: false, scrub: true, turned: 0 };
 const total = () => KEYS[KEYS.length - 1].t;
@@ -363,7 +411,7 @@ function activateIntro() {
   if (!chairPivot) return;
   if (!chairInfo) chairInfo = measureChair();
   $('swivel').checked = false; CHAIR.swivel = false;
-  SEQ.active = true;
+  SEQ.active = true; loadStation();
   controls.enabled = false;                       // the timeline owns the camera until a camera button is pressed
   // the holder's turn that brings the chair's own facing round to the door camera, the short way
   const cw = chairPivot.getWorldPosition(new THREE.Vector3()), door = KEYS[0].cam;
@@ -379,30 +427,50 @@ function lookAtHim() {
   const p = head ? head.getWorldPosition(new THREE.Vector3()) : chairPivot.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 1.3, 0));
   p.y += 0.14; return p;
 }
-const lookPoint = (l) => l === 'him' ? lookAtHim() : new THREE.Vector3(...(l === 'window' ? WINDOW : l));
-const chairDeg = (c) => c === 'turned' ? SEQ.turned : c;
+const lookPoint = (l, set) => {
+  if (l === 'him') return lookAtHim();
+  if (l === 'window') return new THREE.Vector3(...WINDOW);
+  if (l === 'station') return STATION_AT.clone().add(new THREE.Vector3(0, 250, 0));
+  if (l === 'hangar') return hangarAt ? hangarAt.clone() : STATION_AT.clone().add(new THREE.Vector3(0, 240, 740));
+  const p = new THREE.Vector3(...l); return set === 'station' ? p.add(STATION_AT) : p;
+};
+const chairDeg = (c) => c === 'turned' ? SEQ.turned : (c || 0);
 const ease = (u) => { u = Math.min(1, Math.max(0, u)); return u * u * u * (u * (u * 6 - 15) + 10); };   // brisk both ends
 
 // The camera between keys: a cubic through the key positions, with tangents from the neighbours
 // (a Catmull-Rom in time), so it never stops and never kinks. Everything else eases key to key.
+function activeKey(T) { let k = 0; while (k < KEYS.length - 1 && KEYS[k + 1].t <= T) k++; return KEYS[k]; }
 function keysAround(T) {
-  let k = 0; while (k < KEYS.length - 2 && KEYS[k + 1].t <= T) k++;
-  const a = KEYS[k], b = KEYS[k + 1];
-  return { a, b, u: Math.min(1, Math.max(0, (T - a.t) / Math.max(1e-6, b.t - a.t))), k };
+  const set = setOf(activeKey(T)), ks = KEYS.filter(x => setOf(x) === set);
+  let k = 0; while (k < ks.length - 2 && ks[k + 1].t <= T) k++;
+  const a = ks[k], b = ks[k + 1] || ks[k];
+  return { a, b, u: b === a ? 0 : Math.min(1, Math.max(0, (T - a.t) / Math.max(1e-6, b.t - a.t))), k, ks, set };
 }
 function cameraAt(T) {
-  const { a, b, u, k } = keysAround(T);
-  const P = (i) => new THREE.Vector3(...KEYS[Math.min(KEYS.length - 1, Math.max(0, i))].cam);
+  const { a, b, u, k, ks } = keysAround(T);
+  const P = (i) => new THREE.Vector3(...ks[Math.min(ks.length - 1, Math.max(0, i))].cam);
   const p0 = P(k - 1), p1 = P(k), p2 = P(k + 1), p3 = P(k + 2);
   const d = Math.max(1e-6, b.t - a.t);
-  const m1 = p2.clone().sub(p0).multiplyScalar(0.5 * d / Math.max(1e-6, KEYS[Math.min(KEYS.length - 1, k + 1)].t - KEYS[Math.max(0, k - 1)].t) * 2);
-  const m2 = p3.clone().sub(p1).multiplyScalar(0.5 * d / Math.max(1e-6, KEYS[Math.min(KEYS.length - 1, k + 2)].t - KEYS[k].t) * 2);
+  const m1 = p2.clone().sub(p0).multiplyScalar(d / Math.max(1e-6, ks[Math.min(ks.length - 1, k + 1)].t - ks[Math.max(0, k - 1)].t));
+  const m2 = p3.clone().sub(p1).multiplyScalar(d / Math.max(1e-6, ks[Math.min(ks.length - 1, k + 2)].t - ks[k].t));
   const u2 = u * u, u3 = u2 * u;
   return p1.clone().multiplyScalar(2 * u3 - 3 * u2 + 1).add(m1.multiplyScalar(u3 - 2 * u2 + u)).add(p2.clone().multiplyScalar(-2 * u3 + 3 * u2)).add(m2.multiplyScalar(u3 - u2));
 }
 function seek(T) {
   SEQ.T = T = Math.min(total(), Math.max(0, T));
-  const { a, b, u } = keysAround(T);
+  const { a, b, u, set } = keysAround(T);
+  showSet(set);
+  if (set === 'station') {
+    // outside: the rings turn with time, 1 g at the rim, and the camera runs in the station's frame
+    if (station) for (const sp of station.spinners) sp.turntable.rotation.y = sp.sign * (Math.PI * 2 / StationKit.period(sp.radius)) * T;
+    camera.position.copy(cameraAt(T)).add(STATION_AT);
+    controls.target.copy(lookPoint(a.look, set).lerp(lookPoint(b.look, set), u)); camera.lookAt(controls.target);
+    post.focus = camera.position.distanceTo(controls.target);
+    for (const h of holos) h.fill = 0;
+    const el = $('seqTime'); if (el && document.activeElement !== el) el.value = T.toFixed(2);
+    $('seqTimeOut').textContent = T.toFixed(1) + ' s';
+    return;
+  }
   // the chair turns key to key, briskly
   chairPivot.rotation.y = THREE.MathUtils.degToRad(chairDeg(a.chair) + (chairDeg(b.chair) - chairDeg(a.chair)) * ease(u));
   // him: sitting until he stands, then up on his feet, then walking off out of the frame
@@ -441,11 +509,11 @@ function seek(T) {
   }
   // the camera
   camera.position.copy(cameraAt(T));
-  controls.target.copy(lookPoint(a.look).lerp(lookPoint(b.look), u)); camera.lookAt(controls.target);
+  controls.target.copy(lookPoint(a.look, set).lerp(lookPoint(b.look, set), u)); camera.lookAt(controls.target);
   post.focus = camera.position.distanceTo(controls.target);
   // he keeps his eyes on the camera: the head turns toward it after the clips have posed it, by
   // as much as the keys ask for, and never further than a neck goes
-  const face = a.face + (b.face - a.face) * u;
+  const face = (a.face || 0) + ((b.face || 0) - (a.face || 0)) * u;
   if (face > 0 && sitter) faceCamera(face);
   // the parts of the greeting: over his head, turned to the camera, each one forming then dissolving
   const over = lookAtHim(); over.y += 0.14;
@@ -502,7 +570,7 @@ function buildKeyList() {
   const list = $('keys'); if (!list) return;
   list.innerHTML = '';
   KEYS.forEach((k, i) => {
-    const b = document.createElement('button'); b.type = 'button'; b.textContent = k.t.toFixed(1) + ' s';
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = (setOf(k) === 'station' ? 'out ' : '') + k.t.toFixed(1) + ' s';
     b.classList.toggle('on', i === keyIndex); b.onclick = () => { keyIndex = i; buildKeyList(); showKey(); seek(KEYS[i].t); };
     list.appendChild(b);
   });
@@ -510,6 +578,9 @@ function buildKeyList() {
 function showKey() {
   const k = KEYS[keyIndex]; if (!k) return;
   const set = (id, v) => { const el = $(id); if (!el) return; el.value = v; $(id + 'Out').textContent = SLIDERS[id][1](+v); };
+  // the camera sliders span the cabin in metres, or the station in hundreds of them
+  const out = setOf(k) === 'station';
+  for (const [id, lo, hi] of [['camX', -1.7, 1.7], ['camY', 0.3, 2.5], ['camZ', -2.2, 1.7]]) { const el = $(id); el.min = out ? -2500 : lo; el.max = out ? 2500 : hi; el.step = out ? 5 : 0.01; }
   set('keyT', k.t); set('camX', k.cam[0]); set('camY', k.cam[1]); set('camZ', k.cam[2]);
   set('keyChair', chairDeg(k.chair).toFixed(0)); set('keyFace', k.face);
   const look = $('keyLook'); if (look) look.value = typeof k.look === 'string' ? k.look : 'point';
@@ -524,7 +595,7 @@ function editKey(id, v) {
 function addKeyHere() {
   if (!SEQ.active) activateIntro();
   const T = SEQ.T, { a, b, u } = keysAround(T);
-  const k = { t: +T.toFixed(2), cam: cameraAt(T).toArray().map(x => +x.toFixed(3)), look: a.look,
+  const k = { t: +T.toFixed(2), set: setOf(a), cam: cameraAt(T).toArray().map(x => +x.toFixed(3)), look: a.look,
               chair: +(chairDeg(a.chair) + (chairDeg(b.chair) - chairDeg(a.chair)) * ease(u)).toFixed(1), face: +(a.face + (b.face - a.face) * u).toFixed(2) };
   KEYS.push(k); KEYS.sort((x, y) => x.t - y.t); keyIndex = KEYS.indexOf(k);
   buildKeyList(); showKey();
@@ -576,7 +647,7 @@ const VIEWS = {
   'Whole room': [[2.4, 2.5, 2.7], [0, 1.15, -0.6]],
 };
 function frame(name) {
-  SEQ.active = false; SEQ.playing = false; controls.enabled = true;
+  SEQ.active = false; SEQ.playing = false; controls.enabled = true; showSet('cabin');
   for (const h of holos) h.fill = 0;
   const [p, t] = VIEWS[name];
   camera.position.set(...p); controls.target.set(...t); controls.update();
@@ -633,7 +704,9 @@ const LIGHT_PRESETS = {
   Flat:  { cabinLight: 2.0, screenLight: 1.0, sunLight: 0.5, ambient: 2.2, exposure: 1.0, sky: 0xffffff, ground: 0xb8b8b8 },
   Cabin: { cabinLight: 6,   screenLight: 3,   sunLight: 2.6, ambient: 0.45, exposure: 1.1, sky: 0x9fb6cc, ground: 0x20262d },
 };
+let lightName = 'Flat';
 function setLight(name) {
+  lightName = name;
   const P = LIGHT_PRESETS[name];
   ambient.color.setHex(P.sky); ambient.groundColor.setHex(P.ground);
   for (const id of ['cabinLight', 'screenLight', 'sunLight', 'ambient', 'exposure']) {
@@ -685,7 +758,7 @@ renderer.setAnimationLoop(() => {
   // drifting past, as if in orbit, wrapping around without jumping to one end on the first frame
   else picture.position.x = ((picture.position.x + dt * EARTH.spin * 12 + 1200) % 2400) - 1200;
   stepSequence(dt);
-  controls.update();
+  if (!SEQ.active) controls.update();     // while the timeline owns the camera, orbit must not touch it: its 14 m limit would drag it into the station
   if ($('autoFocus').checked) post.focus = camera.position.distanceTo(controls.target);
   post.render(dt);
   if (raw > 0) fps += (1 / raw - fps) * 0.05;

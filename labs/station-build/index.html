@@ -51,16 +51,11 @@
     <div class="readout" style="grid-template-columns:1fr"><b id="fxInfo"></b><span id="fps"></span></div>
 
     <h2>Rings</h2>
-    <div class="row"><label for="ringStyle">Ring built from</label><select id="ringStyle"><option value="whole" selected>one whole ring (no seams)</option><option value="segments">four quarter segments</option></select></div>
     <div class="row"><label for="ringRadius">Ring radius</label><output id="ringRadiusOut"></output><input id="ringRadius" type="range" min="100" max="2000" step="10" value="700"></div>
     <div class="row"><label for="rings">How many rings</label><output id="ringsOut"></output><input id="rings" type="range" min="1" max="3" step="1" value="1"></div>
     <div class="row"><label for="ringGap">Gap between rings</label><output id="ringGapOut"></output><input id="ringGap" type="range" min="100" max="1500" step="10" value="100"></div>
     <div class="row"><label for="ringY">Ring height on the tower</label><output id="ringYOut"></output><input id="ringY" type="range" min="-900" max="900" step="10" value="680"></div>
     <div class="row"><label for="hubCut">Cut out the ring's middle</label><output id="hubCutOut"></output><input id="hubCut" type="range" min="0" max="0.6" step="0.01" value="0"></div>
-    <div class="row"><label for="segFitX">Quarter centre, across</label><output id="segFitXOut"></output><input id="segFitX" type="range" min="-8" max="8" step="0.1" value="8"></div>
-    <div class="row"><label for="segFitZ">Quarter centre, along</label><output id="segFitZOut"></output><input id="segFitZ" type="range" min="-8" max="8" step="0.1" value="7.8"></div>
-    <div class="row"><label for="segSpacing">Quarter spacing</label><output id="segSpacingOut"></output><input id="segSpacing" type="range" min="-3" max="3" step="0.05" value="-0.85"></div>
-    <p class="note">The quarters only meet exactly if the copies turn about the arc's true centre. Nudge these until the seams line up, then Copy layout and I will bake the numbers into the model.</p>
     <label class="check" for="spin"><input id="spin" type="checkbox" checked> Rings spin (1 g at the rim)</label>
     <div class="row"><label for="speed">Time speed</label><output id="speedOut"></output><input id="speed" type="range" min="1" max="40" step="1" value="1"></div>
 
