@@ -198,6 +198,7 @@ function loadRoom(name) {
   document.querySelectorAll('#builds button').forEach(b => b.classList.toggle('on', b.textContent === name));
   $('buildNote').textContent = BUILDS[name].note;
   buildScreens(name);
+  buildProps(name);
   if (sitter && sitter.parent) sitter.parent.remove(sitter);   // he is not part of the room
   for (const child of [...room.children]) {
     room.remove(child);
@@ -713,6 +714,56 @@ function buildPropList() {
   }
 }
 
+// ── props ───────────────────────────────────────────────────────────────────────
+// Extra models placed in a room: a file, where it stands (metres, in the lab's frame), which way it
+// faces, how far it leans back against the wall, and its height. Each build has its own list.
+// The panel picks a prop and nudges it; Copy settings writes the numbers out to be baked here.
+const PROP_SETS = {
+  Smart: [
+    // Jacob's bass, leaning against the side of the desk's drawer unit, headstock up, facing the room
+    { name: 'bass', file: '../../models/props/bass.glb', x: 1.30, y: 0.45, z: -0.86, yaw: 180, lean: 11, height: 1.15 },
+  ],
+};
+let PROPS = [];
+function buildProps(name) {
+  for (const pr of PROPS) if (pr.obj) { room.remove(pr.obj); pr.obj.traverse(o => { if (o.isMesh) { o.geometry.dispose(); const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { m.map?.dispose(); m.dispose(); }); } }); }
+  PROPS = (PROP_SETS[name] || []).map(spec => ({ ...spec, obj: null }));
+  PROPS.forEach((pr, i) => loader.load(pr.file, (gltf) => {
+    const model = gltf.scene; model.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3());
+    // stood on its own base, centred, scaled to its real height
+    // the model is stood on its base, centred, at one metre tall; the holder's scale sets the real height
+    const k = 1 / size.y;
+    model.scale.setScalar(k); model.position.set(-(box.min.x + box.max.x) / 2 * k, -box.min.y * k, -(box.min.z + box.max.z) / 2 * k);
+    model.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; const m = o.material; if (m.map) { m.map.colorSpace = THREE.SRGBColorSpace; m.map.anisotropy = renderer.capabilities.getMaxAnisotropy(); } m.envMapIntensity = 0.35; } });
+    const holder = new THREE.Group(); holder.add(model); holder.name = 'Prop_' + pr.name;
+    pr.obj = holder; room.add(holder); placeProp(pr);
+    if (i === propIdx) showProp();
+  }, undefined, (e) => console.error(e)));
+  buildPropPicker();
+}
+// the lean tilts the model back about its base, after the yaw, so it rests against whatever is behind it
+function placeProp(pr) {
+  if (!pr.obj) return;
+  pr.obj.position.set(pr.x, pr.y, pr.z);
+  pr.obj.rotation.set(0, 0, 0);
+  pr.obj.rotateY(THREE.MathUtils.degToRad(pr.yaw)); pr.obj.rotateX(THREE.MathUtils.degToRad(-pr.lean));
+  pr.obj.scale.setScalar(pr.height);
+}
+let propIdx = 0;
+const PROPFIELDS = { propX: 'x', propZ: 'z', propY: 'y', propYaw: 'yaw', propLean: 'lean', propH: 'height' };
+function buildPropPicker() {
+  const list = $('propPick'); if (!list) return;
+  list.innerHTML = '';
+  PROPS.forEach((pr, i) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = pr.name; b.classList.toggle('on', i === propIdx); b.onclick = () => { propIdx = i; buildPropPicker(); showProp(); }; list.appendChild(b); });
+  if (!PROPS.length) list.innerHTML = '<span class="note">no props in this room yet</span>';
+}
+function showProp() {
+  const pr = PROPS[propIdx]; if (!pr) return;
+  for (const [id, key] of Object.entries(PROPFIELDS)) { const el = $(id); if (!el) continue; el.value = pr[key]; $(id + 'Out').textContent = SLIDERS[id][1](+el.value); }
+}
+function editProp(id, v) { const pr = PROPS[propIdx]; if (!pr) return; pr[PROPFIELDS[id]] = v; placeProp(pr); }
+
 // ── the monitors ────────────────────────────────────────────────────────────────
 // Each monitor's face was measured off its mesh: centre, the way it faces, width and height, in
 // world metres at 3.4 m across. Every build has its own monitors, so each has its own set; the
@@ -824,6 +875,12 @@ const SLIDERS = {
   sitHeight:  [v => { SITTER.height = v; placeSitter(); }, v => v + ' cm'],
   sitForward: [v => { SITTER.forward = v; placeSitter(); }, v => v + ' cm'],
   sitTurn:    [v => { SITTER.turn = v; placeSitter(); }, v => v + '°'],
+  propX:      [v => editProp('propX', v), v => v.toFixed(2) + ' m'],
+  propZ:      [v => editProp('propZ', v), v => v.toFixed(2) + ' m'],
+  propY:      [v => editProp('propY', v), v => v.toFixed(2) + ' m'],
+  propYaw:    [v => editProp('propYaw', v), v => v.toFixed(0) + '°'],
+  propLean:   [v => editProp('propLean', v), v => v.toFixed(0) + '°'],
+  propH:      [v => editProp('propH', v), v => v.toFixed(2) + ' m'],
   keyT:       [v => editKey('keyT', v), v => v.toFixed(2) + ' s'],
   camX:       [v => editKey('camX', v), v => v.toFixed(2) + ' m'],
   camY:       [v => editKey('camY', v), v => v.toFixed(2) + ' m'],
@@ -848,7 +905,7 @@ for (const [id, [apply, fmt]] of Object.entries(SLIDERS)) {
   const el = $(id);
   const run = () => { apply(+el.value); $(id + 'Out').textContent = fmt(+el.value); };
   el.addEventListener('input', run);
-  if (id in KEYFIELDS) $(id + 'Out').textContent = fmt(+el.value); else run();   // the key sliders read from the key, they do not write it at start
+  if (id in KEYFIELDS || id in PROPFIELDS) $(id + 'Out').textContent = fmt(+el.value); else run();   // key and prop sliders read from their object, they do not write it at start
 }
 $('keyLook').addEventListener('change', e => { const v = e.target.value; KEYS[keyIndex].look = v === 'point' ? controls.target.toArray() : v; seek(KEYS[keyIndex].t); });
 $('addKey').onclick = addKeyHere; $('delKey').onclick = deleteKey;
@@ -887,7 +944,7 @@ const CHECKS = {
 for (const [id, fn] of Object.entries(CHECKS)) { $(id).addEventListener('change', fn); fn({ target: $(id) }); }
 $('min').onclick = () => { $('panel').classList.toggle('min'); $('min').textContent = $('panel').classList.contains('min') ? 'show' : 'hide'; };
 $('copy').onclick = () => {
-  const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) }, earth: { ...EARTH },
+  const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, props: PROPS.map(({ obj, ...p }) => p), intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) }, earth: { ...EARTH },
     light: { cabin: cabin.intensity, screens: screens.intensity, sun: sun.intensity, ambient: ambient.intensity, exposure: renderer.toneMappingExposure },
     openWindows: $('openWindows').checked };
   $('out').style.display = 'block'; $('out').value = JSON.stringify(out, null, 2); $('out').select();

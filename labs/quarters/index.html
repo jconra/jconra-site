@@ -77,6 +77,16 @@
     <div class="row"><label for="sitForward">Forward / back</label><output id="sitForwardOut"></output><input id="sitForward" type="range" min="-25" max="25" step="0.5" value="0"></div>
     <div class="row"><label for="sitTurn">Turn</label><output id="sitTurnOut"></output><input id="sitTurn" type="range" min="-60" max="60" step="1" value="0"></div>
 
+    <h2>Placed props</h2>
+    <p class="note">Extra models in the room. Pick one and nudge it; Copy settings writes the numbers out to be baked in.</p>
+    <div class="btns" id="propPick"></div>
+    <div class="row"><label for="propX">Left / right</label><output id="propXOut"></output><input id="propX" type="range" min="-1.9" max="1.9" step="0.01" value="0" data-prop="x"></div>
+    <div class="row"><label for="propZ">Toward the window</label><output id="propZOut"></output><input id="propZ" type="range" min="-1.9" max="1.9" step="0.01" value="0" data-prop="z"></div>
+    <div class="row"><label for="propY">Height off the floor</label><output id="propYOut"></output><input id="propY" type="range" min="0" max="2.5" step="0.01" value="0.45" data-prop="y"></div>
+    <div class="row"><label for="propYaw">Turn</label><output id="propYawOut"></output><input id="propYaw" type="range" min="-180" max="180" step="1" value="0" data-prop="yaw"></div>
+    <div class="row"><label for="propLean">Lean back</label><output id="propLeanOut"></output><input id="propLean" type="range" min="-30" max="45" step="1" value="0" data-prop="lean"></div>
+    <div class="row"><label for="propH">Size (height)</label><output id="propHOut"></output><input id="propH" type="range" min="0.05" max="2.5" step="0.01" value="1" data-prop="height"></div>
+
     <h2>Earth outside</h2>
     <div class="btns" id="earthMode"></div>
     <p class="note">Globe: the real sphere, 55k triangles; it turns, and shifts between the two windows. Picture: the old site's photograph of Earth on one flat rectangle below, 2 triangles, drifting past.</p>
