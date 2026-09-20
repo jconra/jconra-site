@@ -355,6 +355,9 @@ function loadSitter() {
     const hipBone = model.getObjectByName('Hip');
     sitter.userData.hipRest = hipBone ? model.worldToLocal(hipBone.getWorldPosition(new THREE.Vector3())) : null;
     sitterMixer = new THREE.AnimationMixer(model);
+    // the clips do not all key the head, so a head turn would stay put and the next one would
+    // add to it: keep the bind pose to start each turn from
+    const headBone = model.getObjectByName('Head'); if (headBone) headBone.userData.restQ = headBone.quaternion.clone();
     const clip = gltf.animations.find(c => /sit/i.test(c.name));
     if (clip) { sitAction = sitterMixer.clipAction(clip); sitAction.play(); }
     placeSitter();
@@ -595,6 +598,7 @@ function seek(T) {
       waveAction.setEffectiveWeight(w >= 0 && !standing ? 1 : 0);
       waveAction.time = Math.min(SEQ.waveLen, Math.max(0, w));
     }
+    const headBone = sitter.getObjectByName('Head'); if (headBone && headBone.userData.restQ) headBone.quaternion.copy(headBone.userData.restQ);
     sitterMixer.update(0);
     const model = sitter.children[0], rest = sitter.userData.hipRest, hipBone = model.getObjectByName('Hip');
     if (walking && rest && hipBone) {
@@ -633,8 +637,11 @@ function faceCamera(amount) {
   const to = camera.position.clone().sub(hp).normalize();
   const yaw = Math.atan2(fwd.x * to.z - fwd.z * to.x, fwd.x * to.x + fwd.z * to.z);      // signed, about +y
   const pitch = Math.asin(Math.max(-1, Math.min(1, to.y))) - Math.asin(Math.max(-1, Math.min(1, fwd.y)));
-  const turn = new THREE.Quaternion().setFromEuler(new THREE.Euler(
-    -THREE.MathUtils.clamp(pitch, -0.35, 0.35) * amount, -THREE.MathUtils.clamp(yaw, -1.0, 1.0) * amount, 0, 'YXZ'));
+  // yaw about the world's up, then the nod about the axis across the new line of sight, so the
+  // nod stays a nod whichever way the chair has him facing
+  const across = new THREE.Vector3(to.z, 0, -to.x).normalize();
+  const turn = new THREE.Quaternion().setFromAxisAngle(across, -THREE.MathUtils.clamp(pitch, -0.35, 0.35) * amount)
+    .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -THREE.MathUtils.clamp(yaw, -1.0, 1.0) * amount));
   const parentQ = head.parent.getWorldQuaternion(new THREE.Quaternion());
   const worldQ = head.getWorldQuaternion(new THREE.Quaternion());
   head.quaternion.copy(parentQ.clone().invert().multiply(turn.multiply(worldQ)));
