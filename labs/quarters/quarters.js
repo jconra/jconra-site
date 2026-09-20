@@ -38,6 +38,7 @@ const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.05, F
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.maxDistance = 14;
+controls.screenSpacePanning = true;          // right-drag (two fingers on a phone) slides the view, not just the orbit centre
 
 // ── light ───────────────────────────────────────────────────────────────────────
 // A cabin is lit by its own strip lights and screens, with hard sunlight through the window.
@@ -111,7 +112,7 @@ const BUILDS = {
   Light: { file: '../../models/quarters_lite.glb', note: '185k triangles · 4 meshes · 8.0 MB' },
   Smart: { file: '../../models/quarters_smart.glb', note: 'Smart Mesh room · 80k triangles · 3 meshes · 5.7 MB · straight lines' },
 };
-let build = 'Light';
+let build = BUILDS[Q.get('build')] ? Q.get('build') : 'Light';   // ?build=Smart opens straight on a room
 const loader = new GLTFLoader();
 function loadRoom(name) {
   build = name;
@@ -665,6 +666,18 @@ const VIEWS = {
   'Chair':      [[-1.05, 1.45, 0.55], [0.25, 1.05, -0.45]],
   'Whole room': [[2.4, 2.5, 2.7], [0, 1.15, -0.6]],
 };
+// FREE LOOK: for inspecting a room. The timeline lets go of the camera, the wheel zooms instead of
+// scrubbing, and the orbit can go anywhere - through walls, up close - with the greeting hidden.
+function freeLook() {
+  SEQ.active = false; SEQ.playing = false; showSet('cabin');
+  for (const h of holos) h.fill = 0;
+  controls.enabled = true; controls.minDistance = 0.05; controls.maxDistance = 40;
+  $('scrubOn').checked = false; SEQ.scrub = false; controls.enableZoom = true;
+  $('swivel').checked = false; CHAIR.swivel = false;
+  if (!controls.target.lengthSq()) { camera.position.set(1.6, 1.6, 1.8); controls.target.set(-0.3, 1.0, -0.6); }
+  controls.update();
+  post.enabled = $('post').checked;
+}
 function frame(name) {
   SEQ.active = false; SEQ.playing = false; controls.enabled = true; showSet('cabin');
   for (const h of holos) h.fill = 0;
@@ -672,6 +685,7 @@ function frame(name) {
   camera.position.set(...p); controls.target.set(...t); controls.update();
   post.focus = camera.position.distanceTo(controls.target);
 }
+$('freeLook').onclick = freeLook;
 for (const name of Object.keys(VIEWS)) {
   const b = document.createElement('button'); b.type = 'button'; b.textContent = name; b.onclick = () => frame(name); $('cams').appendChild(b);
 }
