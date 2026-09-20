@@ -109,6 +109,7 @@ const CHAIR = { swivel: true, speed: 12, angle: 0 };
 const BUILDS = {
   Full:  { file: '../../models/quarters.glb', note: '448k triangles · 58 meshes · 18.5 MB' },
   Light: { file: '../../models/quarters_lite.glb', note: '185k triangles · 4 meshes · 8.0 MB' },
+  Smart: { file: '../../models/quarters_smart.glb', note: 'Smart Mesh room · 80k triangles · 3 meshes · 5.7 MB · straight lines' },
 };
 let build = 'Light';
 const loader = new GLTFLoader();
@@ -116,6 +117,7 @@ function loadRoom(name) {
   build = name;
   document.querySelectorAll('#builds button').forEach(b => b.classList.toggle('on', b.textContent === name));
   $('buildNote').textContent = BUILDS[name].note;
+  buildScreens(name);
   if (sitter && sitter.parent) sitter.parent.remove(sitter);   // he is not part of the room
   for (const child of [...room.children]) {
     room.remove(child);
@@ -619,14 +621,31 @@ function buildPropList() {
 }
 
 // ── the monitors ────────────────────────────────────────────────────────────────
-// Each monitor's face was measured off the mesh: centre, the way it faces, width and height.
-// The middle one is the site's front page and opens it when tapped.
-const SCREENS = [
-  new Screen({ centre: [-0.026, 1.284, -1.233], normal: [-0.03, 0.077, 0.997], width: 0.562, height: 0.444, kind: 'site', href: '../../' }),
-  new Screen({ centre: [-0.655, 1.301, -1.143], normal: [0.308, 0.216, 0.926], width: 0.615, height: 0.463, kind: 'telemetry' }),
-  new Screen({ centre: [0.46, 1.279, -1.174], normal: [-0.229, 0.113, 0.967], width: 0.363, height: 0.416, kind: 'orbit' }),
-];
-for (const sc of SCREENS) scene.add(sc);
+// Each monitor's face was measured off its mesh: centre, the way it faces, width and height, in
+// world metres at 3.4 m across. Every build has its own monitors, so each has its own set; the
+// middle one is the site's front page and opens it when tapped.
+const SCREEN_SETS = {
+  Full: [
+    { centre: [-0.026, 1.284, -1.233], normal: [-0.03, 0.077, 0.997], width: 0.562, height: 0.444, kind: 'site', href: '../../' },
+    { centre: [-0.655, 1.301, -1.143], normal: [0.308, 0.216, 0.926], width: 0.615, height: 0.463, kind: 'telemetry' },
+    { centre: [0.46, 1.279, -1.174], normal: [-0.229, 0.113, 0.967], width: 0.363, height: 0.416, kind: 'orbit' },
+  ],
+  // the Smart Mesh room: three monitors in a row on the desk under the big window, measured off
+  // the monitor bodies (about 0.75 m wide each, screens 0.72 x 0.45 m)
+  Smart: [
+    { centre: [-0.050, 1.619, -1.258], normal: [-0.001, 0.009, 1.0], width: 0.70, height: 0.44, kind: 'site', href: '../../' },
+    { centre: [-0.710, 1.657, -1.258], normal: [0.108, 0.018, 0.994], width: 0.70, height: 0.44, kind: 'telemetry' },
+    { centre: [0.684, 1.631, -1.273], normal: [0.032, 0.009, 0.999], width: 0.70, height: 0.44, kind: 'orbit' },
+  ],
+};
+SCREEN_SETS.Light = SCREEN_SETS.Full;
+let SCREENS = [];
+function buildScreens(name) {
+  for (const sc of SCREENS) { scene.remove(sc); sc.geometry.dispose(); sc.material.map.dispose(); sc.material.dispose(); }
+  SCREENS = (SCREEN_SETS[name] || SCREEN_SETS.Full).map(spec => new Screen(spec));
+  for (const sc of SCREENS) scene.add(sc);
+}
+buildScreens(build);
 {
   // a tap on a screen that has a link opens it; a drag is the camera, not a tap
   const ray = new THREE.Raycaster(), down = new THREE.Vector2();
