@@ -51,6 +51,13 @@
     <div class="readout" style="grid-template-columns:1fr"><b id="fxInfo"></b><span id="fps"></span></div>
 
     <h2>Rings</h2>
+    <div class="row"><label for="ringModel">Ring model</label><select id="ringModel">
+      <option value="ring" selected>Tripo ring (textured)</option>
+      <option value="ring1">ring 1 · eight pods</option><option value="ring2">ring 2 · octagon of tubes</option>
+      <option value="ring3">ring 3 · hexagon of slabs</option><option value="ring4">ring 4 · eight segments</option></select></div>
+    <div class="row"><label for="ringSurface">Ring surface</label><select id="ringSurface">
+      <option value="auto" selected>its own texture, or panels if it has none</option><option value="panels">generated panel hull</option><option value="texture">its own texture only</option></select></div>
+    <div class="row"><label for="panelMetres">Panel size</label><output id="panelMetresOut"></output><input id="panelMetres" type="range" min="40" max="600" step="10" value="220"></div>
     <div class="row"><label for="ringRadius">Ring radius</label><output id="ringRadiusOut"></output><input id="ringRadius" type="range" min="100" max="2000" step="10" value="700"></div>
     <div class="row"><label for="rings">How many rings</label><output id="ringsOut"></output><input id="rings" type="range" min="1" max="3" step="1" value="1"></div>
     <div class="row"><label for="ringGap">Gap between rings</label><output id="ringGapOut"></output><input id="ringGap" type="range" min="100" max="1500" step="10" value="100"></div>

@@ -7,12 +7,19 @@
 // metres from then on: the ring's radius sets the scale of everything else.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { hullMaterial, boxProjectUVs } from './hull.js';
 
-export const PART_FILES = ['ring', 'tower', 'arm1', 'arm2', 'hangar', 'satellite', 'fighter', 'freighter'];
+export const RING_FILES = ['ring', 'ring1', 'ring2', 'ring3', 'ring4'];
+export const PART_FILES = [...RING_FILES, 'tower', 'arm1', 'arm2', 'hangar', 'satellite', 'fighter', 'freighter'];
 export const G = 9.81;
 
 export const DEFAULT_LAYOUT = {
   // Jacob's station, as he set it in the builder (2026-09-18)
+  // which ring model, and what covers it: 'auto' keeps a part's own texture and gives a bare part
+  // the generated panel hull; 'panels' puts the hull on any ring; 'texture' shows the part as it is
+  ringModel: 'ring',
+  ringSurface: 'auto',
+  panelMetres: 220,       // how wide one tile of the panel hull is on the surface
   ringRadius: 700,        // metres, to the outside of the rim
   rings: 1,
   ringGap: 100,           // metres between rings, when there is more than one
@@ -162,14 +169,13 @@ export async function loadKit(base = '../../models/kit/', onProgress) {
       res();
     }, (e) => { loaded[name] = e.loaded; totals[name] = e.total || totals[name] || 0; report(); }, rej);
   })));
-  parts.ring.circle = rimCircle(parts.ring.geometry);
-  parts.ring.rim = parts.ring.circle.radius;
+  for (const k of RING_FILES) if (parts[k]) { parts[k].circle = rimCircle(parts[k].geometry); parts[k].rim = parts[k].circle.radius; }
   // Where the parts meet: the middle of an arm's far end, and the middle of the hangar's back face,
   // in the part's own units. The hangar hangs off the arm's tip, and its back is not centred on
   // its base, so placing both by their origins left every hangar low and off to one side.
   for (const k of ['arm1', 'arm2']) if (parts[k]) parts[k].tip = endFace(parts[k], k === 'arm2' ? 'z' : 'x', 'max');
   if (parts.hangar) parts.hangar.back = endFace(parts.hangar, 'x', 'min');
-  parts.ring.deckY = deckHeight(parts.ring.geometry, parts.ring.rim);
+  for (const k of RING_FILES) if (parts[k]) parts[k].deckY = deckHeight(parts[k].geometry, parts[k].rim);
   parts.tower.coreFraction = coreFraction(parts.tower.geometry);
   return parts;
 }
@@ -187,7 +193,8 @@ export class StationKit extends THREE.Group {
   }
 
   // metres per unit of the ring part, which sets the scale of the whole station
-  get scale1() { return this.layout.ringRadius / this.parts.ring.rim; }
+  get ringPart() { return this.parts[this.layout.ringModel] || this.parts.ring; }
+  get scale1() { return this.layout.ringRadius / this.ringPart.rim; }
 
   build(layout = this.layout) {
     this.layout = layout;
@@ -225,15 +232,21 @@ export class StationKit extends THREE.Group {
     }
 
     // RINGS, each on its own turntable so they can spin at their own rate.
-    const ringGeo = cutHub(P.ring.geometry, L.hubCut, P.ring.rim, P.ring.circle);
+    const RP = this.ringPart;
+    let ringGeo = cutHub(RP.geometry, L.hubCut, RP.rim, RP.circle);
     ringGeo.userData.temp = L.hubCut > 0;
+    // the surface: the part's own texture, or the generated panel hull projected onto it in metres
+    const bare = !RP.material.map;
+    const panels = L.ringSurface === 'panels' || (L.ringSurface !== 'texture' && bare);
+    if (panels) ringGeo = boxProjectUVs(ringGeo, S, L.panelMetres || 220);
+    const ringMat = panels ? hullMaterial() : RP.material;
     for (let i = 0; i < L.rings; i++) {
       const turntable = new THREE.Group();
       turntable.position.y = L.ringY + i * L.ringGap;
-      const ring = new THREE.Mesh(ringGeo, P.ring.material);
+      const ring = new THREE.Mesh(ringGeo, ringMat);
       ring.scale.setScalar(S);
       // stand it on the axis its rim turns about, not the middle of its bounding box
-      ring.position.set(-P.ring.circle.x * S, -P.ring.deckY * S, -P.ring.circle.z * S);
+      ring.position.set(-RP.circle.x * S, -RP.deckY * S, -RP.circle.z * S);
       ring.castShadow = ring.receiveShadow = true;
       turntable.add(ring);
       // arms on the ring: mounted just inside the rim, pointing outward, turning with it

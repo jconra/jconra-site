@@ -67,6 +67,7 @@ let station = null;
 const layout = JSON.parse(JSON.stringify(DEFAULT_LAYOUT));
 const CONTROLS = {
   ringRadius:   [v => layout.ringRadius = v, v => v.toLocaleString() + ' m'],
+  panelMetres:  [v => layout.panelMetres = v, v => v + ' m'],
   rings:        [v => layout.rings = v, v => v],
   ringGap:      [v => layout.ringGap = v, v => v + ' m'],
   ringY:        [v => layout.ringY = v, v => v + ' m'],
@@ -129,6 +130,8 @@ for (const [id, [apply, fmt]] of Object.entries(CONTROLS)) {
   CONTROLS[id].run = () => { apply(+el.value); $(id + 'Out').textContent = fmt(+el.value); };
 }
 $('towerFlip').addEventListener('change', e => { layout.towerFlip = e.target.checked; queueRebuild(); });
+$('ringModel').addEventListener('change', e => { layout.ringModel = e.target.value; queueRebuild(); });
+$('ringSurface').addEventListener('change', e => { layout.ringSurface = e.target.value; queueRebuild(); });
 $('armKind').addEventListener('change', e => { layout.towerArms.kind = e.target.value; queueRebuild(); });
 $('ringArmKind').addEventListener('change', e => { layout.ringArms.kind = e.target.value; queueRebuild(); });
 $('collar').addEventListener('change', e => { layout.collar = e.target.checked; queueRebuild(); });
