@@ -308,7 +308,7 @@ function measureChair() {
   const slice = 0.02, count = new Map();
   for (const q of pts) {
     const t = (q.y - lo) / (hi - lo);
-    if (t > 0.2 && t < 0.5) { const k = Math.round(q.y / slice); count.set(k, (count.get(k) || 0) + 1); }
+    if (t > 0.2 && t < 0.65) { const k = Math.round(q.y / slice); count.set(k, (count.get(k) || 0) + 1); }   // the pan sits anywhere from a third to two-thirds up, by chair
   }
   let best = null;
   for (const [k, n] of count) if (!best || n > best[1]) best = [k, n];
