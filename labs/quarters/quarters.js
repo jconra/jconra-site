@@ -128,12 +128,18 @@ const term = new Terminal();
 const BOOT = { on: !Q.has('noboot'), bars: {}, weights: { room: 3, jacob: 3, clips: 1, station: 3 }, ready: false, phase: 'loading' };
 function bootBar(name) { if (!BOOT.bars[name]) BOOT.bars[name] = term.bar(name); return BOOT.bars[name]; }
 function bootProgress(name, frac) { const b = BOOT.bars[name]; if (b) b.frac = Math.max(b.frac, Math.min(1, frac)); checkBoot(); }
-term.say('jacob@hab-1:~$ ./station --enter')
-    .say('JCONRA.COM  ·  Jacob Conrads  ·  Systems Engineer')
-    .say('This station is the site: the labs are the rooms.')
-    .say(' ')
-    .say('bringing the cabin up ...');
+// The session. Commands are typed at a human pace and their output printed, so it reads as a
+// terminal and takes a few seconds however fast the files arrive; the greeting script waits for
+// the bars, so it is never read over a half-loaded room.
+term.cmd('whoami').out('jacob').wait(0.5)
+    .cmd('groups').out('aws-systems-engineer  air-force-security-engineer  threejs-enthusiast  bass-guitarist').wait(0.7)
+    .cmd('./station --enter').out('bringing the cabin up ...');
 bootBar('cabin'); bootBar('jacob'); bootBar('clips'); bootBar('station');
+term.gate().wait(0.4)
+    .cmd('./greeting.sh')
+    .out('Welcome to jconra.com.').out('Hello! I am Jacob Conrads, a Systems Engineer. This station is a project to play around with and highlight my skills.')
+    .out('Thank you for visiting! Use the scroll or wait for the animation.').wait(0.3)
+    .out('> Click here for the basic site');
 const termCanvas = $('term'); const termCtx = termCanvas ? termCanvas.getContext('2d') : null;
 function drawBootOverlay() {
   if (!termCtx || !BOOT.on) return;
@@ -150,8 +156,7 @@ function checkBoot() {
   const all = Object.values(BOOT.bars).every(b => b.frac >= 1);
   if (!all || !chairPivot || !sitter || !waveAction || !station) return;
   bootDone = true;
-  term.say(' ').say('all systems nominal. welcome aboard.').say('> Click here for the basic site');
-  BOOT.phase = 'typed';
+  BOOT.phase = 'typed';                 // the script's own gate holds the greeting until the bars fill
 }
 // the camera at the monitor, and the pull-back into the intro
 function bootCamera() {
@@ -493,7 +498,7 @@ function showSet(name) {
     sun.intensity = 3.2; sun.color.setHex(0xfff4e6); cabin.intensity = 0; screens.intensity = 0;
          ambient.intensity = 0.35; ambient.color.setHex(0x8aa0b8); ambient.groundColor.setHex(0x2a3340); renderer.toneMappingExposure = 1.05; }
 }
-const holos = PARTS.map(part => { const h = new Hologram({ lines: part.lines, size: part.size, gap: 1.28 }); scene.add(h); return h; });
+const holos = [];          // the greeting is on the terminal now, not floating over his head; Hologram stays for later
 const SEQ = { hold: 0.9, turn: 1.3, draw: 1.8, waveLen: 1.5, standLen: 2.0, T: 0, playing: false, active: false, scrub: true, turned: 0 };
 const total = () => KEYS[KEYS.length - 1].t;
 

@@ -20,46 +20,67 @@ export class Terminal {
     this.typing = null;        // the line being typed: { text, shown }
     this.carry = 0;            // fractional characters owed by the typing rate
     this.t = 0; this.dirty = true;
-    this.onLine = null;        // called when a queued line finishes typing
+    this.onLine = null;
+    this.prompt = 'jacob@hab-1:~$ ';
+    this.waiting = 0;         // seconds left on a pause        // called when a queued line finishes typing
   }
 
-  // queue text to be typed; long lines wrap to the column width so a phone never clips them
-  say(text) {
+  // queue text to be typed; long lines wrap to the column width so a phone never clips them.
+  // `rate` is characters per second for this text: commands are typed at a human pace, output
+  // is printed in a burst, the way a terminal shows it.
+  say(text, rate = this.cps) {
     for (const raw of String(text).split('\n')) {
       const words = raw.split(' '); let line = '';
       for (const w of words) {
-        if ((line + ' ' + w).trim().length > this.cols) { this.queue.push({ text: line }); line = w; }
+        if ((line + ' ' + w).trim().length > this.cols) { this.queue.push({ text: line, rate }); line = w; }
         else line = (line ? line + ' ' : '') + w;
       }
-      this.queue.push({ text: line });
+      this.queue.push({ text: line, rate });
     }
     return this;
   }
-  // a progress bar with a label; returns the bar so its fraction can be set as bytes arrive
-  bar(label) { const b = { bar: true, label, frac: 0 }; this.queue.push(b); return b; }
+  cmd(text) { return this.say(this.prompt + text, 28).wait(0.35); }   // typed like a person, then Enter
+  out(text) { return this.say(text, 900); }                          // printed like output
+  wait(seconds) { this.queue.push({ wait: seconds }); return this; }
+  // hold the script here until every bar so far has filled (the files have arrived)
+  gate() { this.queue.push({ gate: true }); return this; }
+  // a progress bar with a label; returns the bar so its fraction can be set as bytes arrive. What
+  // is drawn eases toward that, so a file that was already here still fills over a moment.
+  bar(label) { const b = { bar: true, label, frac: 0, shown: 0 }; this.queue.push(b); return b; }
   clear() { this.lines = []; this.queue = []; this.typing = null; this.dirty = true; }
 
   update(dt) {
     this.t += dt;
-    // typing: consume characters from the queue at the rate, with a little unevenness
-    this.carry += dt * this.cps * (0.7 + 0.6 * Math.abs(Math.sin(this.t * 7)));
-    while (this.carry >= 1) {
-      if (!this.typing) {
-        const next = this.queue.shift();
-        if (!next) { this.carry = 0; break; }
-        if (next.bar) { this.lines.push(next); this.dirty = true; continue; }
-        this.typing = { text: next.text, shown: 0 };
+    // bars ease toward what has really arrived
+    for (const l of this.lines) if (l.bar && l.shown < l.frac) { l.shown = Math.min(l.frac, l.shown + dt * 1.1); this.dirty = true; }
+    // pauses, and the gate that waits for the bars
+    if (this.waiting > 0) { this.waiting -= dt; }
+    else if (!this.typing && this.queue.length && this.queue[0].gate) { if (this.lines.every(l => !l.bar || l.shown >= 1)) this.queue.shift(); }
+    else {
+      // typing: consume characters from the queue at the line's rate, with a little unevenness
+      const rate = this.typing ? this.typing.rate : (this.queue[0] && this.queue[0].rate) || this.cps;
+      this.carry += dt * rate * (0.7 + 0.6 * Math.abs(Math.sin(this.t * 7)));
+      while (this.carry >= 1) {
+        if (!this.typing) {
+          const next = this.queue.shift();
+          if (!next) { this.carry = 0; break; }
+          if (next.bar) { this.lines.push(next); this.dirty = true; continue; }
+          if (next.wait) { this.waiting = next.wait; this.carry = 0; break; }
+          if (next.gate) { this.queue.unshift(next); this.carry = 0; break; }
+          this.typing = { text: next.text, shown: 0, rate: next.rate || this.cps };
+          if (!next.text.length) { this.lines.push({ text: '' }); this.typing = null; continue; }
+        }
+        this.typing.shown++; this.carry--; this.dirty = true;
+        if (this.typing.shown >= this.typing.text.length) { this.lines.push({ text: this.typing.text }); this.typing = null; if (this.onLine) this.onLine(); }
       }
-      this.typing.shown++; this.carry--; this.dirty = true;
-      if (this.typing.shown >= this.typing.text.length) { this.lines.push({ text: this.typing.text }); this.typing = null; if (this.onLine) this.onLine(); }
     }
-    // bars redraw as they fill, and the cursor blinks
-    if (this.lines.some(l => l.bar && l.frac < 1) || Math.floor(this.t * 2.5) !== this.blinkPhase) this.dirty = true;
+    // the cursor blinks
+    if (Math.floor(this.t * 2.5) !== this.blinkPhase) this.dirty = true;
     this.blinkPhase = Math.floor(this.t * 2.5);
     if (this.dirty) this.draw();
   }
 
-  get done() { return !this.queue.length && !this.typing && this.lines.every(l => !l.bar || l.frac >= 1); }
+  get done() { return !this.queue.length && !this.typing && this.waiting <= 0 && this.lines.every(l => !l.bar || l.shown >= 1); }
 
   draw() {
     this.dirty = false;
@@ -76,11 +97,11 @@ export class Terminal {
       if (r.bar) {
         const label = r.label.padEnd(18, ' ').slice(0, 18);
         const barCols = Math.max(8, this.cols - 18 - 7);
-        const filled = Math.round(Math.min(1, r.frac) * barCols);
-        const txt = `${label}[${'#'.repeat(filled)}${'-'.repeat(barCols - filled)}] ${Math.round(Math.min(1, r.frac) * 100).toString().padStart(3)}%`;
-        g.fillStyle = r.frac >= 1 ? this.colour : 'rgba(94,255,138,0.75)'; g.fillText(txt, pad, y);
+        const filled = Math.round(Math.min(1, r.shown) * barCols);
+        const txt = `${label}[${'#'.repeat(filled)}${'-'.repeat(barCols - filled)}] ${Math.round(Math.min(1, r.shown) * 100).toString().padStart(3)}%`;
+        g.fillStyle = r.shown >= 1 ? this.colour : 'rgba(94,255,138,0.75)'; g.fillText(txt, pad, y);
       } else {
-        g.fillStyle = r.text.startsWith('>') ? '#dfffe6' : this.colour;
+        g.fillStyle = r.text.startsWith('>') || r.text.startsWith(this.prompt) ? '#dfffe6' : this.colour;
         g.fillText(r.text, pad, y);
         if (r.live) { g.fillStyle = this.colour; g.fillRect(pad + g.measureText(r.text).width + 4, y + 2, s * 0.6, s); }
       }
