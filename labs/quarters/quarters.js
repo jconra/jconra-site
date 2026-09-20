@@ -110,7 +110,9 @@ const CHAIR = { swivel: true, speed: 12, angle: 0 };
 const BUILDS = {
   Full:  { file: '../../models/quarters.glb', note: '448k triangles · 58 meshes · 18.5 MB' },
   Light: { file: '../../models/quarters_lite.glb', note: '185k triangles · 4 meshes · 8.0 MB' },
-  Smart: { file: '../../models/quarters_smart.glb', note: 'Smart Mesh room · 80k triangles · 3 meshes · 5.7 MB · straight lines' },
+  // unit: metres per model unit, and the model is already centred on its own axes; the box is not
+  // used for scale, because walls added later would shrink and shift the room
+  Smart: { file: '../../models/quarters_smart.glb', note: 'Smart Mesh room · Jacob\'s SpaceDorm · 42k triangles · 5.3 MB', unit: 3.4 },
 };
 let build = BUILDS[Q.get('build')] ? Q.get('build') : 'Light';   // ?build=Smart opens straight on a room
 const loader = new GLTFLoader();
@@ -130,10 +132,12 @@ function loadRoom(name) {
   model.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(model);
   const size = box.getSize(new THREE.Vector3());
-  const scale = ROOM_METRES / Math.max(size.x, size.z);
-  // stand the room on the floor, centred on the room's middle
+  const fixed = BUILDS[name].unit;
+  const scale = fixed || ROOM_METRES / Math.max(size.x, size.z);
   model.scale.setScalar(scale);
-  model.position.set(-box.min.x * scale - (size.x * scale) / 2, -box.min.y * scale, -box.min.z * scale - (size.z * scale) / 2);
+  // stand the room on the floor: centred on the box, or on its own axes when the scale is fixed
+  if (fixed) model.position.set(0, 0, 0);       // the file's own origin: its floor top is at a known height, whatever hangs below it
+  else model.position.set(-box.min.x * scale - (size.x * scale) / 2, -box.min.y * scale, -box.min.z * scale - (size.z * scale) / 2);
   room.add(model);
   // The chair's axis below is read through the meshes' world matrices, which still hold the raw
   // export until this runs: without it the axis lands in raw units and the chair orbits the room.
