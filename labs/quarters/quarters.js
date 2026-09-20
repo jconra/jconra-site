@@ -714,14 +714,14 @@ function buildPropList() {
 // middle one is the site's front page and opens it when tapped.
 const SCREEN_SETS = {
   Full: [
-    { centre: [-0.026, 1.284, -1.233], normal: [-0.03, 0.077, 0.997], width: 0.562, height: 0.444, kind: 'terminal', href: 'https://jacobconrads.com' },
+    { centre: [-0.026, 1.284, -1.233], normal: [-0.03, 0.077, 0.997], width: 0.562, height: 0.444, kind: 'terminal', href: 'https://jacobconrads.com/about.html' },
     { centre: [-0.655, 1.301, -1.143], normal: [0.308, 0.216, 0.926], width: 0.615, height: 0.463, kind: 'telemetry' },
     { centre: [0.46, 1.279, -1.174], normal: [-0.229, 0.113, 0.967], width: 0.363, height: 0.416, kind: 'orbit' },
   ],
   // the Smart Mesh room: three monitors in a row on the desk under the big window, measured off
   // the monitor bodies (about 0.75 m wide each, screens 0.72 x 0.45 m)
   Smart: [
-    { centre: [-0.050, 1.619, -1.360], normal: [-0.001, 0.009, 1.0], width: 0.70, height: 0.44, kind: 'terminal', href: 'https://jacobconrads.com' },
+    { centre: [-0.050, 1.619, -1.360], normal: [-0.001, 0.009, 1.0], width: 0.70, height: 0.44, kind: 'terminal', href: 'https://jacobconrads.com/about.html' },
     { centre: [-0.710, 1.657, -1.360], normal: [0.108, 0.018, 0.994], width: 0.70, height: 0.44, kind: 'telemetry' },
     { centre: [0.684, 1.631, -1.375], normal: [0.032, 0.009, 0.999], width: 0.70, height: 0.44, kind: 'orbit' },
   ],
