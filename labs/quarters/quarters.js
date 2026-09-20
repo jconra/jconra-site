@@ -112,7 +112,7 @@ const BUILDS = {
   Light: { file: '../../models/quarters_lite.glb', note: '185k triangles · 4 meshes · 8.0 MB' },
   // unit: metres per model unit, and the model is already centred on its own axes; the box is not
   // used for scale, because walls added later would shrink and shift the room
-  Smart: { file: '../../models/quarters_smart.glb', note: 'Smart Mesh room · Jacob\'s SpaceDorm · 42k triangles · 5.3 MB', unit: 3.4 },
+  Smart: { file: '../../models/quarters_smart.glb', note: 'Smart Mesh room · Jacob\'s SpaceDorm · 42k triangles · 5.3 MB', unit: 3.4, ownRoof: true },
 };
 let build = BUILDS[Q.get('build')] ? Q.get('build') : 'Light';   // ?build=Smart opens straight on a room
 const loader = new GLTFLoader();
@@ -154,7 +154,7 @@ function loadRoom(name) {
       if (m.map) { m.map.colorSpace = THREE.SRGBColorSpace; m.map.anisotropy = renderer.capabilities.getMaxAnisotropy(); }
       m.envMapIntensity = 0.4;
     }
-    if (/^Room/.test(o.name)) room.add(roofFrom(o));
+    if (/^Room/.test(o.name) && !BUILDS[name].ownRoof) room.add(roofFrom(o));
     if (/^Windows/.test(o.name)) windows = o;
     else if (/^Chair/.test(o.name)) {
       // Swivel about the post, not the middle of the bounding box: the chair stands at an angle to
@@ -672,8 +672,18 @@ function snapScreens() {
     if (!hit) continue;
     const fn = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
     if (fn.dot(n) < 0) fn.negate();
-    sc.position.copy(hit.point).addScaledVector(fn, 0.006);
+    sc.position.copy(hit.point).addScaledVector(fn, 0.004);
     sc.lookAt(hit.point.clone().add(fn));
+    // the painted screen's own extent, found by walking out from the hit along the face's plane
+    // until the surface turns (the bezel): the live screen is sized to sit inside that
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(sc.quaternion), up = new THREE.Vector3(0, 1, 0).applyQuaternion(sc.quaternion);
+    const reach = (dir) => { let d = 0.02; for (; d < 0.6; d += 0.02) { ray.set(hit.point.clone().addScaledVector(dir, d).addScaledVector(fn, 0.05), fn.clone().negate()); ray.far = 0.1;
+      const h = ray.intersectObjects(targets, true).find(x => x.face); if (!h) break; const hn = h.face.normal.clone().transformDirection(h.object.matrixWorld); if (Math.abs(hn.dot(fn)) < 0.9 || Math.abs(h.distance - 0.05) > 0.012) break; } return d - 0.02; };
+    const w = reach(right) + reach(right.clone().negate()), h = reach(up) + reach(up.clone().negate());
+    if (w > 0.2 && h > 0.15) {
+      sc.position.addScaledVector(right, (reach(right) - reach(right.clone().negate())) / 2).addScaledVector(up, (reach(up) - reach(up.clone().negate())) / 2);
+      sc.scale.set((w * 0.94) / sc.geometry.parameters.width, (h * 0.92) / sc.geometry.parameters.height, 1);
+    }
   }
 }
 buildScreens(build);
