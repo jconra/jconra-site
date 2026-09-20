@@ -30,6 +30,12 @@
   #props label { display:flex; gap:4px; align-items:center; font:11px ui-monospace,monospace; color:#aeb9c2; cursor:pointer; }
   #copy { width:100%; margin-top:14px; }
   #out { display:none; width:100%; height:140px; margin-top:6px; background:#05070a; color:#ccd6de; border:1px solid #212a34; font:11px ui-monospace,monospace; }
+  @font-face { font-family: Console; src: url("../../fonts/console.ttf"); font-display: swap; }
+  #bootOverlay { position:fixed; inset:0; z-index:9; background:#020604; transition:opacity .8s ease; }
+  #bootOverlay.gone { opacity:0; pointer-events:none; }
+  #term { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  #basic { position:absolute; left:max(28px, 8vw); bottom:max(28px, env(safe-area-inset-bottom, 0px) + 20px); font:22px Console, ui-monospace, monospace; color:#dfffe6; text-decoration:none; background:#020604; padding:8px 12px; border:1px solid #2f7d55; }
+  #basic:hover, #basic:focus { color:#5eff8a; }
   #boot { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; font:13px nasa, monospace; letter-spacing:4px; color:#b9c8d2; background:#000; z-index:9; }
   #hud { position:fixed; top:36px; left:16px; z-index:6; pointer-events:none;
          font:11.5px/1.5 ui-monospace,monospace; color:#9fb3c2; text-shadow:0 1px 4px #000; }
@@ -40,7 +46,7 @@
 </style>
 </head>
 <body>
-<div id="boot">LOADING QUARTERS… <span id="pct"></span></div>
+<div id="bootOverlay"><canvas id="term"></canvas><a id="basic" href="https://jacobconrads.com">&gt; Click here for the basic site</a></div>
 <a id="back" href="../">&larr; labs</a>
 <div id="hud"></div>
 <div id="panel">

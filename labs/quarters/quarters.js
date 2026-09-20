@@ -11,6 +11,7 @@ import { Earth } from '../../src/objects/earth.js';
 import { Post } from '../../src/fx/post.js';
 import { Hologram } from '../../src/objects/hologram.js';
 import { Screen } from '../../src/objects/screens.js';
+import { Terminal } from '../../src/objects/terminal.js';
 import { loadKit, StationKit, DEFAULT_LAYOUT } from '../../src/objects/stationKit.js';
 
 const Q = new URLSearchParams(location.search);
@@ -116,6 +117,77 @@ const BUILDS = {
 };
 let build = BUILDS[Q.get('build')] ? Q.get('build') : 'Light';   // ?build=Smart opens straight on a room
 const loader = new GLTFLoader();
+
+// ── the boot ──────────────────────────────────────────────────────────────────────
+// The experience starts on the computer: a full-screen terminal types out a greeting and shows
+// the files arriving as progress bars, so nothing is ever seen half loaded and the monitor has
+// the visitor's attention from the first frame. When everything is in, the terminal turns out to
+// be the picture on the desk monitor, and the camera pulls back from it into the room and the
+// intro begins. A link at the bottom goes to the plain site for anyone who would rather.
+const term = new Terminal();
+const BOOT = { on: !Q.has('noboot'), bars: {}, weights: { room: 3, jacob: 3, clips: 1, station: 3 }, ready: false, phase: 'loading' };
+function bootBar(name) { if (!BOOT.bars[name]) BOOT.bars[name] = term.bar(name); return BOOT.bars[name]; }
+function bootProgress(name, frac) { const b = BOOT.bars[name]; if (b) b.frac = Math.max(b.frac, Math.min(1, frac)); checkBoot(); }
+term.say('jacob@hab-1:~$ ./station --enter')
+    .say('JCONRA.COM  ·  Jacob Conrads  ·  Systems Engineer')
+    .say('This station is the site: the labs are the rooms.')
+    .say(' ')
+    .say('bringing the cabin up ...');
+bootBar('cabin'); bootBar('jacob'); bootBar('clips'); bootBar('station');
+const termCanvas = $('term'); const termCtx = termCanvas ? termCanvas.getContext('2d') : null;
+function drawBootOverlay() {
+  if (!termCtx || !BOOT.on) return;
+  const W = termCanvas.width = innerWidth * Math.min(devicePixelRatio, 2), H = termCanvas.height = innerHeight * Math.min(devicePixelRatio, 2);
+  termCtx.fillStyle = '#020604'; termCtx.fillRect(0, 0, W, H);
+  // the column fills the height, centred; on a wide screen there is black either side, as a
+  // terminal window would have
+  const sh = H, sw = sh * term.canvas.width / term.canvas.height, sx = Math.min((W - sw) / 2, W * 0.08);
+  termCtx.drawImage(term.canvas, Math.max(0, sx), 0, Math.min(sw, W), sh);
+}
+let bootDone = false;
+function checkBoot() {
+  if (bootDone || !BOOT.on) return;
+  const all = Object.values(BOOT.bars).every(b => b.frac >= 1);
+  if (!all || !chairPivot || !sitter || !waveAction || !station) return;
+  bootDone = true;
+  term.say(' ').say('all systems nominal. welcome aboard.').say('> Click here for the basic site');
+  BOOT.phase = 'typed';
+}
+// the camera at the monitor, and the pull-back into the intro
+function bootCamera() {
+  const sc = SCREENS.find(s => s.kind === 'terminal'); if (!sc) return null;
+  const n = new THREE.Vector3(0, 0, 1).applyQuaternion(sc.quaternion);
+  // close enough that the monitor fills the frame: distance from its width and the field of view
+  const w = sc.geometry.parameters.width * sc.scale.x, h = sc.geometry.parameters.height * sc.scale.y;
+  const vfov = THREE.MathUtils.degToRad(camera.fov), hfov = 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect);
+  const d = Math.max(w / (2 * Math.tan(hfov / 2)), h / (2 * Math.tan(vfov / 2))) * 1.02;
+  // on a phone the terminal column is on the left of the monitor: aim at that column
+  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(sc.quaternion);
+  const colW = h * term.canvas.width / term.canvas.height, portrait = innerWidth < innerHeight;
+  const at = sc.position.clone().addScaledVector(right, portrait ? -(w - colW) / 2 : 0);
+  const dd = portrait ? Math.max(colW / (2 * Math.tan(hfov / 2)), h / (2 * Math.tan(vfov / 2))) * 1.02 : d;
+  return { pos: at.clone().addScaledVector(n, dd), at };
+}
+let pull = null;
+function startPullBack() {
+  const bc = bootCamera(); if (!bc) { finishBoot(); return; }
+  if (!SEQ.active) activateIntro();
+  SEQ.playing = false; seek(0);
+  const endPos = camera.position.clone(), endAt = controls.target.clone();
+  pull = { t: 0, len: 3.2, from: bc.pos, at: bc.at, to: endPos, toAt: endAt };
+  camera.position.copy(bc.pos); controls.target.copy(bc.at); camera.lookAt(bc.at);
+  BOOT.phase = 'pull';
+  const ov = $('bootOverlay'); if (ov) { ov.classList.add('gone'); setTimeout(() => ov.remove(), 900); }
+}
+function stepPull(dt) {
+  if (!pull) return;
+  pull.t += dt;
+  const u = Math.min(1, pull.t / pull.len), e = u * u * (3 - 2 * u);
+  camera.position.lerpVectors(pull.from, pull.to, e); controls.target.lerpVectors(pull.at, pull.toAt, e); camera.lookAt(controls.target);
+  if (u >= 1) { pull = null; finishBoot(); }
+}
+function finishBoot() { BOOT.phase = 'done'; BOOT.on = false; if (!SEQ.active) activateIntro(); SEQ.T = 0; SEQ.playing = true; }
+
 function loadRoom(name) {
   build = name;
   document.querySelectorAll('#builds button').forEach(b => b.classList.toggle('on', b.textContent === name));
@@ -183,8 +255,9 @@ function loadRoom(name) {
   if (chairPivot && !CHAIR.swivel) chairPivot.rotation.y = THREE.MathUtils.degToRad(CHAIR.angle);
   placeSitter();
   $('boot')?.remove();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, getStation: () => station, getHangar: () => hangarAt, playIntro, activateIntro, setLight, holos, getWave: () => waveAction });
-  }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; },
+  bootProgress('cabin', 1); loadSitter(); loadStation();
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => hangarAt, playIntro, activateIntro, setLight, holos, getWave: () => waveAction });
+  }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; if (e.total) bootProgress('cabin', e.loaded / e.total); },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
 for (const mode of ['Globe', 'Picture']) {
@@ -259,6 +332,7 @@ function loadSitter() {
   if (sitter || sitterLoading) return;
   sitterLoading = true;
   loader.load('../../models/jacob5.glb', (gltf) => {
+    bootProgress('jacob', 1);
     const model = gltf.scene;
     model.traverse(o => {
       if (!o.isMesh) return;
@@ -289,7 +363,7 @@ function loadSitter() {
       waveAction = sitterMixer.clipAction(wave);
       waveAction.setLoop(THREE.LoopOnce, 1); waveAction.clampWhenFinished = true;
       waveAction.enabled = true; waveAction.setEffectiveWeight(0); waveAction.play();
-      SEQ.waveLen = wave.duration;
+      SEQ.waveLen = wave.duration; bootProgress('clips', 1);
     });
     // standing up (Mixamo, retargeted) and Tripo's own walk; both start silent and the timeline drives them
     loader.load('../../models/stand_up_clip.glb', (g) => {
@@ -300,7 +374,7 @@ function loadSitter() {
     });
     const walk = gltf.animations.find(c => /walk/i.test(c.name));
     if (walk) { walkAction = sitterMixer.clipAction(walk); walkAction.setEffectiveWeight(0); walkAction.play(); }
-  }, undefined, (e) => console.error(e));
+  }, (e) => { if (e.total) bootProgress('jacob', e.loaded / e.total); }, (e) => console.error(e));
 }
 // The chair, measured in the holder's own frame so it holds while the chair turns: the seat pan is
 // the busiest horizontal slice of the chair's lower half, the backrest is what stands well above
@@ -391,9 +465,10 @@ let station = null, stationLoading = false, hangarAt = null, currentSet = 'cabin
 function loadStation() {
   if (station || stationLoading) return;
   stationLoading = true;
-  loadKit('../../models/kit/').then(parts => {
+  loadKit('../../models/kit/', f => bootProgress('station', f)).then(parts => {
+    bootProgress('station', 1);
     station = new StationKit(parts).build(DEFAULT_LAYOUT);
-    station.position.copy(STATION_AT); station.visible = false; scene.add(station);
+    station.position.copy(STATION_AT); station.visible = false; scene.add(station); checkBoot();
     // the first hangar, to look at and fly into
     station.traverse(o => { if (!hangarAt && o.isInstancedMesh && o.geometry === parts.hangar.geometry) {
       const m = new THREE.Matrix4(); o.getMatrixAt(0, m); hangarAt = new THREE.Vector3().setFromMatrixPosition(m).add(STATION_AT); } });
@@ -639,14 +714,14 @@ function buildPropList() {
 // middle one is the site's front page and opens it when tapped.
 const SCREEN_SETS = {
   Full: [
-    { centre: [-0.026, 1.284, -1.233], normal: [-0.03, 0.077, 0.997], width: 0.562, height: 0.444, kind: 'site', href: '../../' },
+    { centre: [-0.026, 1.284, -1.233], normal: [-0.03, 0.077, 0.997], width: 0.562, height: 0.444, kind: 'terminal', href: 'https://jacobconrads.com' },
     { centre: [-0.655, 1.301, -1.143], normal: [0.308, 0.216, 0.926], width: 0.615, height: 0.463, kind: 'telemetry' },
     { centre: [0.46, 1.279, -1.174], normal: [-0.229, 0.113, 0.967], width: 0.363, height: 0.416, kind: 'orbit' },
   ],
   // the Smart Mesh room: three monitors in a row on the desk under the big window, measured off
   // the monitor bodies (about 0.75 m wide each, screens 0.72 x 0.45 m)
   Smart: [
-    { centre: [-0.050, 1.619, -1.360], normal: [-0.001, 0.009, 1.0], width: 0.70, height: 0.44, kind: 'site', href: '../../' },
+    { centre: [-0.050, 1.619, -1.360], normal: [-0.001, 0.009, 1.0], width: 0.70, height: 0.44, kind: 'terminal', href: 'https://jacobconrads.com' },
     { centre: [-0.710, 1.657, -1.360], normal: [0.108, 0.018, 0.994], width: 0.70, height: 0.44, kind: 'telemetry' },
     { centre: [0.684, 1.631, -1.375], normal: [0.032, 0.009, 0.999], width: 0.70, height: 0.44, kind: 'orbit' },
   ],
@@ -656,6 +731,7 @@ let SCREENS = [];
 function buildScreens(name) {
   for (const sc of SCREENS) { scene.remove(sc); sc.geometry.dispose(); sc.material.map.dispose(); sc.material.dispose(); }
   SCREENS = (SCREEN_SETS[name] || SCREEN_SETS.Full).map(spec => new Screen(spec));
+  for (const sc of SCREENS) if (sc.kind === 'terminal') sc.source = term.canvas;
   for (const sc of SCREENS) scene.add(sc);
 }
 // Each screen finds the monitor face for itself once the room is in: a ray from a little in front
@@ -709,6 +785,7 @@ const VIEWS = {
 // FREE LOOK: for inspecting a room. The timeline lets go of the camera, the wheel zooms instead of
 // scrubbing, and the orbit can go anywhere - through walls, up close - with the greeting hidden.
 function freeLook() {
+  BOOT.on = false; pull = null; $('bootOverlay')?.remove();
   SEQ.active = false; SEQ.playing = false; showSet('cabin');
   for (const h of holos) h.fill = 0;
   controls.enabled = true; controls.minDistance = 0.05; controls.maxDistance = 40;
@@ -830,6 +907,12 @@ renderer.setAnimationLoop(() => {
   if (earthMode === 'Globe') earth.update(dt);
   // drifting past, as if in orbit, wrapping around without jumping to one end on the first frame
   else picture.position.x = ((picture.position.x + dt * EARTH.spin * 12 + 1200) % 2400) - 1200;
+  term.update(dt);
+  if (BOOT.on) {
+    drawBootOverlay();
+    if (BOOT.phase === 'typed' && term.done) { BOOT.phase = 'hold'; setTimeout(startPullBack, 900); }
+    stepPull(dt);
+  }
   stepSequence(dt);
   if (!SEQ.active) controls.update();     // while the timeline owns the camera, orbit must not touch it: its 14 m limit would drag it into the station
   if ($('autoFocus').checked) post.focus = camera.position.distanceTo(controls.target);

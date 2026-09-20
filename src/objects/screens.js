@@ -16,7 +16,7 @@ export class Screen extends THREE.Mesh {
     super(new THREE.PlaneGeometry(width * 0.9, height * 0.86),
           new THREE.MeshBasicMaterial({ map, toneMapped: false }));
     this.canvas = canvas; this.ctx = canvas.getContext('2d'); this.map = map;
-    this.kind = kind; this.href = href; this.colour = colour;
+    this.kind = kind; this.href = href; this.colour = colour; this.source = null;
     this.t = 0; this.next = 0; this.rand = rnd(kind.length * 977 + 13);
     this.log = [];
     const c = new THREE.Vector3(...centre), n = new THREE.Vector3(...normal).normalize();
@@ -27,12 +27,16 @@ export class Screen extends THREE.Mesh {
   update(dt) {
     this.t += dt;
     if (this.t < this.next) return;
-    this.next = this.t + 0.12;                               // about eight redraws a second is plenty
+    this.next = this.t + (this.kind === 'terminal' ? 0.04 : 0.12);   // the terminal types fast; the rest need eight a second
     const g = this.ctx, W = this.canvas.width, H = this.canvas.height, t = this.t;
     g.fillStyle = '#04080f'; g.fillRect(0, 0, W, H);
     g.strokeStyle = 'rgba(127,208,255,0.10)'; g.lineWidth = 1;
     for (let y = 0; y < H; y += 4) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
-    this['draw_' + this.kind](g, W, H, t);
+    if (this.kind === 'terminal' && this.source) {
+      // the terminal's portrait column on the left of the display, like a window on a desktop
+      const src = this.source, sh = H - 16, sw = sh * src.width / src.height;
+      g.drawImage(src, 8, 8, sw, sh);
+    } else this['draw_' + this.kind](g, W, H, t);
     // a slow sweep of brightness down the panel, as a screen looks when it is filmed
     const grad = g.createLinearGradient(0, ((t * 40) % (H + 120)) - 120, 0, ((t * 40) % (H + 120)));
     grad.addColorStop(0, 'rgba(255,255,255,0)'); grad.addColorStop(0.5, 'rgba(255,255,255,0.05)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
