@@ -54,7 +54,7 @@ scene.add(sun.target); scene.add(spaceFill.target);   // a directional light shi
 // ── Earth outside ───────────────────────────────────────────────────────────────
 const earth = new Earth({ radius: 6371000 });
 scene.add(earth);
-const EARTH = { altitude: 420000, spin: 0.35, tilt: 18, glow: 1 };
+const EARTH = { altitude: 420000, spin: 0.35, tilt: 18, glow: 0.3 };   // the air glow low: at full it read as a blue haze
 function placeEarth() {
   // The windows face -z, so Earth sits out that way and below, as it would from a station in orbit.
   const d = earth.radius + EARTH.altitude;
@@ -88,7 +88,7 @@ const picture = new THREE.Mesh(
 picture.position.set(0, -150, -600);                               // about 14 degrees below the window's line of sight
 picture.rotation.x = -(Math.PI / 2 - Math.atan2(150, 600));
 scene.add(picture);
-let earthMode = 'Picture';
+let earthMode = 'Globe';
 function setEarthMode(mode) {
   earthMode = mode;
   earth.visible = mode === 'Globe';
@@ -174,6 +174,7 @@ function loadRoom(name) {
     } else props.push(o);
   }
   buildPropList();
+  snapScreens();
   applyWindows();
   if (chairPivot && !CHAIR.swivel) chairPivot.rotation.y = THREE.MathUtils.degToRad(CHAIR.angle);
   placeSitter();
@@ -225,7 +226,14 @@ function roofFrom(walls) {
   if (sy > 0) { for (let i = 0; i < I.length; i += 3) { const t = I[i + 1]; I[i + 1] = I[i + 2]; I[i + 2] = t; } geo.setIndex(I); geo.computeVertexNormals(); }
   const roof = new THREE.Mesh(geo, walls.material);
   roof.name = 'Roof'; roof.receiveShadow = true;
-  console.log('roof from', I.length / 3, 'triangles of the outer wall');
+  // and a plain lid just above the copied skin: the skin has gaps wherever the outer wall did,
+  // and on the Smart Mesh room those were big enough to see the stars through
+  const lid = new THREE.Mesh(new THREE.PlaneGeometry(box.max.x - box.min.x, box.max.z - box.min.z).rotateX(Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: 0x8e949a, roughness: 0.85, metalness: 0.1, side: THREE.DoubleSide }));
+  lid.position.set((box.max.x + box.min.x) / 2, top + 0.012, (box.max.z + box.min.z) / 2);
+  lid.name = 'RoofLid'; lid.receiveShadow = true;
+  roof.add(lid); lid.position.sub(roof.position);
+  console.log('roof from', I.length / 3, 'triangles of the outer wall, with a lid');
   return roof;
 }
 
@@ -634,9 +642,9 @@ const SCREEN_SETS = {
   // the Smart Mesh room: three monitors in a row on the desk under the big window, measured off
   // the monitor bodies (about 0.75 m wide each, screens 0.72 x 0.45 m)
   Smart: [
-    { centre: [-0.050, 1.619, -1.258], normal: [-0.001, 0.009, 1.0], width: 0.70, height: 0.44, kind: 'site', href: '../../' },
-    { centre: [-0.710, 1.657, -1.258], normal: [0.108, 0.018, 0.994], width: 0.70, height: 0.44, kind: 'telemetry' },
-    { centre: [0.684, 1.631, -1.273], normal: [0.032, 0.009, 0.999], width: 0.70, height: 0.44, kind: 'orbit' },
+    { centre: [-0.050, 1.619, -1.360], normal: [-0.001, 0.009, 1.0], width: 0.70, height: 0.44, kind: 'site', href: '../../' },
+    { centre: [-0.710, 1.657, -1.360], normal: [0.108, 0.018, 0.994], width: 0.70, height: 0.44, kind: 'telemetry' },
+    { centre: [0.684, 1.631, -1.375], normal: [0.032, 0.009, 0.999], width: 0.70, height: 0.44, kind: 'orbit' },
   ],
 };
 SCREEN_SETS.Light = SCREEN_SETS.Full;
@@ -645,6 +653,24 @@ function buildScreens(name) {
   for (const sc of SCREENS) { scene.remove(sc); sc.geometry.dispose(); sc.material.map.dispose(); sc.material.dispose(); }
   SCREENS = (SCREEN_SETS[name] || SCREEN_SETS.Full).map(spec => new Screen(spec));
   for (const sc of SCREENS) scene.add(sc);
+}
+// Each screen finds the monitor face for itself once the room is in: a ray from a little in front
+// of where it was measured, back toward the wall, and the first face it meets is the glass. The
+// screen then sits just proud of that face, turned to match it, so a few centimetres of measuring
+// error cannot leave it floating or buried.
+function snapScreens() {
+  const ray = new THREE.Raycaster(); const targets = [];
+  room.traverse(o => { if (o.isMesh && o.name !== 'Roof' && o.name !== 'RoofLid') targets.push(o); });
+  for (const sc of SCREENS) {
+    const n = new THREE.Vector3(0, 0, 1).applyQuaternion(sc.quaternion);
+    ray.set(sc.position.clone().addScaledVector(n, 0.45), n.clone().negate()); ray.far = 0.9;
+    const hit = ray.intersectObjects(targets, true).find(h => h.face);
+    if (!hit) continue;
+    const fn = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+    if (fn.dot(n) < 0) fn.negate();
+    sc.position.copy(hit.point).addScaledVector(fn, 0.006);
+    sc.lookAt(hit.point.clone().add(fn));
+  }
 }
 buildScreens(build);
 {
