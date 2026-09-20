@@ -105,8 +105,10 @@ function show(i) {
   holder.position.set(-I.centre.x, -I.min.y, -I.centre.z);
   floor.visible = grid.visible = true;
   const r = Math.max(I.size.x, I.size.y, I.size.z);
+  // on a phone the panel covers the lower half of the screen, so the prop is framed in the upper half
+  const lift = innerWidth <= 700 ? -r * 0.55 : 0;
   camera.position.set(r * 1.6, I.size.y * 0.5 + r * 0.9, r * 1.9);
-  controls.target.set(0, I.size.y / 2, 0); controls.update();
+  controls.target.set(0, I.size.y / 2 + lift, 0); controls.update();
   camera.near = r * 0.01; camera.far = r * 60; camera.updateProjectionMatrix();
   $('pname').textContent = p.name;
   $('psize').textContent = `${(I.size.x * 100).toFixed(0)} × ${(I.size.y * 100).toFixed(0)} × ${(I.size.z * 100).toFixed(0)} cm`;
@@ -153,7 +155,8 @@ for (const [name, fn] of [['front', () => aim(0, 0.3, 1)], ['side', () => aim(1,
 function aim(x, y, z) {
   if (current < 0) return;
   const I = info[props[current].name], r = Math.max(I.size.x, I.size.y, I.size.z) * 2.2;
-  camera.position.set(x * r, I.size.y / 2 + y * r, z * r); controls.target.set(0, I.size.y / 2, 0); controls.update();
+  const lift = innerWidth <= 700 ? -r * 0.25 : 0;
+  camera.position.set(x * r, I.size.y / 2 + y * r, z * r); controls.target.set(0, I.size.y / 2 + lift, 0); controls.update();
 }
 setLight('flat');
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
