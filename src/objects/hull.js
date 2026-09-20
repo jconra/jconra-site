@@ -132,3 +132,37 @@ export function boxProjectUVs(geometry, metresPerUnit, metresPerTile) {
   g.userData.temp = true;
   return g;
 }
+
+// The side-face tile: a picture of hull plating with octagonal windows (textures/hull_side.jpg),
+// repeated across the ring's two flat side faces, where windows belong under spin gravity. The rim
+// keeps whatever the part has.
+let sideShared = null;
+export function sideMaterial() {
+  if (!sideShared) {
+    const map = new THREE.TextureLoader().load('../../textures/hull_side.jpg', (t) => { t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; });
+    map.wrapS = map.wrapT = THREE.RepeatWrapping;
+    sideShared = new THREE.MeshStandardMaterial({ map, metalness: 0.2, roughness: 0.75 });
+  }
+  return sideShared;
+}
+
+// Split a geometry into the triangles that face along `axis` (the ring's two flat sides, when the
+// axis is the ring's own) and the rest (rim, inner face, greebles). The side triangles get a
+// planar projection in metres over `metresPerTile`, so the tile lies flat on the face.
+export function splitSides(geometry, metresPerUnit, metresPerTile, minDot = 0.75) {
+  const g = geometry.index ? geometry.toNonIndexed() : geometry.clone();
+  const pos = g.attributes.position, n = pos.count;
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), nn = new THREE.Vector3();
+  const sideIdx = [], restIdx = [];
+  for (let i = 0; i < n; i += 3) {
+    a.fromBufferAttribute(pos, i); b.fromBufferAttribute(pos, i + 1); c.fromBufferAttribute(pos, i + 2);
+    nn.crossVectors(b.clone().sub(a), c.clone().sub(a)).normalize();
+    (Math.abs(nn.y) >= minDot ? sideIdx : restIdx).push(i, i + 1, i + 2);
+  }
+  const pick = (idx) => { const out = new THREE.BufferGeometry(); const p = new Float32Array(idx.length * 3); for (let k = 0; k < idx.length; k++) { p[k * 3] = pos.getX(idx[k]); p[k * 3 + 1] = pos.getY(idx[k]); p[k * 3 + 2] = pos.getZ(idx[k]); } out.setAttribute('position', new THREE.BufferAttribute(p, 3)); out.computeVertexNormals(); out.userData.temp = true; return out; };
+  const side = pick(sideIdx), rest = pick(restIdx);
+  const sp = side.attributes.position, uv = new Float32Array(sp.count * 2), k = metresPerUnit / metresPerTile;
+  for (let i = 0; i < sp.count; i++) { uv[i * 2] = sp.getX(i) * k; uv[i * 2 + 1] = sp.getZ(i) * k; }
+  side.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return { side, rest };
+}

@@ -7,7 +7,7 @@
 // metres from then on: the ring's radius sets the scale of everything else.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { hullMaterial, boxProjectUVs } from './hull.js';
+import { hullMaterial, boxProjectUVs, sideMaterial, splitSides } from './hull.js';
 
 export const RING_FILES = ['ring', 'ring1', 'ring2', 'ring3', 'ring3t', 'ring4', 'ring5', 'ring5t', 'ring7'];
 export const PART_FILES = [...RING_FILES, 'tower', 'arm1', 'arm2', 'hangar', 'satellite', 'fighter', 'freighter'];
@@ -20,6 +20,7 @@ export const DEFAULT_LAYOUT = {
   ringModel: 'ring',
   ringSurface: 'auto',
   panelMetres: 220,       // how wide one tile of the panel hull is on the surface
+  sideMetres: 70,         // how wide one repeat of the side-face window tile is
   ringRadius: 700,        // metres, to the outside of the rim
   rings: 1,
   ringGap: 100,           // metres between rings, when there is more than one
@@ -235,26 +236,34 @@ export class StationKit extends THREE.Group {
     const RP = this.ringPart;
     let ringGeo = cutHub(RP.geometry, L.hubCut, RP.rim, RP.circle);
     ringGeo.userData.temp = L.hubCut > 0;
-    // the surface: the part's own texture, or the generated panel hull projected onto it in metres
+    // the surface: the part's own texture, or the generated panel hull projected onto it in metres;
+    // or the two flat side faces carry the window tile and only the rim keeps the part's own
     const bare = !RP.material.map;
-    const panels = L.ringSurface === 'panels' || (L.ringSurface !== 'texture' && bare);
-    if (panels) ringGeo = boxProjectUVs(ringGeo, S, L.panelMetres || 220);
-    const ringMat = panels ? hullMaterial() : RP.material;
+    const panels = L.ringSurface === 'panels' || (L.ringSurface !== 'texture' && L.ringSurface !== 'tile' && bare);
+    const pieces = [];                                   // [geometry, material] pairs making up the ring
+    if (L.ringSurface === 'tile') {
+      const { side, rest } = splitSides(ringGeo, S, L.sideMetres || 70);
+      pieces.push([side, sideMaterial()]);
+      pieces.push(bare ? [boxProjectUVs(rest, S, L.panelMetres || 220), hullMaterial()] : [rest, RP.material]);
+    } else if (panels) pieces.push([boxProjectUVs(ringGeo, S, L.panelMetres || 220), hullMaterial()]);
+    else pieces.push([ringGeo, RP.material]);
     for (let i = 0; i < L.rings; i++) {
       const turntable = new THREE.Group();
       turntable.position.y = L.ringY + i * L.ringGap;
-      const ring = new THREE.Mesh(ringGeo, ringMat);
+      const ring = new THREE.Group();
+      for (const [geo, mat] of pieces) {
+        const m = new THREE.Mesh(geo, mat); m.castShadow = m.receiveShadow = true; ring.add(m);
+      }
       ring.scale.setScalar(S);
       // stand it on the axis its rim turns about, not the middle of its bounding box
       ring.position.set(-RP.circle.x * S, -RP.deckY * S, -RP.circle.z * S);
-      ring.castShadow = ring.receiveShadow = true;
       turntable.add(ring);
       // arms on the ring: mounted just inside the rim, pointing outward, turning with it
       const RA = L.ringArms;
       if (RA.count) this.addRing(turntable, RA.kind, RA.count, L.ringRadius - RA.inset, RA.y, RA.scale, RA.tilt);
       this.built.add(turntable);
       this.spinners.push({ turntable, radius: L.ringRadius, sign: i % 2 ? -1 : 1 });
-      this.lampMeshes.push(ring);
+      this.lampMeshes.push(ring.children[0]);
     }
 
     // ARMS on the tower, which stay put, with a hangar on the end of every nth one

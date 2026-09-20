@@ -68,6 +68,7 @@ const layout = JSON.parse(JSON.stringify(DEFAULT_LAYOUT));
 const CONTROLS = {
   ringRadius:   [v => layout.ringRadius = v, v => v.toLocaleString() + ' m'],
   panelMetres:  [v => layout.panelMetres = v, v => v + ' m'],
+  sideMetres:   [v => layout.sideMetres = v, v => v + ' m'],
   rings:        [v => layout.rings = v, v => v],
   ringGap:      [v => layout.ringGap = v, v => v + ' m'],
   ringY:        [v => layout.ringY = v, v => v + ' m'],
