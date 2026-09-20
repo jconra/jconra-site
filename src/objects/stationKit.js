@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { hullMaterial, boxProjectUVs } from './hull.js';
 
-export const RING_FILES = ['ring', 'ring1', 'ring2', 'ring3', 'ring3t', 'ring4', 'ring5', 'ring7'];
+export const RING_FILES = ['ring', 'ring1', 'ring2', 'ring3', 'ring3t', 'ring4', 'ring5', 'ring5t', 'ring7'];
 export const PART_FILES = [...RING_FILES, 'tower', 'arm1', 'arm2', 'hangar', 'satellite', 'fighter', 'freighter'];
 export const G = 9.81;
 
