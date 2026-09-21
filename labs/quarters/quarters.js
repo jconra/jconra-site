@@ -512,6 +512,7 @@ function loadStation() {
     station = new StationKit(parts).build(DEFAULT_LAYOUT);
     station.position.copy(STATION_AT); station.visible = false; scene.add(station); checkBoot();
     pickHangar();
+    buildTraffic(parts);
     hangarSet = buildHangarSet(parts, { shipLength: 6, bayLength: DEFAULT_LAYOUT.bay.length, along: DEFAULT_LAYOUT.bay.along });
     hangarSet.floor.position.copy(HANGAR_AT); hangarSet.floor.visible = false; scene.add(hangarSet.floor);
     // Earth out past the mouth, where the fighter is headed: the same photograph, facing back
@@ -526,6 +527,52 @@ function loadStation() {
       wearHelmet();
     });
   }).catch(e => console.error(e));
+}
+// TRAFFIC. Nothing is parked in space: what flies, flies on the timeline. A freighter crosses far
+// behind the station while the camera is wide, and a pair of fighters comes past close in front
+// during the pan to the hangar. Paths are straight, in the station's metres, from one point to
+// another over a span of seconds; each craft points along its path and is only there while it
+// is on it.
+const FLYBYS = [
+  { part: 'freighter', size: 260, from: [2600, 520, -3200], to: [-3400, 380, -1400], t0: 15.5, t1: 27.0 },
+  // the pair's path is set against the camera's own view at its start and end - metres ahead, to
+  // the right and up from where the camera is and looks at that moment - so it crosses the frame
+  { part: 'ship1', size: 50, from: { fwd: 520, right: 700, up: 160 }, to: { fwd: 560, right: -780, up: -60 }, t0: 22.8, t1: 27.0, wing: [0, 14, 44] },
+];
+// a point given against the camera's view at time t, in the station's metres
+function viewPoint(t, { fwd, right, up }) {
+  const { a, b, u, set } = keysAround(t);
+  const cam = cameraAt(t), target = lookPoint(a.look, set).lerp(lookPoint(b.look, set), u).sub(STATION_AT);
+  const f = target.sub(cam).normalize(), r = f.clone().cross(new THREE.Vector3(0, 1, 0)).normalize(), U = r.clone().cross(f);
+  return cam.addScaledVector(f, fwd).addScaledVector(r, right).addScaledVector(U, up);
+}
+let traffic = [];
+function buildTraffic(parts) {
+  traffic = [];
+  for (const f of FLYBYS) {
+    const P = parts[f.part]; if (!P) continue;
+    const group = new THREE.Group();
+    const k = f.size / P.size.x, n = f.wing ? 2 : 1;
+    for (let i = 0; i < n; i++) {
+      const m = new THREE.Mesh(P.geometry, P.material); m.scale.setScalar(k); m.castShadow = m.receiveShadow = true;
+      if (i) m.position.set(...f.wing);
+      group.add(m);
+    }
+    // pointed along the path: the parts lie along +x
+    const from = Array.isArray(f.from) ? new THREE.Vector3(...f.from) : viewPoint(f.t0, f.from);
+    const to = Array.isArray(f.to) ? new THREE.Vector3(...f.to) : viewPoint(f.t1, f.to), dir = to.clone().sub(from).normalize();
+    group.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir);
+    group.visible = false;
+    station.add(group);
+    traffic.push({ ...f, group, from, to });
+  }
+}
+function stepTraffic(T) {
+  for (const f of traffic) {
+    const u = (T - f.t0) / (f.t1 - f.t0);
+    f.group.visible = u > -0.02 && u < 1.02;
+    if (f.group.visible) f.group.position.lerpVectors(f.from, f.to, u);
+  }
 }
 // The hangar the camera turns to is the one on the RIGHT of the wide shot (the last key that looks
 // at the whole station before the first that looks at a hangar), so the pan goes rightward. Its
@@ -651,6 +698,7 @@ function seek(T) {
   if (set === 'station') {
     // outside: the rings turn with time, 1 g at the rim, and the camera runs in the station's frame
     if (station) for (const sp of station.spinners) sp.turntable.rotation.y = sp.sign * (Math.PI * 2 / StationKit.period(sp.radius)) * T;
+    stepTraffic(T);
     camera.position.copy(cameraAt(T)).add(STATION_AT);
     controls.target.copy(lookPoint(a.look, set).lerp(lookPoint(b.look, set), u)); camera.lookAt(controls.target);
     post.focus = camera.position.distanceTo(controls.target);
