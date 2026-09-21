@@ -54,8 +54,8 @@ const SPECIES = [
 // ?heavy in the address force one or the other.
 const weak = !renderer.capabilities.isWebGL2 || Q.has('light');
 const SET = weak && !Q.has('heavy')
-  ? { count: 1500, radius: 900, imposterAt: 60, band: 30, grid: 8, cell: 64, hemi: true, blend: true, nearCap: 600, show: 'both', detail: 'coarse', a2c: true, depth: true, shadows: false, ss: false }
-  : { count: 2500, radius: 1200, imposterAt: 120, band: 40, grid: 12, cell: 96, hemi: true, blend: true, nearCap: 1500, show: 'both', detail: 'coarse', a2c: true, depth: true, shadows: false, ss: false };
+  ? { count: 1500, radius: 900, imposterAt: 60, band: 30, ahead: 0.75, grid: 8, cell: 64, hemi: true, blend: true, nearCap: 600, show: 'both', detail: 'coarse', a2c: true, depth: false, shadows: false, ss: false, blendDist: 200 }
+  : { count: 2500, radius: 1200, imposterAt: 120, band: 40, ahead: 0.75, grid: 12, cell: 96, hemi: true, blend: true, nearCap: 1500, show: 'both', detail: 'coarse', a2c: true, depth: true, shadows: false, ss: false, blendDist: 400 };
 renderer.shadowMap.enabled = SET.shadows;
 let forest = [];                  // { pos, yaw, scale, tint, sp }
 const built = [];                 // per species: { bake, imposterMesh, meshes: [InstancedMesh...], fade: attribute }
@@ -64,7 +64,7 @@ const loader = new GLTFLoader();
 async function loadSpecies() {
   for (const sp of SPECIES) {
     // fine: the preset as it comes; coarse: fewer, bigger, single-sided leaves and fewer branch sections (baked that way)
-    const root = sp.build ? sp.build() : (await loader.loadAsync(SET.detail === 'coarse' ? sp.file.replace('.glb', '_coarse.glb') : sp.file)).scene;
+    const root = sp.build ? sp.build() : (await loader.loadAsync(SET.detail === 'fine' ? sp.file : sp.file.replace('.glb', `_${SET.detail}.glb`))).scene;
     root.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(root), size = box.getSize(new THREE.Vector3());
     sp.unit = sp.height / size.y;                       // model units -> metres
@@ -129,6 +129,7 @@ function buildDraws() {
     const mine = forest.filter(t => t.sp === sp); sp.trees = mine;
     if (!mine.length) continue;
     sp.root.updateMatrixWorld(true);
+    sp.order = mine.map((t, i) => i);
     // imposters
     const geo = new THREE.InstancedBufferGeometry();
     const quad = new THREE.PlaneGeometry(1, 1); geo.index = quad.index; geo.setAttribute('position', quad.attributes.position); geo.setAttribute('uv', quad.attributes.uv);
@@ -137,8 +138,10 @@ function buildDraws() {
     geo.setAttribute('iPos', new THREE.InstancedBufferAttribute(pos, 3)); geo.setAttribute('iYaw', new THREE.InstancedBufferAttribute(yaw, 1));
     geo.setAttribute('iScale', new THREE.InstancedBufferAttribute(scl, 1)); geo.setAttribute('iTint', new THREE.InstancedBufferAttribute(tint, 3));
     const fadeAttr = new THREE.InstancedBufferAttribute(fade, 1); fadeAttr.setUsage(THREE.DynamicDrawUsage); geo.setAttribute('iFade', fadeAttr);
+    for (const a of ['iPos', 'iYaw', 'iScale', 'iTint']) geo.attributes[a].setUsage(THREE.DynamicDrawUsage);
     geo.instanceCount = n;
     const mat = imposterMaterial(sp.bake, { sunDir: SUN_OFF.clone(), blend: SET.blend, depth: SET.depth, shadows: SET.shadows });
+    mat.uniforms.blendDist.value = SET.blendDist;
     const imposter = new THREE.Mesh(geo, mat); imposter.frustumCulled = false; scene.add(imposter);
     imposter.castShadow = SET.shadows; imposter.customDepthMaterial = mat.userData.depthMaterial;
     // meshes, instanced, with a dithered fade of their own
@@ -171,19 +174,29 @@ const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpS = new THRE
 let nearCount = 0;
 function assign() {
   nearCount = 0;
-  const D = SET.imposterAt, B = SET.band / 2, camP = camera.position;
+  const D = SET.imposterAt, B = SET.band / 2;
+  // the mesh circle is pushed out ahead of the camera, so the meshes are the trees in front of you,
+  // not the ones behind your back: its centre is `ahead` of the way along the line of sight
+  const camP = camera.position.clone().addScaledVector(new THREE.Vector3().subVectors(controls.target, camera.position).setY(0).normalize(), D * SET.ahead);
   for (const b of built) {
     const { sp, imposter, fadeAttr, meshes } = b, trees = sp.trees;
     const near = [];
-    for (let i = 0; i < trees.length; i++) {
-      const t = trees[i], d = t.pos.distanceTo(camP);
+    // the imposters go into their attributes front to back, so the depth test throws away the pixels
+    // behind nearer trees before their shader runs (when the shader is not writing depth itself)
+    for (const t of trees) t.d = t.pos.distanceTo(camP);
+    sp.order.sort((a, c) => trees[a].d - trees[c].d);
+    const g = imposter.geometry, aPos = g.attributes.iPos.array, aYaw = g.attributes.iYaw.array, aScl = g.attributes.iScale.array, aTint = g.attributes.iTint.array;
+    for (let k = 0; k < sp.order.length; k++) {
+      const t = trees[sp.order[k]], d = t.d;
       // mesh solid up to D - B, gone by D + B; the imposter the other way round
       const meshFade = SET.show === 'imposters' ? 0 : THREE.MathUtils.clamp((D + B - d) / (2 * B), 0, 1);
       const impFade = SET.show === 'meshes' ? 0 : 1 - meshFade;
-      fadeAttr.array[i] = impFade;
+      fadeAttr.array[k] = impFade;
+      aPos[k * 3] = t.pos.x; aPos[k * 3 + 1] = t.pos.y - sp.baseY * t.scale * sp.unit; aPos[k * 3 + 2] = t.pos.z;
+      aYaw[k] = t.yaw; aScl[k] = t.scale * sp.unit; aTint[k * 3] = t.tint.r; aTint[k * 3 + 1] = t.tint.g; aTint[k * 3 + 2] = t.tint.b;
       if (meshFade > 0 && near.length < meshes[0].instanceMatrix.count) near.push([t, meshFade]);
     }
-    fadeAttr.needsUpdate = true;
+    fadeAttr.needsUpdate = true; for (const a of ['iPos', 'iYaw', 'iScale', 'iTint']) g.attributes[a].needsUpdate = true;
     imposter.visible = SET.show !== 'meshes';
     near.forEach(([t, f], k) => {
       tmpQ.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.yaw); tmpS.setScalar(t.scale * sp.unit); tmpP.copy(t.pos); tmpP.y -= sp.baseY * t.scale * sp.unit;
@@ -200,6 +213,7 @@ const SLIDERS = {
   count:      [v => { SET.count = v; plant(); buildDraws(); }, v => v.toLocaleString()],
   radius:     [v => { SET.radius = v; plant(); buildDraws(); }, v => v + ' m'],
   imposterAt: [v => { SET.imposterAt = v; SET.dirty = true; }, v => v + ' m'],
+  ahead:      [v => { SET.ahead = v; SET.dirty = true; }, v => v === 0 ? 'centred on the camera' : Math.round(v * 100) + '% of the way ahead'],
   band:       [v => { SET.band = v; SET.dirty = true; }, v => v + ' m'],
   grid:       [v => { SET.grid = v; capAtlas(); bakeAll(buildDraws); }, v => v + ' × ' + v],
   cell:       [v => { SET.cell = v; capAtlas(); bakeAll(buildDraws); }, v => v + ' px'],
@@ -231,13 +245,13 @@ $('profile').addEventListener('click', async () => {
     ['as it is now', () => {}],
     ['shadows off', () => setShadows(false)],
     ['imposters only, no shadows', () => { setShadows(false); SET.show = 'imposters'; SET.dirty = true; }],
-    ['meshes only, no shadows', () => { setShadows(false); SET.show = 'meshes'; SET.dirty = true; }],
+    ['meshes only to 250 m, no shadows', () => { setShadows(false); SET.show = 'meshes'; SET.imposterAt = Math.max(SET.imposterAt, 250); SET.dirty = true; }],
     ['as it is now, at 50% scale', () => { SET.scale = 0.5; applyScale(); }],
     ['as it is now, window a quarter the size', () => { renderer.setSize(innerWidth / 2, innerHeight / 2, false); }],
   ];
   const out = [];
   for (const [name, apply] of runs) {
-    SET.show = keep.show; setShadows(keep.shadows); SET.scale = keep.scale; applyScale(); renderer.setSize(innerWidth, innerHeight, false); SET.dirty = true;
+    SET.show = keep.show; setShadows(keep.shadows); SET.scale = keep.scale; SET.imposterAt = keep.imposterAt; applyScale(); renderer.setSize(innerWidth, innerHeight, false); SET.dirty = true;
     apply(); assign();
     // a few frames to settle (a resize rebuilds the drawing buffer), then a second of counting
     await new Promise(r => { let k = 0; const tick = () => { if (++k < 8) requestAnimationFrame(tick); else r(); }; requestAnimationFrame(tick); });
@@ -245,7 +259,7 @@ $('profile').addEventListener('click', async () => {
     await new Promise(r => { const tick = () => { n++; if (performance.now() - t0 < 1000) requestAnimationFrame(tick); else r(); }; requestAnimationFrame(tick); });
     out.push([name, Math.round(n / ((performance.now() - t0) / 1000))]);
   }
-  SET.show = keep.show; setShadows(keep.shadows); SET.scale = keep.scale; applyScale(); renderer.setSize(innerWidth, innerHeight, false); SET.dirty = true; assign();
+  SET.show = keep.show; setShadows(keep.shadows); SET.scale = keep.scale; SET.imposterAt = keep.imposterAt; applyScale(); renderer.setSize(innerWidth, innerHeight, false); SET.dirty = true; assign();
   $('profileOut').innerHTML = out.map(([n, f]) => `<div><b>${f} fps</b> ${n}</div>`).join('');
 });
 $('show').addEventListener('change', e => { SET.show = e.target.value; SET.dirty = true; });
@@ -278,7 +292,7 @@ addEventListener('keydown', e => keys[e.key.toLowerCase()] = true); addEventList
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
 // ── go ─────────────────────────────────────────────────────────────────────────
-for (const [id, key] of [['count', 'count'], ['radius', 'radius'], ['imposterAt', 'imposterAt'], ['band', 'band'], ['grid', 'grid'], ['cell', 'cell']]) { $(id).value = SET[key]; $(id + 'Out').textContent = SLIDERS[id][1](SET[key]); }
+for (const [id, key] of [['count', 'count'], ['radius', 'radius'], ['imposterAt', 'imposterAt'], ['band', 'band'], ['grid', 'grid'], ['cell', 'cell'], ['ahead', 'ahead']]) { $(id).value = SET[key]; $(id + 'Out').textContent = SLIDERS[id][1](SET[key]); }
 $('detail').value = SET.detail; $('shadows').checked = SET.shadows; $('depth').checked = SET.depth;
 loadSpecies().then(() => {
   plant(); capAtlas(); bakeAll(buildDraws);
@@ -287,7 +301,7 @@ loadSpecies().then(() => {
   if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, SET, SPECIES, forest, built, assign, plant, buildDraws, bakeAll, drawAtlas, sun });
 }).catch(e => { console.error(e); $('boot').textContent = 'LOAD FAILED — ' + e.message; });
 
-const clock = new THREE.Clock(); let fps = 60, shown = 0, assignAt = 0; const lastAssignAt = new THREE.Vector3(1e9, 0, 0);
+const clock = new THREE.Clock(); let fps = 60, shown = 0, assignAt = 0; const lastAssignAt = new THREE.Vector3(1e9, 0, 0), lastTargetAt = new THREE.Vector3(1e9, 0, 0);
 renderer.setAnimationLoop(() => {
   const raw = clock.getDelta(), dt = Math.min(raw, 0.1);
   const speed = (keys.shift ? 3 : 1) * 60 * dt, fwd = new THREE.Vector3().subVectors(controls.target, camera.position).setY(0).normalize(), right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0));
@@ -298,7 +312,7 @@ renderer.setAnimationLoop(() => {
   controls.update();
   sun.target.position.copy(controls.target); sun.position.copy(controls.target).add(SUN_OFF);   // the shadow square follows the view
   if (baking) baking.tick();
-  if ((assignAt += raw) > 0.08 && built.length && (camera.position.distanceToSquared(lastAssignAt) > 1 || SET.dirty)) { assignAt = 0; SET.dirty = false; lastAssignAt.copy(camera.position); assign(); }
+  if ((assignAt += raw) > 0.08 && built.length && (camera.position.distanceToSquared(lastAssignAt) > 1 || controls.target.distanceToSquared(lastTargetAt) > 1 || SET.dirty)) { assignAt = 0; SET.dirty = false; lastAssignAt.copy(camera.position); lastTargetAt.copy(controls.target); assign(); }
   renderer.render(scene, camera);
   if (raw > 0) fps += (1 / raw - fps) * Math.min(1, raw * 2);   // weighted by the frame's own length: a two-second frame counts in full, not five percent
   if ((shown += raw) > 0.5) { shown = 0; const i = renderer.info.render; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${i.calls} draws · ${(i.triangles / 1000).toFixed(0)}k triangles · ${nearCount.toLocaleString()} meshes / ${(forest.length - nearCount).toLocaleString()} imposters`; }

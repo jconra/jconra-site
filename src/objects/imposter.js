@@ -32,8 +32,12 @@ export function octDecode(u, v, hemi) {
 export function bakeImposter(renderer, object, opts) { const it = bakeImposterSteps(renderer, object, opts); for (;;) { const s = it.next(); if (s.done) return s.value; } }   // (for..of drops a generator's return value)
 export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, hemi = true } = {}) {
   object.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(object), centre = box.getCenter(new THREE.Vector3());
-  const radius = box.getSize(new THREE.Vector3()).length() / 2;
+  const box = new THREE.Box3().setFromObject(object), centre = box.getCenter(new THREE.Vector3()), ext = box.getSize(new THREE.Vector3());
+  const radius = ext.length() / 2;
+  // the views are framed to the tree's real extent, not its sphere: half its footprint's diagonal
+  // across, and the taller of that and half its height up - about half the pixels of the sphere,
+  // and every one of them is fill rate saved on each of thousands of quads
+  const halfW = Math.hypot(ext.x, ext.z) / 2, halfH = Math.max(ext.y / 2, halfW);
   const size = grid * cell;
   // mipmaps keep far imposters from shimmering (a pre-filtered picture); WebGL1 needs a power-of-two edge for them
   const mips = renderer.capabilities.isWebGL2 || (size & (size - 1)) === 0;
@@ -43,7 +47,7 @@ export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, he
   const holder = new THREE.Group(); holder.position.copy(centre).negate();    // the tree centred on the origin
   scene.add(holder);
   const parent = object.parent; holder.add(object);
-  const cam = new THREE.OrthographicCamera(-radius, radius, radius, -radius, 0.01, radius * 4);
+  const cam = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.01, radius * 4);
   // colour pass: the material's own map, unlit; normal pass: the normal in the tree's frame
   const materials = new Map();
   object.traverse(o => { if (o.isMesh) materials.set(o, o.material); });
@@ -79,7 +83,7 @@ export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, he
   renderer.setViewport(0, 0, renderer.domElement.width, renderer.domElement.height);
   holder.remove(object); if (parent) parent.add(object);
   object.updateMatrixWorld(true);          // the meshes' world matrices carried the holder's offset: refreshed, or anything placed by them stands half a tree low
-  return { colour: colourRT.texture, normal: normalRT.texture, radius, centre, grid, hemi, cell };
+  return { colour: colourRT.texture, normal: normalRT.texture, radius, halfW, halfH, centre, grid, hemi, cell };
 }
 
 // The vertex stage shared by the drawing and the shadow-casting materials: the quad turned to
@@ -90,8 +94,9 @@ const VERTEX = `
       #include <logdepthbuf_pars_vertex>
       #include <shadowmap_pars_vertex>
       attribute vec3 iPos; attribute float iYaw; attribute float iScale; attribute vec3 iTint; attribute float iFade;
-      uniform float radius; uniform vec3 centre; uniform float grid; uniform float hemi;
-      uniform vec3 viewDirOverride; uniform float useOverride;
+      uniform float radius; uniform float halfW; uniform float halfH; uniform vec3 centre; uniform float grid; uniform float hemi;
+      uniform vec3 viewDirOverride; uniform float useOverride; uniform float blendDist;
+      varying float vBlend;
       varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius; varying vec4 vShadowToCam;
       // direction (in the tree's frame) -> the square
       vec2 octEncode(vec3 d) {
@@ -106,7 +111,8 @@ const VERTEX = `
         vec3 toCam = useOverride > 0.5 ? normalize(viewDirOverride) : normalize(cameraPosition - worldCentre);
         // the quad faces the viewer
         vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam)); vec3 up = cross(toCam, right);
-        vec3 world = worldCentre + (right * position.x + up * position.y) * radius * 2.0 * iScale;
+        vec3 world = worldCentre + (right * position.x * halfW * 2.0 + up * position.y * halfH * 2.0) * iScale;
+        vBlend = useOverride > 0.5 ? 0.0 : (distance(cameraPosition, worldCentre) < blendDist ? 1.0 : 0.0);   // the three-view blend only near: far away two reads do
         // the view direction in the tree's own frame: the instance's spin undone
         vec3 d = vec3(c * toCam.x - s * toCam.z, toCam.y, s * toCam.x + c * toCam.z);
         vFrame = octEncode(normalize(d));
@@ -123,12 +129,12 @@ const VERTEX = `
 // the atlas lookup shared by both fragment stages: colour (straight alpha = coverage) and normal + depth
 const LOOKUP = `
       uniform sampler2D atlas; uniform sampler2D atlasN; uniform float grid; uniform float blend;
-      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius; varying vec4 vShadowToCam;
+      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius; varying vec4 vShadowToCam; varying float vBlend;
       uniform mat4 projectionMatrix; uniform float useDepth;
       vec4 cellSample(sampler2D t, vec2 cell) { vec2 uv = (cell + clamp(vQuad, 0.002, 0.998)) / grid; return texture2D(t, uv); }
       void lookup(out vec4 col, out vec4 nrm) {
         vec2 g = vFrame * grid - 0.5; vec2 base = floor(g); vec2 f = g - base;
-        if (blend > 0.5) {
+        if (blend > 0.5 && vBlend > 0.5) {
           // the three cells of the triangle the point falls in, weighted by where it falls
           vec2 c0, c1, c2; float w0, w1, w2;
           if (f.x + f.y < 1.0) { c0 = base; c1 = base + vec2(1.0, 0.0); c2 = base + vec2(0.0, 1.0); w1 = f.x; w2 = f.y; w0 = 1.0 - w1 - w2; }
@@ -155,8 +161,8 @@ const LOOKUP = `
 export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3), blend = true, depth = true, shadows = true } = {}) {
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, {
     atlas: { value: null }, atlasN: { value: null }, grid: { value: bake.grid }, hemi: { value: bake.hemi ? 1 : 0 },
-    radius: { value: bake.radius }, centre: { value: bake.centre.clone() }, sunDir: { value: sunDir.clone().normalize() },
-    blend: { value: blend ? 1 : 0 }, ambient: { value: 0.45 }, useDepth: { value: depth ? 1 : 0 }, useShadow: { value: shadows ? 1 : 0 },
+    radius: { value: bake.radius }, halfW: { value: bake.halfW }, halfH: { value: bake.halfH }, centre: { value: bake.centre.clone() }, sunDir: { value: sunDir.clone().normalize() },
+    blend: { value: blend ? 1 : 0 }, blendDist: { value: 400 }, ambient: { value: 0.45 }, useDepth: { value: depth ? 1 : 0 }, useShadow: { value: shadows ? 1 : 0 },
     viewDirOverride: { value: new THREE.Vector3(0, 1, 0) }, useOverride: { value: 0 },
   }]);
   uniforms.atlas.value = bake.colour; uniforms.atlasN.value = bake.normal;
@@ -210,8 +216,8 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
   // the shadow pass: the same quad, turned to the light, its depth from the atlas, packed the way
   // three's shadow maps expect
   mat.userData.depthMaterial = new THREE.ShaderMaterial({
-    uniforms: THREE.UniformsUtils.merge([{ atlas: { value: null }, atlasN: { value: null }, grid: { value: bake.grid }, hemi: { value: bake.hemi ? 1 : 0 }, radius: { value: bake.radius }, centre: { value: bake.centre.clone() },
-      blend: { value: blend ? 1 : 0 }, useDepth: { value: depth ? 1 : 0 }, viewDirOverride: { value: sunDir.clone().normalize() }, useOverride: { value: 1 } }]),
+    uniforms: THREE.UniformsUtils.merge([{ atlas: { value: null }, atlasN: { value: null }, grid: { value: bake.grid }, hemi: { value: bake.hemi ? 1 : 0 }, radius: { value: bake.radius }, halfW: { value: bake.halfW }, halfH: { value: bake.halfH }, centre: { value: bake.centre.clone() },
+      blend: { value: blend ? 1 : 0 }, blendDist: { value: 0 }, useDepth: { value: depth ? 1 : 0 }, viewDirOverride: { value: sunDir.clone().normalize() }, useOverride: { value: 1 } }]),
     side: THREE.DoubleSide, extensions: { fragDepth: true },
     vertexShader: VERTEX,
     fragmentShader: `
