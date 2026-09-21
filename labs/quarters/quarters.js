@@ -454,7 +454,7 @@ function placeSitter() {
 // way is looking at stars.
 const WINDOW = [0.05, 1.8, -1.62];
 const KEYS = [
-  { t: 0.0,  cam: [0.70, 1.30, -0.88], look: [-0.07, 1.62, -1.20], chair: -112, face: 0 },   // at the computer, on the terminal (the pull-back lands here)
+  { t: 0.0,  cam: [-0.028, 1.602, -0.742], look: [-0.027, 1.592, -1.201], chair: -112, face: 0 },   // square on the terminal, 46 cm off it (Jacob's view; the pull-back lands here)
   { t: 1.4,  cam: [0.95, 1.32, 0.25],  look: 'him',    chair: -112,     face: 0 },   // backing away, the beat before he turns
   { t: 2.5,  cam: [1.05, 1.30, 1.05], look: 'him',    chair: 'turned', face: 1 },   // turned, on the camera
   { t: 7.0,  cam: [1.35, 1.30, 0.20], look: 'him',    chair: 'turned', face: 1 },
