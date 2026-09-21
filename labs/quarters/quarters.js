@@ -305,7 +305,7 @@ function loadRoom(name) {
   placeSitter();
   $('boot')?.remove();
   bootProgress('cabin', 1); loadSitter(); loadStation();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, getMap: () => mapSet });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; if (e.total) bootProgress('cabin', e.loaded / e.total); },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -517,21 +517,23 @@ const KEYS = [
   // from the roll-out the camera locks onto the fighter: `{ at: 'chase', back, up, side }` is
   // metres behind it, above it and to its right, wherever it has got to
   { t: 43.0,  set: 'hangar', cam: { at: 'chase', back: 9, up: 2.6, side: -4.5 }, look: 'ship' },
-  { t: 49.0,  set: 'hangar', cam: { at: 'chase', back: 12, up: 3.2, side: 3.5 }, look: 'ship' },
-  { t: 58.0,  set: 'hangar', cam: { at: 'chase', back: 15, up: 4.0, side: 0 },   look: 'ship' },
+  { t: 45.2,  set: 'hangar', cam: { at: 'chase', back: 13, up: 3.4, side: 3.0 }, look: 'ship' },
+  // the camera stops where the chase had it at 45.2 s and looks away to the right, so the fighter
+  // flies on out of the left of the frame; then the map
+  { t: 46.49, set: 'hangar', cam: { at: 'chase', freeze: 45.2, back: 13, up: 3.4, side: 3.0 }, look: { at: 'ship', freeze: 45.2, ahead: 30, side: -70 } },
   // THE MAP. Earth as the photograph, large, the fighter flying in over it toward the States;
   // the outline of the country glows on the picture, then the states of his story light up one
   // by one with a line each. Keys are in the picture's own units (pixels of the photograph,
   // centred, y up), the picture in the z = 0 plane and the camera out along +z.
-  { t: 58.01, set: 'map', cam: [-40, 60, 980],  look: [33, 83, 0] },
-  { t: 61.5,  set: 'map', cam: [33, 83, 380],   look: [33, 83, 0] },
-  { t: 74.0,  set: 'map', cam: [30, 80, 330],   look: [25, 88, 0] },
-  { t: 77.0,  set: 'map', cam: [34, 78, 320],   look: [25, 88, 0] },
+  { t: 46.5,  set: 'map', cam: [-40, 60, 980],  look: [33, 83, 0] },
+  { t: 50.0,  set: 'map', cam: [33, 83, 380],   look: [33, 83, 0] },
+  { t: 62.5,  set: 'map', cam: [30, 80, 330],   look: [25, 88, 0] },
+  { t: 65.5,  set: 'map', cam: [34, 78, 320],   look: [25, 88, 0] },
   // RE-ENTRY. The fighter noses down and dives at the country; the camera falls in behind it. Fire
   // builds around the nose and washes the frame out; as it clears, clouds pop into being all round.
-  { t: 78.5,  set: 'map', cam: { at: 'chase', back: 70, up: 24, side: 10 }, look: 'ship' },
-  { t: 82.0,  set: 'map', cam: { at: 'chase', back: 40, up: 12, side: 0 },  look: 'ship' },
-  { t: 88.0,  set: 'map', cam: { at: 'chase', back: 42, up: 14, side: -6 }, look: 'ship' },
+  { t: 67.0,  set: 'map', cam: { at: 'chase', back: 70, up: 24, side: 10 }, look: 'ship' },
+  { t: 70.5,  set: 'map', cam: { at: 'chase', back: 40, up: 12, side: 0 },  look: 'ship' },
+  { t: 76.5,  set: 'map', cam: { at: 'chase', back: 42, up: 14, side: -6 }, look: 'ship' },
 ];
 const ACTS = { wave: 1.9, stand: 8.2, walk: 10.0, walkSpeed: 1.1, walkDir: 35 };   // seconds; m/s; degrees from +z toward +x
 // in the hangar: when he starts walking in, where from (metres beside the fighter's spot, the
@@ -546,17 +548,17 @@ function scrubbed() { RESUME.last = performance.now(); RESUME.hold = false; }
 // the story on the map: which state lights when, and what is said. Poking a state with the
 // pointer lights it and shows its line (or just its name) and holds the timeline.
 const TOUR = [
-  { id: 'CO', t: 61.8, title: 'Colorado',    text: 'Born and raised.' },
-  { id: 'NM', t: 64.2, title: 'New Mexico',  text: '4 years USAF avionics on MQ-1 and MQ-9 aircraft.' },
-  { id: 'MD', t: 66.6, title: 'Maryland',    text: '4 years Red Team for USAF Cyber Warfare Operations. Computer Science BA, UMUC.' },
-  { id: 'MS', t: 69.0, title: 'Mississippi', text: '2 years at Keesler AFB teaching Cyberspace Warfare Operations: Windows, Linux and Python.' },
-  { id: 'WA', t: 71.4, title: 'Washington',  text: '7 years AWS Systems Engineer for filesystems (EFS, FSx). Helicopter pilot, 176 hours.' },
+  { id: 'CO', t: 50.3, title: 'Colorado',    text: 'Born and raised.' },
+  { id: 'NM', t: 52.7, title: 'New Mexico',  text: '4 years USAF avionics on MQ-1 and MQ-9 aircraft.' },
+  { id: 'MD', t: 55.1, title: 'Maryland',    text: '4 years Red Team for USAF Cyber Warfare Operations. Computer Science BA, UMUC.' },
+  { id: 'MS', t: 57.5, title: 'Mississippi', text: '2 years at Keesler AFB teaching Cyberspace Warfare Operations: Windows, Linux and Python.' },
+  { id: 'WA', t: 59.9, title: 'Washington',  text: '7 years AWS Systems Engineer for filesystems (EFS, FSx). Helicopter pilot, 176 hours.' },
 ];
-const MAP = { glow: 59.6, tourEnd: 74.0, shipIn: 58.0, shipAt: 64.0,
-  dive: 77.0, diveEnd: 81.6,             // the fighter noses down and races for the cloud bank
+const MAP = { glow: 48.1, tourEnd: 62.5, shipIn: 46.5, shipAt: 52.5,
+  dive: 65.5, diveEnd: 70.1,             // the fighter noses down and races for the cloud bank
   target: [-201, 113, 4],                // where it goes in: the big swirl of cloud off the West Coast, in the picture's units
-  fire: 78.6, flash: 81.4, clear: 83.6,  // the glow builds, peaks white, and clears
-  clouds: 81.6, cloudsIn: 2.4 };          // clouds pop in over this many seconds from here
+  fire: 67.1, flash: 69.9, clear: 72.1,  // the glow builds, peaks white, and clears
+  clouds: 70.1, cloudsIn: 2.4 };          // clouds pop in over this many seconds from here
 const HANGAR = { walk: 33.0, from: [0.3, 0, -9.4], to: [0.3, 0, -2.4], speed: 1.15, sit: 39.0, canopy: 39.4, canopyLen: 2.4, roll: 42.5, accel: 2.5,
   // the fit in the seat: how far down from the measured seat pan he sits, how far back, and how far
   // he reclines (degrees); and how far the canopy turns to shut
@@ -649,14 +651,31 @@ function buildMapSet(parts) {
       c.position.copy(c.userData.at); c.visible = false; floor.add(c); clouds.push(c);
     } }
   mapSet = { floor, pic, ship, plume, sparks, clouds, map: null };
-  loadUSMap('../map/us.svg').then(map => { mapSet.map = map; pic.add(map.group); }).catch(e => console.error(e));
+  loadUSMap('../map/us.svg').then(map => {
+    mapSet.map = map; pic.add(map.group); map.setResolution(innerWidth, innerHeight);
+    for (const s of TOUR) { map.flag(s.id); map.pin(s.id); }
+    applyMapFit();
+  }).catch(e => console.error(e));
+}
+// MAP FIT. Nudges on the fitted map, about the middle of the country: turn (degrees, clockwise),
+// shift (picture pixels) and size (%). Set from the panel, baked from Copy settings.
+const MAPFIT = { turn: 0, x: 0, y: 0, size: 100 };
+const MAP_PIVOT = new THREE.Vector3(33, 83, 0);
+function applyMapFit() {
+  const m = mapSet && mapSet.map; if (!m) return;
+  const g = m.group, k = MAPFIT.size / 100, a = -THREE.MathUtils.degToRad(MAPFIT.turn);
+  g.rotation.set(0, 0, a); g.scale.setScalar(k);
+  // turned and scaled about the pivot, then shifted
+  const p = MAP_PIVOT.clone().applyAxisAngle(new THREE.Vector3(0, 0, 1), a).multiplyScalar(k);
+  g.position.copy(MAP_PIVOT).sub(p).add(new THREE.Vector3(MAPFIT.x, MAPFIT.y, 0));
 }
 function stepMap(T, a, b, u, set = 'map') {
   const MS = mapSet; if (!MS) return;
   // the fighter comes in from the top left and settles high over the country
-  const w = THREE.MathUtils.smoothstep(T, MAP.shipIn, MAP.shipAt);
-  const from = new THREE.Vector3(-420, 330, 260), to = new THREE.Vector3(20, 110, 60);
-  MS.ship.position.lerpVectors(from, to, w).add(new THREE.Vector3(0, Math.sin(T * 0.8) * 3, 0));
+  // a slow, steady drift across the top of the frame from the cut until the dive
+  const w = THREE.MathUtils.clamp((T - MAP.shipIn) / (MAP.dive - MAP.shipIn), 0, 1);
+  const from = new THREE.Vector3(-220, 186, 60), to = new THREE.Vector3(150, 172, 60);
+  MS.ship.position.lerpVectors(from, to, w).add(new THREE.Vector3(0, Math.sin(T * 0.8) * 2, 0));
   let dir = to.clone().sub(from).normalize();
   // the dive: it noses down and drops toward the ground, shaking as the air bites
   const d = THREE.MathUtils.smoothstep(T, MAP.dive, MAP.diveEnd);
@@ -673,7 +692,7 @@ function stepMap(T, a, b, u, set = 'map') {
   const fire = THREE.MathUtils.smoothstep(T, MAP.fire, MAP.flash) * (1 - THREE.MathUtils.smoothstep(T, MAP.flash, MAP.clear));
   MS.plume.position.copy(MS.ship.position).addScaledVector(dir, 10);
   MS.plume.scale.setScalar(4 + 70 * fire); MS.plume.material.opacity = fire; MS.plume.quaternion.copy(camera.quaternion);
-  $('flash').style.opacity = Math.pow(fire, 1.6).toFixed(3);
+  $('flash').style.opacity = (0.72 * Math.pow(fire, 1.6)).toFixed(3);      // never quite opaque: the ship and the clouds show through the fire
   // sparks stream back from the nose, each on its own little track, and fade with the fire
   { const P = MS.sparks.geometry.attributes.position, sd = MS.sparks.userData.seed, nose = MS.ship.position.clone().addScaledVector(dir, 10);
     const side = dir.clone().cross(new THREE.Vector3(0, 0, 1)).normalize(), upv = side.clone().cross(dir);
@@ -871,6 +890,8 @@ const lookPoint = (l, set) => {
   if (l === 'station') return STATION_AT.clone().add(new THREE.Vector3(0, 300, 0));
   if (l === 'hangar') return hangarAt ? hangarAt.clone() : STATION_AT.clone().add(new THREE.Vector3(0, 240, 740));
   if (l === 'bay') return bayAt ? bayAt.clone() : lookPoint('hangar', set);          // the fighter on the hangar's deck
+  if (l && typeof l === 'object' && !Array.isArray(l) && l.at === 'ship' && set === 'hangar')     // relative to the fighter (now, or as it was at `freeze`): ahead along its way, to its right, up
+    return shipAt(l.freeze).add(new THREE.Vector3(l.ahead || 0, l.up || 0, -(l.side || 0))).add(HANGAR_AT);
   if (l === 'ship') return set === 'map' ? (mapSet ? mapSet.ship.getWorldPosition(new THREE.Vector3()) : MAP_AT.clone())
                            : hangarSet ? hangarSet.ship.getWorldPosition(new THREE.Vector3()) : HANGAR_AT.clone();
   if (l === 'cockpit') return hangarSet ? hangarSet.ship.localToWorld(hangarSet.seat.clone().add(new THREE.Vector3(0, 0.7, 0))) : HANGAR_AT.clone();
@@ -900,13 +921,19 @@ function camOf(key) {
     return mapSet.ship.position.clone().addScaledVector(dir, -(c.back || 0)).add(new THREE.Vector3(0, 0, c.up || 0)).addScaledVector(right, c.side || 0);
   }
   if (setOf(key) === 'hangar') {          // relative to the human-scale hangar's mouth, or chasing the fighter, in the set's own metres
-    if (c.at === 'chase') return (hangarSet ? hangarSet.ship.position.clone() : new THREE.Vector3()).add(new THREE.Vector3(-(c.back || 0), c.up || 0, -(c.side || 0)));
+    if (c.at === 'chase') return shipAt(c.freeze).add(new THREE.Vector3(-(c.back || 0), c.up || 0, -(c.side || 0)));
     const mouth = hangarSet ? hangarSet.mouth.clone() : new THREE.Vector3(), hu = hangarSet ? hangarSet.hu : 1;
     return mouth.add(new THREE.Vector3((c.out || 0) + (c.outU || 0) * hu, (c.up || 0) + (c.upU || 0) * hu, -((c.side || 0) + (c.sideU || 0) * hu)));
   }
   const base = c.at === 'bay' && bayAt ? bayAt.clone() : hangarMouth ? hangarMouth.at.clone() : STATION_AT.clone();
   const dir = hangarMouth ? hangarMouth.dir : new THREE.Vector3(1, 0, 0), right = dir.clone().cross(new THREE.Vector3(0, 1, 0)), hu = station ? station.hangarUnit || 1 : 1;
   return base.sub(STATION_AT).addScaledVector(dir, (c.out || 0) + (c.outU || 0) * hu).add(new THREE.Vector3(0, (c.up || 0) + (c.upU || 0) * hu, 0)).addScaledVector(right, (c.side || 0) + (c.sideU || 0) * hu);
+}
+// the fighter's spot in the hangar set, now or as it was at `freeze` seconds
+function shipAt(freeze) {
+  if (!hangarSet) return new THREE.Vector3();
+  if (freeze === undefined) return hangarSet.ship.position.clone();
+  const r = Math.max(0, freeze - HANGAR.roll); return new THREE.Vector3(0.5 * HANGAR.accel * r * r, 0, 0);
 }
 function cameraAt(T) {
   const { a, b, u, k, ks } = keysAround(T);
@@ -1442,6 +1469,10 @@ const SLIDERS = {
   chairX:     [v => { CHAIR.x = v; placeChair(); }, v => v + ' cm'],
   chairY:     [v => { CHAIR.y = v; placeChair(); }, v => v + ' cm'],
   chairHeight:[v => { CHAIR.height = v; placeChair(); }, v => v + '%'],
+  mapTurn:    [v => { MAPFIT.turn = v; applyMapFit(); }, v => v + '°'],
+  mapX:       [v => { MAPFIT.x = v; applyMapFit(); }, v => v + ' px'],
+  mapY:       [v => { MAPFIT.y = v; applyMapFit(); }, v => v + ' px'],
+  mapSize:    [v => { MAPFIT.size = v; applyMapFit(); }, v => v + '%'],
   helmetSize: [v => { HELMET.size = v; applyHelmetFit(); }, v => v + '%'],
   helmetUp:   [v => { HELMET.up = v; applyHelmetFit(); }, v => v + ' cm'],
   helmetFwd:  [v => { HELMET.forward = v; applyHelmetFit(); }, v => v + ' cm'],
@@ -1540,6 +1571,7 @@ for (const [id, fn] of Object.entries(CHECKS)) { $(id).addEventListener('change'
 $('min').onclick = () => { $('panel').classList.toggle('min'); $('min').textContent = $('panel').classList.contains('min') ? 'show' : 'hide'; };
 $('copy').onclick = () => {
   const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, helmet: (({ show, ...h }) => h)(HELMET),
+    map: { ...MAPFIT },
     fighter: { seatForwardCm: Math.round(-HANGAR.seatBack * 100), seatDownCm: Math.round(HANGAR.seatDown * 100), recline: HANGAR.recline, canopyDeg: HANGAR.canopyDeg, canopyDropCm: Math.round(HANGAR.canopyDrop * 100), canopySlideCm: Math.round(HANGAR.canopySlide * 100) }, props: PROPS.map(({ obj, ...p }) => p), screens: SCREEN_FIT[build] || [], intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) }, earth: { ...EARTH },
     light: { cabin: cabin.intensity, screens: screens.intensity, sun: sun.intensity, ambient: ambient.intensity, exposure: renderer.toneMappingExposure },
     openWindows: $('openWindows').checked };
@@ -1547,6 +1579,7 @@ $('copy').onclick = () => {
   try { navigator.clipboard.writeText($('out').value); } catch (e) {}
 };
 addEventListener('resize', () => {
+  if (mapSet && mapSet.map) mapSet.map.setResolution(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight); post.setSize(innerWidth, innerHeight);
 });
