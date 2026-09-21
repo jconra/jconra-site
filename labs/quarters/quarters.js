@@ -138,7 +138,7 @@ bootBar('cabin'); bootBar('jacob'); bootBar('clips'); bootBar('station');
 term.gate().wait(0.4)
     .cmd('./greeting.sh')
     .out('Welcome to jconra.com.').out('Hello! I am Jacob Conrads, a Systems Engineer. This station is a project to play around with and highlight my skills.')
-    .out('Thank you for visiting! Use the scroll or wait for the animation.').wait(0.3)
+    .out('Thank you for visiting! Scroll or swipe to move through it, or wait for the animation.').wait(0.3)
     .out('> Click here for the basic site');
 const termCanvas = $('term'); const termCtx = termCanvas ? termCanvas.getContext('2d') : null;
 function drawBootOverlay() {
@@ -664,6 +664,22 @@ renderer.domElement.addEventListener('wheel', (e) => {
   SEQ.playing = false;
   seek(SEQ.T + e.deltaY * 0.0025);
 }, { passive: false });
+// on a phone there is no wheel: one finger dragged up or down scrubs time the same way, and a
+// first swipe starts the intro. While the timeline owns the camera the orbit is idle anyway, so
+// the drag is not fighting it.
+{
+  let lastY = null, id = null;
+  renderer.domElement.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse' && e.isPrimary) { lastY = e.clientY; id = e.pointerId; } });
+  renderer.domElement.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== id || lastY === null || !SEQ.scrub || !chairPivot) return;
+    const dy = lastY - e.clientY; lastY = e.clientY;
+    if (!SEQ.active) { if (Math.abs(dy) < 2) return; activateIntro(); }
+    SEQ.playing = false;
+    seek(SEQ.T + dy * 0.012);
+  });
+  const end = (e) => { if (e.pointerId === id) { lastY = null; id = null; } };
+  renderer.domElement.addEventListener('pointerup', end); renderer.domElement.addEventListener('pointercancel', end);
+}
 
 // ── editing the keys ────────────────────────────────────────────────────────────
 // Pick a key, and its sliders show; move one and the scene jumps to that key so the change is seen.
