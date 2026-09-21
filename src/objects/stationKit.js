@@ -20,6 +20,15 @@ const TURN_TO_X = { hangar2: true, ship1: true, ship2: true };
 export const BAYS = {
   hangar2: { deckY: 0.142, back: -0.177, mouth: 0.21, halfWidth: 0.245 },
 };
+// What else stands on a hangar's deck, the same in the station's hangars and in the human-scale
+// one, so the cut from outside to inside changes nothing: the two ship2 fighters at the back,
+// either side, noses to the mouth. `along` is the fraction of the way from the back wall to the
+// mouth, `side` the fraction of the half width (negative to the right of the mouth's view), and
+// `length` a multiple of the deck fighter's length.
+export const PARKED = [
+  { kind: 'ship2a', along: 0.16, side: -0.66, length: 1.15, turn: 180 },   // turned to point out of the mouth
+  { kind: 'ship2b', along: 0.16, side: 0.66, length: 1.15, turn: 180 },
+];
 export const G = 9.81;
 
 export const DEFAULT_LAYOUT = {
@@ -332,6 +341,19 @@ export class StationKit extends THREE.Group {
         mesh.instanceMatrix.needsUpdate = true;
         this.built.add(mesh);
         this.bayLocal = local;                             // where the fighter sits inside a hangar, in hangar units
+        // and the parked ships, the same on every deck
+        for (const pk of PARKED) {
+          const Q = P[pk.kind]; if (!Q) continue;
+          const kk = (pk.length * L.bay.length * H.size.x) / Q.size.x;
+          const pm = new THREE.InstancedMesh(Q.geometry, Q.material, this.hangars.length);
+          pm.castShadow = pm.receiveShadow = true;
+          const pl = new THREE.Matrix4().compose(
+            new THREE.Vector3(bay.back + (bay.mouth - bay.back) * pk.along, bay.deckY - Q.box.min.y * kk, -pk.side * bay.halfWidth),
+            new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(pk.turn || 0)), new THREE.Vector3(kk, kk, kk));
+          this.hangars.forEach((hm, i) => pm.setMatrixAt(i, hm.clone().multiply(pl)));
+          pm.instanceMatrix.needsUpdate = true;
+          this.built.add(pm);
+        }
       }
     }
     // SOLAR PANELS on the tower: at the tower's surface unless pushed further out

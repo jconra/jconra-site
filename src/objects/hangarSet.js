@@ -5,7 +5,7 @@
 // so it can close. Everything is laid out in metres in a frame whose origin is the fighter's spot
 // on the deck, deck at y = 0, the mouth toward +x.
 import * as THREE from 'three';
-import { BAYS } from './stationKit.js';
+import { BAYS, PARKED } from './stationKit.js';
 
 // The open canopy of ship1 is welded to its hull. It is picked out by a box (everything above the
 // cockpit sill, between the nose and the fin) in the part's own units after the kit's turn to +x,
@@ -36,19 +36,20 @@ export function buildHangarSet(parts, { shipLength = 6, bayLength = 0.2, along =
   ship.add(body);
   floor.add(ship);
 
-  // the two ship2 fighters parked at the back, either side, noses to the mouth (the far one's
-  // canopy open), for the hangar to read as a working bay and not a garage with one car in it
+  // the parked ships, placed by the same table the station's hangars use, so the cut inside
+  // changes nothing on the deck
   const others = [];
-  for (const [kind, z, len] of [['ship2a', -5.0, 5.0], ['ship2b', 5.0, 5.0]]) {
-    const P = parts[kind]; if (!P) continue;
-    const m = new THREE.Mesh(P.geometry, P.material), k = len / P.size.x;
+  for (const pk of PARKED) {
+    const P = parts[pk.kind]; if (!P) continue;
+    const len = pk.length * shipLength, m = new THREE.Mesh(P.geometry, P.material), k = len / P.size.x;
     m.scale.setScalar(k); m.castShadow = m.receiveShadow = true;
-    m.position.set((bay.back - fx) * hu + len * 0.5 + 0.6, 0, z);      // tails near the back wall, 5 m either side of the centre line
+    m.position.set((bay.back + (bay.mouth - bay.back) * pk.along - fx) * hu, -P.box.min.y * k, -pk.side * bay.halfWidth * hu);
+    m.rotation.y = THREE.MathUtils.degToRad(pk.turn || 0);
     floor.add(m); others.push(m);
   }
 
   return {
-    floor, hangar, ship, body, canopy: canopyMesh, others, hu, fu, bay,
+    floor, hangar, ship, body, canopy: canopyMesh, others, hu, fu, bay, fx,
     // where things are, in the set's metres
     mouth: new THREE.Vector3((bay.mouth - fx) * hu, 0, 0),
     back: new THREE.Vector3((bay.back - fx) * hu, 0, 0),

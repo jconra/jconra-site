@@ -470,12 +470,12 @@ const KEYS = [
   { t: 22.0,  set: 'station', cam: [2100, 1250, 1400], look: 'station' },           // wide, from a little above the deck
   { t: 26.0,  set: 'station', cam: { at: 'mouth', out: 900, up: 380, side: 500 }, look: 'hangar' },   // panning right
   { t: 30.0,  set: 'station', cam: { at: 'mouth', out: 260, up: 40 },  look: 'hangar' },              // at the mouth
-  { t: 33.0,  set: 'station', cam: { at: 'mouth', out: 60, up: 22 },   look: 'bay' },                 // in, onto the fighter
+  { t: 33.0,  set: 'station', cam: { at: 'mouth', outU: 0.2, upU: 0.07 }, look: 'bay' },            // in, onto the fighter (in hangar units: the cut inside matches)
   // INSIDE THE HANGAR, at human scale: the same hangar and fighter, the fighter 6 m long. He walks
   // in from the right, in his helmet, to the cockpit; then he is in the seat, the canopy closes,
   // and the fighter rolls out of the mouth. Keys are in the set's metres: the fighter's spot on the
   // deck is the origin, the deck is y = 0, the mouth is toward +x.
-  { t: 33.01, set: 'hangar', cam: { at: 'mouth', out: 7.3, up: 2.7 }, look: 'ship' },     // the same framing as the last shot outside
+  { t: 33.01, set: 'hangar', cam: { at: 'mouth', outU: 0.2, upU: 0.07 }, look: 'ship' }, // the same framing as the last shot outside
   { t: 36.5,  set: 'hangar', cam: [5.5, 1.9, -5.5],   look: 'him' },
   { t: 39.0,  set: 'hangar', cam: [3.4, 2.1, -3.2],   look: 'him' },
   { t: 39.01, set: 'hangar', cam: [2.6, 2.3, -3.4],   look: 'cockpit' },                  // he is in the seat
@@ -523,10 +523,10 @@ const MAP = { glow: 59.6, tourEnd: 74.0, shipIn: 58.0, shipAt: 64.0,
   target: [-201, 113, 4],                // where it goes in: the big swirl of cloud off the West Coast, in the picture's units
   fire: 78.6, flash: 81.4, clear: 83.6,  // the glow builds, peaks white, and clears
   clouds: 81.6, cloudsIn: 2.4 };          // clouds pop in over this many seconds from here
-const HANGAR = { walk: 33.0, from: [0.3, 0, -8.2], to: [0.3, 0, -2.4], speed: 1.1, sit: 39.0, canopy: 39.4, canopyLen: 2.4, roll: 42.5, accel: 2.5,
+const HANGAR = { walk: 33.0, from: [0.3, 0, -9.4], to: [0.3, 0, -2.4], speed: 1.15, sit: 39.0, canopy: 39.4, canopyLen: 2.4, roll: 42.5, accel: 2.5,
   // the fit in the seat: how far down from the measured seat pan he sits, how far back, and how far
   // he reclines (degrees); and how far the canopy turns to shut
-  seatDown: 0.17, seatBack: 0.12, recline: 20, canopyDeg: -50 };
+  seatDown: 0.17, seatBack: 0, recline: 24, canopyDeg: -50 };
 // The greeting comes in parts: each is its own hologram over his head, which forms, holds, and
 // dissolves again as the next one forms.
 const PARTS = [
@@ -539,7 +539,7 @@ const PARTS = [
 const STATION_AT = new THREE.Vector3(100000, 0, 0);
 const HANGAR_AT = new THREE.Vector3(-100000, 0, 0);       // the human-scale hangar, off on its own
 const MAP_AT = new THREE.Vector3(0, 0, 120000);            // the map over the photograph, off on its own
-let mapSet = null, poked = null;
+let mapSet = null, poked = null, hangarIndex = -1, hangarMatrix = null, twin = null;
 let station = null, stationLoading = false, hangarAt = null, bayAt = null, hangarMouth = null, currentSet = 'cabin', hangarSet = null, helmet = null;
 function loadStation() {
   if (station || stationLoading) return;
@@ -550,8 +550,21 @@ function loadStation() {
     station.position.copy(STATION_AT); station.visible = false; scene.add(station); checkBoot();
     pickHangar();
     buildTraffic(parts);
-    hangarSet = buildHangarSet(parts, { shipLength: 6, bayLength: DEFAULT_LAYOUT.bay.length, along: DEFAULT_LAYOUT.bay.along });
+    hangarSet = buildHangarSet(parts, { shipLength: 7, bayLength: DEFAULT_LAYOUT.bay.length, along: DEFAULT_LAYOUT.bay.along });
     hangarSet.floor.position.copy(HANGAR_AT); hangarSet.floor.visible = false; scene.add(hangarSet.floor);
+    // The rest of the station, seen through the mouth and the openings of the human-scale hangar:
+    // a second station, placed so that ITS copy of this hangar lands exactly on the human-scale
+    // one (then that copy, and what is parked in it, is shrunk away). So what was behind the
+    // camera outside is behind it inside, and the cut is only a change of scale nobody can see.
+    if (hangarMatrix) {
+      twin = new StationKit(parts).build(DEFAULT_LAYOUT);
+      const HS = hangarSet;
+      twin.matrixAutoUpdate = false;
+      twin.matrix.makeScale(HS.hu, HS.hu, HS.hu).multiply(new THREE.Matrix4().makeTranslation(-HS.fx, -HS.bay.deckY, 0)).multiply(hangarMatrix.clone().invert());
+      const gone = new THREE.Matrix4().makeScale(0, 0, 0);
+      twin.traverse(o => { if (o.isInstancedMesh && o.count === twin.hangars.length) { o.setMatrixAt(hangarIndex, gone); o.instanceMatrix.needsUpdate = true; } });
+      HS.floor.add(twin);
+    }
     // Earth out past the mouth, where the fighter is headed: the same photograph, facing back
     // at the hangar, hung below the line of flight
     const earthOut = picture.clone(); earthOut.material = picture.material;
@@ -737,6 +750,7 @@ function pickHangar() {
   }
   const bay = StationKit.BAYS[station.layout.hangarModel] || { deckY: 0, back: -0.4, mouth: 0.4 };
   const u = station.hangarUnit || 1;
+  hangarIndex = station.hangars.indexOf(best); hangarMatrix = best;
   const along = new THREE.Vector3(1, 0, 0).transformDirection(best);
   hangarAt = new THREE.Vector3().setFromMatrixPosition(best).add(STATION_AT).addScaledVector(along, (bay.back + bay.mouth) / 2 * u).add(new THREE.Vector3(0, bay.deckY * u, 0));
   hangarMouth = { at: new THREE.Vector3().setFromMatrixPosition(best).add(STATION_AT).addScaledVector(along, bay.mouth * u).add(new THREE.Vector3(0, bay.deckY * u, 0)), dir: along };
@@ -766,7 +780,7 @@ function showSet(name) {
     sun.position.copy(AT).add((inHangar ? new THREE.Vector3(1, 0.35, 0.25) : inMap ? new THREE.Vector3(0.4, 0.6, 1) : new THREE.Vector3(1, 0.6, 0.45)).multiplyScalar(5000)); sun.target.position.copy(AT);
     spaceFill.position.copy(AT).add((inHangar ? new THREE.Vector3(0.3, 0.9, -0.4) : new THREE.Vector3(-0.6, -0.8, -0.3)).multiplyScalar(5000)); spaceFill.target.position.copy(AT);
     sun.intensity = 3.2; sun.color.setHex(0xfff4e6); cabin.intensity = 0; screens.intensity = 0;
-         ambient.intensity = inHangar ? 0.9 : 0.35; ambient.color.setHex(0x8aa0b8); ambient.groundColor.setHex(0x2a3340); renderer.toneMappingExposure = 1.05;
+         ambient.intensity = inHangar ? 0.6 : 0.35; ambient.color.setHex(0x8aa0b8); ambient.groundColor.setHex(0x2a3340); renderer.toneMappingExposure = 1.05;
          spaceFill.intensity = inHangar ? 1.2 : 1.8; }
 }
 const holos = [];          // the greeting is on the terminal now, not floating over his head; Hologram stays for later
@@ -800,7 +814,7 @@ const lookPoint = (l, set) => {
   if (l === 'hangar') return hangarAt ? hangarAt.clone() : STATION_AT.clone().add(new THREE.Vector3(0, 240, 740));
   if (l === 'bay') return bayAt ? bayAt.clone() : lookPoint('hangar', set);          // the fighter on the hangar's deck
   if (l === 'ship') return set === 'map' ? (mapSet ? mapSet.ship.getWorldPosition(new THREE.Vector3()) : MAP_AT.clone())
-                           : hangarSet ? hangarSet.ship.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 1.2, 0)) : HANGAR_AT.clone();
+                           : hangarSet ? hangarSet.ship.getWorldPosition(new THREE.Vector3()) : HANGAR_AT.clone();
   if (l === 'cockpit') return hangarSet ? hangarSet.ship.localToWorld(hangarSet.seat.clone().add(new THREE.Vector3(0, 0.7, 0))) : HANGAR_AT.clone();
   const p = new THREE.Vector3(...l); return set === 'station' ? p.add(STATION_AT) : set === 'hangar' ? p.add(HANGAR_AT) : set === 'map' ? p.add(MAP_AT) : p;
 };
@@ -829,12 +843,12 @@ function camOf(key) {
   }
   if (setOf(key) === 'hangar') {          // relative to the human-scale hangar's mouth, or chasing the fighter, in the set's own metres
     if (c.at === 'chase') return (hangarSet ? hangarSet.ship.position.clone() : new THREE.Vector3()).add(new THREE.Vector3(-(c.back || 0), c.up || 0, -(c.side || 0)));
-    const mouth = hangarSet ? hangarSet.mouth.clone() : new THREE.Vector3();
-    return mouth.add(new THREE.Vector3(c.out || 0, c.up || 0, -(c.side || 0)));
+    const mouth = hangarSet ? hangarSet.mouth.clone() : new THREE.Vector3(), hu = hangarSet ? hangarSet.hu : 1;
+    return mouth.add(new THREE.Vector3((c.out || 0) + (c.outU || 0) * hu, (c.up || 0) + (c.upU || 0) * hu, -((c.side || 0) + (c.sideU || 0) * hu)));
   }
   const base = c.at === 'bay' && bayAt ? bayAt.clone() : hangarMouth ? hangarMouth.at.clone() : STATION_AT.clone();
-  const dir = hangarMouth ? hangarMouth.dir : new THREE.Vector3(1, 0, 0), right = dir.clone().cross(new THREE.Vector3(0, 1, 0));
-  return base.sub(STATION_AT).addScaledVector(dir, c.out || 0).add(new THREE.Vector3(0, c.up || 0, 0)).addScaledVector(right, c.side || 0);
+  const dir = hangarMouth ? hangarMouth.dir : new THREE.Vector3(1, 0, 0), right = dir.clone().cross(new THREE.Vector3(0, 1, 0)), hu = station ? station.hangarUnit || 1 : 1;
+  return base.sub(STATION_AT).addScaledVector(dir, (c.out || 0) + (c.outU || 0) * hu).add(new THREE.Vector3(0, (c.up || 0) + (c.upU || 0) * hu, 0)).addScaledVector(right, (c.side || 0) + (c.sideU || 0) * hu);
 }
 function cameraAt(T) {
   const { a, b, u, k, ks } = keysAround(T);
@@ -930,6 +944,7 @@ function stepHangar(T, a, b, u, set = 'hangar') {
   HS.setCanopy((T - HANGAR.canopy) / HANGAR.canopyLen, HANGAR.canopyDeg);
   const roll = Math.max(0, T - HANGAR.roll);
   HS.ship.position.set(0.5 * HANGAR.accel * roll * roll, 0, 0);
+  if (twin) for (const sp of twin.spinners) sp.turntable.rotation.y = sp.sign * (Math.PI * 2 / StationKit.period(sp.radius)) * T;   // the station outside keeps turning
   // banking to the mouse once he is out of the mouth; level while he is still in the bay
   if (HS.ship.position.x > HS.mouth.x) FLY.roll += (FLY.target - FLY.roll) * FLY.follow; else FLY.roll = 0;
   HS.ship.rotation.x = THREE.MathUtils.degToRad(FLY.roll);
