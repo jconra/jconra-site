@@ -265,7 +265,7 @@ function loadRoom(name) {
   placeSitter();
   $('boot')?.remove();
   bootProgress('cabin', 1); loadSitter(); loadStation();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; if (e.total) bootProgress('cabin', e.loaded / e.total); },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -475,13 +475,22 @@ const KEYS = [
   { t: 39.0,  set: 'hangar', cam: [3.4, 2.1, -3.2],   look: 'him' },
   { t: 39.01, set: 'hangar', cam: [2.6, 2.3, -3.4],   look: 'cockpit' },                  // he is in the seat
   { t: 42.0,  set: 'hangar', cam: [4.2, 2.0, -4.6],   look: 'cockpit' },                  // the canopy comes down
-  { t: 45.0,  set: 'hangar', cam: [6.5, 1.6, -6.5],   look: 'ship' },                     // he rolls out
-  { t: 49.0,  set: 'hangar', cam: [9.0, 2.2, -5.0],   look: 'ship' },
+  // from the roll-out the camera locks onto the fighter: `{ at: 'chase', back, up, side }` is
+  // metres behind it, above it and to its right, wherever it has got to
+  { t: 43.0,  set: 'hangar', cam: { at: 'chase', back: 9, up: 2.6, side: -4.5 }, look: 'ship' },
+  { t: 49.0,  set: 'hangar', cam: { at: 'chase', back: 12, up: 3.2, side: 3.5 }, look: 'ship' },
+  { t: 58.0,  set: 'hangar', cam: { at: 'chase', back: 15, up: 4.0, side: 0 },   look: 'ship' },
 ];
 const ACTS = { wave: 1.9, stand: 8.2, walk: 10.0, walkSpeed: 1.1, walkDir: 35 };   // seconds; m/s; degrees from +z toward +x
 // in the hangar: when he starts walking in, where from (metres beside the fighter's spot, the
 // right of the mouth's view is -z), when he is in the seat, when the canopy starts down and how
 // long it takes, and when the fighter rolls, at what acceleration
+// once he is flying, the mouse (or a sideways finger drag) banks the fighter: how far, in degrees,
+// at the edge of the screen, and how quickly it follows
+const FLY = { roll: 0, target: 0, maxRoll: 45, follow: 0.08 };
+// a scrub pauses the intro; after three seconds with no scrolling and nothing pressed, it plays on
+const RESUME = { after: 3, last: 0, held: false };
+function scrubbed() { RESUME.last = performance.now(); }
 const HANGAR = { walk: 33.0, from: [0.3, 0, -8.2], to: [0.3, 0, -2.4], speed: 1.1, sit: 39.0, canopy: 39.4, canopyLen: 2.4, roll: 42.5, accel: 2.5 };
 // The greeting comes in parts: each is its own hologram over his head, which forms, holds, and
 // dissolves again as the next one forms.
@@ -505,6 +514,13 @@ function loadStation() {
     pickHangar();
     hangarSet = buildHangarSet(parts, { shipLength: 6, bayLength: DEFAULT_LAYOUT.bay.length, along: DEFAULT_LAYOUT.bay.along });
     hangarSet.floor.position.copy(HANGAR_AT); hangarSet.floor.visible = false; scene.add(hangarSet.floor);
+    // Earth out past the mouth, where the fighter is headed: the same photograph, facing back
+    // at the hangar, hung below the line of flight
+    const earthOut = picture.clone(); earthOut.material = picture.material;
+    // far enough out that twenty seconds of flight hardly changes its size, and scaled to match
+    earthOut.position.set(hangarSet.mouth.x + 12000, -3400, 0); earthOut.scale.setScalar(14);
+    earthOut.rotation.set(0, -Math.PI / 2, 0); earthOut.rotateX(Math.atan2(3400, 12000));
+    hangarSet.floor.add(earthOut);
     loader.load('../../models/props/helmet.glb', (g) => {
       helmet = g.scene; helmet.traverse(o => { if (o.isMesh) { o.castShadow = true; if (o.material.map) o.material.map.colorSpace = THREE.SRGBColorSpace; } });
       wearHelmet();
@@ -608,7 +624,8 @@ function keysAround(T) {
 function camOf(key) {
   const c = key.cam;
   if (Array.isArray(c)) return new THREE.Vector3(...c);
-  if (setOf(key) === 'hangar') {          // relative to the human-scale hangar's mouth, in the set's own metres
+  if (setOf(key) === 'hangar') {          // relative to the human-scale hangar's mouth, or chasing the fighter, in the set's own metres
+    if (c.at === 'chase') return (hangarSet ? hangarSet.ship.position.clone() : new THREE.Vector3()).add(new THREE.Vector3(-(c.back || 0), c.up || 0, -(c.side || 0)));
     const mouth = hangarSet ? hangarSet.mouth.clone() : new THREE.Vector3();
     return mouth.add(new THREE.Vector3(c.out || 0, c.up || 0, -(c.side || 0)));
   }
@@ -708,6 +725,9 @@ function stepHangar(T, a, b, u, set = 'hangar') {
   HS.setCanopy((T - HANGAR.canopy) / HANGAR.canopyLen);
   const roll = Math.max(0, T - HANGAR.roll);
   HS.ship.position.set(0.5 * HANGAR.accel * roll * roll, 0, 0);
+  // banking to the mouse once he is out of the mouth; level while he is still in the bay
+  if (HS.ship.position.x > HS.mouth.x) FLY.roll += (FLY.target - FLY.roll) * FLY.follow; else FLY.roll = 0;
+  HS.ship.rotation.x = THREE.MathUtils.degToRad(FLY.roll);
   if (sitter && sitterMixer) {
     if (seated) {
       if (sitter.parent !== HS.ship) HS.ship.add(sitter);
@@ -801,7 +821,12 @@ function faceCamera(amount) {
 }
 function stepSequence(dt) {
   if (SEQ.active) {
+    // left alone for a few seconds after a scrub, it plays on (not while a panel control has the
+    // focus - someone editing a key wants the frame to hold)
+    const editing = document.activeElement && document.activeElement.closest && document.activeElement.closest('#panel');
+    if (!SEQ.playing && !RESUME.held && !editing && SEQ.T < total() && performance.now() - RESUME.last > RESUME.after * 1000) SEQ.playing = true;
     if (SEQ.playing) { seek(SEQ.T + dt); if (SEQ.T >= total()) SEQ.playing = false; }
+    else if (SEQ.T >= HANGAR.roll && Math.abs(FLY.roll - FLY.target) > 0.05) seek(SEQ.T);     // paused in flight, the fighter still banks to the pointer
   } else {
     if (chairPivot && CHAIR.swivel) chairPivot.rotation.y += THREE.MathUtils.degToRad(CHAIR.speed) * dt;
     if (sitterMixer) sitterMixer.update(dt);
@@ -814,23 +839,40 @@ renderer.domElement.addEventListener('wheel', (e) => {
   if (!SEQ.scrub || !chairPivot) return;
   e.preventDefault();
   if (!SEQ.active) activateIntro();
-  SEQ.playing = false;
+  SEQ.playing = false; scrubbed();
   seek(SEQ.T + e.deltaY * 0.0025);
 }, { passive: false });
+renderer.domElement.addEventListener('pointerdown', () => { RESUME.held = true; scrubbed(); });
+addEventListener('pointerup', () => { RESUME.held = false; scrubbed(); });
+addEventListener('pointercancel', () => { RESUME.held = false; scrubbed(); });
+// the mouse across the screen banks the fighter while he is flying (nothing else listens to it then)
+renderer.domElement.addEventListener('pointermove', (e) => {
+  if (e.pointerType !== 'mouse') return;
+  FLY.target = -((e.clientX / innerWidth) * 2 - 1) * FLY.maxRoll;
+});
 // on a phone there is no wheel: one finger dragged up or down scrubs time the same way, and a
 // first swipe starts the intro. While the timeline owns the camera the orbit is idle anyway, so
 // the drag is not fighting it.
+// sideways drag, while he is flying, banks the fighter instead: the drag's first few pixels decide
+// which it is, so a swipe never does both.
 {
-  let lastY = null, id = null;
-  renderer.domElement.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse' && e.isPrimary) { lastY = e.clientY; id = e.pointerId; } });
+  let lastY = null, id = null, startX = 0, startY = 0, mode = null;
+  renderer.domElement.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse' && e.isPrimary) { lastY = e.clientY; startX = e.clientX; startY = e.clientY; id = e.pointerId; mode = null; } });
   renderer.domElement.addEventListener('pointermove', (e) => {
     if (e.pointerId !== id || lastY === null || !SEQ.scrub || !chairPivot) return;
+    if (!mode) {
+      const dx = e.clientX - startX, dyy = e.clientY - startY;
+      if (Math.hypot(dx, dyy) < 6) return;
+      const flying = SEQ.active && SEQ.T >= HANGAR.roll;
+      mode = flying && Math.abs(dx) > Math.abs(dyy) ? 'bank' : 'scrub';
+    }
+    if (mode === 'bank') { FLY.target = THREE.MathUtils.clamp(-((e.clientX - startX) / (innerWidth / 2)) * FLY.maxRoll, -FLY.maxRoll, FLY.maxRoll); return; }
     const dy = lastY - e.clientY; lastY = e.clientY;
-    if (!SEQ.active) { if (Math.abs(dy) < 2) return; activateIntro(); }
-    SEQ.playing = false;
+    if (!SEQ.active) activateIntro();
+    SEQ.playing = false; scrubbed();
     seek(SEQ.T + dy * 0.012);
   });
-  const end = (e) => { if (e.pointerId === id) { lastY = null; id = null; } };
+  const end = (e) => { if (e.pointerId === id) { lastY = null; id = null; if (mode === 'bank') FLY.target = 0; mode = null; } };
   renderer.domElement.addEventListener('pointerup', end); renderer.domElement.addEventListener('pointercancel', end);
 }
 
