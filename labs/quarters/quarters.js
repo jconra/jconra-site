@@ -488,21 +488,18 @@ function placeSitter() {
 // way is looking at stars.
 const WINDOW = [0.05, 1.8, -1.62];
 const KEYS = [
-  { t: 0.0,  cam: [-0.028, 1.602, -0.742], look: [-0.027, 1.592, -1.201], chair: -112, face: 0 },   // square on the terminal, 46 cm off it (Jacob's view; the pull-back lands here)
-  { t: 1.4,  cam: [0.95, 1.32, 0.25],  look: 'him',    chair: -112,     face: 0 },   // backing away, the beat before he turns
-  { t: 2.5,  cam: [1.05, 1.30, 1.05], look: 'him',    chair: 'turned', face: 1 },   // turned, on the camera
-  { t: 7.0,  cam: [1.35, 1.30, 0.20], look: 'him',    chair: 'turned', face: 1 },
-  { t: 9.5,  cam: [1.10, 1.40, -0.40], look: 'him',   chair: 'turned', face: 0.6 }, // he is up
-  { t: 12.0, cam: [0.40, 1.55, -1.00], look: 'window', chair: 'turned', face: 0 },  // over the computer
-  { t: 14.0, cam: [0.05, 1.80, -1.75], look: 'window', chair: 'turned', face: 0 },  // through the glass
-  // OUTSIDE. The cabin is a room on the ring's underside, its window looking down the station's
-  // axis, so past the glass the camera is teleported to just under the ring at its rim, still
-  // looking down. It pulls out and away, tilting up as it goes, and the ring's underside sweeps
-  // through the top of the frame, turning; a quarter turn later the camera is level, looking at
-  // the whole station. It pulls out wide, then pans right to the hangar on that side, closes on
-  // its mouth and on the fighter on its deck. Station keys are in the station's own metres.
-  { t: 14.01, set: 'station', cam: [770, 580, 0],      look: [150, 620, 0] },       // under the rim, along the underside
-  { t: 15.4,  set: 'station', cam: [1040, 430, 290],   look: [350, 600, 0] },       // pulling out: the underside overhead
+  // Jacob's keys (2026-09-20): a captured look point is pushed out along the line of sight (2 m in
+  // the cabin, 1 km outside) so a wobble of the camera's path can never put it behind the camera
+  { t: 0.0,  cam: [-0.028, 1.602, -0.742], look: [-0.027, 1.592, -1.201], chair: -112, face: 0 },   // square on the terminal (the pull-back lands here)
+  { t: 1.4,  cam: [1.74, 1.933, 1.591],    look: [0.031, 1.532, -0.695],  chair: -112, face: 0 },
+  { t: 2.5,  cam: [1.63, 1.713, 1.656],    look: [-0.078, 1.164, -0.427], chair: 114,  face: 1 },
+  { t: 7.0,  cam: [3.034, 2.036, 0.268],   look: [0.375, 1.599, -0.653],  chair: -180, face: 0.4 },
+  { t: 9.5,  cam: [1.96, 1.772, -0.03],    look: [-0.015, 1.805, -0.148], chair: 'turned', face: 0.6 },
+  { t: 12.0, cam: [0.526, 2.225, -1.115],  look: [-0.005, 2.211, -1.424], chair: 'turned', face: 0 },
+  { t: 14.0, cam: [0.216, 2.191, -1.711],  look: [-1.775, 2.218, -1.897], chair: 'turned', face: 0 },
+  // OUTSIDE. Station keys are in the station's own metres.
+  { t: 14.01, set: 'station', cam: [748.697, 822.855, -292.606], look: [229.139, 788.329, -1146.344] },
+  { t: 15.4,  set: 'station', cam: [716.627, 780.535, -702.714], look: [-273.615, 746.635, -837.888] },
   { t: 17.5,  set: 'station', cam: [1550, 800, 850],   look: 'station' },           // level, clear of the arms
   { t: 22.0,  set: 'station', cam: [2100, 1250, 1400], look: 'station' },           // wide, from a little above the deck
   { t: 26.0,  set: 'station', cam: { at: 'mouth', out: 900, up: 380, side: 500 }, look: 'hangar' },   // panning right
@@ -1199,7 +1196,10 @@ function showKey() {
 function captureView(k) {
   const off = setOf(k) === 'station' ? STATION_AT : setOf(k) === 'hangar' ? HANGAR_AT : setOf(k) === 'map' ? MAP_AT : new THREE.Vector3();
   k.cam = camera.position.clone().sub(off).toArray().map(v => +v.toFixed(3));
-  k.look = controls.target.clone().sub(off).toArray().map(v => +v.toFixed(3));
+  // the look point pushed out along the line of sight (2 m in the cabin, 1 km outside): a wobble
+  // of the camera's path between keys can then never put it behind the camera and flip the view
+  const dir = controls.target.clone().sub(camera.position).normalize(), reach = setOf(k) === 'cabin' ? 2 : 1000;
+  k.look = camera.position.clone().addScaledVector(dir, reach).sub(off).toArray().map(v => +v.toFixed(3));
 }
 function editKey(id, v) {
   const k = KEYS[keyIndex], [field, idx] = KEYFIELDS[id];
