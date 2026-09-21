@@ -13,7 +13,7 @@ const $ = (id) => document.getElementById(id);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
-renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const SKY = new THREE.Color(0x9ec9ec); scene.background = SKY; scene.fog = new THREE.Fog(SKY, 900, 3200);
@@ -22,7 +22,7 @@ camera.position.set(0, 40, 120);
 const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.target.set(0, 12, 0); controls.maxDistance = 3000;
 const sun = new THREE.DirectionalLight(0xfff4e0, 2.4); sun.position.set(300, 600, 200); scene.add(sun); scene.add(sun.target);
 // the sun's shadow covers a square that follows the camera's target
-sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.6;
+sun.castShadow = false; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.6;
 { const c = sun.shadow.camera; c.left = c.bottom = -400; c.right = c.top = 400; c.near = 10; c.far = 2500; }
 const SUN_OFF = new THREE.Vector3(300, 600, 200);
 const hemi = new THREE.HemisphereLight(0xbfe3ff, 0x466b3a, 1.0); scene.add(hemi);
@@ -37,7 +37,14 @@ const SPECIES = [
   { name: 'pine',  file: '../../models/trees/pine.glb',  height: 22, weight: 1 },
   { name: 'bush',  file: '../../models/trees/bush.glb',  height: 5,  weight: 0.6 },
 ];
-const SET = { count: 4000, radius: 1400, imposterAt: 220, band: 60, grid: 12, cell: 128, hemi: true, blend: true, nearCap: 3000, show: 'both', detail: 'fine', a2c: true, depth: true, shadows: true, ss: false };
+// A light start: a small forest, a small atlas, imposters from close in, no shadows. The heavy
+// settings are there to turn up; on a weak GPU (no WebGL2) it starts lighter still. ?light and
+// ?heavy in the address force one or the other.
+const weak = !renderer.capabilities.isWebGL2 || Q.has('light');
+const SET = weak && !Q.has('heavy')
+  ? { count: 1500, radius: 900, imposterAt: 60, band: 30, grid: 8, cell: 64, hemi: true, blend: true, nearCap: 600, show: 'both', detail: 'coarse', a2c: true, depth: true, shadows: false, ss: false }
+  : { count: 2500, radius: 1200, imposterAt: 120, band: 40, grid: 12, cell: 96, hemi: true, blend: true, nearCap: 1500, show: 'both', detail: 'coarse', a2c: true, depth: true, shadows: false, ss: false };
+renderer.shadowMap.enabled = SET.shadows;
 let forest = [];                  // { pos, yaw, scale, tint, sp }
 const built = [];                 // per species: { bake, imposterMesh, meshes: [InstancedMesh...], fade: attribute }
 
@@ -174,8 +181,8 @@ function assign() {
 const SLIDERS = {
   count:      [v => { SET.count = v; plant(); buildDraws(); }, v => v.toLocaleString()],
   radius:     [v => { SET.radius = v; plant(); buildDraws(); }, v => v + ' m'],
-  imposterAt: [v => SET.imposterAt = v, v => v + ' m'],
-  band:       [v => SET.band = v, v => v + ' m'],
+  imposterAt: [v => { SET.imposterAt = v; SET.dirty = true; }, v => v + ' m'],
+  band:       [v => { SET.band = v; SET.dirty = true; }, v => v + ' m'],
   grid:       [v => { SET.grid = v; capAtlas(); bakeAll(buildDraws); }, v => v + ' × ' + v],
   cell:       [v => { SET.cell = v; capAtlas(); bakeAll(buildDraws); }, v => v + ' px'],
 };
@@ -189,9 +196,9 @@ $('a2c').addEventListener('change', e => { SET.a2c = e.target.checked; for (cons
 $('detail').addEventListener('change', async e => { SET.detail = e.target.value; $('boot').style.display = 'flex'; document.body.appendChild($('boot')); await loadSpecies(); buildDraws(); $('boot').style.display = 'none'; });   // the atlases come from the coarse tree either way
 $('blend').addEventListener('change', e => { SET.blend = e.target.checked; for (const b of built) { b.imposter.material.uniforms.blend.value = SET.blend ? 1 : 0; b.imposter.material.userData.depthMaterial.uniforms.blend.value = SET.blend ? 1 : 0; } });
 $('depth').addEventListener('change', e => { SET.depth = e.target.checked; for (const b of built) { b.imposter.material.uniforms.useDepth.value = SET.depth ? 1 : 0; b.imposter.material.userData.depthMaterial.uniforms.useDepth.value = SET.depth ? 1 : 0; } });
-$('shadows').addEventListener('change', e => { SET.shadows = e.target.checked; sun.castShadow = SET.shadows; for (const b of built) { b.imposter.castShadow = SET.shadows; b.imposter.material.uniforms.useShadow.value = SET.shadows ? 1 : 0; for (const m of b.meshes) m.castShadow = SET.shadows; } });
+$('shadows').addEventListener('change', e => { SET.shadows = e.target.checked; sun.castShadow = SET.shadows; renderer.shadowMap.enabled = SET.shadows; for (const b of built) { b.imposter.castShadow = SET.shadows; b.imposter.material.uniforms.useShadow.value = SET.shadows ? 1 : 0; for (const m of b.meshes) m.castShadow = SET.shadows; } });
 $('ss').addEventListener('change', e => { SET.ss = e.target.checked; renderer.setPixelRatio(SET.ss ? Math.min(devicePixelRatio * 2, 4) : Math.min(devicePixelRatio, 2)); });
-$('show').addEventListener('change', e => { SET.show = e.target.value; });
+$('show').addEventListener('change', e => { SET.show = e.target.value; SET.dirty = true; });
 $('atlasOn').addEventListener('change', e => { $('atlas').style.display = e.target.checked ? 'block' : 'none'; if (e.target.checked) drawAtlas(); });
 $('atlasSpecies').addEventListener('change', drawAtlas);
 $('min').onclick = () => { $('panel').classList.toggle('min'); $('min').textContent = $('panel').classList.contains('min') ? 'show' : 'hide'; };
@@ -221,6 +228,8 @@ addEventListener('keydown', e => keys[e.key.toLowerCase()] = true); addEventList
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
 // ── go ─────────────────────────────────────────────────────────────────────────
+for (const [id, key] of [['count', 'count'], ['radius', 'radius'], ['imposterAt', 'imposterAt'], ['band', 'band'], ['grid', 'grid'], ['cell', 'cell']]) { $(id).value = SET[key]; $(id + 'Out').textContent = SLIDERS[id][1](SET[key]); }
+$('detail').value = SET.detail; $('shadows').checked = SET.shadows; $('depth').checked = SET.depth;
 loadSpecies().then(() => {
   plant(); capAtlas(); bakeAll(buildDraws);
   $('boot').style.display = 'none';
@@ -228,7 +237,7 @@ loadSpecies().then(() => {
   if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, SET, SPECIES, forest, built, assign, plant, buildDraws, bakeAll, drawAtlas, sun });
 }).catch(e => { console.error(e); $('boot').textContent = 'LOAD FAILED — ' + e.message; });
 
-const clock = new THREE.Clock(); let fps = 60, shown = 0, assignAt = 0;
+const clock = new THREE.Clock(); let fps = 60, shown = 0, assignAt = 0; const lastAssignAt = new THREE.Vector3(1e9, 0, 0);
 renderer.setAnimationLoop(() => {
   const raw = clock.getDelta(), dt = Math.min(raw, 0.1);
   const speed = (keys.shift ? 3 : 1) * 60 * dt, fwd = new THREE.Vector3().subVectors(controls.target, camera.position).setY(0).normalize(), right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0));
@@ -239,7 +248,7 @@ renderer.setAnimationLoop(() => {
   controls.update();
   sun.target.position.copy(controls.target); sun.position.copy(controls.target).add(SUN_OFF);   // the shadow square follows the view
   if (baking) baking.tick();
-  if ((assignAt += raw) > 0.08 && built.length) { assignAt = 0; assign(); }
+  if ((assignAt += raw) > 0.08 && built.length && (camera.position.distanceToSquared(lastAssignAt) > 1 || SET.dirty)) { assignAt = 0; SET.dirty = false; lastAssignAt.copy(camera.position); assign(); }
   renderer.render(scene, camera);
   if (raw > 0) fps += (1 / raw - fps) * Math.min(1, raw * 2);   // weighted by the frame's own length: a two-second frame counts in full, not five percent
   if ((shown += raw) > 0.5) { shown = 0; const i = renderer.info.render; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${i.calls} draws · ${(i.triangles / 1000).toFixed(0)}k triangles · ${nearCount.toLocaleString()} meshes / ${(forest.length - nearCount).toLocaleString()} imposters`; }
