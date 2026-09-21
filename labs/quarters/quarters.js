@@ -46,7 +46,10 @@ controls.screenSpacePanning = true;          // right-drag (two fingers on a pho
 // ── light ───────────────────────────────────────────────────────────────────────
 // A cabin is lit by its own strip lights and screens, with hard sunlight through the window.
 // The window wall is -z, so the sun comes from out there and the desk screens glow against it.
-const cabin = new THREE.PointLight(0xdfe9f5, 6, 12, 1.6); cabin.position.set(0, 1.75, 0.1); scene.add(cabin);   // below the roof, not pressed against it
+// The cabin lamp hangs under the roof. It is a point light, so what it does falls off with the
+// square of the distance: at 1.75 m it was half a metre from his face at the desk and blew it
+// out at any setting; each build puts it at its own ceiling (see BUILDS.lampY).
+const cabin = new THREE.PointLight(0xdfe9f5, 6, 12, 1.6); cabin.position.set(0, 2.3, 0.1); scene.add(cabin);
 const screens = new THREE.PointLight(0x7fb4ff, 3, 6, 2); screens.position.set(0, 1.35, -1.05); scene.add(screens);
 const sun = new THREE.DirectionalLight(0xfff2e0, 2.6); sun.position.set(2.5, 2.0, -5); scene.add(sun);
 const ambient = new THREE.HemisphereLight(0x9fb6cc, 0x20262d, 0.45); scene.add(ambient);
@@ -138,7 +141,7 @@ const BUILDS = {
   // unit: metres per model unit, and the model is already centred on its own axes; the box is not
   // used for scale, because walls added later would shrink and shift the room
   // noGlass: the room's "Windows" piece is the frames, with no glass in them, so there is nothing to take out
-  Smart: { file: '../../models/quarters_smart.glb', note: 'Smart Mesh room · Jacob\'s SpaceDorm · 42k triangles · 5.3 MB', unit: 3.4, ownRoof: true, noGlass: true },
+  Smart: { file: '../../models/quarters_smart.glb', note: 'Smart Mesh room · Jacob\'s SpaceDorm · 42k triangles · 5.3 MB', unit: 3.4, ownRoof: true, noGlass: true, lampY: 2.8 },
 };
 let build = BUILDS[Q.get('build')] ? Q.get('build') : 'Smart';   // the clean room by default; ?build=Light for the old one
 const loader = new GLTFLoader();
@@ -230,6 +233,7 @@ function finishBoot() { BOOT.phase = 'done'; BOOT.on = false; if (!SEQ.active) a
 
 function loadRoom(name) {
   build = name;
+  cabin.position.set(0, BUILDS[name].lampY || 2.3, 0.1);
   document.querySelectorAll('#builds button').forEach(b => b.classList.toggle('on', b.textContent === name));
   $('buildNote').textContent = BUILDS[name].note;
   buildScreens(name);
