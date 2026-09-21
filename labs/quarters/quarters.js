@@ -1035,6 +1035,7 @@ function stepHangar(T, a, b, u, set = 'hangar') {
   const el = $('seqTime'); if (el && document.activeElement !== el) el.value = T.toFixed(2);
   $('seqTimeOut').textContent = T.toFixed(1) + ' s';
 }
+function reseat() { if (SEQ.active && currentSet === 'hangar') seek(SEQ.T); }
 // The helmet hangs on his head bone, sized to his head and turned the way he faces, so it goes
 // where the head goes. Its place is the middle of the head's skin: the vertices the head bone owns,
 // taken in the bone's own bind-pose frame, so the fit does not depend on how he is posed now.
@@ -1434,6 +1435,11 @@ const SLIDERS = {
   helmetTilt: [v => { HELMET.tilt = v; applyHelmetFit(); }, v => v + '°'],
   helmetTurn: [v => { HELMET.turn = v; applyHelmetFit(); }, v => v + '°'],
   helmetRoll: [v => { HELMET.roll = v; applyHelmetFit(); }, v => v + '°'],
+  // in the fighter: the seat is re-placed on the current frame when a slider moves
+  seatFwd:    [v => { HANGAR.seatBack = -v / 100; reseat(); }, v => v + ' cm'],
+  seatDown:   [v => { HANGAR.seatDown = v / 100; reseat(); }, v => v + ' cm'],
+  seatRecline:[v => { HANGAR.recline = v; reseat(); }, v => v + '°'],
+  canopyDeg:  [v => { HANGAR.canopyDeg = v; reseat(); }, v => v + '°'],
   screenW:    [v => { fitOf(screenPick).w = v; applyScreenFit(); }, v => v + ' cm'],
   screenH:    [v => { fitOf(screenPick).h = v; applyScreenFit(); }, v => v + ' cm'],
   screenX:    [v => { fitOf(screenPick).x = v; applyScreenFit(); }, v => v + ' cm'],
@@ -1518,7 +1524,8 @@ const CHECKS = {
 for (const [id, fn] of Object.entries(CHECKS)) { $(id).addEventListener('change', fn); fn({ target: $(id) }); }
 $('min').onclick = () => { $('panel').classList.toggle('min'); $('min').textContent = $('panel').classList.contains('min') ? 'show' : 'hide'; };
 $('copy').onclick = () => {
-  const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, helmet: (({ show, ...h }) => h)(HELMET), props: PROPS.map(({ obj, ...p }) => p), screens: SCREEN_FIT[build] || [], intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) }, earth: { ...EARTH },
+  const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, helmet: (({ show, ...h }) => h)(HELMET),
+    fighter: { seatForwardCm: Math.round(-HANGAR.seatBack * 100), seatDownCm: Math.round(HANGAR.seatDown * 100), recline: HANGAR.recline, canopyDeg: HANGAR.canopyDeg }, props: PROPS.map(({ obj, ...p }) => p), screens: SCREEN_FIT[build] || [], intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) }, earth: { ...EARTH },
     light: { cabin: cabin.intensity, screens: screens.intensity, sun: sun.intensity, ambient: ambient.intensity, exposure: renderer.toneMappingExposure },
     openWindows: $('openWindows').checked };
   $('out').style.display = 'block'; $('out').value = JSON.stringify(out, null, 2); $('out').select();
