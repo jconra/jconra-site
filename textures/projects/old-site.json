@@ -1,0 +1,140 @@
+[
+ {
+  "name": "Earth Model",
+  "text": "An Earth model based on height and satalite maps from NASA.",
+  "img": "earth",
+  "href": "https://jacobconrads.com/projects/earth/index.html"
+ },
+ {
+  "name": "Effects Page",
+  "text": "An collecting of effects that are just for fun. Press a key to cycle through them. Many of them respond to mouse movement.",
+  "img": "digidraw",
+  "href": "https://jacobconrads.com/projects/effects/index.html"
+ },
+ {
+  "name": "HTML/JavaScript/Canvas Game Tutorial",
+  "text": "This is a tutorial to get someone started with simple game programming using JavaScript.",
+  "img": "tutorial",
+  "href": "https://jacobconrads.com/duckcon/index.html"
+ },
+ {
+  "name": "Subnetting Calculator",
+  "text": "This app helps you learn subnetting by asking questions and calculating answers.",
+  "img": "subnetCalc",
+  "href": "https://jacobconrads.com/projects/subnetCalc/index.html"
+ },
+ {
+  "name": "Jeopardy",
+  "text": "This Jeopardy game is loaded with Linux questions, but you can easily edit the JSON data to customize it.",
+  "img": "jeopardy",
+  "href": "https://jacobconrads.com/projects/jeopardy/index.html"
+ },
+ {
+  "name": "Shipwrecked",
+  "text": "This is a survival game that starts you on a shipwrecked island. It generates the terrain based off of a seed which allows lots of possibilities.",
+  "img": "shipwrecked",
+  "href": "http://shipwrecked.us"
+ },
+ {
+  "name": "Shipwrecked Demo Page",
+  "text": "This page breaks down some of the features of the Shipwrecked game. It includes demonstrations of the 3D models. Click the grid to make them walk. Try to drag and rotate.",
+  "img": "demoPage",
+  "href": "http://shipwrecked.us/demos"
+ },
+ {
+  "name": "Gem Tower Defense",
+  "text": "This game lets you build walls and choose gem towers. Then enemies come out and use the A-Star path-finding algorithm to work their way through your maze (unfinished).",
+  "img": "td",
+  "href": "https://jacobconrads.com/projects/td/index.html"
+ },
+ {
+  "name": "A-Star Algorithm Demo",
+  "text": "A great demonstration of the A-Star path-finding algorithm. Generates random maps and Gives controls to see detailed information.",
+  "img": "astar",
+  "href": "https://jacobconrads.com/projects/astar/index.html"
+ },
+ {
+  "name": "Recursive Artwork",
+  "text": "This program can generate some interesting artwork with a simple recursive algorithm.",
+  "img": "recurdraw",
+  "href": "https://jacobconrads.com/projects/recurdraw/index.html"
+ },
+ {
+  "name": "Kid Game",
+  "text": "An incomplete application that allows easy development for simple games.",
+  "img": "kidGame",
+  "href": "https://jacobconrads.com/projects/kidGame/index.html"
+ },
+ {
+  "name": "Spin 3D",
+  "text": "A custom build 3D engine is used to spin 100 points to the front from 1 to 100.",
+  "img": "spin3d",
+  "href": "https://jacobconrads.com/projects/spin3d/index.html"
+ },
+ {
+  "name": "Settlers",
+  "text": "A 2D Settlers game that I almost finished and then decided to rewrite it. Then it never was finished.",
+  "img": "settlers",
+  "href": "https://jacobconrads.com/projects/settlers/index.html"
+ },
+ {
+  "name": "Color Fun",
+  "text": "This little app was made for my kids and lets you mix colors to see the result. You can stir around in a color to get more of it. Works on mobile.",
+  "img": "colorFun",
+  "href": "https://jacobconrads.com/projects/colorFun/index.html"
+ },
+ {
+  "name": "Space Game",
+  "text": "A game that is actually complete. You try to save the pods in the asteroid field.",
+  "img": "spaceGame",
+  "href": "https://jacobconrads.com/projects/spaceGame/index.html"
+ },
+ {
+  "name": "Simple Maze",
+  "text": "This page generates a maze and shows you the path from one corner to the opposite corner. It uses a custom A* that detects if there are multiple routes and seals them so there is only one solution and every part of the maze is accessible.",
+  "img": "maze",
+  "href": "https://jacobconrads.com/projects/maze/maze3.html"
+ },
+ {
+  "name": "3D Maze",
+  "text": "The second part of the maze project, this uses a home-built 3D engine to spin it around and move it.",
+  "img": "maze1",
+  "href": "https://jacobconrads.com/projects/maze/maze1.html"
+ },
+ {
+  "name": "Inside the 3D Maze",
+  "text": "This maze is like the old screensaver that navigates through a large maze. It could be used as a slideshow. It also allows you to manually navigate with WASD. Uses Three.js Library and A* pathfinding.",
+  "img": "mazeAuto",
+  "href": "https://jacobconrads.com/projects/maze/maze4.html"
+ },
+ {
+  "name": "Missile Defense",
+  "text": "This might bring back some memories. Try to save the cities for as long as you can. The code is designed to be readable for the JavaScript Tutorial.",
+  "img": "missileD",
+  "href": "https://jacobconrads.com/projects/missileDef/index.html"
+ },
+ {
+  "name": "Lander",
+  "text": "Try to land on the moon surface without crashing. Then try to make it back up to the lander without running out of fuel! Also from the JavaScript Tutorial.",
+  "img": "lander",
+  "href": "https://jacobconrads.com/projects/lander/index.html"
+ },
+ {
+  "name": "Rotator",
+  "text": "",
+  "img": "rotator",
+  "href": "https://jacobconrads.com/projects/rotator/index.html"
+ },
+ {
+  "name": "UI Concept",
+  "text": "This is the result of playing around with a recursive menu idea.",
+  "img": "menuConcept",
+  "href": "https://jacobconrads.com/projects/menuConcept/index.html"
+ },
+ {
+  "name": "2D Grid over 3D Globe",
+  "text": "Project from back in the day trying to wrap a 2D map over a 3D Sphere with a no libraries or anything.",
+  "img": "wrap2D-3D",
+  "href": "https://jacobconrads.com/projects/wrap2D-3D/index.html"
+ }
+]

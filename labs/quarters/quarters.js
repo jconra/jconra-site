@@ -15,6 +15,7 @@ import { Terminal } from '../../src/objects/terminal.js';
 import { loadKit, StationKit, DEFAULT_LAYOUT } from '../../src/objects/stationKit.js';
 import { buildHangarSet } from '../../src/objects/hangarSet.js';
 import { loadUSMap } from '../../src/objects/usMap.js';
+import { buildTown } from '../../src/objects/town.js';
 
 const Q = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -305,7 +306,7 @@ function loadRoom(name) {
   placeSitter();
   $('boot')?.remove();
   bootProgress('cabin', 1); loadSitter(); loadStation();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, getMap: () => mapSet });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, getMap: () => mapSet, getTown: () => town, TOWN_INPUT });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; if (e.total) bootProgress('cabin', e.loaded / e.total); },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -534,6 +535,11 @@ const KEYS = [
   { t: 67.0,  set: 'map', cam: { at: 'chase', back: 70, up: 24, side: 10 }, look: 'ship' },
   { t: 70.5,  set: 'map', cam: { at: 'chase', back: 40, up: 12, side: 0 },  look: 'ship' },
   { t: 76.5,  set: 'map', cam: { at: 'chase', back: 42, up: 14, side: -6 }, look: 'ship' },
+  // THE TOWN. Out of the white: the projects world, the fighter skimming in over the forest to the
+  // town, the camera high behind it. From the last key the flight is live - tap or click where to
+  // go, or WASD - and the roofs are the projects.
+  { t: 76.51, set: 'town', cam: { at: 'follow', back: 120, up: 90 }, look: 'jet' },
+  { t: 80.0,  set: 'town', cam: { at: 'follow', back: 38, up: 20 },  look: 'jet' },
 ];
 const ACTS = { wave: 1.9, stand: 8.2, walk: 10.0, walkSpeed: 1.1, walkDir: 35 };   // seconds; m/s; degrees from +z toward +x
 // in the hangar: when he starts walking in, where from (metres beside the fighter's spot, the
@@ -575,6 +581,10 @@ const PARTS = [
 const STATION_AT = new THREE.Vector3(100000, 0, 0);
 const HANGAR_AT = new THREE.Vector3(-100000, 0, 0);       // the human-scale hangar, off on its own
 const MAP_AT = new THREE.Vector3(0, 0, 120000);            // the map over the photograph, off on its own
+const TOWN_AT = new THREE.Vector3(0, -50000, -150000);     // the projects world, off on its own
+let town = null;
+const TOWN_INPUT = { dest: null, turn: 0, throttle: 0 };
+const SKY = new THREE.Color(0x9ec9ec);
 let mapSet = null, poked = null, hangarIndex = -1, hangarMatrix = null, twin = null;
 let station = null, stationLoading = false, hangarAt = null, bayAt = null, hangarMouth = null, currentSet = 'cabin', hangarSet = null, helmet = null;
 function loadStation() {
@@ -609,11 +619,85 @@ function loadStation() {
     earthOut.rotation.set(0, -Math.PI / 2, 0); earthOut.rotateX(Math.atan2(3400, 12000));
     hangarSet.floor.add(earthOut);
     buildMapSet(parts);
+    buildTownSet(parts);
     loader.load('../../models/props/helmet.glb', (g) => {
       helmet = g.scene; helmet.traverse(o => { if (o.isMesh) { o.castShadow = true; if (o.material.map) o.material.map.colorSpace = THREE.SRGBColorSpace; } });
       wearHelmet();
     });
   }).catch(e => console.error(e));
+}
+// THE TOWN SET: the projects list (the old site's, with the new work in front), built into a town
+const PROJECTS_FRONT = [
+  { name: 'RMRF', text: 'A three.js island capture-the-flag with an AI commander, mines, towers and four vehicles. The big one.', href: 'https://rmrfbase.com', colour: '#1a2a1e' },
+  { name: 'Sound Lab', text: 'A modular synth in the browser: patch cables, custom waves, a song editor, the game\'s own sounds.', href: 'https://sound-lab.jconra.com', colour: '#1a1e2a' },
+  { name: 'The Labs', text: 'Where this site is built: the station, the quarters, the characters, the props.', href: 'https://jconra.com/labs/', colour: '#2a1e1a' },
+];
+function buildTownSet(parts) {
+  fetch('../../textures/projects/old-site.json').then(r => r.json()).catch(() => []).then(old => {
+    town = buildTown(parts, [...PROJECTS_FRONT, ...old]);
+    town.floor.position.copy(TOWN_AT); town.floor.visible = false; scene.add(town.floor);
+    town.poseAt(0);
+  });
+}
+// the fighter over the town: by the clock through the last keys, live after them
+function stepTown(T, a, b, u, set = 'town') {
+  if (!town) return;
+  const t0 = KEYS.find(k => setOf(k) === 'town').t, live = T >= total() - 1e-6;
+  if (!live) town.poseAt(T - t0);
+  town.setCloud(1 - THREE.MathUtils.smoothstep(T, t0, t0 + 3.2));
+  camera.position.copy(cameraAt(T)).add(TOWN_AT);
+  controls.target.copy(lookPoint(a.look, set).lerp(lookPoint(b.look, set), u)); camera.lookAt(controls.target);
+  town.faceClouds(camera);
+  post.focus = camera.position.distanceTo(controls.target);
+  for (const h of holos) h.fill = 0;
+  const el = $('seqTime'); if (el && document.activeElement !== el) el.value = T.toFixed(2);
+  $('seqTimeOut').textContent = T.toFixed(1) + ' s';
+}
+// the live flight, once the timeline has run out: the fighter goes where it is sent and the
+// camera follows it smoothly
+const FOLLOW = { back: 38, up: 20, ahead: 30 };
+function liveTown(dt) {
+  if (!town || currentSet !== 'town') return;
+  town.update(dt, TOWN_INPUT);
+  const f = town.forward(), want = town.state.pos.clone().addScaledVector(f, -FOLLOW.back).add(new THREE.Vector3(0, FOLLOW.up, 0)).add(TOWN_AT);
+  camera.position.lerp(want, Math.min(1, dt * 2.5));
+  controls.target.lerp(town.lookAhead(FOLLOW.ahead).add(TOWN_AT), Math.min(1, dt * 4)); camera.lookAt(controls.target);
+  town.faceClouds(camera);
+  post.focus = camera.position.distanceTo(controls.target);
+}
+// pointing at the town: a hover on a roof shows its card, a click on it opens the project, a
+// click on the ground sends the fighter there; WASD steers
+{
+  const ray = new THREE.Raycaster(), card = $('townCard');
+  let hovered = null, down = new THREE.Vector2();
+  const cast = (e) => { ray.setFromCamera(new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera); return ray; };
+  const showCard = (b, e) => {
+    if (!b) { card.classList.remove('on'); hovered = null; return; }
+    hovered = b; const pr = b.userData.project;
+    card.querySelector('b').textContent = pr.name; card.querySelector('span').textContent = pr.text;
+    card.style.left = Math.min(innerWidth - 300, e.clientX + 14) + 'px'; card.style.top = Math.min(innerHeight - 120, e.clientY + 14) + 'px';
+    card.classList.add('on');
+  };
+  renderer.domElement.addEventListener('pointermove', (e) => { if (currentSet !== 'town' || !town || e.pointerType !== 'mouse') return; showCard(town.pick(cast(e)), e); });
+  renderer.domElement.addEventListener('pointerdown', (e) => down.set(e.clientX, e.clientY));
+  renderer.domElement.addEventListener('pointerup', (e) => {
+    if (currentSet !== 'town' || !town || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) return;
+    const r = cast(e), b = town.pick(r);
+    if (b) {
+      if (e.pointerType === 'mouse' || hovered === b) { if (b.userData.project.href) window.open(b.userData.project.href, '_blank'); }
+      else showCard(b, e);                                   // on touch: first tap shows the card, the second opens
+      return;
+    }
+    showCard(null, e);
+    const g = town.groundPoint(r); if (g) TOWN_INPUT.dest = g.sub(TOWN_AT);
+  });
+  const keys = {};
+  addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; steer(); });
+  addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; steer(); });
+  function steer() {
+    TOWN_INPUT.turn = (keys.a ? 1 : 0) - (keys.d ? 1 : 0); TOWN_INPUT.throttle = (keys.w ? 1 : 0) - (keys.s ? 1 : 0);
+    if (TOWN_INPUT.turn) TOWN_INPUT.dest = null;
+  }
 }
 // THE MAP SET: the photograph as a big flat picture (its own pixels as units), the states laid on
 // it, and a copy of the fighter to fly in over it.
@@ -837,8 +921,12 @@ const setOf = (k) => k.set || 'cabin';
 function showSet(name) {
   if (name === currentSet) return;
   currentSet = name;
-  const inCabin = name === 'cabin', inHangar = name === 'hangar', inMap = name === 'map';
+  const inCabin = name === 'cabin', inHangar = name === 'hangar', inMap = name === 'map', inTown = name === 'town';
   if (mapSet) mapSet.floor.visible = inMap;
+  if (town) town.floor.visible = inTown;
+  scene.background = inTown ? SKY : new THREE.Color(0x000000);
+  scene.fog = inTown ? new THREE.Fog(SKY, 600, 2600) : null;
+  if (!inTown) { $('townCard').classList.remove('on'); TOWN_INPUT.dest = null; }
   if (!inMap) { poked = null; $('mapCaption').classList.remove('on'); }
   room.visible = inCabin; for (const sc of SCREENS) sc.visible = inCabin;
   if (sitter) sitter.visible = (inCabin || inHangar) && SITTER.on;
@@ -853,12 +941,12 @@ function showSet(name) {
   else {
     // aimed at the set, not the cabin: from 100 km away a light aimed at the origin arrives sideways.
     // In the hangar the sun comes in through the mouth (+x), low, and the fill lights the inside.
-    const AT = inHangar ? HANGAR_AT : inMap ? MAP_AT : STATION_AT;
-    sun.position.copy(AT).add((inHangar ? new THREE.Vector3(1, 0.35, 0.25) : inMap ? new THREE.Vector3(0.4, 0.6, 1) : new THREE.Vector3(1, 0.6, 0.45)).multiplyScalar(5000)); sun.target.position.copy(AT);
+    const AT = inHangar ? HANGAR_AT : inMap ? MAP_AT : inTown ? TOWN_AT : STATION_AT;
+    sun.position.copy(AT).add((inHangar ? new THREE.Vector3(1, 0.35, 0.25) : inMap ? new THREE.Vector3(0.4, 0.6, 1) : inTown ? new THREE.Vector3(0.5, 1, 0.3) : new THREE.Vector3(1, 0.6, 0.45)).multiplyScalar(5000)); sun.target.position.copy(AT);
     spaceFill.position.copy(AT).add((inHangar ? new THREE.Vector3(0.3, 0.9, -0.4) : new THREE.Vector3(-0.6, -0.8, -0.3)).multiplyScalar(5000)); spaceFill.target.position.copy(AT);
     sun.intensity = 3.2; sun.color.setHex(0xfff4e6); cabin.intensity = 0; screens.intensity = 0;
-         ambient.intensity = inHangar ? 0.6 : 0.35; ambient.color.setHex(0x8aa0b8); ambient.groundColor.setHex(0x2a3340); renderer.toneMappingExposure = 1.05;
-         spaceFill.intensity = inHangar ? 1.2 : 1.8; }
+         ambient.intensity = inHangar ? 0.6 : inTown ? 1.1 : 0.35; ambient.color.setHex(inTown ? 0xbfe3ff : 0x8aa0b8); ambient.groundColor.setHex(inTown ? 0x466b3a : 0x2a3340); renderer.toneMappingExposure = 1.05;
+         spaceFill.intensity = inHangar ? 1.2 : inTown ? 0 : 1.8; if (inTown) { sun.intensity = 2.4; sun.color.setHex(0xfff6e4); } }
 }
 const holos = [];          // the greeting is on the terminal now, not floating over his head; Hologram stays for later
 const SEQ = { hold: 0.9, turn: 1.3, draw: 1.8, waveLen: 1.5, standLen: 2.0, T: 0, playing: false, active: false, scrub: true, turned: 0 };
@@ -894,8 +982,9 @@ const lookPoint = (l, set) => {
     return shipAt(l.freeze).add(new THREE.Vector3(l.ahead || 0, l.up || 0, -(l.side || 0))).add(HANGAR_AT);
   if (l === 'ship') return set === 'map' ? (mapSet ? mapSet.ship.getWorldPosition(new THREE.Vector3()) : MAP_AT.clone())
                            : hangarSet ? hangarSet.ship.getWorldPosition(new THREE.Vector3()) : HANGAR_AT.clone();
+  if (l === 'jet') return town ? town.lookAhead(26).add(TOWN_AT) : TOWN_AT.clone();
   if (l === 'cockpit') return hangarSet ? hangarSet.ship.localToWorld(hangarSet.seat.clone().add(new THREE.Vector3(0, 0.7, 0))) : HANGAR_AT.clone();
-  const p = new THREE.Vector3(...l); return set === 'station' ? p.add(STATION_AT) : set === 'hangar' ? p.add(HANGAR_AT) : set === 'map' ? p.add(MAP_AT) : p;
+  const p = new THREE.Vector3(...l); return set === 'station' ? p.add(STATION_AT) : set === 'hangar' ? p.add(HANGAR_AT) : set === 'map' ? p.add(MAP_AT) : set === 'town' ? p.add(TOWN_AT) : p;
 };
 const chairDeg = (c) => c === 'turned' ? SEQ.turned : (c || 0);
 const ease = (u) => { u = Math.min(1, Math.max(0, u)); return u * u * u * (u * (u * 6 - 15) + 10); };   // brisk both ends
@@ -915,6 +1004,10 @@ function keysAround(T) {
 function camOf(key) {
   const c = key.cam;
   if (Array.isArray(c)) return new THREE.Vector3(...c);
+  if (setOf(key) === 'town' && c.at === 'follow') {   // behind the fighter over the town, along its way
+    if (!town) return new THREE.Vector3();
+    return town.state.pos.clone().addScaledVector(town.forward(), -(c.back || 0)).add(new THREE.Vector3(0, c.up || 0, 0));
+  }
   if (setOf(key) === 'map' && c.at === 'chase') {   // behind the fighter over the map, along the way it is going
     if (!mapSet) return new THREE.Vector3();
     const dir = new THREE.Vector3(1, 0, 0).applyQuaternion(mapSet.ship.quaternion), right = dir.clone().cross(new THREE.Vector3(0, 0, 1)).normalize();
@@ -959,6 +1052,7 @@ function seek(T) {
   showSet(set);
   if (set === 'hangar') { stepHangar(T, a, b, u); return; }
   if (set === 'map') { stepMap(T, a, b, u); return; }
+  if (set === 'town') { stepTown(T, a, b, u); return; }
   if (set === 'station') {
     // outside: the rings turn with time, 1 g at the rim, and the camera runs in the station's frame
     if (station) for (const sp of station.spinners) sp.turntable.rotation.y = sp.sign * (Math.PI * 2 / StationKit.period(sp.radius)) * T;
@@ -1159,6 +1253,7 @@ function stepSequence(dt) {
     const editing = document.activeElement && document.activeElement.closest && document.activeElement.closest('#panel');
     if (!SEQ.playing && !RESUME.held && !RESUME.hold && !editing && SEQ.T < total() && performance.now() - RESUME.last > RESUME.after * 1000) SEQ.playing = true;
     if (SEQ.playing) { seek(SEQ.T + dt); if (SEQ.T >= total()) SEQ.playing = false; }
+    else if (currentSet === 'town' && SEQ.T >= total() - 1e-6) liveTown(dt);                   // the timeline is done: the flight is live
     else if (SEQ.T >= HANGAR.roll && Math.abs(FLY.roll - FLY.target) > 0.05) seek(SEQ.T);     // paused in flight, the fighter still banks to the pointer
   } else {
     if (chairPivot && CHAIR.swivel) chairPivot.rotation.y += THREE.MathUtils.degToRad(CHAIR.speed) * dt;
@@ -1217,7 +1312,7 @@ function buildKeyList() {
   const list = $('keys'); if (!list) return;
   list.innerHTML = '';
   KEYS.forEach((k, i) => {
-    const b = document.createElement('button'); b.type = 'button'; b.textContent = ({ station: 'out ', hangar: 'in ', map: 'map ' }[setOf(k)] || '') + k.t.toFixed(1) + ' s';
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = ({ station: 'out ', hangar: 'in ', map: 'map ', town: 'town ' }[setOf(k)] || '') + k.t.toFixed(1) + ' s';
     b.classList.toggle('on', i === keyIndex); b.onclick = () => { keyIndex = i; buildKeyList(); showKey(); SEQ.playing = false; RESUME.hold = true; seek(KEYS[i].t); };   // picking a key holds the frame there
     list.appendChild(b);
   });
@@ -1226,7 +1321,7 @@ function showKey() {
   const k = KEYS[keyIndex]; if (!k) return;
   const set = (id, v) => { const el = $(id); if (!el) return; el.value = v; $(id + 'Out').textContent = SLIDERS[id][1](+v); };
   // the camera sliders span the cabin in metres, or the station in hundreds of them
-  const out = setOf(k) === 'station' || setOf(k) === 'map', inH = setOf(k) === 'hangar';
+  const out = setOf(k) === 'station' || setOf(k) === 'map' || setOf(k) === 'town', inH = setOf(k) === 'hangar';
   for (const [id, lo, hi] of [['camX', -1.7, 1.7], ['camY', 0.3, 2.5], ['camZ', -2.2, 1.7]]) { const el = $(id); el.min = out ? -2500 : inH ? -20 : lo; el.max = out ? 2500 : inH ? 20 : hi; el.step = out ? 5 : inH ? 0.05 : 0.01; }
   const cam = Array.isArray(k.cam) ? k.cam : camOf(k).toArray();      // a hangar-relative key shows where it resolves to
   set('keyT', k.t); set('camX', cam[0]); set('camY', cam[1]); set('camZ', cam[2]);
