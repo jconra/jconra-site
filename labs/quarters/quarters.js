@@ -1120,7 +1120,7 @@ function buildKeyList() {
   list.innerHTML = '';
   KEYS.forEach((k, i) => {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = ({ station: 'out ', hangar: 'in ', map: 'map ' }[setOf(k)] || '') + k.t.toFixed(1) + ' s';
-    b.classList.toggle('on', i === keyIndex); b.onclick = () => { keyIndex = i; buildKeyList(); showKey(); seek(KEYS[i].t); };
+    b.classList.toggle('on', i === keyIndex); b.onclick = () => { keyIndex = i; buildKeyList(); showKey(); SEQ.playing = false; RESUME.hold = true; seek(KEYS[i].t); };   // picking a key holds the frame there
     list.appendChild(b);
   });
 }
@@ -1412,6 +1412,7 @@ $('useView').addEventListener('click', () => { const k = KEYS[keyIndex]; if (!k)
 // working in the panel holds the timeline: no playing on by itself until the scene is scrolled again
 $('panel').addEventListener('input', () => { RESUME.hold = true; });
 $('panel').addEventListener('change', () => { RESUME.hold = true; });
+$('panel').addEventListener('click', (e) => { if (!e.target.closest('#playIntro')) RESUME.hold = true; });   // any button in the panel holds too; Play intro is the way out
 $('addKey').onclick = addKeyHere; $('delKey').onclick = deleteKey;
 // Flat is the default. The face's colour map already carries light and shade, painted in by Tripo,
 // and a strong key lays a second set of shadows over it that disagree with the first. Soft light
