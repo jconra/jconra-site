@@ -1306,7 +1306,7 @@ function snapScreens() {
 // the painted display, these set the plane's real size (cm) and nudge it (cm) along its own right
 // and up. Per build, per screen; baked in from Copy settings.
 const SCREEN_FIT = {
-  Smart: [],
+  Smart: [{ w: 55, h: 37, x: -0.5, y: -0.5 }, { w: 54, h: 39, x: 0.5, y: -0.5 }, { w: 46, h: 35, x: 0, y: 0 }],   // Jacob's fit, 2026-09-20
 };
 let screenPick = 0;
 function fitOf(i) { const arr = SCREEN_FIT[build] || (SCREEN_FIT[build] = []); return arr[i] || (arr[i] = {}); }
