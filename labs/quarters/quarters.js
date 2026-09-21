@@ -523,7 +523,10 @@ const MAP = { glow: 59.6, tourEnd: 74.0, shipIn: 58.0, shipAt: 64.0,
   target: [-201, 113, 4],                // where it goes in: the big swirl of cloud off the West Coast, in the picture's units
   fire: 78.6, flash: 81.4, clear: 83.6,  // the glow builds, peaks white, and clears
   clouds: 81.6, cloudsIn: 2.4 };          // clouds pop in over this many seconds from here
-const HANGAR = { walk: 33.0, from: [0.3, 0, -8.2], to: [0.3, 0, -2.4], speed: 1.1, sit: 39.0, canopy: 39.4, canopyLen: 2.4, roll: 42.5, accel: 2.5 };
+const HANGAR = { walk: 33.0, from: [0.3, 0, -8.2], to: [0.3, 0, -2.4], speed: 1.1, sit: 39.0, canopy: 39.4, canopyLen: 2.4, roll: 42.5, accel: 2.5,
+  // the fit in the seat: how far down from the measured seat pan he sits, how far back, and how far
+  // he reclines (degrees); and how far the canopy turns to shut
+  seatDown: 0.17, seatBack: 0.12, recline: 20, canopyDeg: -50 };
 // The greeting comes in parts: each is its own hologram over his head, which forms, holds, and
 // dissolves again as the next one forms.
 const PARTS = [
@@ -924,7 +927,7 @@ function seek(T) {
 function stepHangar(T, a, b, u, set = 'hangar') {
   const HS = hangarSet; if (!HS) return;
   const seated = T >= HANGAR.sit;
-  HS.setCanopy((T - HANGAR.canopy) / HANGAR.canopyLen);
+  HS.setCanopy((T - HANGAR.canopy) / HANGAR.canopyLen, HANGAR.canopyDeg);
   const roll = Math.max(0, T - HANGAR.roll);
   HS.ship.position.set(0.5 * HANGAR.accel * roll * roll, 0, 0);
   // banking to the mouse once he is out of the mouth; level while he is still in the bay
@@ -933,8 +936,9 @@ function stepHangar(T, a, b, u, set = 'hangar') {
   if (sitter && sitterMixer) {
     if (seated) {
       if (sitter.parent !== HS.ship) HS.ship.add(sitter);
-      sitter.position.copy(HS.seat).add(new THREE.Vector3(0, -SEAT.up, 0)).addScaledVector(new THREE.Vector3(1, 0, 0), SEAT.back);
-      sitter.rotation.y = Math.PI / 2;                                        // facing the nose, +x
+      sitter.position.copy(HS.seat).add(new THREE.Vector3(0, -SEAT.up - HANGAR.seatDown, 0)).addScaledVector(new THREE.Vector3(1, 0, 0), SEAT.back - HANGAR.seatBack);
+      sitter.rotation.set(0, Math.PI / 2, 0);                                 // facing the nose, +x
+      sitter.rotateX(-THREE.MathUtils.degToRad(HANGAR.recline));             // leaning back into the seat
     } else {
       if (sitter.parent !== HS.floor) HS.floor.add(sitter);
       const from = new THREE.Vector3(...HANGAR.from), to = new THREE.Vector3(...HANGAR.to);

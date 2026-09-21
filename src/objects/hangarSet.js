@@ -56,7 +56,7 @@ export function buildHangarSet(parts, { shipLength = 6, bayLength = 0.2, along =
     // the seat inside the cockpit (ship1's seat piece measured in Blender), in the ship group's metres
     seat: new THREE.Vector3(-0.08 * fu, (0.12 - F.box.min.y) * fu, 0),
     // the canopy from open (0) to shut (1)
-    setCanopy(closed) { canopyMesh.rotation.z = THREE.MathUtils.degToRad(SHIP1_CANOPY.closeDeg) * THREE.MathUtils.clamp(closed, 0, 1); },
+    setCanopy(closed, deg = SHIP1_CANOPY.closeDeg) { canopyMesh.rotation.z = THREE.MathUtils.degToRad(deg) * THREE.MathUtils.clamp(closed, 0, 1); },
   };
 }
 
