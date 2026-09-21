@@ -32,23 +32,30 @@ const SPECIES = [
   { name: 'pine',  file: '../../models/trees/pine.glb',  height: 22, weight: 1 },
   { name: 'bush',  file: '../../models/trees/bush.glb',  height: 5,  weight: 0.6 },
 ];
-const SET = { count: 4000, radius: 1400, imposterAt: 220, band: 60, grid: 12, cell: 128, hemi: true, blend: true, nearCap: 3000, show: 'both' };
+const SET = { count: 4000, radius: 1400, imposterAt: 220, band: 60, grid: 12, cell: 128, hemi: true, blend: true, nearCap: 3000, show: 'both', detail: 'fine', a2c: true };
 let forest = [];                  // { pos, yaw, scale, tint, sp }
 const built = [];                 // per species: { bake, imposterMesh, meshes: [InstancedMesh...], fade: attribute }
 
 const loader = new GLTFLoader();
 async function loadSpecies() {
   for (const sp of SPECIES) {
-    const gltf = await loader.loadAsync(sp.file);
+    // fine: the preset as it comes; coarse: fewer, bigger, single-sided leaves and fewer branch sections (baked that way)
+    const gltf = await loader.loadAsync(SET.detail === 'coarse' ? sp.file.replace('.glb', '_coarse.glb') : sp.file);
     const root = gltf.scene; root.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(root), size = box.getSize(new THREE.Vector3());
     sp.unit = sp.height / size.y;                       // model units -> metres
     sp.root = root;
     root.traverse(o => { if (o.isMesh) { o.material.side = THREE.DoubleSide; if (o.material.map) o.material.map.anisotropy = 4; if (o.material.alphaTest === 0 && o.material.transparent) { o.material.alphaTest = 0.5; o.material.transparent = false; } } });
+    applyEdges(root);
     $('pct').textContent = `${SPECIES.indexOf(sp) + 1} / ${SPECIES.length}`;
   }
 }
 
+// the leaves' edges: alpha-to-coverage lets the multisampling soften a cut-out's edge instead of
+// it flickering on and off pixel by pixel as the tree moves (the "crawling" on near trees)
+function applyEdges(root) {
+  root.traverse(o => { if (o.isMesh && o.material.map) { o.material.alphaToCoverage = SET.a2c; o.material.alphaTest = SET.a2c ? 0.1 : 0.5; o.material.needsUpdate = true; } });
+}
 // bake every species' atlases (again, when the grid changes)
 function bakeAll() {
   for (const sp of SPECIES) {
@@ -153,6 +160,8 @@ for (const [id, [apply, fmt]] of Object.entries(SLIDERS)) {
   $(id + 'Out').textContent = fmt(+el.value);
 }
 $('hemi').addEventListener('change', e => { SET.hemi = e.target.checked; bakeAll(); buildDraws(); });
+$('a2c').addEventListener('change', e => { SET.a2c = e.target.checked; for (const sp of SPECIES) applyEdges(sp.root); buildDraws(); });
+$('detail').addEventListener('change', async e => { SET.detail = e.target.value; $('boot').style.display = 'flex'; document.body.appendChild($('boot')); await loadSpecies(); bakeAll(); buildDraws(); $('boot').style.display = 'none'; });
 $('blend').addEventListener('change', e => { SET.blend = e.target.checked; for (const b of built) b.imposter.material.uniforms.blend.value = SET.blend ? 1 : 0; });
 $('show').addEventListener('change', e => { SET.show = e.target.value; });
 $('atlasOn').addEventListener('change', e => { $('atlas').style.display = e.target.checked ? 'block' : 'none'; if (e.target.checked) drawAtlas(); });
@@ -186,7 +195,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 // ── go ─────────────────────────────────────────────────────────────────────────
 loadSpecies().then(() => {
   bakeAll(); plant(); buildDraws();
-  $('boot').remove();
+  $('boot').style.display = 'none';
   for (const sp of SPECIES) { const o = document.createElement('option'); o.value = sp.name; o.textContent = sp.name; $('atlasSpecies').appendChild(o); }
   if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, SET, SPECIES, forest, built, assign, plant, buildDraws, bakeAll, drawAtlas, sun });
 }).catch(e => { console.error(e); $('boot').textContent = 'LOAD FAILED — ' + e.message; });

@@ -45,6 +45,11 @@
     <div class="row"><label for="count">Trees</label><output id="countOut"></output><input id="count" type="range" min="100" max="50000" step="100" value="4000"></div>
     <div class="row"><label for="radius">Spread</label><output id="radiusOut"></output><input id="radius" type="range" min="200" max="4000" step="50" value="1400"></div>
 
+    <h2>Trees</h2>
+    <div class="row"><label for="detail">Leaf detail</label><select id="detail"><option value="fine" selected>fine (the presets as baked)</option><option value="coarse">coarse (fewer, bigger leaves; fewer branch sections)</option></select></div>
+    <label class="check" for="a2c"><input id="a2c" type="checkbox" checked> Soft leaf edges (alpha to coverage)</label>
+    <p class="note">Near trees crawl with noise when every leaf edge is a hard on/off test per pixel. Alpha to coverage hands the edge to the multisampling instead.</p>
+
     <h2>Meshes and imposters</h2>
     <div class="row"><label for="imposterAt">Imposters from</label><output id="imposterAtOut"></output><input id="imposterAt" type="range" min="20" max="1500" step="10" value="220"></div>
     <div class="row"><label for="band">Crossfade band</label><output id="bandOut"></output><input id="band" type="range" min="0" max="300" step="5" value="60"></div>
