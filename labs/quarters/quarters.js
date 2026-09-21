@@ -457,13 +457,13 @@ const KEYS = [
   // through the top of the frame, turning; a quarter turn later the camera is level, looking at
   // the whole station. It pulls out wide, then pans right to the hangar on that side, closes on
   // its mouth and on the fighter on its deck. Station keys are in the station's own metres.
-  { t: 14.01, set: 'station', cam: [690, 400, 0],      look: [150, 440, 0] },       // under the rim, along the underside
-  { t: 15.4,  set: 'station', cam: [930, 290, 260],    look: [350, 430, 0] },       // pulling out: the underside overhead
-  { t: 17.5,  set: 'station', cam: [1350, 620, 750],   look: 'station' },           // level, clear of the arms
-  { t: 22.0,  set: 'station', cam: [1750, 1000, 1150], look: 'station' },           // wide, from a little above the deck
-  { t: 26.0,  set: 'station', cam: [1500, 520, 250],   look: 'hangar' },            // panning right
-  { t: 30.0,  set: 'station', cam: [900, 262, -540],   look: 'hangar' },            // at the mouth
-  { t: 33.0,  set: 'station', cam: [760, 250, -462],   look: 'bay' },               // in, onto the fighter
+  { t: 14.01, set: 'station', cam: [770, 580, 0],      look: [150, 620, 0] },       // under the rim, along the underside
+  { t: 15.4,  set: 'station', cam: [1040, 430, 290],   look: [350, 600, 0] },       // pulling out: the underside overhead
+  { t: 17.5,  set: 'station', cam: [1550, 800, 850],   look: 'station' },           // level, clear of the arms
+  { t: 22.0,  set: 'station', cam: [2100, 1250, 1400], look: 'station' },           // wide, from a little above the deck
+  { t: 26.0,  set: 'station', cam: { at: 'mouth', out: 900, up: 380, side: 500 }, look: 'hangar' },   // panning right
+  { t: 30.0,  set: 'station', cam: { at: 'mouth', out: 260, up: 40 },  look: 'hangar' },              // at the mouth
+  { t: 33.0,  set: 'station', cam: { at: 'mouth', out: 60, up: 22 },   look: 'bay' },                 // in, onto the fighter
 ];
 const ACTS = { wave: 1.9, stand: 8.2, walk: 10.0, walkSpeed: 1.1, walkDir: 35 };   // seconds; m/s; degrees from +z toward +x
 // The greeting comes in parts: each is its own hologram over his head, which forms, holds, and
@@ -553,7 +553,7 @@ function lookAtHim() {
 const lookPoint = (l, set) => {
   if (l === 'him') return lookAtHim();
   if (l === 'window') return new THREE.Vector3(...WINDOW);
-  if (l === 'station') return STATION_AT.clone().add(new THREE.Vector3(0, 250, 0));
+  if (l === 'station') return STATION_AT.clone().add(new THREE.Vector3(0, 300, 0));
   if (l === 'hangar') return hangarAt ? hangarAt.clone() : STATION_AT.clone().add(new THREE.Vector3(0, 240, 740));
   if (l === 'bay') return bayAt ? bayAt.clone() : lookPoint('hangar', set);          // the fighter on the hangar's deck
   const p = new THREE.Vector3(...l); return set === 'station' ? p.add(STATION_AT) : p;
@@ -570,9 +570,19 @@ function keysAround(T) {
   const a = ks[k], b = ks[k + 1] || ks[k];
   return { a, b, u: b === a ? 0 : Math.min(1, Math.max(0, (T - a.t) / Math.max(1e-6, b.t - a.t))), k, ks, set };
 }
+// A key's camera is a point, or a place relative to the hangar the intro turns to: `{ at: 'mouth',
+// out, up, side }` in metres out from the mouth along its opening, up, and to its right - so the
+// hangar keys follow the station's layout instead of being re-typed after every change to it.
+function camOf(key) {
+  const c = key.cam;
+  if (Array.isArray(c)) return new THREE.Vector3(...c);
+  const base = c.at === 'bay' && bayAt ? bayAt.clone() : hangarMouth ? hangarMouth.at.clone() : STATION_AT.clone();
+  const dir = hangarMouth ? hangarMouth.dir : new THREE.Vector3(1, 0, 0), right = dir.clone().cross(new THREE.Vector3(0, 1, 0));
+  return base.sub(STATION_AT).addScaledVector(dir, c.out || 0).add(new THREE.Vector3(0, c.up || 0, 0)).addScaledVector(right, c.side || 0);
+}
 function cameraAt(T) {
   const { a, b, u, k, ks } = keysAround(T);
-  const P = (i) => new THREE.Vector3(...ks[Math.min(ks.length - 1, Math.max(0, i))].cam);
+  const P = (i) => camOf(ks[Math.min(ks.length - 1, Math.max(0, i))]);
   const p0 = P(k - 1), p1 = P(k), p2 = P(k + 1), p3 = P(k + 2);
   const d = Math.max(1e-6, b.t - a.t);
   const m1 = p2.clone().sub(p0).multiplyScalar(d / Math.max(1e-6, ks[Math.min(ks.length - 1, k + 1)].t - ks[Math.max(0, k - 1)].t));
@@ -725,13 +735,14 @@ function showKey() {
   // the camera sliders span the cabin in metres, or the station in hundreds of them
   const out = setOf(k) === 'station';
   for (const [id, lo, hi] of [['camX', -1.7, 1.7], ['camY', 0.3, 2.5], ['camZ', -2.2, 1.7]]) { const el = $(id); el.min = out ? -2500 : lo; el.max = out ? 2500 : hi; el.step = out ? 5 : 0.01; }
-  set('keyT', k.t); set('camX', k.cam[0]); set('camY', k.cam[1]); set('camZ', k.cam[2]);
+  const cam = Array.isArray(k.cam) ? k.cam : camOf(k).toArray();      // a hangar-relative key shows where it resolves to
+  set('keyT', k.t); set('camX', cam[0]); set('camY', cam[1]); set('camZ', cam[2]);
   set('keyChair', chairDeg(k.chair).toFixed(0)); set('keyFace', k.face);
   const look = $('keyLook'); if (look) look.value = typeof k.look === 'string' ? k.look : 'point';
 }
 function editKey(id, v) {
   const k = KEYS[keyIndex], [field, idx] = KEYFIELDS[id];
-  if (field === 'cam') k.cam[idx] = v; else k[field] = v;
+  if (field === 'cam') { if (!Array.isArray(k.cam)) k.cam = camOf(k).toArray(); k.cam[idx] = v; } else k[field] = v;   // editing bakes a hangar-relative key
   if (field === 't') { KEYS.sort((x, y) => x.t - y.t); keyIndex = KEYS.indexOf(k); buildKeyList(); $('seqTime').max = total().toFixed(2); }
   if (!SEQ.active) activateIntro();
   SEQ.playing = false; seek(k.t);

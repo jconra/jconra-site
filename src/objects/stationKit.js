@@ -23,41 +23,41 @@ export const BAYS = {
 export const G = 9.81;
 
 export const DEFAULT_LAYOUT = {
-  // Jacob's station, as he set it in the builder (2026-09-18)
+  // Jacob's station, as he set it in the builder (2026-09-20)
   // which ring model, and what covers it: 'auto' keeps a part's own texture and gives a bare part
   // the generated panel hull; 'panels' puts the hull on any ring; 'texture' shows the part as it is
   ringModel: 'ring5t',    // the newest ring (ring5 with its Tripo texture)
   ringSurface: 'auto',
-  panelMetres: 220,       // how wide one tile of the panel hull is on the surface
-  sideMetres: 70,         // how wide one repeat of the side-face window tile is
-  ringRadius: 700,        // metres, to the outside of the rim
+  panelMetres: 600,       // how wide one tile of the panel hull is on the surface
+  sideMetres: 50,         // how wide one repeat of the side-face window tile is
+  ringRadius: 780,        // metres, to the outside of the rim
   rings: 1,
-  ringGap: 100,           // metres between rings, when there is more than one
-  ringY: 680,             // metres, first ring above the tower's middle
+  ringGap: 1500,          // metres between rings, when there is more than one
+  ringY: 900,             // metres, first ring above the tower's middle
   hubCut: 0,              // cut the ring's middle inside this fraction of its radius
   collar: false,
-  collarAuto: true,
+  collarAuto: false,
   collarRadius: 120,      // metres
   collarLength: 1100,     // metres, the cylinder the rings turn on
-  towerHeight: 1000,      // metres (the tower part is about 0.4 as wide as it is tall)
+  towerHeight: 1620,      // metres (the tower part is about 0.4 as wide as it is tall)
   towerFlip: true,        // the tower part upside down: its wide end at the top, above the ring
   // arms mounted on the ring, which turn with it
-  ringArms: { count: 8, kind: 'arm2', scale: 500, inset: -145, y: 0, tilt: 0 },
+  ringArms: { count: 8, kind: 'arm2', scale: 500, inset: -200, y: 0, tilt: 0 },
   // arms out from the tower, which stay put; every nth one carries a hangar on its end
-  towerArms: { count: 6, kind: 'arm1', radius: 290, y: 180, scale: 650, tilt: 0 },
-  hangars: { every: 2, scale: 250, y: 0, side: 0, reach: 0 },   // nudges in metres on top of the measured fit
+  towerArms: { count: 6, kind: 'arm1', radius: 220, y: 360, scale: 650, tilt: 0 },
+  hangars: { every: 2, scale: 250, y: -26, side: -5, reach: 0 },   // nudges in metres on top of the measured fit
   hangarModel: 'hangar2',
   // one fighter parked on the deck of every hangar: its length as a fraction of the hangar's
   // width, and where it stands between the back wall (0) and the mouth (1)
   fighterModel: 'ship1',
   bay: { length: 0.2, along: 0.45 },
   // solar panels mounted on the tower, standing out from it like wings
-  panels: { count: 4, y: -550, scale: 520, tilt: 0, radius: 250 },
+  panels: { count: 4, y: -550, scale: 940, tilt: 0, radius: 250 },
   // a few free-flying craft, off by default
-  satellites: { count: 0, radius: 1400, scale: 120, seed: 7 },
+  satellites: { count: 0, radius: 4900, scale: 120, seed: 7 },
   // traffic: fighters parked around the hangars, freighters standing off the station
   fighters: { count: 0, radius: 200, y: -1200, scale: 10 },
-  freighters: { count: 1, radius: 2200, y: 240, scale: 260 },
+  freighters: { count: 1, radius: 2500, y: 200, scale: 260 },
   spin: true,
   timeScale: 1,
 };
