@@ -117,9 +117,10 @@ const BUILDS = {
   Light: { file: '../../models/quarters_lite.glb', note: '185k triangles · 4 meshes · 8.0 MB' },
   // unit: metres per model unit, and the model is already centred on its own axes; the box is not
   // used for scale, because walls added later would shrink and shift the room
-  Smart: { file: '../../models/quarters_smart.glb', note: 'Smart Mesh room · Jacob\'s SpaceDorm · 42k triangles · 5.3 MB', unit: 3.4, ownRoof: true },
+  // noGlass: the room's "Windows" piece is the frames, with no glass in them, so there is nothing to take out
+  Smart: { file: '../../models/quarters_smart.glb', note: 'Smart Mesh room · Jacob\'s SpaceDorm · 42k triangles · 5.3 MB', unit: 3.4, ownRoof: true, noGlass: true },
 };
-let build = BUILDS[Q.get('build')] ? Q.get('build') : 'Light';   // ?build=Smart opens straight on a room
+let build = BUILDS[Q.get('build')] ? Q.get('build') : 'Smart';   // the clean room by default; ?build=Light for the old one
 const loader = new GLTFLoader();
 
 // ── the boot ──────────────────────────────────────────────────────────────────────
@@ -325,8 +326,9 @@ function roofFrom(walls) {
 }
 
 function applyWindows() {
+  const row = $('openWindows').closest('label'); if (row) row.style.display = BUILDS[build].noGlass ? 'none' : '';
   if (!windows) return;
-  windows.visible = !$('openWindows').checked;
+  windows.visible = BUILDS[build].noGlass ? true : !$('openWindows').checked;
 }
 
 // ── Jacob in the chair ──────────────────────────────────────────────────────────
