@@ -85,11 +85,13 @@ const picture = new THREE.Mesh(
                                 transparent: true, depthWrite: false })
 );
 // The old site laid it flat far below and looked down on it. This window looks out sideways, where a
-// flat sheet is edge-on and invisible, so it hangs below and outside, tilted to face the window.
+// flat sheet is edge-on and invisible, so it hangs below and outside, turned square to the window:
+// the sheet's face points back along the line from it to the window, so the globe stays round.
+// (Turned 76 degrees instead of 14, it was seen nearly edge-on and read as an egg.)
 picture.position.set(0, -150, -600);                               // about 14 degrees below the window's line of sight
-picture.rotation.x = -(Math.PI / 2 - Math.atan2(150, 600));
+picture.rotation.x = -Math.atan2(150, 600);
 scene.add(picture);
-let earthMode = 'Globe';
+let earthMode = 'Picture';     // the photograph by default: the globe's map is too soft up close
 function setEarthMode(mode) {
   earthMode = mode;
   earth.visible = mode === 'Globe';
@@ -262,7 +264,7 @@ function loadRoom(name) {
   placeSitter();
   $('boot')?.remove();
   bootProgress('cabin', 1); loadSitter(); loadStation();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => hangarAt, playIntro, activateIntro, setLight, holos, getWave: () => waveAction });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; if (e.total) bootProgress('cabin', e.loaded / e.total); },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -449,15 +451,19 @@ const KEYS = [
   { t: 9.5,  cam: [1.10, 1.40, -0.40], look: 'him',   chair: 'turned', face: 0.6 }, // he is up
   { t: 12.0, cam: [0.40, 1.55, -1.00], look: 'window', chair: 'turned', face: 0 },  // over the computer
   { t: 14.0, cam: [0.05, 1.80, -1.75], look: 'window', chair: 'turned', face: 0 },  // through the glass
-  // OUTSIDE. The cabin is a room on the ring's side, so past the glass the camera is teleported to
-  // just outside the ring's flank, moving away from it; the ring is turning, so the window slides
-  // off and there is nothing to line up. It turns round to find the station, pulls out wide, then
-  // pans to a hangar and closes in. Station keys are in the station's own metres.
-  { t: 14.01, set: 'station', cam: [640, 440, 0],      look: [640, 0, 0] },
-  { t: 17.5,  set: 'station', cam: [1350, 620, 750],   look: 'station' },   // turned, level with the ring's rim, clear of its arms
-  { t: 22.0,  set: 'station', cam: [1750, 1000, 1150], look: 'station' },   // wide, from a little above the deck
-  { t: 26.0,  set: 'station', cam: [520, 340, 1550],   look: 'hangar' },
-  { t: 30.0,  set: 'station', cam: [70, 260, 1060],    look: 'hangar' },
+  // OUTSIDE. The cabin is a room on the ring's underside, its window looking down the station's
+  // axis, so past the glass the camera is teleported to just under the ring at its rim, still
+  // looking down. It pulls out and away, tilting up as it goes, and the ring's underside sweeps
+  // through the top of the frame, turning; a quarter turn later the camera is level, looking at
+  // the whole station. It pulls out wide, then pans right to the hangar on that side, closes on
+  // its mouth and on the fighter on its deck. Station keys are in the station's own metres.
+  { t: 14.01, set: 'station', cam: [690, 400, 0],      look: [150, 440, 0] },       // under the rim, along the underside
+  { t: 15.4,  set: 'station', cam: [930, 290, 260],    look: [350, 430, 0] },       // pulling out: the underside overhead
+  { t: 17.5,  set: 'station', cam: [1350, 620, 750],   look: 'station' },           // level, clear of the arms
+  { t: 22.0,  set: 'station', cam: [1750, 1000, 1150], look: 'station' },           // wide, from a little above the deck
+  { t: 26.0,  set: 'station', cam: [1500, 520, 250],   look: 'hangar' },            // panning right
+  { t: 30.0,  set: 'station', cam: [900, 262, -540],   look: 'hangar' },            // at the mouth
+  { t: 33.0,  set: 'station', cam: [760, 250, -462],   look: 'bay' },               // in, onto the fighter
 ];
 const ACTS = { wave: 1.9, stand: 8.2, walk: 10.0, walkSpeed: 1.1, walkDir: 35 };   // seconds; m/s; degrees from +z toward +x
 // The greeting comes in parts: each is its own hologram over his head, which forms, holds, and
@@ -470,7 +476,7 @@ const PARTS = [
 // The second set, 100 km from the cabin in the same scene, built from the kit with its default
 // layout (the one set in the Station Builder). Shown only while the timeline is outside.
 const STATION_AT = new THREE.Vector3(100000, 0, 0);
-let station = null, stationLoading = false, hangarAt = null, currentSet = 'cabin';
+let station = null, stationLoading = false, hangarAt = null, bayAt = null, hangarMouth = null, currentSet = 'cabin';
 function loadStation() {
   if (station || stationLoading) return;
   stationLoading = true;
@@ -478,10 +484,28 @@ function loadStation() {
     bootProgress('station', 1);
     station = new StationKit(parts).build(DEFAULT_LAYOUT);
     station.position.copy(STATION_AT); station.visible = false; scene.add(station); checkBoot();
-    // the first hangar, to look at and fly into
-    station.traverse(o => { if (!hangarAt && o.isInstancedMesh && o.geometry === parts.hangar.geometry) {
-      const m = new THREE.Matrix4(); o.getMatrixAt(0, m); hangarAt = new THREE.Vector3().setFromMatrixPosition(m).add(STATION_AT); } });
+    pickHangar();
   }).catch(e => console.error(e));
+}
+// The hangar the camera turns to is the one on the RIGHT of the wide shot (the last key that looks
+// at the whole station before the first that looks at a hangar), so the pan goes rightward. Its
+// mouth and the fighter on its deck come from the kit's measurements.
+function pickHangar() {
+  if (!station || !station.hangars || !station.hangars.length) return;
+  const wide = KEYS.filter(k => k.set === 'station' && k.look === 'station').pop() || KEYS.find(k => k.set === 'station');
+  const camAt = new THREE.Vector3(...wide.cam).add(STATION_AT), target = lookPoint('station', 'station');
+  const fwd = target.clone().sub(camAt).normalize(), right = fwd.clone().cross(new THREE.Vector3(0, 1, 0)).normalize();
+  let best = null, bestDot = -Infinity;
+  for (const m of station.hangars) {
+    const p = new THREE.Vector3().setFromMatrixPosition(m).add(STATION_AT), d = p.clone().sub(camAt).normalize().dot(right);
+    if (d > bestDot) { bestDot = d; best = m; }
+  }
+  const bay = StationKit.BAYS[station.layout.hangarModel] || { deckY: 0, back: -0.4, mouth: 0.4 };
+  const u = station.hangarUnit || 1;
+  const along = new THREE.Vector3(1, 0, 0).transformDirection(best);
+  hangarAt = new THREE.Vector3().setFromMatrixPosition(best).add(STATION_AT).addScaledVector(along, (bay.back + bay.mouth) / 2 * u).add(new THREE.Vector3(0, bay.deckY * u, 0));
+  hangarMouth = { at: new THREE.Vector3().setFromMatrixPosition(best).add(STATION_AT).addScaledVector(along, bay.mouth * u).add(new THREE.Vector3(0, bay.deckY * u, 0)), dir: along };
+  bayAt = station.bayLocal ? new THREE.Vector3().setFromMatrixPosition(best.clone().multiply(station.bayLocal)).add(STATION_AT) : hangarAt.clone();
 }
 const setOf = (k) => k.set || 'cabin';
 function showSet(name) {
@@ -531,6 +555,7 @@ const lookPoint = (l, set) => {
   if (l === 'window') return new THREE.Vector3(...WINDOW);
   if (l === 'station') return STATION_AT.clone().add(new THREE.Vector3(0, 250, 0));
   if (l === 'hangar') return hangarAt ? hangarAt.clone() : STATION_AT.clone().add(new THREE.Vector3(0, 240, 740));
+  if (l === 'bay') return bayAt ? bayAt.clone() : lookPoint('hangar', set);          // the fighter on the hangar's deck
   const p = new THREE.Vector3(...l); return set === 'station' ? p.add(STATION_AT) : p;
 };
 const chairDeg = (c) => c === 'turned' ? SEQ.turned : (c || 0);

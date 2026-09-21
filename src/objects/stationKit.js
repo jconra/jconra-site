@@ -10,14 +10,23 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { hullMaterial, boxProjectUVs, sideMaterial, splitSides } from './hull.js';
 
 export const RING_FILES = ['ring', 'ring1', 'ring2', 'ring3', 'ring3t', 'ring4', 'ring5', 'ring5t', 'ring7'];
-export const PART_FILES = [...RING_FILES, 'tower', 'arm1', 'arm2', 'hangar', 'satellite', 'fighter', 'freighter'];
+export const PART_FILES = [...RING_FILES, 'tower', 'arm1', 'arm2', 'hangar', 'hangar2', 'satellite', 'fighter', 'ship1', 'freighter'];
+// Parts modelled with their mouth or nose along +z are turned at load so they lie along +x like the
+// rest of the kit (long axis outward, the hangar's back toward the arm).
+const TURN_TO_X = { hangar2: true, ship1: true };
+// The inside of each hangar model, measured in its own units after that turn: where the deck is,
+// how far in the back wall is and how far out the mouth, and the half width between the side
+// walls. A fighter is parked on the deck by these.
+export const BAYS = {
+  hangar2: { deckY: 0.142, back: -0.177, mouth: 0.21, halfWidth: 0.245 },
+};
 export const G = 9.81;
 
 export const DEFAULT_LAYOUT = {
   // Jacob's station, as he set it in the builder (2026-09-18)
   // which ring model, and what covers it: 'auto' keeps a part's own texture and gives a bare part
   // the generated panel hull; 'panels' puts the hull on any ring; 'texture' shows the part as it is
-  ringModel: 'ring',
+  ringModel: 'ring5t',    // the newest ring (ring5 with its Tripo texture)
   ringSurface: 'auto',
   panelMetres: 220,       // how wide one tile of the panel hull is on the surface
   sideMetres: 70,         // how wide one repeat of the side-face window tile is
@@ -37,6 +46,11 @@ export const DEFAULT_LAYOUT = {
   // arms out from the tower, which stay put; every nth one carries a hangar on its end
   towerArms: { count: 6, kind: 'arm1', radius: 290, y: 180, scale: 650, tilt: 0 },
   hangars: { every: 2, scale: 250, y: 0, side: 0, reach: 0 },   // nudges in metres on top of the measured fit
+  hangarModel: 'hangar2',
+  // one fighter parked on the deck of every hangar: its length as a fraction of the hangar's
+  // width, and where it stands between the back wall (0) and the mouth (1)
+  fighterModel: 'ship1',
+  bay: { length: 0.2, along: 0.45 },
   // solar panels mounted on the tower, standing out from it like wings
   panels: { count: 4, y: -550, scale: 520, tilt: 0, radius: 250 },
   // a few free-flying craft, off by default
@@ -162,6 +176,7 @@ export async function loadKit(base = '../../models/kit/', onProgress) {
       gltf.scene.updateMatrixWorld(true);
       gltf.scene.traverse(o => { if (o.isMesh && !mesh) mesh = o; });
       mesh.geometry.applyMatrix4(mesh.matrixWorld);
+      if (TURN_TO_X[name]) mesh.geometry.rotateY(Math.PI / 2);
       mesh.geometry.computeVertexNormals();
       const mat = mesh.material;
       if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
@@ -175,7 +190,7 @@ export async function loadKit(base = '../../models/kit/', onProgress) {
   // in the part's own units. The hangar hangs off the arm's tip, and its back is not centred on
   // its base, so placing both by their origins left every hangar low and off to one side.
   for (const k of ['arm1', 'arm2']) if (parts[k]) parts[k].tip = endFace(parts[k], k === 'arm2' ? 'z' : 'x', 'max');
-  if (parts.hangar) parts.hangar.back = endFace(parts.hangar, 'x', 'min');
+  for (const k of ['hangar', 'hangar2']) if (parts[k]) parts[k].back = endFace(parts[k], 'x', 'min');
   for (const k of RING_FILES) if (parts[k]) parts[k].deckY = deckHeight(parts[k].geometry, parts[k].rim);
   parts.tower.coreFraction = coreFraction(parts.tower.geometry);
   return parts;
@@ -269,16 +284,36 @@ export class StationKit extends THREE.Group {
     // ARMS on the tower, which stay put, with a hangar on the end of every nth one
     const TA = L.towerArms;
     this.addRing(this.built, TA.kind, TA.count, TA.radius, TA.y, TA.scale, TA.tilt);
-    if (L.hangars.every > 0 && TA.count && P.hangar) {
-      const arm = P[TA.kind], armUnit = TA.scale / (TA.kind === 'arm2' ? arm.size.z : arm.size.x), hUnit = L.hangars.scale / P.hangar.size.x;
-      const tip = arm.tip || new THREE.Vector3(), back = P.hangar.back || new THREE.Vector3();
+    const hangarKind = P[L.hangarModel] ? L.hangarModel : 'hangar';
+    this.hangars = [];                                   // each hangar's matrix in the station's frame, its mouth along its local +x
+    if (L.hangars.every > 0 && TA.count && P[hangarKind]) {
+      const H = P[hangarKind];
+      const arm = P[TA.kind], armUnit = TA.scale / (TA.kind === 'arm2' ? arm.size.z : arm.size.x), hUnit = L.hangars.scale / H.size.x;
+      const tip = arm.tip || new THREE.Vector3(), back = H.back || new THREE.Vector3();
       // the hangar's back face meets the arm's tip: same height, same line, a little overlap
       const reach = TA.radius + TA.scale / 2 + L.hangars.scale * 0.45 + (L.hangars.reach || 0);
       const y = TA.y + tip.y * armUnit - back.y * hUnit + (L.hangars.y || 0);
       const side = -back.z * hUnit + (L.hangars.side || 0);
       const angles = [];
       for (let i = 0; i < TA.count; i += L.hangars.every) angles.push((i / TA.count) * Math.PI * 2);
-      this.addRing(this.built, 'hangar', angles.length, reach, y, L.hangars.scale, 0, angles, side);
+      const hangars = this.addRing(this.built, hangarKind, angles.length, reach, y, L.hangars.scale, 0, angles, side);
+      for (let i = 0; i < angles.length; i++) { const m = new THREE.Matrix4(); hangars.getMatrixAt(i, m); this.hangars.push(m); }
+      this.hangarUnit = hUnit;
+      // a fighter on every deck, nose to the mouth
+      const bay = BAYS[hangarKind], fighterKind = P[L.fighterModel] ? L.fighterModel : null;
+      if (bay && fighterKind && L.bay) {
+        const F = P[fighterKind];
+        const k = (L.bay.length * H.size.x) / F.size.x;                    // fighter units per hangar unit
+        const mesh = new THREE.InstancedMesh(F.geometry, F.material, this.hangars.length);
+        mesh.castShadow = mesh.receiveShadow = true;
+        const local = new THREE.Matrix4().compose(
+          new THREE.Vector3(bay.back + (bay.mouth - bay.back) * L.bay.along, bay.deckY - F.box.min.y * k, 0),
+          new THREE.Quaternion(), new THREE.Vector3(k, k, k));
+        this.hangars.forEach((hm, i) => mesh.setMatrixAt(i, hm.clone().multiply(local)));
+        mesh.instanceMatrix.needsUpdate = true;
+        this.built.add(mesh);
+        this.bayLocal = local;                             // where the fighter sits inside a hangar, in hangar units
+      }
     }
     // SOLAR PANELS on the tower: at the tower's surface unless pushed further out
     const PA = L.panels;
@@ -315,6 +350,7 @@ export class StationKit extends THREE.Group {
     }
     mesh.instanceMatrix.needsUpdate = true;
     parent.add(mesh);
+    return mesh;
   }
 
   addSatellites({ count, radius, scale, seed }) {
@@ -338,6 +374,7 @@ export class StationKit extends THREE.Group {
   }
 
   // Seconds per turn for one gravity at a given radius, and the speed of the rim.
+  static get BAYS() { return BAYS; }
   static period(radius) { return 2 * Math.PI * Math.sqrt(radius / G); }
   static rimSpeed(radius) { return Math.sqrt(G * radius); }
 
