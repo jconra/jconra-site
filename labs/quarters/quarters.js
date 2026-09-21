@@ -908,6 +908,14 @@ function cameraAt(T) {
   const u2 = u * u, u3 = u2 * u;
   return p1.clone().multiplyScalar(2 * u3 - 3 * u2 + 1).add(m1.multiplyScalar(u3 - 2 * u2 + u)).add(p2.clone().multiplyScalar(-2 * u3 + 3 * u2)).add(m2.multiplyScalar(u3 - u2));
 }
+// the chair turns from one key's angle to the next the SHORT way round (never more than a half
+// turn): -112 to 119 is a 129-degree turn clockwise seen from above, not 231 the other way. A
+// turn the long way wants a key in between.
+function chairBetween(from, to, u) {
+  const a = chairDeg(from), b = chairDeg(to);
+  let d = ((b - a) % 360 + 540) % 360 - 180;
+  return a + d * u;
+}
 function seek(T) {
   SEQ.T = T = Math.min(total(), Math.max(0, T));
   const { a, b, u, set } = keysAround(T);
@@ -927,7 +935,7 @@ function seek(T) {
     return;
   }
   // the chair turns key to key, briskly
-  chairPivot.rotation.y = THREE.MathUtils.degToRad(chairDeg(a.chair) + (chairDeg(b.chair) - chairDeg(a.chair)) * ease(u));
+  chairPivot.rotation.y = THREE.MathUtils.degToRad(chairBetween(a.chair, b.chair, ease(u)));
   // him: sitting until he stands, then up on his feet, then walking off out of the frame
   const standing = T >= ACTS.stand, walking = T >= ACTS.walk;
   if (sitterMixer && sitAction) {
@@ -935,7 +943,7 @@ function seek(T) {
       // he is on his own feet now, where the chair left him
       if (sitter.parent !== room) room.add(sitter);
       const at = ACTS.stand, { a: ka, b: kb, u: ku } = keysAround(at);
-      const chairThen = THREE.MathUtils.degToRad(chairDeg(ka.chair) + (chairDeg(kb.chair) - chairDeg(ka.chair)) * ease(ku));
+      const chairThen = THREE.MathUtils.degToRad(chairBetween(ka.chair, kb.chair, ease(ku)));
       const saved = chairPivot.rotation.y; chairPivot.rotation.y = chairThen; chairPivot.updateMatrixWorld(true);
       const feet = chairPivot.localToWorld(sitter.userData.seatPos.clone()), yaw = sitter.userData.seatYaw + chairThen;
       chairPivot.rotation.y = saved;
@@ -1187,7 +1195,7 @@ function addKeyHere() {
   if (!SEQ.active) activateIntro();
   const T = SEQ.T, { a, b, u } = keysAround(T);
   const k = { t: +T.toFixed(2), set: setOf(a), cam: cameraAt(T).toArray().map(x => +x.toFixed(3)), look: a.look,
-              chair: +(chairDeg(a.chair) + (chairDeg(b.chair) - chairDeg(a.chair)) * ease(u)).toFixed(1), face: +(a.face + (b.face - a.face) * u).toFixed(2) };
+              chair: +chairBetween(a.chair, b.chair, ease(u)).toFixed(1), face: +(a.face + (b.face - a.face) * u).toFixed(2) };
   KEYS.push(k); KEYS.sort((x, y) => x.t - y.t); keyIndex = KEYS.indexOf(k);
   buildKeyList(); showKey();
 }
