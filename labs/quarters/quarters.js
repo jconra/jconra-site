@@ -90,8 +90,10 @@ const picture = new THREE.Mesh(
 // flat sheet is edge-on and invisible, so it hangs below and outside, turned square to the window:
 // the sheet's face points back along the line from it to the window, so the globe stays round.
 // (Turned 76 degrees instead of 14, it was seen nearly edge-on and read as an egg.)
-picture.position.set(0, -150, -600);                               // about 14 degrees below the window's line of sight
-picture.rotation.x = -Math.atan2(150, 600);
+// It hangs a little ABOVE the line of sight from the chair, so the globe fills the windows rather
+// than peeping over their sills: the room is not held to where a real cabin on the ring would look.
+picture.position.set(-40, 130, -590);                              // about 12 degrees above the window's line of sight
+picture.rotation.x = Math.atan2(130, 590);
 scene.add(picture);
 let earthMode = 'Picture';     // the photograph by default: the globe's map is too soft up close
 function setEarthMode(mode) {
