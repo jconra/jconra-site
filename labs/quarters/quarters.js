@@ -504,10 +504,10 @@ function scrubbed() { RESUME.last = performance.now(); }
 // pointer lights it and shows its line (or just its name) and holds the timeline.
 const TOUR = [
   { id: 'CO', t: 61.8, title: 'Colorado',    text: 'Born and raised.' },
-  { id: 'NM', t: 64.2, title: 'New Mexico',  text: 'Where the Air Force story starts.' },
-  { id: 'MD', t: 66.6, title: 'Maryland',    text: 'NSA and Fort Meade: the training that made a network security engineer.' },
-  { id: 'MS', t: 69.0, title: 'Mississippi', text: 'Keesler AFB: teaching Cyberspace Warfare Operations.' },
-  { id: 'WA', t: 71.4, title: 'Washington',  text: 'Seattle: home now, AWS systems engineering.' },
+  { id: 'NM', t: 64.2, title: 'New Mexico',  text: '4 years USAF avionics on MQ-1 and MQ-9 aircraft.' },
+  { id: 'MD', t: 66.6, title: 'Maryland',    text: '4 years Red Team for USAF Cyber Warfare Operations. Computer Science BA, UMUC.' },
+  { id: 'MS', t: 69.0, title: 'Mississippi', text: '2 years at Keesler AFB teaching Cyberspace Warfare Operations: Windows, Linux and Python.' },
+  { id: 'WA', t: 71.4, title: 'Washington',  text: '7 years AWS Systems Engineer for filesystems (EFS, FSx). Helicopter pilot, 176 hours.' },
 ];
 const MAP = { glow: 59.6, tourEnd: 74.0, shipIn: 58.0, shipAt: 64.0 };
 const HANGAR = { walk: 33.0, from: [0.3, 0, -8.2], to: [0.3, 0, -2.4], speed: 1.1, sit: 39.0, canopy: 39.4, canopyLen: 2.4, roll: 42.5, accel: 2.5 };
