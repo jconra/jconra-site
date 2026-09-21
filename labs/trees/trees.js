@@ -144,7 +144,7 @@ function buildDraws() {
     for (const a of ['iPos', 'iYaw', 'iScale', 'iTint']) geo.attributes[a].setUsage(THREE.DynamicDrawUsage);
     geo.instanceCount = n;
     const mat = imposterMaterial(sp.bake, { sunDir: SUN_OFF.clone(), blend: SET.blend, depth: SET.depth, shadows: SET.shadows });
-    mat.uniforms.blendDist.value = SET.blendDist; mat.uniforms.lockCards.value = SET.lock ? 1 : 0;
+    mat.uniforms.blendDist.value = SET.blendDist;
     const imposter = new THREE.Mesh(geo, mat); imposter.frustumCulled = false; scene.add(imposter);
     imposter.castShadow = SET.shadows; imposter.customDepthMaterial = mat.userData.depthMaterial;
     // meshes, instanced, with a dithered fade of their own
@@ -231,7 +231,6 @@ $('calibrate').addEventListener('change', e => { SET.calibrate = e.target.checke
 $('a2c').addEventListener('change', e => { SET.a2c = e.target.checked; for (const sp of SPECIES) applyEdges(sp.root); buildDraws(); });
 $('detail').addEventListener('change', async e => { SET.detail = e.target.value; $('boot').style.display = 'flex'; document.body.appendChild($('boot')); await loadSpecies(); buildDraws(); $('boot').style.display = 'none'; });   // the atlases come from the coarse tree either way
 $('blend').addEventListener('change', e => { SET.blend = e.target.checked; for (const b of built) { b.imposter.material.uniforms.blend.value = SET.blend ? 1 : 0; b.imposter.material.userData.depthMaterial.uniforms.blend.value = SET.blend ? 1 : 0; } });
-$('lock').addEventListener('change', e => { SET.lock = e.target.checked; for (const b of built) b.imposter.material.uniforms.lockCards.value = SET.lock ? 1 : 0; });
 $('depth').addEventListener('change', e => { SET.depth = e.target.checked; for (const b of built) { b.imposter.material.uniforms.useDepth.value = SET.depth ? 1 : 0; b.imposter.material.userData.depthMaterial.uniforms.useDepth.value = SET.depth ? 1 : 0; } });
 $('shadows').addEventListener('change', e => { SET.shadows = e.target.checked; sun.castShadow = SET.shadows; renderer.shadowMap.enabled = SET.shadows; for (const b of built) { b.imposter.castShadow = SET.shadows; b.imposter.material.uniforms.useShadow.value = SET.shadows ? 1 : 0; for (const m of b.meshes) m.castShadow = SET.shadows; } });
 $('aa').checked = AA;

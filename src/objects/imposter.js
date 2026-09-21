@@ -95,15 +95,8 @@ const VERTEX = `
       #include <shadowmap_pars_vertex>
       attribute vec3 iPos; attribute float iYaw; attribute float iScale; attribute vec3 iTint; attribute float iFade;
       uniform float radius; uniform float halfW; uniform float halfH; uniform vec3 centre; uniform float grid; uniform float hemi;
-      uniform vec3 viewDirOverride; uniform float useOverride; uniform float blendDist; uniform float lockCards;
+      uniform vec3 viewDirOverride; uniform float useOverride; uniform float blendDist;
       varying float vBlend;
-      // the square -> a direction (the inverse of octEncode), for the cell centres
-      vec3 octDecode(vec2 uv) {
-        float x, y, z;
-        if (hemi > 0.5) { float a = uv.x * 2.0 - 1.0, b = uv.y * 2.0 - 1.0; x = (a - b) * 0.5; z = (a + b) * 0.5; y = 1.0 - abs(x) - abs(z); }
-        else { x = uv.x * 2.0 - 1.0; z = uv.y * 2.0 - 1.0; y = 1.0 - abs(x) - abs(z); if (y < 0.0) { float nx = (1.0 - abs(z)) * (x >= 0.0 ? 1.0 : -1.0); float nz = (1.0 - abs(x)) * (z >= 0.0 ? 1.0 : -1.0); x = nx; z = nz; } }
-        return normalize(vec3(x, y, z));
-      }
       varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius; varying vec4 vShadowToCam;
       // direction (in the tree's frame) -> the square
       vec2 octEncode(vec3 d) {
@@ -119,15 +112,9 @@ const VERTEX = `
         // the view direction in the tree's own frame: the instance's spin undone
         vec3 d = vec3(c * toCam.x - s * toCam.z, toCam.y, s * toCam.x + c * toCam.z);
         vFrame = octEncode(normalize(d));
-        // the card faces the viewer - or, locked, the centre of the view cell it is showing, so it
-        // only turns when its picture does, and does not swivel to watch the camera go by
-        vec3 facing = toCam;
-        if (lockCards > 0.5 && useOverride < 0.5) {
-          vec2 cell = (floor(vFrame * grid - 0.5) + 1.0) / grid;            // the nearest cell centre
-          vec3 dc = octDecode(clamp(cell, 0.5 / grid, 1.0 - 0.5 / grid));
-          facing = normalize(vec3(c * dc.x + s * dc.z, dc.y, -s * dc.x + c * dc.z));   // back into the world, spun as the instance is
-        }
-        vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), facing)); vec3 up = cross(facing, right);
+        // the card faces the viewer. (Locking it to its view cell was tried: the card then jumps at
+        // every cell boundary, trunk and all, and the trees look as if they are walking.)
+        vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam)); vec3 up = cross(toCam, right);
         vec3 world = worldCentre + (right * position.x * halfW * 2.0 + up * position.y * halfH * 2.0) * iScale;
         vBlend = useOverride > 0.5 ? 0.0 : (distance(cameraPosition, worldCentre) < blendDist ? 1.0 : 0.0);   // the three-view blend only near: far away two reads do
         vQuad = uv; vTint = iTint; vFade = iFade; vYaw = iYaw; vRadius = radius * iScale;
@@ -176,7 +163,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, {
     atlas: { value: null }, atlasN: { value: null }, grid: { value: bake.grid }, hemi: { value: bake.hemi ? 1 : 0 },
     radius: { value: bake.radius }, halfW: { value: bake.halfW }, halfH: { value: bake.halfH }, centre: { value: bake.centre.clone() }, sunDir: { value: sunDir.clone().normalize() },
-    blend: { value: blend ? 1 : 0 }, blendDist: { value: 400 }, lockCards: { value: 0 }, ambient: { value: 0.45 }, useDepth: { value: depth ? 1 : 0 }, useShadow: { value: shadows ? 1 : 0 },
+    blend: { value: blend ? 1 : 0 }, blendDist: { value: 400 }, ambient: { value: 0.45 }, useDepth: { value: depth ? 1 : 0 }, useShadow: { value: shadows ? 1 : 0 },
     viewDirOverride: { value: new THREE.Vector3(0, 1, 0) }, useOverride: { value: 0 },
   }]);
   uniforms.atlas.value = bake.colour; uniforms.atlasN.value = bake.normal;
@@ -231,7 +218,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
   // three's shadow maps expect
   mat.userData.depthMaterial = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([{ atlas: { value: null }, atlasN: { value: null }, grid: { value: bake.grid }, hemi: { value: bake.hemi ? 1 : 0 }, radius: { value: bake.radius }, halfW: { value: bake.halfW }, halfH: { value: bake.halfH }, centre: { value: bake.centre.clone() },
-      blend: { value: blend ? 1 : 0 }, blendDist: { value: 0 }, lockCards: { value: 0 }, useDepth: { value: depth ? 1 : 0 }, viewDirOverride: { value: sunDir.clone().normalize() }, useOverride: { value: 1 } }]),
+      blend: { value: blend ? 1 : 0 }, blendDist: { value: 0 }, useDepth: { value: depth ? 1 : 0 }, viewDirOverride: { value: sunDir.clone().normalize() }, useOverride: { value: 1 } }]),
     side: THREE.DoubleSide, extensions: { fragDepth: true },
     vertexShader: VERTEX,
     fragmentShader: `
