@@ -61,26 +61,29 @@ export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, he
       void main(){ if (useMap > 0.5 && texture2D(map, vUv).a < alphaTest) discard; vec3 n = normalize(gl_FrontFacing ? vN : -vN); gl_FragColor = vec4(n * 0.5 + 0.5, clamp((vZ - radius) / (2.0 * radius), 0.0, 1.0)); }`,
     side: THREE.DoubleSide });
   const oldTarget = renderer.getRenderTarget(), oldClear = renderer.getClearColor(new THREE.Color()), oldAlpha = renderer.getClearAlpha();
-  const oldScissor = renderer.getScissorTest();
   for (const [rt, mkMat] of [[colourRT, colourMat], [normalRT, normalMat]]) {
     for (const [o, m] of materials) o.material = Array.isArray(m) ? m.map(mkMat) : mkMat(m);     // a mesh with a material per face keeps them
+    rt.viewport.set(0, 0, size, size); rt.scissorTest = false;
     renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear();
-    renderer.setScissorTest(true);
     for (let j = 0; j < grid; j++) {
     // one row of views per step: the caller can yield to the browser between rows
-    if (j) { renderer.setScissorTest(oldScissor); renderer.setRenderTarget(oldTarget); yield null; renderer.setRenderTarget(rt); renderer.setScissorTest(true); }
+    if (j) { renderer.setRenderTarget(oldTarget); yield null; }
     for (let i = 0; i < grid; i++) {
       const d = octDecode((i + 0.5) / grid, (j + 0.5) / grid, hemi);
       cam.position.copy(d).multiplyScalar(radius * 2);
       cam.up.set(0, 1, 0); if (Math.abs(d.y) > 0.995) cam.up.set(0, 0, -1);
       cam.lookAt(0, 0, 0); cam.updateProjectionMatrix();
-      renderer.setViewport(i * cell, j * cell, cell, cell); renderer.setScissor(i * cell, j * cell, cell, cell);
+      // the cell's rectangle is set on the target itself: the renderer's own viewport is scaled by
+      // the pixel ratio even when drawing into a texture, and on a phone at 2.6 that laid every
+      // cell down too big, over its neighbours
+      rt.viewport.set(i * cell, j * cell, cell, cell); rt.scissor.set(i * cell, j * cell, cell, cell); rt.scissorTest = true;
+      renderer.setRenderTarget(rt);
       renderer.render(scene, cam);
     } }
+    rt.viewport.set(0, 0, size, size); rt.scissorTest = false;
   }
   for (const [o, m] of materials) o.material = m;
-  renderer.setScissorTest(oldScissor); renderer.setRenderTarget(oldTarget); renderer.setClearColor(oldClear, oldAlpha);
-  renderer.setViewport(0, 0, renderer.domElement.width, renderer.domElement.height);
+  renderer.setRenderTarget(oldTarget); renderer.setClearColor(oldClear, oldAlpha);
   holder.remove(object); if (parent) parent.add(object);
   object.updateMatrixWorld(true);          // the meshes' world matrices carried the holder's offset: refreshed, or anything placed by them stands half a tree low
   return { colour: colourRT.texture, normal: normalRT.texture, radius, halfW, halfH, centre, grid, hemi, cell };
