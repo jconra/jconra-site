@@ -250,6 +250,7 @@ $('profile').addEventListener('click', async () => {
   const fwd0 = new THREE.Vector3().subVectors(controls.target, camera.position), cam0 = camera.position.clone(), tgt0 = controls.target.clone();
   const birdsEye = () => { const c = controls.target.clone(); camera.position.set(c.x, 260, c.z + 300); controls.target.set(c.x, 0, c.z); controls.update(); SET.dirty = true; };
   const runs = [
+    ['nothing drawn at all (the ceiling)', () => { scene.visible = false; }],
     ['as it is now', () => {}],
     ["bird's-eye, as it is now", () => birdsEye()],
     ["bird's-eye, imposters only", () => { birdsEye(); setShadows(false); SET.show = 'imposters'; SET.dirty = true; }],
@@ -261,19 +262,19 @@ $('profile').addEventListener('click', async () => {
   ];
   const out = [];
   for (const [name, apply] of runs) {
-    SET.show = keep.show; setShadows(keep.shadows); SET.scale = keep.scale; SET.imposterAt = keep.imposterAt; applyScale(); renderer.setSize(innerWidth, innerHeight, false); SET.dirty = true;
+    SET.show = keep.show; setShadows(keep.shadows); SET.scale = keep.scale; SET.imposterAt = keep.imposterAt; applyScale(); renderer.setSize(innerWidth, innerHeight, false); SET.dirty = true; scene.visible = true;
     camera.position.copy(cam0); controls.target.copy(tgt0); controls.update();
-    apply(); assign();
+    apply(); assign(); cpuMs = 0; cpuN = 0;
     // a few frames to settle (a resize rebuilds the drawing buffer), then a second of counting
     await new Promise(r => { let k = 0; const tick = () => { if (++k < 8) requestAnimationFrame(tick); else r(); }; requestAnimationFrame(tick); });
     const t0 = performance.now(); let n = 0;
     await new Promise(r => { const tick = () => { n++; if (performance.now() - t0 < 1000) requestAnimationFrame(tick); else r(); }; requestAnimationFrame(tick); });
-    out.push([name, Math.round(n / ((performance.now() - t0) / 1000))]);
+    out.push([name, Math.round(n / ((performance.now() - t0) / 1000)), (cpuMs / Math.max(1, cpuN)).toFixed(1)]);
   }
   SET.show = keep.show; setShadows(keep.shadows); SET.scale = keep.scale; SET.imposterAt = keep.imposterAt; applyScale(); renderer.setSize(innerWidth, innerHeight, false); SET.dirty = true; assign();
-  camera.position.copy(cam0); controls.target.copy(tgt0); controls.update(); SET.dirty = true; assign();
+  camera.position.copy(cam0); controls.target.copy(tgt0); controls.update(); SET.dirty = true; assign(); scene.visible = true;
   const px = renderer.getDrawingBufferSize(new THREE.Vector2());
-  $('profileOut').innerHTML = `<div style="grid-column:1/-1;color:#6d7a85">${px.x} × ${px.y} px drawn (${(px.x * px.y / 1e6).toFixed(1)} MP), pixel ratio ${devicePixelRatio}, ${AA ? 'multisampled' : 'no multisampling'}, ${renderer.capabilities.isWebGL2 ? 'WebGL2' : 'WebGL1'}</div>` + out.map(([n, f]) => `<div><b>${f} fps</b> ${n}</div>`).join('');
+  $('profileOut').innerHTML = `<div style="grid-column:1/-1;color:#6d7a85">${px.x} × ${px.y} px drawn (${(px.x * px.y / 1e6).toFixed(1)} MP), pixel ratio ${devicePixelRatio}, ${AA ? 'multisampled' : 'no multisampling'}, ${renderer.capabilities.isWebGL2 ? 'WebGL2' : 'WebGL1'}</div>` + out.map(([n, f, c]) => `<div><b>${f} fps</b> ${n} <span style="color:#6d7a85">(${(1000 / Math.max(1, f)).toFixed(0)} ms a frame, ${c} ms of it the CPU's render call)</span></div>`).join('');
 });
 $('show').addEventListener('change', e => { SET.show = e.target.value; SET.dirty = true; });
 $('atlasOn').addEventListener('change', e => { $('atlas').style.display = e.target.checked ? 'block' : 'none'; if (e.target.checked) drawAtlas(); });
@@ -314,6 +315,7 @@ loadSpecies().then(() => {
   if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, SET, SPECIES, forest, built, assign, plant, buildDraws, bakeAll, drawAtlas, sun });
 }).catch(e => { console.error(e); $('boot').textContent = 'LOAD FAILED — ' + e.message; });
 
+let cpuMs = 0, cpuN = 0;
 const clock = new THREE.Clock(); let fps = 60, shown = 0, assignAt = 0; const lastAssignAt = new THREE.Vector3(1e9, 0, 0), lastTargetAt = new THREE.Vector3(1e9, 0, 0);
 renderer.setAnimationLoop(() => {
   const raw = clock.getDelta(), dt = Math.min(raw, 0.1);
@@ -326,7 +328,7 @@ renderer.setAnimationLoop(() => {
   sun.target.position.copy(controls.target); sun.position.copy(controls.target).add(SUN_OFF);   // the shadow square follows the view
   if (baking) baking.tick();
   if ((assignAt += raw) > 0.08 && built.length && (camera.position.distanceToSquared(lastAssignAt) > 1 || controls.target.distanceToSquared(lastTargetAt) > 1 || SET.dirty)) { assignAt = 0; SET.dirty = false; lastAssignAt.copy(camera.position); lastTargetAt.copy(controls.target); assign(); }
-  renderer.render(scene, camera);
+  { const t = performance.now(); renderer.render(scene, camera); cpuMs += performance.now() - t; cpuN++; }
   if (raw > 0) fps += (1 / raw - fps) * Math.min(1, raw * 2);   // weighted by the frame's own length: a two-second frame counts in full, not five percent
   if ((shown += raw) > 0.5) { shown = 0; const i = renderer.info.render; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${i.calls} draws · ${(i.triangles / 1000).toFixed(0)}k triangles · ${nearCount.toLocaleString()} meshes / ${(forest.length - nearCount).toLocaleString()} imposters`; }
 });
