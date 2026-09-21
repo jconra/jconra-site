@@ -136,6 +136,14 @@
     <div class="btns" id="lights"></div>
     <div class="row"><label for="cabinLight">Cabin lights</label><output id="cabinLightOut"></output><input id="cabinLight" type="range" min="0" max="30" step="0.5" value="6"></div>
     <div class="row"><label for="screenLight">Screen glow</label><output id="screenLightOut"></output><input id="screenLight" type="range" min="0" max="20" step="0.5" value="3"></div>
+
+    <h2>Screens</h2>
+    <p class="note">The live screens are sized from the bezels they find. Where one comes up short of the painted display, set its real size and nudge it.</p>
+    <div class="row"><label for="screenPick">Which screen</label><select id="screenPick"></select></div>
+    <div class="row"><label for="screenW">Width</label><output id="screenWOut"></output><input id="screenW" type="range" min="20" max="140" step="1" value="60"></div>
+    <div class="row"><label for="screenH">Height</label><output id="screenHOut"></output><input id="screenH" type="range" min="15" max="90" step="1" value="40"></div>
+    <div class="row"><label for="screenX">Left / right</label><output id="screenXOut"></output><input id="screenX" type="range" min="-30" max="30" step="0.5" value="0"></div>
+    <div class="row"><label for="screenY">Up / down</label><output id="screenYOut"></output><input id="screenY" type="range" min="-30" max="30" step="0.5" value="0"></div>
     <div class="row"><label for="sunLight">Sunlight through the window</label><output id="sunLightOut"></output><input id="sunLight" type="range" min="0" max="10" step="0.1" value="2.6"></div>
     <div class="row"><label for="ambient">Ambient</label><output id="ambientOut"></output><input id="ambient" type="range" min="0" max="3" step="0.01" value="0.45"></div>
     <div class="row"><label for="exposure">Exposure</label><output id="exposureOut"></output><input id="exposure" type="range" min="0.3" max="2.5" step="0.01" value="1.1"></div>

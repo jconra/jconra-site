@@ -272,7 +272,7 @@ function loadRoom(name) {
   placeSitter();
   $('boot')?.remove();
   bootProgress('cabin', 1); loadSitter(); loadStation();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; if (e.total) bootProgress('cabin', e.loaded / e.total); },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -1248,6 +1248,7 @@ let SCREENS = [];
 function buildScreens(name) {
   for (const sc of SCREENS) { scene.remove(sc); sc.geometry.dispose(); sc.material.map.dispose(); sc.material.dispose(); }
   SCREENS = (SCREEN_SETS[name] || SCREEN_SETS.Full).map(spec => new Screen(spec));
+  setTimeout(buildScreenPick, 0);
   for (const sc of SCREENS) if (sc.kind === 'terminal') sc.source = term.canvas;
   for (const sc of SCREENS) scene.add(sc);
 }
@@ -1278,6 +1279,37 @@ function snapScreens() {
       sc.scale.set((w * 0.94) / sc.geometry.parameters.width, (h * 0.92) / sc.geometry.parameters.height, 1);
     }
   }
+  for (const sc of SCREENS) sc.userData.snap = { position: sc.position.clone(), scale: sc.scale.clone() };   // where the snap put it, for the fit to build on
+  applyScreenFit();
+}
+// SCREEN FIT. The snap sizes each live screen from the bezel it finds; where that comes out short of
+// the painted display, these set the plane's real size (cm) and nudge it (cm) along its own right
+// and up. Per build, per screen; baked in from Copy settings.
+const SCREEN_FIT = {
+  Smart: [],
+};
+let screenPick = 0;
+function fitOf(i) { const arr = SCREEN_FIT[build] || (SCREEN_FIT[build] = []); return arr[i] || (arr[i] = {}); }
+function applyScreenFit() {
+  SCREENS.forEach((sc, i) => {
+    const s = sc.userData.snap; if (!s) return;
+    const f = (SCREEN_FIT[build] || [])[i] || {};
+    const gw = sc.geometry.parameters.width, gh = sc.geometry.parameters.height;
+    sc.scale.set(f.w ? (f.w / 100) / gw : s.scale.x, f.h ? (f.h / 100) / gh : s.scale.y, 1);
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(sc.quaternion), up = new THREE.Vector3(0, 1, 0).applyQuaternion(sc.quaternion);
+    sc.position.copy(s.position).addScaledVector(right, (f.x || 0) / 100).addScaledVector(up, (f.y || 0) / 100);
+  });
+}
+function showScreenFit() {
+  const sc = SCREENS[screenPick]; if (!sc) return;
+  const f = fitOf(screenPick), s = sc.userData.snap;
+  const w = f.w || (s ? Math.round(s.scale.x * sc.geometry.parameters.width * 100) : 0), h = f.h || (s ? Math.round(s.scale.y * sc.geometry.parameters.height * 100) : 0);
+  for (const [id, v] of [['screenW', w], ['screenH', h], ['screenX', f.x || 0], ['screenY', f.y || 0]]) { const el = $(id); if (el) { el.value = v; $(id + 'Out').textContent = SLIDERS[id][1](v); } }
+}
+function buildScreenPick() {
+  const sel = $('screenPick'); if (!sel) return;
+  sel.innerHTML = SCREENS.map((sc, i) => `<option value="${i}">${i + 1} · ${sc.kind}</option>`).join('');
+  sel.value = Math.min(screenPick, SCREENS.length - 1); screenPick = +sel.value; showScreenFit();
 }
 buildScreens(build);
 {
@@ -1334,6 +1366,10 @@ const SLIDERS = {
   chairSpeed: [v => CHAIR.speed = v, v => v + '°/s'],
   chairAngle: [v => { CHAIR.angle = v; if (chairPivot && !CHAIR.swivel) chairPivot.rotation.y = THREE.MathUtils.degToRad(v); }, v => v + '°'],
   chairX:     [v => { CHAIR.x = v; placeChair(); }, v => v + ' cm'],
+  screenW:    [v => { fitOf(screenPick).w = v; applyScreenFit(); }, v => v + ' cm'],
+  screenH:    [v => { fitOf(screenPick).h = v; applyScreenFit(); }, v => v + ' cm'],
+  screenX:    [v => { fitOf(screenPick).x = v; applyScreenFit(); }, v => v + ' cm'],
+  screenY:    [v => { fitOf(screenPick).y = v; applyScreenFit(); }, v => v + ' cm'],
   chairZ:     [v => { CHAIR.z = v; placeChair(); }, v => v + ' cm'],
   sitHeight:  [v => { SITTER.height = v; placeSitter(); }, v => v + ' cm'],
   sitForward: [v => { SITTER.forward = v; placeSitter(); }, v => v + ' cm'],
@@ -1368,9 +1404,10 @@ for (const [id, [apply, fmt]] of Object.entries(SLIDERS)) {
   const el = $(id);
   const run = () => { apply(+el.value); $(id + 'Out').textContent = fmt(+el.value); };
   el.addEventListener('input', run);
-  if (id in KEYFIELDS || id in PROPFIELDS) $(id + 'Out').textContent = fmt(+el.value); else run();   // key and prop sliders read from their object, they do not write it at start
+  if (id in KEYFIELDS || id in PROPFIELDS || /^screen[WHXY]$/.test(id)) $(id + 'Out').textContent = fmt(+el.value); else run();   // key, prop and screen sliders read from their object, they do not write it at start
 }
 $('keyLook').addEventListener('change', e => { const v = e.target.value; const k = KEYS[keyIndex]; if (v === 'point') captureView(k); else k.look = v; seek(k.t); });
+$('screenPick').addEventListener('change', e => { screenPick = +e.target.value; showScreenFit(); });
 $('useView').addEventListener('click', () => { const k = KEYS[keyIndex]; if (!k) return; captureView(k); showKey(); });
 // working in the panel holds the timeline: no playing on by itself until the scene is scrolled again
 $('panel').addEventListener('input', () => { RESUME.hold = true; });
@@ -1411,7 +1448,7 @@ const CHECKS = {
 for (const [id, fn] of Object.entries(CHECKS)) { $(id).addEventListener('change', fn); fn({ target: $(id) }); }
 $('min').onclick = () => { $('panel').classList.toggle('min'); $('min').textContent = $('panel').classList.contains('min') ? 'show' : 'hide'; };
 $('copy').onclick = () => {
-  const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, props: PROPS.map(({ obj, ...p }) => p), intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) }, earth: { ...EARTH },
+  const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, props: PROPS.map(({ obj, ...p }) => p), screens: SCREEN_FIT[build] || [], intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) }, earth: { ...EARTH },
     light: { cabin: cabin.intensity, screens: screens.intensity, sun: sun.intensity, ambient: ambient.intensity, exposure: renderer.toneMappingExposure },
     openWindows: $('openWindows').checked };
   $('out').style.display = 'block'; $('out').value = JSON.stringify(out, null, 2); $('out').select();
