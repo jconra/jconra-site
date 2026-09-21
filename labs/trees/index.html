@@ -26,6 +26,7 @@
   #boot { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; font:13px nasa, monospace; letter-spacing:4px; color:#b9c8d2; background:#000; z-index:9; }
   #hud { position:fixed; top:36px; left:16px; z-index:6; pointer-events:none; font:11.5px/1.5 ui-monospace,monospace; color:#0b1a12; text-shadow:0 1px 4px #fff8; }
   #hud b { color:#0a5a2a; font-weight:600; }
+  #bakeNote { position:fixed; top:56px; left:16px; z-index:6; pointer-events:none; font:11.5px ui-monospace,monospace; color:#0b1a12; text-shadow:0 1px 4px #fff8; }
   #back { position:fixed; top:14px; left:16px; z-index:6; font:11px ui-monospace,monospace; letter-spacing:.14em; color:#0b1a12; text-decoration:none; text-transform:uppercase; }
   #atlas { position:fixed; left:16px; bottom:16px; width:min(40vw, 420px); height:auto; z-index:6; display:none; border:1px solid #212a34; background:#222; image-rendering:auto; }
   @media (max-width:700px) { #panel, #panel.min { width:auto; left:12px; top:auto; bottom:12px; max-height:46vh; } }
@@ -35,6 +36,7 @@
 <div id="boot">LOADING TREES… <span id="pct"></span></div>
 <a id="back" href="../">&larr; labs</a>
 <div id="hud"></div>
+<div id="bakeNote"></div>
 <canvas id="atlas"></canvas>
 <div id="panel">
   <h1>Tree Lab <button id="min" type="button">hide</button></h1>
@@ -63,7 +65,8 @@
     <label class="check" for="blend"><input id="blend" type="checkbox" checked> Blend the three nearest views</label>
     <label class="check" for="atlasOn"><input id="atlasOn" type="checkbox"> Show the atlas</label>
     <div class="row"><label for="atlasSpecies">Of</label><select id="atlasSpecies"></select></div>
-    <p class="note">Views across × view size is the atlas edge: 12 × 128 = 1536 px. A change re-bakes every species.</p>
+    <p class="note" id="atlasSize"></p>
+    <p class="note">A change re-bakes every species, a row of views per frame, from the coarse trees. Bakes are kept, so a setting seen before comes back at once. The edge is capped at 4096 px.</p>
   </div>
 </div>
 

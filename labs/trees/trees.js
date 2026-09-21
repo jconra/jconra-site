@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { bakeImposter, imposterMaterial } from '../../src/objects/imposter.js';
+import { bakeImposterSteps, imposterMaterial } from '../../src/objects/imposter.js';
 
 const Q = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -41,6 +41,7 @@ async function loadSpecies() {
   for (const sp of SPECIES) {
     // fine: the preset as it comes; coarse: fewer, bigger, single-sided leaves and fewer branch sections (baked that way)
     const gltf = await loader.loadAsync(SET.detail === 'coarse' ? sp.file.replace('.glb', '_coarse.glb') : sp.file);
+    if (!sp.coarseRoot) { const c = await loader.loadAsync(sp.file.replace('.glb', '_coarse.glb')); c.scene.updateMatrixWorld(true); c.scene.traverse(o => { if (o.isMesh) { o.material.side = THREE.DoubleSide; if (o.material.transparent) { o.material.alphaTest = 0.5; o.material.transparent = false; } } }); sp.coarseRoot = c.scene; }
     const root = gltf.scene; root.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(root), size = box.getSize(new THREE.Vector3());
     sp.unit = sp.height / size.y;                       // model units -> metres
@@ -57,12 +58,28 @@ async function loadSpecies() {
 function applyEdges(root) {
   root.traverse(o => { if (o.isMesh && o.material.map) { o.material.alphaToCoverage = SET.a2c; o.material.alphaTest = SET.a2c ? 0.1 : 0.5; o.material.needsUpdate = true; } });
 }
-// bake every species' atlases (again, when the grid changes)
-function bakeAll() {
-  for (const sp of SPECIES) {
-    if (sp.bake) { sp.bake.colour.dispose(); sp.bake.normal.dispose(); }
-    sp.bake = bakeImposter(renderer, sp.root, { grid: SET.grid, cell: SET.cell, hemi: SET.hemi });
-  }
+// The atlas edge is views x view size; at 24 x 256 that is 6144 px, 151 MB per atlas and two per
+// species. Capped at 4096 px: the view size comes down to fit, and the readout says what it costs.
+const ATLAS_MAX = 4096;
+function capAtlas() {
+  while (SET.grid * SET.cell > ATLAS_MAX && SET.cell > 32) SET.cell -= 32;
+  $('cell').value = SET.cell; $('cellOut').textContent = SET.cell + ' px';
+  const edge = SET.grid * SET.cell, mb = edge * edge * 4 / 1048576;
+  $('atlasSize').textContent = `${edge} × ${edge} px · ${mb.toFixed(0)} MB × 2 atlases × ${SPECIES.length} species = ${(mb * 2 * SPECIES.length).toFixed(0)} MB of texture memory`;
+}
+// Bake every species' atlases, a row of views per frame so the page never freezes, from the
+// COARSE tree (at atlas size the fine one's extra leaves are invisible). Bakes are kept by their
+// settings, so a grid seen before comes back at once. `then` runs when all are done.
+const bakes = new Map();
+let baking = null;
+function bakeAll(then) {
+  const key = (sp) => `${sp.name}|${SET.grid}|${SET.cell}|${SET.hemi}`;
+  const todo = SPECIES.filter(sp => !bakes.has(key(sp)));
+  const finish = () => { for (const sp of SPECIES) sp.bake = bakes.get(key(sp)); baking = null; $('bakeNote').textContent = ''; then && then(); };
+  if (!todo.length) { finish(); return; }
+  const rows = todo.length * SET.grid * 2; let done = 0;
+  const steps = (function* () { for (const sp of todo) { const src = sp.coarseRoot || sp.root; const it = bakeImposterSteps(renderer, src, { grid: SET.grid, cell: SET.cell, hemi: SET.hemi }); for (;;) { const s = it.next(); if (s.done) { bakes.set(key(sp), s.value); break; } done++; yield; } } })();
+  baking = { steps, tick() { const t0 = performance.now(); while (performance.now() - t0 < 12) { if (steps.next().done) { finish(); return; } } $('bakeNote').textContent = `baking atlases… ${Math.round(done / rows * 100)}%`; } };
 }
 
 // the forest itself: where each tree stands
@@ -153,17 +170,17 @@ const SLIDERS = {
   radius:     [v => { SET.radius = v; plant(); buildDraws(); }, v => v + ' m'],
   imposterAt: [v => SET.imposterAt = v, v => v + ' m'],
   band:       [v => SET.band = v, v => v + ' m'],
-  grid:       [v => { SET.grid = v; bakeAll(); buildDraws(); }, v => v + ' × ' + v],
-  cell:       [v => { SET.cell = v; bakeAll(); buildDraws(); }, v => v + ' px'],
+  grid:       [v => { SET.grid = v; capAtlas(); bakeAll(buildDraws); }, v => v + ' × ' + v],
+  cell:       [v => { SET.cell = v; capAtlas(); bakeAll(buildDraws); }, v => v + ' px'],
 };
 for (const [id, [apply, fmt]] of Object.entries(SLIDERS)) {
   const el = $(id); const run = () => { apply(+el.value); $(id + 'Out').textContent = fmt(+el.value); };
   el.addEventListener('change', run); el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   $(id + 'Out').textContent = fmt(+el.value);
 }
-$('hemi').addEventListener('change', e => { SET.hemi = e.target.checked; bakeAll(); buildDraws(); });
+$('hemi').addEventListener('change', e => { SET.hemi = e.target.checked; bakeAll(buildDraws); });
 $('a2c').addEventListener('change', e => { SET.a2c = e.target.checked; for (const sp of SPECIES) applyEdges(sp.root); buildDraws(); });
-$('detail').addEventListener('change', async e => { SET.detail = e.target.value; $('boot').style.display = 'flex'; document.body.appendChild($('boot')); await loadSpecies(); bakeAll(); buildDraws(); $('boot').style.display = 'none'; });
+$('detail').addEventListener('change', async e => { SET.detail = e.target.value; $('boot').style.display = 'flex'; document.body.appendChild($('boot')); await loadSpecies(); buildDraws(); $('boot').style.display = 'none'; });   // the atlases come from the coarse tree either way
 $('blend').addEventListener('change', e => { SET.blend = e.target.checked; for (const b of built) b.imposter.material.uniforms.blend.value = SET.blend ? 1 : 0; });
 $('show').addEventListener('change', e => { SET.show = e.target.value; });
 $('atlasOn').addEventListener('change', e => { $('atlas').style.display = e.target.checked ? 'block' : 'none'; if (e.target.checked) drawAtlas(); });
@@ -196,7 +213,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 
 // ── go ─────────────────────────────────────────────────────────────────────────
 loadSpecies().then(() => {
-  bakeAll(); plant(); buildDraws();
+  plant(); capAtlas(); bakeAll(buildDraws);
   $('boot').style.display = 'none';
   for (const sp of SPECIES) { const o = document.createElement('option'); o.value = sp.name; o.textContent = sp.name; $('atlasSpecies').appendChild(o); }
   if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, SET, SPECIES, forest, built, assign, plant, buildDraws, bakeAll, drawAtlas, sun });
@@ -211,6 +228,7 @@ renderer.setAnimationLoop(() => {
   if (move.lengthSq()) { move.normalize().multiplyScalar(speed); camera.position.add(move); controls.target.add(move); }
   if (circling) { circleAt += dt * 0.25; const r = SET.imposterAt; controls.target.set(0, 10, 0); camera.position.set(Math.sin(circleAt) * r, 14, Math.cos(circleAt) * r); }
   controls.update();
+  if (baking) baking.tick();
   if ((assignAt += raw) > 0.08 && built.length) { assignAt = 0; assign(); }
   renderer.render(scene, camera);
   if (raw > 0) fps += (1 / raw - fps) * Math.min(1, raw * 2);   // weighted by the frame's own length: a two-second frame counts in full, not five percent
