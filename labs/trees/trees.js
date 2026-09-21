@@ -10,7 +10,10 @@ import { bakeImposterSteps, imposterMaterial } from '../../src/objects/imposter.
 
 const Q = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+// ?noaa: no multisampling. It costs an integrated GPU a lot of bandwidth on overlapping quads,
+// and the soft leaf edges need it; this is how to measure what it costs
+const AA = !Q.has('noaa');
+const renderer = new THREE.WebGLRenderer({ antialias: AA });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -230,6 +233,8 @@ $('detail').addEventListener('change', async e => { SET.detail = e.target.value;
 $('blend').addEventListener('change', e => { SET.blend = e.target.checked; for (const b of built) { b.imposter.material.uniforms.blend.value = SET.blend ? 1 : 0; b.imposter.material.userData.depthMaterial.uniforms.blend.value = SET.blend ? 1 : 0; } });
 $('depth').addEventListener('change', e => { SET.depth = e.target.checked; for (const b of built) { b.imposter.material.uniforms.useDepth.value = SET.depth ? 1 : 0; b.imposter.material.userData.depthMaterial.uniforms.useDepth.value = SET.depth ? 1 : 0; } });
 $('shadows').addEventListener('change', e => { SET.shadows = e.target.checked; sun.castShadow = SET.shadows; renderer.shadowMap.enabled = SET.shadows; for (const b of built) { b.imposter.castShadow = SET.shadows; b.imposter.material.uniforms.useShadow.value = SET.shadows ? 1 : 0; for (const m of b.meshes) m.castShadow = SET.shadows; } });
+$('aa').checked = AA;
+$('aa').addEventListener('change', e => { const u = new URL(location.href); if (e.target.checked) u.searchParams.delete('noaa'); else u.searchParams.set('noaa', ''); location.href = u.toString(); });
 $('ss').addEventListener('change', e => { SET.ss = e.target.checked; applyScale(); });
 // render scale: the picture drawn at a fraction of the screen's pixels and stretched up - the cheap
 // opposite of supersampling, and the first thing to try on a weak GPU
@@ -241,8 +246,12 @@ $('scale').addEventListener('input', e => { SET.scale = +e.target.value; $('scal
 $('profile').addEventListener('click', async () => {
   const keep = { show: SET.show, shadows: SET.shadows, scale: SET.scale, ss: SET.ss, imposterAt: SET.imposterAt };
   const setShadows = (on) => { sun.castShadow = on; renderer.shadowMap.enabled = on; for (const b of built) { b.imposter.castShadow = on; b.imposter.material.uniforms.useShadow.value = on ? 1 : 0; for (const m of b.meshes) m.castShadow = on; } };
+  const fwd0 = new THREE.Vector3().subVectors(controls.target, camera.position), cam0 = camera.position.clone(), tgt0 = controls.target.clone();
+  const birdsEye = () => { const c = controls.target.clone(); camera.position.set(c.x, 260, c.z + 300); controls.target.set(c.x, 0, c.z); controls.update(); SET.dirty = true; };
   const runs = [
     ['as it is now', () => {}],
+    ["bird's-eye, as it is now", () => birdsEye()],
+    ["bird's-eye, imposters only", () => { birdsEye(); setShadows(false); SET.show = 'imposters'; SET.dirty = true; }],
     ['shadows off', () => setShadows(false)],
     ['imposters only, no shadows', () => { setShadows(false); SET.show = 'imposters'; SET.dirty = true; }],
     ['meshes only to 250 m, no shadows', () => { setShadows(false); SET.show = 'meshes'; SET.imposterAt = Math.max(SET.imposterAt, 250); SET.dirty = true; }],
@@ -252,6 +261,7 @@ $('profile').addEventListener('click', async () => {
   const out = [];
   for (const [name, apply] of runs) {
     SET.show = keep.show; setShadows(keep.shadows); SET.scale = keep.scale; SET.imposterAt = keep.imposterAt; applyScale(); renderer.setSize(innerWidth, innerHeight, false); SET.dirty = true;
+    camera.position.copy(cam0); controls.target.copy(tgt0); controls.update();
     apply(); assign();
     // a few frames to settle (a resize rebuilds the drawing buffer), then a second of counting
     await new Promise(r => { let k = 0; const tick = () => { if (++k < 8) requestAnimationFrame(tick); else r(); }; requestAnimationFrame(tick); });
@@ -260,7 +270,9 @@ $('profile').addEventListener('click', async () => {
     out.push([name, Math.round(n / ((performance.now() - t0) / 1000))]);
   }
   SET.show = keep.show; setShadows(keep.shadows); SET.scale = keep.scale; SET.imposterAt = keep.imposterAt; applyScale(); renderer.setSize(innerWidth, innerHeight, false); SET.dirty = true; assign();
-  $('profileOut').innerHTML = out.map(([n, f]) => `<div><b>${f} fps</b> ${n}</div>`).join('');
+  camera.position.copy(cam0); controls.target.copy(tgt0); controls.update(); SET.dirty = true; assign();
+  const px = renderer.getDrawingBufferSize(new THREE.Vector2());
+  $('profileOut').innerHTML = `<div style="grid-column:1/-1;color:#6d7a85">${px.x} × ${px.y} px drawn (${(px.x * px.y / 1e6).toFixed(1)} MP), pixel ratio ${devicePixelRatio}, ${AA ? 'multisampled' : 'no multisampling'}, ${renderer.capabilities.isWebGL2 ? 'WebGL2' : 'WebGL1'}</div>` + out.map(([n, f]) => `<div><b>${f} fps</b> ${n}</div>`).join('');
 });
 $('show').addEventListener('change', e => { SET.show = e.target.value; SET.dirty = true; });
 $('atlasOn').addEventListener('change', e => { $('atlas').style.display = e.target.checked ? 'block' : 'none'; if (e.target.checked) drawAtlas(); });
