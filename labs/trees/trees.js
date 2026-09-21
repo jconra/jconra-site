@@ -44,6 +44,7 @@ async function loadSpecies() {
     const root = gltf.scene; root.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(root), size = box.getSize(new THREE.Vector3());
     sp.unit = sp.height / size.y;                       // model units -> metres
+    sp.baseY = box.min.y;                               // the tree's lowest point is not its origin: lift so it stands on the ground
     sp.root = root;
     root.traverse(o => { if (o.isMesh) { o.material.side = THREE.DoubleSide; if (o.material.map) o.material.map.anisotropy = 4; if (o.material.alphaTest === 0 && o.material.transparent) { o.material.alphaTest = 0.5; o.material.transparent = false; } } });
     applyEdges(root);
@@ -88,7 +89,7 @@ function buildDraws() {
     const geo = new THREE.InstancedBufferGeometry();
     const quad = new THREE.PlaneGeometry(1, 1); geo.index = quad.index; geo.setAttribute('position', quad.attributes.position); geo.setAttribute('uv', quad.attributes.uv);
     const n = mine.length, pos = new Float32Array(n * 3), yaw = new Float32Array(n), scl = new Float32Array(n), tint = new Float32Array(n * 3), fade = new Float32Array(n);
-    mine.forEach((t, i) => { pos.set(t.pos.toArray(), i * 3); yaw[i] = t.yaw; scl[i] = t.scale * sp.unit; tint.set([t.tint.r, t.tint.g, t.tint.b], i * 3); fade[i] = 1; });
+    mine.forEach((t, i) => { pos.set([t.pos.x, t.pos.y - sp.baseY * t.scale * sp.unit, t.pos.z], i * 3); yaw[i] = t.yaw; scl[i] = t.scale * sp.unit; tint.set([t.tint.r, t.tint.g, t.tint.b], i * 3); fade[i] = 1; });
     geo.setAttribute('iPos', new THREE.InstancedBufferAttribute(pos, 3)); geo.setAttribute('iYaw', new THREE.InstancedBufferAttribute(yaw, 1));
     geo.setAttribute('iScale', new THREE.InstancedBufferAttribute(scl, 1)); geo.setAttribute('iTint', new THREE.InstancedBufferAttribute(tint, 3));
     const fadeAttr = new THREE.InstancedBufferAttribute(fade, 1); fadeAttr.setUsage(THREE.DynamicDrawUsage); geo.setAttribute('iFade', fadeAttr);
@@ -136,7 +137,7 @@ function assign() {
     fadeAttr.needsUpdate = true;
     imposter.visible = SET.show !== 'meshes';
     near.forEach(([t, f], k) => {
-      tmpQ.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.yaw); tmpS.setScalar(t.scale * sp.unit); tmpP.copy(t.pos);
+      tmpQ.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.yaw); tmpS.setScalar(t.scale * sp.unit); tmpP.copy(t.pos); tmpP.y -= sp.baseY * t.scale * sp.unit;
       tmpM.compose(tmpP, tmpQ, tmpS);
       for (const m of meshes) { m.setMatrixAt(k, tmpM.clone().multiply(m.userData.local)); m.userData.fade.array[k] = f; }
     });
