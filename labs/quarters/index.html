@@ -41,6 +41,8 @@
                 padding:12px 18px; background:rgba(4,8,12,.72); border:1px solid rgba(53,224,125,.45); border-radius:6px; text-align:center;
                 opacity:0; transition:opacity .35s; }
   #mapCaption.on { opacity:1; }
+  #flash { position:fixed; inset:0; z-index:5; pointer-events:none; opacity:0;
+           background:radial-gradient(ellipse at 50% 60%, #fff4d6 0%, #ffb347 30%, #ff5a1f 60%, #6b1400 100%); }
   #mapCaption b { display:block; font:400 17px nasa, ui-sans-serif, sans-serif; letter-spacing:.08em; color:#35e07d; margin-bottom:4px; }
   #mapCaption span { font:14px/1.45 ui-sans-serif, system-ui, sans-serif; color:#e8f1f5; }
   #hud { position:fixed; top:36px; left:16px; z-index:6; pointer-events:none;
@@ -56,6 +58,7 @@
 <a id="back" href="../">&larr; labs</a>
 <div id="hud"></div>
 <div id="mapCaption"><b></b><span></span></div>
+<div id="flash"></div>
 <div id="panel">
   <h1>Quarters Lab <button id="min" type="button">hide</button></h1>
   <div class="body">

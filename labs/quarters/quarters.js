@@ -489,6 +489,11 @@ const KEYS = [
   { t: 61.5,  set: 'map', cam: [33, 83, 380],   look: [33, 83, 0] },
   { t: 74.0,  set: 'map', cam: [30, 80, 330],   look: [25, 88, 0] },
   { t: 77.0,  set: 'map', cam: [34, 78, 320],   look: [25, 88, 0] },
+  // RE-ENTRY. The fighter noses down and dives at the country; the camera falls in behind it. Fire
+  // builds around the nose and washes the frame out; as it clears, clouds pop into being all round.
+  { t: 78.5,  set: 'map', cam: { at: 'chase', back: 70, up: 24, side: 10 }, look: 'ship' },
+  { t: 82.0,  set: 'map', cam: { at: 'chase', back: 40, up: 12, side: 0 },  look: 'ship' },
+  { t: 88.0,  set: 'map', cam: { at: 'chase', back: 42, up: 14, side: -6 }, look: 'ship' },
 ];
 const ACTS = { wave: 1.9, stand: 8.2, walk: 10.0, walkSpeed: 1.1, walkDir: 35 };   // seconds; m/s; degrees from +z toward +x
 // in the hangar: when he starts walking in, where from (metres beside the fighter's spot, the
@@ -509,7 +514,11 @@ const TOUR = [
   { id: 'MS', t: 69.0, title: 'Mississippi', text: '2 years at Keesler AFB teaching Cyberspace Warfare Operations: Windows, Linux and Python.' },
   { id: 'WA', t: 71.4, title: 'Washington',  text: '7 years AWS Systems Engineer for filesystems (EFS, FSx). Helicopter pilot, 176 hours.' },
 ];
-const MAP = { glow: 59.6, tourEnd: 74.0, shipIn: 58.0, shipAt: 64.0 };
+const MAP = { glow: 59.6, tourEnd: 74.0, shipIn: 58.0, shipAt: 64.0,
+  dive: 77.0, diveEnd: 81.6,             // the fighter noses down and races for the cloud bank
+  target: [-201, 113, 4],                // where it goes in: the big swirl of cloud off the West Coast, in the picture's units
+  fire: 78.6, flash: 81.4, clear: 83.6,  // the glow builds, peaks white, and clears
+  clouds: 81.6, cloudsIn: 2.4 };          // clouds pop in over this many seconds from here
 const HANGAR = { walk: 33.0, from: [0.3, 0, -8.2], to: [0.3, 0, -2.4], speed: 1.1, sit: 39.0, canopy: 39.4, canopyLen: 2.4, roll: 42.5, accel: 2.5 };
 // The greeting comes in parts: each is its own hologram over his head, which forms, holds, and
 // dissolves again as the next one forms.
@@ -556,7 +565,36 @@ function buildMapSet(parts) {
   const floor = new THREE.Group(); floor.position.copy(MAP_AT); floor.visible = false; scene.add(floor);
   const pic = new THREE.Mesh(new THREE.PlaneGeometry(833, 827), picture.material); floor.add(pic);
   const F = parts.ship1, ship = new THREE.Mesh(F.geometry, F.material); ship.scale.setScalar(26 / F.size.x); floor.add(ship);
-  mapSet = { floor, pic, ship, map: null };
+  // re-entry fire: a soft orange glow on the nose, drawn once on a canvas
+  const glowCanvas = document.createElement('canvas'); glowCanvas.width = glowCanvas.height = 128;
+  { const g = glowCanvas.getContext('2d'), r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    r.addColorStop(0, 'rgba(255,250,230,1)'); r.addColorStop(0.25, 'rgba(255,190,90,0.9)'); r.addColorStop(0.6, 'rgba(255,90,30,0.35)'); r.addColorStop(1, 'rgba(255,60,20,0)');
+    g.fillStyle = r; g.fillRect(0, 0, 128, 128); }
+  // (planes turned to the camera, not sprites: a sprite's depth does not agree with the post-processing's, and it whited out the fighter)
+  const plume = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(glowCanvas), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
+  plume.scale.setScalar(0.01); floor.add(plume);
+  // sparks: points streaming back off the nose while the fire is on
+  const nSparks = 220, sparkPos = new Float32Array(nSparks * 3), sparkSeed = new Float32Array(nSparks * 4);
+  for (let i = 0; i < nSparks; i++) { sparkSeed[i * 4] = Math.random(); sparkSeed[i * 4 + 1] = Math.random() - 0.5; sparkSeed[i * 4 + 2] = Math.random() - 0.5; sparkSeed[i * 4 + 3] = 0.6 + Math.random() * 0.8; }
+  const dot = document.createElement('canvas'); dot.width = dot.height = 32;
+  { const g = dot.getContext('2d'), r = g.createRadialGradient(16, 16, 0, 16, 16, 16); r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.35, 'rgba(255,220,160,0.8)'); r.addColorStop(1, 'rgba(255,160,60,0)'); g.fillStyle = r; g.fillRect(0, 0, 32, 32); }
+  const sparks = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(sparkPos, 3)),
+    new THREE.PointsMaterial({ color: 0xffc27a, map: new THREE.CanvasTexture(dot), size: 0.7, sizeAttenuation: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+  sparks.userData.seed = sparkSeed; sparks.frustumCulled = false; floor.add(sparks);
+  // clouds: white puffs on sprites, scattered about the fighter's way down, each popping in at its own moment
+  const cloudCanvas = document.createElement('canvas'); cloudCanvas.width = cloudCanvas.height = 256;
+  { const g = cloudCanvas.getContext('2d'); let seed = 5; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    for (let i = 0; i < 26; i++) { const x = 60 + rnd() * 136, y = 90 + rnd() * 90, r = 22 + rnd() * 34, k = g.createRadialGradient(x, y, 0, x, y, r);
+      k.addColorStop(0, 'rgba(255,255,255,0.95)'); k.addColorStop(0.55, 'rgba(240,244,250,0.55)'); k.addColorStop(1, 'rgba(230,236,245,0)'); g.fillStyle = k; g.fillRect(0, 0, 256, 256); } }
+  const cloudTex = new THREE.CanvasTexture(cloudCanvas), clouds = [];
+  { let seed = 11; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    for (let i = 0; i < 46; i++) {
+      const c = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: cloudTex, transparent: true, depthWrite: false, opacity: 0.92 }));
+      // spread around where the dive ends, all below the chase camera's height so they are in front of it
+      c.userData = { at: new THREE.Vector3(MAP.target[0] + (rnd() - 0.5) * 260, MAP.target[1] + (rnd() - 0.5) * 200, 2 + rnd() * 24), size: 24 + rnd() * 44, when: rnd() };
+      c.position.copy(c.userData.at); c.visible = false; floor.add(c); clouds.push(c);
+    } }
+  mapSet = { floor, pic, ship, plume, sparks, clouds, map: null };
   loadUSMap('../map/us.svg').then(map => { mapSet.map = map; pic.add(map.group); }).catch(e => console.error(e));
 }
 function stepMap(T, a, b, u, set = 'map') {
@@ -565,8 +603,38 @@ function stepMap(T, a, b, u, set = 'map') {
   const w = THREE.MathUtils.smoothstep(T, MAP.shipIn, MAP.shipAt);
   const from = new THREE.Vector3(-420, 330, 260), to = new THREE.Vector3(20, 110, 60);
   MS.ship.position.lerpVectors(from, to, w).add(new THREE.Vector3(0, Math.sin(T * 0.8) * 3, 0));
-  const dir = to.clone().sub(from).normalize(); MS.ship.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir);
-  MS.ship.rotation.x = THREE.MathUtils.degToRad(FLY.roll);
+  let dir = to.clone().sub(from).normalize();
+  // the dive: it noses down and drops toward the ground, shaking as the air bites
+  const d = THREE.MathUtils.smoothstep(T, MAP.dive, MAP.diveEnd);
+  if (d > 0) {
+    const down = new THREE.Vector3(...MAP.target);
+    MS.ship.position.lerp(down, d);
+    dir = dir.clone().lerp(down.clone().sub(to).normalize(), d).normalize();
+    const shake = THREE.MathUtils.smoothstep(T, MAP.fire, MAP.flash) * (1 - THREE.MathUtils.smoothstep(T, MAP.flash, MAP.clear));
+    MS.ship.position.add(new THREE.Vector3(Math.sin(T * 61) , Math.cos(T * 47), Math.sin(T * 53)).multiplyScalar(0.6 * shake));
+  }
+  MS.ship.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir);
+  MS.ship.rotateX(THREE.MathUtils.degToRad(FLY.roll));
+  // fire on the nose, and the wash-out over the frame
+  const fire = THREE.MathUtils.smoothstep(T, MAP.fire, MAP.flash) * (1 - THREE.MathUtils.smoothstep(T, MAP.flash, MAP.clear));
+  MS.plume.position.copy(MS.ship.position).addScaledVector(dir, 10);
+  MS.plume.scale.setScalar(4 + 70 * fire); MS.plume.material.opacity = fire; MS.plume.quaternion.copy(camera.quaternion);
+  $('flash').style.opacity = Math.pow(fire, 1.6).toFixed(3);
+  // sparks stream back from the nose, each on its own little track, and fade with the fire
+  { const P = MS.sparks.geometry.attributes.position, sd = MS.sparks.userData.seed, nose = MS.ship.position.clone().addScaledVector(dir, 10);
+    const side = dir.clone().cross(new THREE.Vector3(0, 0, 1)).normalize(), upv = side.clone().cross(dir);
+    for (let i = 0; i < P.count; i++) {
+      const back = ((T * 9 * sd[i * 4 + 3] + sd[i * 4] * 40) % 40), spread = back * 0.35;
+      const q = nose.clone().addScaledVector(dir, -back).addScaledVector(side, sd[i * 4 + 1] * spread * 2).addScaledVector(upv, sd[i * 4 + 2] * spread * 2);
+      P.setXYZ(i, q.x, q.y, q.z);
+    }
+    P.needsUpdate = true; MS.sparks.material.opacity = fire; }
+  // clouds pop in as the fire clears, each at its own moment, growing with a little overshoot
+  for (const c of MS.clouds) {
+    const k = (T - MAP.clouds - c.userData.when * MAP.cloudsIn) / 0.5;
+    c.visible = k > 0;
+    if (c.visible) { const e = k >= 1 ? 1 : 1 - Math.pow(1 - Math.min(1, k), 3) * Math.cos(Math.min(1, k) * 4); c.scale.setScalar(c.userData.size * Math.max(0.01, e)); c.quaternion.copy(camera.quaternion); }
+  }
   if (MS.map) {
     MS.map.glow(THREE.MathUtils.smoothstep(T, MAP.glow, MAP.glow + 1.4));
     // the story: the current state, unless one is being poked at
@@ -724,7 +792,8 @@ const lookPoint = (l, set) => {
   if (l === 'station') return STATION_AT.clone().add(new THREE.Vector3(0, 300, 0));
   if (l === 'hangar') return hangarAt ? hangarAt.clone() : STATION_AT.clone().add(new THREE.Vector3(0, 240, 740));
   if (l === 'bay') return bayAt ? bayAt.clone() : lookPoint('hangar', set);          // the fighter on the hangar's deck
-  if (l === 'ship') return hangarSet ? hangarSet.ship.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 1.2, 0)) : HANGAR_AT.clone();
+  if (l === 'ship') return set === 'map' ? (mapSet ? mapSet.ship.getWorldPosition(new THREE.Vector3()) : MAP_AT.clone())
+                           : hangarSet ? hangarSet.ship.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 1.2, 0)) : HANGAR_AT.clone();
   if (l === 'cockpit') return hangarSet ? hangarSet.ship.localToWorld(hangarSet.seat.clone().add(new THREE.Vector3(0, 0.7, 0))) : HANGAR_AT.clone();
   const p = new THREE.Vector3(...l); return set === 'station' ? p.add(STATION_AT) : set === 'hangar' ? p.add(HANGAR_AT) : set === 'map' ? p.add(MAP_AT) : p;
 };
@@ -746,6 +815,11 @@ function keysAround(T) {
 function camOf(key) {
   const c = key.cam;
   if (Array.isArray(c)) return new THREE.Vector3(...c);
+  if (setOf(key) === 'map' && c.at === 'chase') {   // behind the fighter over the map, along the way it is going
+    if (!mapSet) return new THREE.Vector3();
+    const dir = new THREE.Vector3(1, 0, 0).applyQuaternion(mapSet.ship.quaternion), right = dir.clone().cross(new THREE.Vector3(0, 0, 1)).normalize();
+    return mapSet.ship.position.clone().addScaledVector(dir, -(c.back || 0)).add(new THREE.Vector3(0, 0, c.up || 0)).addScaledVector(right, c.side || 0);
+  }
   if (setOf(key) === 'hangar') {          // relative to the human-scale hangar's mouth, or chasing the fighter, in the set's own metres
     if (c.at === 'chase') return (hangarSet ? hangarSet.ship.position.clone() : new THREE.Vector3()).add(new THREE.Vector3(-(c.back || 0), c.up || 0, -(c.side || 0)));
     const mouth = hangarSet ? hangarSet.mouth.clone() : new THREE.Vector3();
