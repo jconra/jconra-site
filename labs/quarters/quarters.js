@@ -695,10 +695,13 @@ function stepMap(T, a, b, u, set = 'map') {
 // another over a span of seconds; each craft points along its path and is only there while it
 // is on it.
 const FLYBYS = [
-  { part: 'freighter', size: 260, from: [2600, 520, -3200], to: [-3400, 380, -1400], t0: 15.5, t1: 27.0 },
+  // the freighter crosses slowly in the FOREGROUND, right to left, while the camera is wide
+  { part: 'freighter', size: 260, inView: true, from: { fwd: 950, right: 780, up: 220 }, to: { fwd: 1150, right: -900, up: 60 }, t0: 17.0, t1: 26.8 },
   // the pair's path is set against the camera's own view at its start and end - metres ahead, to
   // the right and up from where the camera is and looks at that moment - so it crosses the frame
-  { part: 'ship1', size: 50, from: { fwd: 520, right: 700, up: 160 }, to: { fwd: 560, right: -780, up: -60 }, t0: 22.8, t1: 27.0, wing: [0, 14, 44] },
+  // the pair's path is given in the camera's view the whole way (`inView`), not just at its ends,
+  // so however the camera pans they cross the frame over the four seconds, right to left
+  { part: 'ship1', size: 50, inView: true, from: { fwd: 700, right: 620, up: 130 }, to: { fwd: 640, right: -640, up: -50 }, t0: 23.0, t1: 27.4, wing: [0, 14, 44] },
 ];
 // a point given against the camera's view at time t, in the station's metres
 function viewPoint(t, { fwd, right, up }) {
@@ -720,19 +723,27 @@ function buildTraffic(parts) {
       group.add(m);
     }
     // pointed along the path: the parts lie along +x
-    const from = Array.isArray(f.from) ? new THREE.Vector3(...f.from) : viewPoint(f.t0, f.from);
-    const to = Array.isArray(f.to) ? new THREE.Vector3(...f.to) : viewPoint(f.t1, f.to), dir = to.clone().sub(from).normalize();
+    const from = Array.isArray(f.from) ? new THREE.Vector3(...f.from) : f.inView ? new THREE.Vector3() : viewPoint(f.t0, f.from);
+    const to = Array.isArray(f.to) ? new THREE.Vector3(...f.to) : f.inView ? new THREE.Vector3(1, 0, 0) : viewPoint(f.t1, f.to), dir = to.clone().sub(from).normalize();
     group.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir);
     group.visible = false;
     station.add(group);
-    traffic.push({ ...f, group, from, to });
+    traffic.push({ ...f, group, from, to, spec: f });
   }
 }
 function stepTraffic(T) {
   for (const f of traffic) {
     const u = (T - f.t0) / (f.t1 - f.t0);
     f.group.visible = u > -0.02 && u < 1.02;
-    if (f.group.visible) f.group.position.lerpVectors(f.from, f.to, u);
+    if (!f.group.visible) continue;
+    if (f.inView) {
+      // placed in the camera's view now, and pointed the way it is going a moment later
+      const A = f.spec.from, B = f.spec.to;
+      const at = (t) => { const w = (t - f.t0) / (f.t1 - f.t0); return viewPoint(t, { fwd: A.fwd + (B.fwd - A.fwd) * w, right: A.right + (B.right - A.right) * w, up: A.up + (B.up - A.up) * w }); };
+      const p0 = at(T), p1 = at(T + 0.05);
+      f.group.position.copy(p0);
+      f.group.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), p1.sub(p0).normalize());
+    } else f.group.position.lerpVectors(f.from, f.to, u);
   }
 }
 // The hangar the camera turns to is the one on the RIGHT of the wide shot (the last key that looks
