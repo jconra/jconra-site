@@ -71,7 +71,13 @@ export function buildHangarSet(parts, { shipLength = 6, bayLength = 0.2, along =
     // the seat inside the cockpit (ship1's seat piece measured in Blender), in the ship group's metres
     seat: new THREE.Vector3(-0.08 * fu, (0.12 - F.box.min.y) * fu, 0),
     // the canopy from open (0) to shut (1)
-    setCanopy(closed, deg = SHIP1_CANOPY.closeDeg) { canopyMesh.rotation.z = THREE.MathUtils.degToRad(deg) * THREE.MathUtils.clamp(closed, 0, 1); },
+    // shut = 1: turned down by `deg`, and let down by `drop` metres and slid by `slide` metres (nose
+    // is +) on top of the turn, so the rim can be seated on the sill and not just swung near it
+    setCanopy(closed, deg = SHIP1_CANOPY.closeDeg, drop = 0, slide = 0) {
+      const k = THREE.MathUtils.clamp(closed, 0, 1);
+      canopyMesh.rotation.z = THREE.MathUtils.degToRad(deg) * k;
+      canopyMesh.position.set(SHIP1_CANOPY.hinge.x + (slide / fu) * k, SHIP1_CANOPY.hinge.y - (drop / fu) * k, 0);
+    },
   };
 }
 

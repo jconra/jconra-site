@@ -560,7 +560,7 @@ const MAP = { glow: 59.6, tourEnd: 74.0, shipIn: 58.0, shipAt: 64.0,
 const HANGAR = { walk: 33.0, from: [0.3, 0, -9.4], to: [0.3, 0, -2.4], speed: 1.15, sit: 39.0, canopy: 39.4, canopyLen: 2.4, roll: 42.5, accel: 2.5,
   // the fit in the seat: how far down from the measured seat pan he sits, how far back, and how far
   // he reclines (degrees); and how far the canopy turns to shut
-  seatDown: 0.17, seatBack: 0, recline: 24, canopyDeg: -50 };
+  seatDown: 0.17, seatBack: 0, recline: 24, canopyDeg: -50, canopyDrop: 0.05, canopySlide: 0.02 };   // canopyDrop / canopySlide: metres the shut canopy is let down / slid toward the nose
 // The greeting comes in parts: each is its own hologram over his head, which forms, holds, and
 // dissolves again as the next one forms.
 const PARTS = [
@@ -1007,7 +1007,7 @@ function seek(T) {
 function stepHangar(T, a, b, u, set = 'hangar') {
   const HS = hangarSet; if (!HS) return;
   const seated = T >= HANGAR.sit;
-  HS.setCanopy((T - HANGAR.canopy) / HANGAR.canopyLen, HANGAR.canopyDeg);
+  HS.setCanopy((T - HANGAR.canopy) / HANGAR.canopyLen, HANGAR.canopyDeg, HANGAR.canopyDrop, HANGAR.canopySlide);
   const roll = Math.max(0, T - HANGAR.roll);
   HS.ship.position.set(0.5 * HANGAR.accel * roll * roll, 0, 0);
   if (twin) for (const sp of twin.spinners) sp.turntable.rotation.y = sp.sign * (Math.PI * 2 / StationKit.period(sp.radius)) * T;   // the station outside keeps turning
@@ -1453,6 +1453,8 @@ const SLIDERS = {
   seatDown:   [v => { HANGAR.seatDown = v / 100; reseat(); }, v => v + ' cm'],
   seatRecline:[v => { HANGAR.recline = v; reseat(); }, v => v + '°'],
   canopyDeg:  [v => { HANGAR.canopyDeg = v; reseat(); }, v => v + '°'],
+  canopyDrop: [v => { HANGAR.canopyDrop = v / 100; reseat(); }, v => v + ' cm'],
+  canopySlide:[v => { HANGAR.canopySlide = v / 100; reseat(); }, v => v + ' cm'],
   screenW:    [v => { fitOf(screenPick).w = v; applyScreenFit(); }, v => v + ' cm'],
   screenH:    [v => { fitOf(screenPick).h = v; applyScreenFit(); }, v => v + ' cm'],
   screenX:    [v => { fitOf(screenPick).x = v; applyScreenFit(); }, v => v + ' cm'],
@@ -1538,7 +1540,7 @@ for (const [id, fn] of Object.entries(CHECKS)) { $(id).addEventListener('change'
 $('min').onclick = () => { $('panel').classList.toggle('min'); $('min').textContent = $('panel').classList.contains('min') ? 'show' : 'hide'; };
 $('copy').onclick = () => {
   const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, helmet: (({ show, ...h }) => h)(HELMET),
-    fighter: { seatForwardCm: Math.round(-HANGAR.seatBack * 100), seatDownCm: Math.round(HANGAR.seatDown * 100), recline: HANGAR.recline, canopyDeg: HANGAR.canopyDeg }, props: PROPS.map(({ obj, ...p }) => p), screens: SCREEN_FIT[build] || [], intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) }, earth: { ...EARTH },
+    fighter: { seatForwardCm: Math.round(-HANGAR.seatBack * 100), seatDownCm: Math.round(HANGAR.seatDown * 100), recline: HANGAR.recline, canopyDeg: HANGAR.canopyDeg, canopyDropCm: Math.round(HANGAR.canopyDrop * 100), canopySlideCm: Math.round(HANGAR.canopySlide * 100) }, props: PROPS.map(({ obj, ...p }) => p), screens: SCREEN_FIT[build] || [], intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) }, earth: { ...EARTH },
     light: { cabin: cabin.intensity, screens: screens.intensity, sun: sun.intensity, ambient: ambient.intensity, exposure: renderer.toneMappingExposure },
     openWindows: $('openWindows').checked };
   $('out').style.display = 'block'; $('out').value = JSON.stringify(out, null, 2); $('out').select();
