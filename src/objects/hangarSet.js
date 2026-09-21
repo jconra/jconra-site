@@ -6,11 +6,14 @@
 // on the deck, deck at y = 0, the mouth toward +x.
 import * as THREE from 'three';
 import { BAYS, PARKED } from './stationKit.js';
+import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 
-// The open canopy of ship1 is welded to its hull. It is picked out by a box (everything above the
-// cockpit sill, between the nose and the fin) in the part's own units after the kit's turn to +x,
-// and hinged at its rear edge. Measured in Blender, 2026-09-20.
-const SHIP1_CANOPY = { xMin: -0.13, xMax: 0.21, yMin: 0.215, hinge: { x: -0.10, y: 0.215 }, closeDeg: -40 };
+// The open canopy of ship1 is welded to its hull. It is picked out by a WEDGE in the part's own
+// units after the kit's turn to +x: everything above a line rising from the hinge toward the nose
+// at `slopeDeg` (the open canopy tilts up at about 42 degrees, the hull's sill and roll bar under
+// it do not), between the hinge and the nose end of the canopy. A plain box took some of the hull
+// with it, which tore when the canopy swung. Measured in Blender, 2026-09-20.
+const SHIP1_CANOPY = { xMin: -0.115, xMax: 0.21, hinge: { x: -0.10, y: 0.215 }, slopeDeg: 30, closeDeg: -50 };
 
 export function buildHangarSet(parts, { shipLength = 6, bayLength = 0.2, along = 0.45, hangarKind = 'hangar2', fighterKind = 'ship1' } = {}) {
   const H = parts[hangarKind], F = parts[fighterKind], bay = BAYS[hangarKind];
@@ -31,6 +34,17 @@ export function buildHangarSet(parts, { shipLength = 6, bayLength = 0.2, along =
   const hullMesh = new THREE.Mesh(hull, F.material); hullMesh.castShadow = hullMesh.receiveShadow = true;
   const canopyMesh = new THREE.Mesh(canopy, F.material); canopyMesh.castShadow = true;
   canopyMesh.position.set(SHIP1_CANOPY.hinge.x, SHIP1_CANOPY.hinge.y, 0);
+  // The part came with the canopy's frame only - its glass did not survive the export - so a
+  // shut canopy read as open. The glass is the frame's convex shell: a dark tinted blister
+  // stretched over the rails, in the canopy's own frame so it swings with it.
+  {
+    const pos = canopy.attributes.position, pts = [];
+    for (let i = 0; i < pos.count; i += 2) pts.push(new THREE.Vector3().fromBufferAttribute(pos, i));
+    const glass = new THREE.Mesh(new ConvexGeometry(pts), new THREE.MeshPhysicalMaterial({
+      color: 0x223a52, metalness: 0.1, roughness: 0.08, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false, envMapIntensity: 1.2 }));
+    glass.name = 'CanopyGlass'; glass.renderOrder = 2;
+    canopyMesh.add(glass);
+  }
   const body = new THREE.Group(); body.scale.setScalar(fu); body.position.y = -F.box.min.y * fu;
   body.add(hullMesh); body.add(canopyMesh);
   ship.add(body);
@@ -71,7 +85,8 @@ function splitCanopy(geometry, box) {
   for (let i = 0; i < pos.count; i += 3) {
     a.fromBufferAttribute(pos, i); b.fromBufferAttribute(pos, i + 1); c.fromBufferAttribute(pos, i + 2);
     const cx = (a.x + b.x + c.x) / 3, cy = (a.y + b.y + c.y) / 3;
-    (cx > box.xMin && cx < box.xMax && cy > box.yMin ? inIdx : outIdx).push(i, i + 1, i + 2);
+    const floor = box.hinge.y + Math.max(0, cx - box.hinge.x) * Math.tan(THREE.MathUtils.degToRad(box.slopeDeg));
+    (cx > box.xMin && cx < box.xMax && cy > floor ? inIdx : outIdx).push(i, i + 1, i + 2);
   }
   const pick = (idx, dx, dy) => {
     const out = new THREE.BufferGeometry();
