@@ -85,6 +85,7 @@ function buildDraws() {
   for (const sp of SPECIES) {
     const mine = forest.filter(t => t.sp === sp); sp.trees = mine;
     if (!mine.length) continue;
+    sp.root.updateMatrixWorld(true);
     // imposters
     const geo = new THREE.InstancedBufferGeometry();
     const quad = new THREE.PlaneGeometry(1, 1); geo.index = quad.index; geo.setAttribute('position', quad.attributes.position); geo.setAttribute('uv', quad.attributes.uv);

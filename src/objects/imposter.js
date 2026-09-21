@@ -69,6 +69,7 @@ export function bakeImposter(renderer, object, { grid = 12, cell = 128, hemi = t
   renderer.setScissorTest(oldScissor); renderer.setRenderTarget(oldTarget); renderer.setClearColor(oldClear, oldAlpha);
   renderer.setViewport(0, 0, renderer.domElement.width, renderer.domElement.height);
   holder.remove(object); if (parent) parent.add(object);
+  object.updateMatrixWorld(true);          // the meshes' world matrices carried the holder's offset: refreshed, or anything placed by them stands half a tree low
   return { colour: colourRT.texture, normal: normalRT.texture, radius, centre, grid, hemi, cell };
 }
 
