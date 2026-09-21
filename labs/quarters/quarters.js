@@ -110,14 +110,20 @@ post.setSize(innerWidth, innerHeight);
 const room = new THREE.Group();
 scene.add(room);
 let windows = null, chairPivot = null, props = [];
-const CHAIR = { swivel: true, speed: 12, angle: 0, x: 0, y: 0, z: 0 };   // x, y, z: nudges in cm from where the chair stands
+const CHAIR = { swivel: true, speed: 12, angle: 0, x: 25, y: 0, z: -55, height: 100 };   // x, z: where Jacob slid it (2026-09-20)   // x, y, z: nudges in cm from where the chair stands; height: the seat, % (the chair squashed or stretched on its base)
 let chairBase = null;
-function placeChair() { if (chairPivot && chairBase) chairPivot.position.copy(chairBase).add(new THREE.Vector3(CHAIR.x / 100, CHAIR.y / 100, CHAIR.z / 100)); }
+function placeChair() {
+  if (!chairPivot || !chairBase) return;
+  chairPivot.position.copy(chairBase).add(new THREE.Vector3(CHAIR.x / 100, CHAIR.y / 100, CHAIR.z / 100));
+  // the seat height: the chair scaled up or down its own axis, castors staying on the floor
+  const scaler = chairPivot.getObjectByName('ChairScaler');
+  if (scaler && Math.abs(scaler.scale.y - CHAIR.height / 100) > 1e-6) { scaler.scale.y = CHAIR.height / 100; chairInfo = null; placeSitter(); }
+}
 // The chair's base is set down on the floor under it: the model can carry it a little high, and a
 // chair on castors that float is the first thing anyone sees.
 function dropChair() {
   if (!chairPivot || !chairBase) return;
-  const chair = chairPivot.children.find(c => c.isMesh); if (!chair) return;
+  const chair = chairMesh(); if (!chair) return;
   const targets = []; room.traverse(o => { if (o.isMesh && o !== chair && o.name !== 'Roof' && o.name !== 'RoofLid') targets.push(o); });
   const ray = new THREE.Raycaster(chairBase.clone().add(new THREE.Vector3(0, 0.3, 0)), new THREE.Vector3(0, -1, 0)); ray.far = 2;
   const hit = ray.intersectObjects(targets, true).find(h => h.face && h.point.y <= chairBase.y + 0.05);
@@ -281,7 +287,10 @@ function loadRoom(name) {
       room.add(chairPivot);
       chairPivot.position.copy(axis);
       chairPivot.updateMatrixWorld(true);
-      chairPivot.attach(o);
+      // the chair hangs in a holder of its own under the pivot, so it can be scaled on its base
+      // (the seat height) without scaling him with it
+      const scaler = new THREE.Group(); scaler.name = 'ChairScaler'; chairPivot.add(scaler); scaler.updateMatrixWorld(true);
+      scaler.attach(o);
       chairBase = axis.clone(); dropChair(); placeChair();
     } else props.push(o);
   }
@@ -292,7 +301,7 @@ function loadRoom(name) {
   placeSitter();
   $('boot')?.remove();
   bootProgress('cabin', 1); loadSitter(); loadStation();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; if (e.total) bootProgress('cabin', e.loaded / e.total); },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -368,7 +377,7 @@ let sitter = null, sitterMixer = null, sitterLoading = false, sitAction = null, 
 function loadSitter() {
   if (sitter || sitterLoading) return;
   sitterLoading = true;
-  loader.load('../../models/jacob5.glb', (gltf) => {
+  loader.load('../../models/jacob4.glb', (gltf) => {                  // model 4: Jacob's own Blender build
     bootProgress('jacob', 1);
     const model = gltf.scene;
     model.traverse(o => {
@@ -421,8 +430,9 @@ function loadSitter() {
 // the busiest horizontal slice of the chair's lower half, the backrest is what stands well above
 // it, and back-to-seat is the way the chair faces.
 let chairInfo = null;
+function chairMesh() { let m = null; if (chairPivot) chairPivot.traverse(o => { if (!m && o.isMesh && !o.isSkinnedMesh && !(sitter && sitter.getObjectById(o.id))) m = o; }); return m; }
 function measureChair() {
-  const chair = chairPivot && chairPivot.children.find(c => c.isMesh);
+  const chair = chairMesh();
   if (!chair) return null;
   chairPivot.updateMatrixWorld(true);
   const toLocal = new THREE.Matrix4().copy(chairPivot.matrixWorld).invert().multiply(chair.matrixWorld);
@@ -1387,6 +1397,7 @@ const SLIDERS = {
   chairAngle: [v => { CHAIR.angle = v; if (chairPivot && !CHAIR.swivel) chairPivot.rotation.y = THREE.MathUtils.degToRad(v); }, v => v + '°'],
   chairX:     [v => { CHAIR.x = v; placeChair(); }, v => v + ' cm'],
   chairY:     [v => { CHAIR.y = v; placeChair(); }, v => v + ' cm'],
+  chairHeight:[v => { CHAIR.height = v; placeChair(); }, v => v + '%'],
   screenW:    [v => { fitOf(screenPick).w = v; applyScreenFit(); }, v => v + ' cm'],
   screenH:    [v => { fitOf(screenPick).h = v; applyScreenFit(); }, v => v + ' cm'],
   screenX:    [v => { fitOf(screenPick).x = v; applyScreenFit(); }, v => v + ' cm'],
