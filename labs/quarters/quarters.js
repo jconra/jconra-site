@@ -1146,7 +1146,7 @@ function buildPropList() {
 const PROP_SETS = {
   Smart: [
     // Jacob's bass, leaning against the side of the desk's drawer unit, headstock up, facing the room
-    { name: 'bass', file: '../../models/props/bass.glb', x: 1.30, y: 0.45, z: -0.86, yaw: 180, lean: 11, height: 1.15 },
+    { name: 'bass', file: '../../models/props/bass.glb', x: -1.22, y: 1.79, z: -0.41, yaw: 74, lean: -2, height: 1.12 },   // where Jacob hung it (2026-09-20)
   ],
 };
 let PROPS = [];
