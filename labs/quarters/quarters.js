@@ -1083,7 +1083,7 @@ function wearHelmet() {
 }
 // HELMET FIT. Nudges on top of the measured fit: size (%), up/down and forward/back (cm, in his
 // frame), and tilt (degrees, positive nods the visor down). Set in the panel, baked from Copy settings.
-const HELMET = { show: false, size: 100, up: 0, forward: 0, tilt: 0, turn: 0, roll: 0 };   // turn: about the vertical, counter-clockwise seen from above; roll: about his facing, clockwise seen from the front
+const HELMET = { show: false, size: 100, up: 0, forward: 0, tilt: 0, turn: 45, roll: 0 };   // turn: about the vertical, counter-clockwise seen from above; roll: about his facing, clockwise seen from the front
 function applyHelmetFit() {
   if (!helmet || !helmet.userData.base) return;
   const B = helmet.userData.base, k = B.scale * HELMET.size / 100;
