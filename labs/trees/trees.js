@@ -13,16 +13,21 @@ const $ = (id) => document.getElementById(id);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const SKY = new THREE.Color(0x9ec9ec); scene.background = SKY; scene.fog = new THREE.Fog(SKY, 900, 3200);
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.5, 8000);
 camera.position.set(0, 40, 120);
 const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.target.set(0, 12, 0); controls.maxDistance = 3000;
-const sun = new THREE.DirectionalLight(0xfff4e0, 2.4); sun.position.set(300, 600, 200); scene.add(sun);
+const sun = new THREE.DirectionalLight(0xfff4e0, 2.4); sun.position.set(300, 600, 200); scene.add(sun); scene.add(sun.target);
+// the sun's shadow covers a square that follows the camera's target
+sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.6;
+{ const c = sun.shadow.camera; c.left = c.bottom = -400; c.right = c.top = 400; c.near = 10; c.far = 2500; }
+const SUN_OFF = new THREE.Vector3(300, 600, 200);
 const hemi = new THREE.HemisphereLight(0xbfe3ff, 0x466b3a, 1.0); scene.add(hemi);
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(12000, 12000), new THREE.MeshStandardMaterial({ color: 0x3f6b35, roughness: 1 }));
-ground.rotation.x = -Math.PI / 2; scene.add(ground);
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
 
 // ── the species: baked from ez-tree presets, scaled to a height in metres ──────────────
 const SPECIES = [
@@ -32,7 +37,7 @@ const SPECIES = [
   { name: 'pine',  file: '../../models/trees/pine.glb',  height: 22, weight: 1 },
   { name: 'bush',  file: '../../models/trees/bush.glb',  height: 5,  weight: 0.6 },
 ];
-const SET = { count: 4000, radius: 1400, imposterAt: 220, band: 60, grid: 12, cell: 128, hemi: true, blend: true, nearCap: 3000, show: 'both', detail: 'fine', a2c: true };
+const SET = { count: 4000, radius: 1400, imposterAt: 220, band: 60, grid: 12, cell: 128, hemi: true, blend: true, nearCap: 3000, show: 'both', detail: 'fine', a2c: true, depth: true, shadows: true, ss: false };
 let forest = [];                  // { pos, yaw, scale, tint, sp }
 const built = [];                 // per species: { bake, imposterMesh, meshes: [InstancedMesh...], fade: attribute }
 
@@ -112,14 +117,15 @@ function buildDraws() {
     geo.setAttribute('iScale', new THREE.InstancedBufferAttribute(scl, 1)); geo.setAttribute('iTint', new THREE.InstancedBufferAttribute(tint, 3));
     const fadeAttr = new THREE.InstancedBufferAttribute(fade, 1); fadeAttr.setUsage(THREE.DynamicDrawUsage); geo.setAttribute('iFade', fadeAttr);
     geo.instanceCount = n;
-    const mat = imposterMaterial(sp.bake, { sunDir: sun.position.clone(), blend: SET.blend });
+    const mat = imposterMaterial(sp.bake, { sunDir: SUN_OFF.clone(), blend: SET.blend, depth: SET.depth, shadows: SET.shadows });
     const imposter = new THREE.Mesh(geo, mat); imposter.frustumCulled = false; scene.add(imposter);
+    imposter.castShadow = SET.shadows; imposter.customDepthMaterial = mat.userData.depthMaterial;
     // meshes, instanced, with a dithered fade of their own
     const meshes = [];
     sp.root.traverse(o => {
       if (!o.isMesh) return;
       const m = new THREE.InstancedMesh(o.geometry, o.material.clone(), Math.min(SET.nearCap, n));
-      m.count = 0; m.frustumCulled = false;
+      m.count = 0; m.frustumCulled = false; m.castShadow = SET.shadows; m.receiveShadow = true;
       const mf = new THREE.InstancedBufferAttribute(new Float32Array(m.instanceMatrix.count), 1); mf.setUsage(THREE.DynamicDrawUsage);
       m.geometry = o.geometry.clone(); m.geometry.setAttribute('iFade', mf);
       m.material.onBeforeCompile = (sh) => {
@@ -181,7 +187,10 @@ for (const [id, [apply, fmt]] of Object.entries(SLIDERS)) {
 $('hemi').addEventListener('change', e => { SET.hemi = e.target.checked; bakeAll(buildDraws); });
 $('a2c').addEventListener('change', e => { SET.a2c = e.target.checked; for (const sp of SPECIES) applyEdges(sp.root); buildDraws(); });
 $('detail').addEventListener('change', async e => { SET.detail = e.target.value; $('boot').style.display = 'flex'; document.body.appendChild($('boot')); await loadSpecies(); buildDraws(); $('boot').style.display = 'none'; });   // the atlases come from the coarse tree either way
-$('blend').addEventListener('change', e => { SET.blend = e.target.checked; for (const b of built) b.imposter.material.uniforms.blend.value = SET.blend ? 1 : 0; });
+$('blend').addEventListener('change', e => { SET.blend = e.target.checked; for (const b of built) { b.imposter.material.uniforms.blend.value = SET.blend ? 1 : 0; b.imposter.material.userData.depthMaterial.uniforms.blend.value = SET.blend ? 1 : 0; } });
+$('depth').addEventListener('change', e => { SET.depth = e.target.checked; for (const b of built) { b.imposter.material.uniforms.useDepth.value = SET.depth ? 1 : 0; b.imposter.material.userData.depthMaterial.uniforms.useDepth.value = SET.depth ? 1 : 0; } });
+$('shadows').addEventListener('change', e => { SET.shadows = e.target.checked; sun.castShadow = SET.shadows; for (const b of built) { b.imposter.castShadow = SET.shadows; b.imposter.material.uniforms.useShadow.value = SET.shadows ? 1 : 0; for (const m of b.meshes) m.castShadow = SET.shadows; } });
+$('ss').addEventListener('change', e => { SET.ss = e.target.checked; renderer.setPixelRatio(SET.ss ? Math.min(devicePixelRatio * 2, 4) : Math.min(devicePixelRatio, 2)); });
 $('show').addEventListener('change', e => { SET.show = e.target.value; });
 $('atlasOn').addEventListener('change', e => { $('atlas').style.display = e.target.checked ? 'block' : 'none'; if (e.target.checked) drawAtlas(); });
 $('atlasSpecies').addEventListener('change', drawAtlas);
@@ -228,6 +237,7 @@ renderer.setAnimationLoop(() => {
   if (move.lengthSq()) { move.normalize().multiplyScalar(speed); camera.position.add(move); controls.target.add(move); }
   if (circling) { circleAt += dt * 0.25; const r = SET.imposterAt; controls.target.set(0, 10, 0); camera.position.set(Math.sin(circleAt) * r, 14, Math.cos(circleAt) * r); }
   controls.update();
+  sun.target.position.copy(controls.target); sun.position.copy(controls.target).add(SUN_OFF);   // the shadow square follows the view
   if (baking) baking.tick();
   if ((assignAt += raw) > 0.08 && built.length) { assignAt = 0; assign(); }
   renderer.render(scene, camera);

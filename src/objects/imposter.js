@@ -35,7 +35,9 @@ export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, he
   const box = new THREE.Box3().setFromObject(object), centre = box.getCenter(new THREE.Vector3());
   const radius = box.getSize(new THREE.Vector3()).length() / 2;
   const size = grid * cell;
-  const mk = () => new THREE.WebGLRenderTarget(size, size, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, depthBuffer: true, stencilBuffer: false });
+  // mipmaps keep far imposters from shimmering (a pre-filtered picture); WebGL1 needs a power-of-two edge for them
+  const mips = renderer.capabilities.isWebGL2 || (size & (size - 1)) === 0;
+  const mk = () => new THREE.WebGLRenderTarget(size, size, { minFilter: mips ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: mips, format: THREE.RGBAFormat, depthBuffer: true, stencilBuffer: false });
   const colourRT = mk(), normalRT = mk();
   const scene = new THREE.Scene();
   const holder = new THREE.Group(); holder.position.copy(centre).negate();    // the tree centred on the origin
@@ -46,11 +48,13 @@ export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, he
   const materials = new Map();
   object.traverse(o => { if (o.isMesh) materials.set(o, o.material); });
   const colourMat = (m) => { const c = new THREE.MeshBasicMaterial({ map: m.map || null, color: m.map ? 0xffffff : m.color, alphaTest: m.alphaTest || (m.transparent ? 0.5 : 0), side: THREE.DoubleSide }); if (m.map) c.map.colorSpace = m.map.colorSpace; return c; };
+  // the normal in the tree's frame, and in alpha the depth: 0 at the near face of the tree's sphere,
+  // 0.5 at its centre plane (where the quad is drawn), 1 at the far face
   const normalMat = (m) => new THREE.ShaderMaterial({
-    uniforms: { map: { value: m.map || null }, useMap: { value: m.map ? 1 : 0 }, alphaTest: { value: m.alphaTest || (m.transparent ? 0.5 : 0) } },
-    vertexShader: `varying vec3 vN; varying vec2 vUv; void main(){ vN = normalize(mat3(modelMatrix) * normal); vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: `uniform sampler2D map; uniform float useMap; uniform float alphaTest; varying vec3 vN; varying vec2 vUv;
-      void main(){ if (useMap > 0.5 && texture2D(map, vUv).a < alphaTest) discard; vec3 n = normalize(gl_FrontFacing ? vN : -vN); gl_FragColor = vec4(n * 0.5 + 0.5, 1.0); }`,
+    uniforms: { map: { value: m.map || null }, useMap: { value: m.map ? 1 : 0 }, alphaTest: { value: m.alphaTest || (m.transparent ? 0.5 : 0) }, radius: { value: radius } },
+    vertexShader: `varying vec3 vN; varying vec2 vUv; varying float vZ; void main(){ vN = normalize(mat3(modelMatrix) * normal); vUv = uv; vec4 mv = modelViewMatrix * vec4(position, 1.0); vZ = -mv.z; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform sampler2D map; uniform float useMap; uniform float alphaTest; uniform float radius; varying vec3 vN; varying vec2 vUv; varying float vZ;
+      void main(){ if (useMap > 0.5 && texture2D(map, vUv).a < alphaTest) discard; vec3 n = normalize(gl_FrontFacing ? vN : -vN); gl_FragColor = vec4(n * 0.5 + 0.5, clamp((vZ - radius) / (2.0 * radius), 0.0, 1.0)); }`,
     side: THREE.DoubleSide });
   const oldTarget = renderer.getRenderTarget(), oldClear = renderer.getClearColor(new THREE.Color()), oldAlpha = renderer.getClearAlpha();
   const oldScissor = renderer.getScissorTest();
@@ -78,22 +82,17 @@ export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, he
   return { colour: colourRT.texture, normal: normalRT.texture, radius, centre, grid, hemi, cell };
 }
 
-// The imposter material for an InstancedBufferGeometry of quads with per-instance `iPos` (vec3),
-// `iYaw` (radians), `iScale`, `iTint` (vec3) and `iFade` (0 gone .. 1 solid, dithered).
-export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3), blend = true } = {}) {
-  const uniforms = {
-    atlas: { value: bake.colour }, atlasN: { value: bake.normal }, grid: { value: bake.grid }, hemi: { value: bake.hemi ? 1 : 0 },
-    radius: { value: bake.radius }, centre: { value: bake.centre.clone() }, sunDir: { value: sunDir.clone().normalize() },
-    blend: { value: blend ? 1 : 0 }, ambient: { value: 0.45 },
-  };
-  const mat = new THREE.ShaderMaterial({
-    uniforms, transparent: false, side: THREE.DoubleSide,
-    vertexShader: `
+// The vertex stage shared by the drawing and the shadow-casting materials: the quad turned to
+// the viewer (the camera, or the light when `useOverride` is set), and the atlas cell for the
+// viewer's direction in the tree's own frame.
+const VERTEX = `
       #include <common>
       #include <logdepthbuf_pars_vertex>
+      #include <shadowmap_pars_vertex>
       attribute vec3 iPos; attribute float iYaw; attribute float iScale; attribute vec3 iTint; attribute float iFade;
       uniform float radius; uniform vec3 centre; uniform float grid; uniform float hemi;
-      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw;
+      uniform vec3 viewDirOverride; uniform float useOverride;
+      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius;
       // direction (in the tree's frame) -> the square
       vec2 octEncode(vec3 d) {
         float s = abs(d.x) + abs(d.y) + abs(d.z); float x = d.x / s, z = d.z / s;
@@ -104,30 +103,28 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
       void main() {
         float c = cos(iYaw), s = sin(iYaw);
         vec3 worldCentre = iPos + vec3(0.0, centre.y * iScale, 0.0) + vec3(c * centre.x + s * centre.z, 0.0, -s * centre.x + c * centre.z) * iScale;
-        vec3 toCam = normalize(cameraPosition - worldCentre);
-        // the quad faces the camera
+        vec3 toCam = useOverride > 0.5 ? normalize(viewDirOverride) : normalize(cameraPosition - worldCentre);
+        // the quad faces the viewer
         vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam)); vec3 up = cross(toCam, right);
         vec3 world = worldCentre + (right * position.x + up * position.y) * radius * 2.0 * iScale;
         // the view direction in the tree's own frame: the instance's spin undone
         vec3 d = vec3(c * toCam.x - s * toCam.z, toCam.y, s * toCam.x + c * toCam.z);
         vFrame = octEncode(normalize(d));
-        vQuad = uv; vTint = iTint; vFade = iFade; vYaw = iYaw;
-        gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
+        vQuad = uv; vTint = iTint; vFade = iFade; vYaw = iYaw; vRadius = radius * iScale;
+        vec4 mv = viewMatrix * vec4(world, 1.0); vViewPos = mv.xyz; vToCamView = (viewMatrix * vec4(toCam, 0.0)).xyz;
+        gl_Position = projectionMatrix * mv;
         #include <logdepthbuf_vertex>
-      }`,
-    fragmentShader: `
-      #include <common>
-      #include <logdepthbuf_pars_fragment>
-      uniform sampler2D atlas; uniform sampler2D atlasN; uniform float grid; uniform float blend; uniform vec3 sunDir; uniform float ambient;
-      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw;
+        vec4 worldPosition = vec4(world, 1.0); vec3 transformedNormal = vToCamView;
+        #include <shadowmap_vertex>
+      }`;
+// the atlas lookup shared by both fragment stages: colour (straight alpha = coverage) and normal + depth
+const LOOKUP = `
+      uniform sampler2D atlas; uniform sampler2D atlasN; uniform float grid; uniform float blend;
+      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius;
+      uniform mat4 projectionMatrix; uniform float useDepth;
       vec4 cellSample(sampler2D t, vec2 cell) { vec2 uv = (cell + clamp(vQuad, 0.002, 0.998)) / grid; return texture2D(t, uv); }
-      void main() {
-        #include <logdepthbuf_fragment>
-        // dithered fade
-        float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-        if (vFade < dither) discard;
+      void lookup(out vec4 col, out vec4 nrm) {
         vec2 g = vFrame * grid - 0.5; vec2 base = floor(g); vec2 f = g - base;
-        vec4 col; vec4 nrm;
         if (blend > 0.5) {
           // the three cells of the triangle the point falls in, weighted by where it falls
           vec2 c0, c1, c2; float w0, w1, w2;
@@ -140,15 +137,82 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
           vec2 cell = clamp(floor(vFrame * grid), 0.0, grid - 1.0);
           col = cellSample(atlas, cell); nrm = cellSample(atlasN, cell);
         }
+      }
+      // the fragment's depth moved to where the tree's surface is (the atlas's depth), so the
+      // imposter sorts against the ground and its neighbours, and shadows itself, as a solid would
+      float surfaceDepth(vec4 nrm) {
+        float off = (0.5 - nrm.a) * 2.0 * vRadius;                                     // toward the viewer
+        vec3 p = vViewPos + vToCamView * off;
+        vec4 clip = projectionMatrix * vec4(p, 1.0);
+        return (clip.z / clip.w) * 0.5 + 0.5;
+      }`;
+
+// The imposter material for an InstancedBufferGeometry of quads with per-instance `iPos` (vec3),
+// `iYaw` (radians), `iScale`, `iTint` (vec3) and `iFade` (0 gone .. 1 solid, dithered).
+export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3), blend = true, depth = true, shadows = true } = {}) {
+  const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, {
+    atlas: { value: null }, atlasN: { value: null }, grid: { value: bake.grid }, hemi: { value: bake.hemi ? 1 : 0 },
+    radius: { value: bake.radius }, centre: { value: bake.centre.clone() }, sunDir: { value: sunDir.clone().normalize() },
+    blend: { value: blend ? 1 : 0 }, ambient: { value: 0.45 }, useDepth: { value: depth ? 1 : 0 }, useShadow: { value: shadows ? 1 : 0 },
+    viewDirOverride: { value: new THREE.Vector3(0, 1, 0) }, useOverride: { value: 0 },
+  }]);
+  uniforms.atlas.value = bake.colour; uniforms.atlasN.value = bake.normal;
+  const mat = new THREE.ShaderMaterial({
+    uniforms, transparent: false, side: THREE.DoubleSide, lights: true, extensions: { fragDepth: true },
+    vertexShader: VERTEX,
+    fragmentShader: `
+      #include <common>
+      #include <packing>
+      #include <logdepthbuf_pars_fragment>
+      #include <shadowmap_pars_fragment>
+      uniform vec3 sunDir; uniform float ambient; uniform float useShadow;
+      ` + LOOKUP + `
+      void main() {
+        #include <logdepthbuf_fragment>
+        // dithered fade
+        float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+        if (vFade < dither) discard;
+        vec4 col; vec4 nrm; lookup(col, nrm);
         if (col.a < 0.45) discard;
-        vec3 n = normalize(nrm.rgb / max(nrm.a, 0.001) * 2.0 - 1.0);
+        #ifdef GL_EXT_frag_depth
+        if (useDepth > 0.5) gl_FragDepthEXT = surfaceDepth(nrm);
+        #endif
+        vec3 n = normalize(nrm.rgb * 2.0 - 1.0);
         float c = cos(vYaw), s = sin(vYaw);
         vec3 nw = vec3(c * n.x + s * n.z, n.y, -s * n.x + c * n.z);          // the tree's normal, turned as the instance is
-        float light = ambient + (1.0 - ambient) * max(0.0, dot(nw, normalize(sunDir)));
+        float shadow = 1.0;
+        #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
+        if (useShadow > 0.5) shadow = getShadow(directionalShadowMap[0], directionalLightShadows[0].shadowMapSize, directionalLightShadows[0].shadowBias, directionalLightShadows[0].shadowRadius, vDirectionalShadowCoord[0]);
+        #endif
+        float light = ambient + (1.0 - ambient) * max(0.0, dot(nw, normalize(sunDir))) * shadow;
         gl_FragColor = vec4(col.rgb / max(col.a, 0.001) * vTint * light, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }`,
   });
+  // the shadow pass: the same quad, turned to the light, its depth from the atlas, packed the way
+  // three's shadow maps expect
+  mat.userData.depthMaterial = new THREE.ShaderMaterial({
+    uniforms: THREE.UniformsUtils.merge([{ atlas: { value: null }, atlasN: { value: null }, grid: { value: bake.grid }, hemi: { value: bake.hemi ? 1 : 0 }, radius: { value: bake.radius }, centre: { value: bake.centre.clone() },
+      blend: { value: blend ? 1 : 0 }, useDepth: { value: depth ? 1 : 0 }, viewDirOverride: { value: sunDir.clone().normalize() }, useOverride: { value: 1 } }]),
+    side: THREE.DoubleSide, extensions: { fragDepth: true },
+    vertexShader: VERTEX,
+    fragmentShader: `
+      #include <common>
+      #include <packing>
+      ` + LOOKUP + `
+      void main() {
+        float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+        if (vFade < dither) discard;
+        vec4 col; vec4 nrm; lookup(col, nrm);
+        if (col.a < 0.45) discard;
+        float z = gl_FragCoord.z;
+        #ifdef GL_EXT_frag_depth
+        if (useDepth > 0.5) { z = surfaceDepth(nrm); gl_FragDepthEXT = z; }
+        #endif
+        gl_FragColor = packDepthToRGBA(z);
+      }`,
+  });
+  mat.userData.depthMaterial.uniforms.atlas.value = bake.colour; mat.userData.depthMaterial.uniforms.atlasN.value = bake.normal;
   return mat;
 }
