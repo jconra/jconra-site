@@ -59,7 +59,7 @@ export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, he
   const oldTarget = renderer.getRenderTarget(), oldClear = renderer.getClearColor(new THREE.Color()), oldAlpha = renderer.getClearAlpha();
   const oldScissor = renderer.getScissorTest();
   for (const [rt, mkMat] of [[colourRT, colourMat], [normalRT, normalMat]]) {
-    for (const [o, m] of materials) o.material = mkMat(m);
+    for (const [o, m] of materials) o.material = Array.isArray(m) ? m.map(mkMat) : mkMat(m);     // a mesh with a material per face keeps them
     renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear();
     renderer.setScissorTest(true);
     for (let j = 0; j < grid; j++) {

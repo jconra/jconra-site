@@ -30,12 +30,24 @@ const ground = new THREE.Mesh(new THREE.PlaneGeometry(12000, 12000), new THREE.M
 ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
 
 // ── the species: baked from ez-tree presets, scaled to a height in metres ──────────────
+// The calibration shape: an upside-down L, a post with an arm out along +x at the top, every face
+// its own colour (+x red, -x blue, +z green, -z yellow, top white, bottom black). If the imposter
+// and the mesh ever disagree about which way it points, this shows it at a glance.
+function buildL() {
+  const g = new THREE.Group();
+  const faces = (w, h, d) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [0xd03030, 0x3050d0, 0xf0f0f0, 0x202020, 0x30c050, 0xe0c020].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 })));
+  const post = faces(6, 40, 6); post.position.y = 20; g.add(post);
+  const arm = faces(24, 6, 6); arm.position.set(12, 37, 0); g.add(arm);
+  const tip = faces(6, 12, 6); tip.position.set(21, 28, 0); g.add(tip);
+  g.updateMatrixWorld(true); return g;
+}
 const SPECIES = [
   { name: 'ash',   file: '../../models/trees/ash.glb',   height: 20, weight: 1 },
   { name: 'aspen', file: '../../models/trees/aspen.glb', height: 17, weight: 1 },
   { name: 'oak',   file: '../../models/trees/oak.glb',   height: 18, weight: 1 },
   { name: 'pine',  file: '../../models/trees/pine.glb',  height: 22, weight: 1 },
   { name: 'bush',  file: '../../models/trees/bush.glb',  height: 5,  weight: 0.6 },
+  { name: 'L (calibration)', build: buildL, height: 20, weight: 0 },
 ];
 // A light start: a small forest, a small atlas, imposters from close in, no shadows. The heavy
 // settings are there to turn up; on a weak GPU (no WebGL2) it starts lighter still. ?light and
@@ -52,14 +64,13 @@ const loader = new GLTFLoader();
 async function loadSpecies() {
   for (const sp of SPECIES) {
     // fine: the preset as it comes; coarse: fewer, bigger, single-sided leaves and fewer branch sections (baked that way)
-    const gltf = await loader.loadAsync(SET.detail === 'coarse' ? sp.file.replace('.glb', '_coarse.glb') : sp.file);
-    if (!sp.coarseRoot) { const c = await loader.loadAsync(sp.file.replace('.glb', '_coarse.glb')); c.scene.updateMatrixWorld(true); c.scene.traverse(o => { if (o.isMesh) { o.material.side = THREE.DoubleSide; if (o.material.transparent) { o.material.alphaTest = 0.5; o.material.transparent = false; } } }); sp.coarseRoot = c.scene; }
-    const root = gltf.scene; root.updateMatrixWorld(true);
+    const root = sp.build ? sp.build() : (await loader.loadAsync(SET.detail === 'coarse' ? sp.file.replace('.glb', '_coarse.glb') : sp.file)).scene;
+    root.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(root), size = box.getSize(new THREE.Vector3());
     sp.unit = sp.height / size.y;                       // model units -> metres
     sp.baseY = box.min.y;                               // the tree's lowest point is not its origin: lift so it stands on the ground
     sp.root = root;
-    root.traverse(o => { if (o.isMesh) { o.material.side = THREE.DoubleSide; if (o.material.map) o.material.map.anisotropy = 4; if (o.material.alphaTest === 0 && o.material.transparent) { o.material.alphaTest = 0.5; o.material.transparent = false; } } });
+    root.traverse(o => { if (o.isMesh && !Array.isArray(o.material)) { o.material.side = THREE.DoubleSide; if (o.material.map) o.material.map.anisotropy = 4; if (o.material.alphaTest === 0 && o.material.transparent) { o.material.alphaTest = 0.5; o.material.transparent = false; } } });
     applyEdges(root);
     $('pct').textContent = `${SPECIES.indexOf(sp) + 1} / ${SPECIES.length}`;
   }
@@ -68,7 +79,7 @@ async function loadSpecies() {
 // the leaves' edges: alpha-to-coverage lets the multisampling soften a cut-out's edge instead of
 // it flickering on and off pixel by pixel as the tree moves (the "crawling" on near trees)
 function applyEdges(root) {
-  root.traverse(o => { if (o.isMesh && o.material.map) { o.material.alphaToCoverage = SET.a2c; o.material.alphaTest = SET.a2c ? 0.1 : 0.5; o.material.needsUpdate = true; } });
+  root.traverse(o => { if (o.isMesh && !Array.isArray(o.material) && o.material.map) { o.material.alphaToCoverage = SET.a2c; o.material.alphaTest = SET.a2c ? 0.1 : 0.5; o.material.needsUpdate = true; } });
 }
 // The atlas edge is views x view size; at 24 x 256 that is 6144 px, 151 MB per atlas and two per
 // species. Capped at 4096 px: the view size comes down to fit, and the readout says what it costs.
@@ -85,12 +96,15 @@ function capAtlas() {
 const bakes = new Map();
 let baking = null;
 function bakeAll(then) {
-  const key = (sp) => `${sp.name}|${SET.grid}|${SET.cell}|${SET.hemi}`;
+  const key = (sp) => `${sp.name}|${SET.detail}|${SET.grid}|${SET.cell}|${SET.hemi}`;
   const todo = SPECIES.filter(sp => !bakes.has(key(sp)));
   const finish = () => { for (const sp of SPECIES) sp.bake = bakes.get(key(sp)); baking = null; $('bakeNote').textContent = ''; then && then(); };
   if (!todo.length) { finish(); return; }
   const rows = todo.length * SET.grid * 2; let done = 0;
-  const steps = (function* () { for (const sp of todo) { const src = sp.coarseRoot || sp.root; const it = bakeImposterSteps(renderer, src, { grid: SET.grid, cell: SET.cell, hemi: SET.hemi }); for (;;) { const s = it.next(); if (s.done) { bakes.set(key(sp), s.value); break; } done++; yield; } } })();
+  // baked from the tree that is shown: the coarse tree is not the fine one with fewer leaves but a
+  // differently branched tree (the generator draws its random numbers in sequence), and an
+  // imposter baked from it was a picture of the wrong tree
+  const steps = (function* () { for (const sp of todo) { const src = sp.root; const it = bakeImposterSteps(renderer, src, { grid: SET.grid, cell: SET.cell, hemi: SET.hemi }); for (;;) { const s = it.next(); if (s.done) { bakes.set(key(sp), s.value); break; } done++; yield; } } })();
   baking = { steps, tick() { const t0 = performance.now(); while (performance.now() - t0 < 12) { if (steps.next().done) { finish(); return; } } $('bakeNote').textContent = `baking atlases… ${Math.round(done / rows * 100)}%`; } };
 }
 
@@ -98,11 +112,11 @@ function bakeAll(then) {
 function plant() {
   let seed = 7; const r = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
   forest = [];
-  const total = SPECIES.reduce((a, s) => a + s.weight, 0);
+  const total = SPECIES.reduce((a, s) => a + (SET.calibrate ? (s.build ? 1 : 0) : s.weight), 0);
   for (let i = 0; i < SET.count; i++) {
     const a = r() * Math.PI * 2, d = Math.sqrt(r()) * SET.radius;
-    let pick = r() * total, sp = SPECIES[0]; for (const s of SPECIES) { pick -= s.weight; if (pick <= 0) { sp = s; break; } }
-    forest.push({ pos: new THREE.Vector3(Math.sin(a) * d, 0, Math.cos(a) * d), yaw: r() * Math.PI * 2, scale: 0.75 + r() * 0.5, tint: new THREE.Color().setHSL(0.28 + r() * 0.06, 0.35 + r() * 0.2, 0.5 + r() * 0.15), sp });
+    let pick = r() * total, sp = SPECIES[0]; for (const s of SPECIES) { pick -= SET.calibrate ? (s.build ? 1 : 0) : s.weight; if (pick <= 0) { sp = s; break; } }
+    forest.push({ pos: new THREE.Vector3(Math.sin(a) * d, 0, Math.cos(a) * d), yaw: SET.calibrate ? (r() < 0.5 ? 0 : r() * Math.PI * 2) : r() * Math.PI * 2, scale: 0.75 + r() * 0.5, tint: SET.calibrate ? new THREE.Color(0xffffff) : new THREE.Color().setHSL(0.28 + r() * 0.06, 0.35 + r() * 0.2, 0.5 + r() * 0.15), sp });
   }
 }
 
@@ -131,17 +145,19 @@ function buildDraws() {
     const meshes = [];
     sp.root.traverse(o => {
       if (!o.isMesh) return;
-      const m = new THREE.InstancedMesh(o.geometry, o.material.clone(), Math.min(SET.nearCap, n));
+      const m = new THREE.InstancedMesh(o.geometry, Array.isArray(o.material) ? o.material.map(x => x.clone()) : o.material.clone(), Math.min(SET.nearCap, n));
       m.count = 0; m.frustumCulled = false; m.castShadow = SET.shadows; m.receiveShadow = true;
       // the same per-tree tint the imposter gets, so a tree keeps its colour across the swap
       m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m.instanceMatrix.count * 3), 3); m.instanceColor.setUsage(THREE.DynamicDrawUsage);
       const mf = new THREE.InstancedBufferAttribute(new Float32Array(m.instanceMatrix.count), 1); mf.setUsage(THREE.DynamicDrawUsage);
       m.geometry = o.geometry.clone(); m.geometry.setAttribute('iFade', mf);
-      m.material.onBeforeCompile = (sh) => {
-        sh.vertexShader = 'attribute float iFade; varying float vFade;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvFade = iFade;');
-        sh.fragmentShader = 'varying float vFade;\n' + sh.fragmentShader.replace('#include <alphatest_fragment>', '#include <alphatest_fragment>\n{ float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))); if (vFade < dither) discard; }');
-      };
-      m.material.needsUpdate = true;
+      for (const mat of [].concat(m.material)) {
+        mat.onBeforeCompile = (sh) => {
+          sh.vertexShader = 'attribute float iFade; varying float vFade;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvFade = iFade;');
+          sh.fragmentShader = 'varying float vFade;\n' + sh.fragmentShader.replace('#include <alphatest_fragment>', '#include <alphatest_fragment>\n{ float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))); if (vFade < dither) discard; }');
+        };
+        mat.needsUpdate = true;
+      }
       m.userData.local = o.matrixWorld.clone();           // the mesh's own place inside the tree
       m.userData.fade = mf;
       scene.add(m); meshes.push(m);
@@ -194,6 +210,7 @@ for (const [id, [apply, fmt]] of Object.entries(SLIDERS)) {
   $(id + 'Out').textContent = fmt(+el.value);
 }
 $('hemi').addEventListener('change', e => { SET.hemi = e.target.checked; bakeAll(buildDraws); });
+$('calibrate').addEventListener('change', e => { SET.calibrate = e.target.checked; plant(); bakeAll(buildDraws); });
 $('a2c').addEventListener('change', e => { SET.a2c = e.target.checked; for (const sp of SPECIES) applyEdges(sp.root); buildDraws(); });
 $('detail').addEventListener('change', async e => { SET.detail = e.target.value; $('boot').style.display = 'flex'; document.body.appendChild($('boot')); await loadSpecies(); buildDraws(); $('boot').style.display = 'none'; });   // the atlases come from the coarse tree either way
 $('blend').addEventListener('change', e => { SET.blend = e.target.checked; for (const b of built) { b.imposter.material.uniforms.blend.value = SET.blend ? 1 : 0; b.imposter.material.userData.depthMaterial.uniforms.blend.value = SET.blend ? 1 : 0; } });
