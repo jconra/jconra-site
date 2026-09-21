@@ -202,6 +202,6 @@ renderer.setAnimationLoop(() => {
   controls.update();
   if ((assignAt += raw) > 0.08 && built.length) { assignAt = 0; assign(); }
   renderer.render(scene, camera);
-  if (raw > 0) fps += (1 / raw - fps) * 0.05;
+  if (raw > 0) fps += (1 / raw - fps) * Math.min(1, raw * 2);   // weighted by the frame's own length: a two-second frame counts in full, not five percent
   if ((shown += raw) > 0.5) { shown = 0; const i = renderer.info.render; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${i.calls} draws · ${(i.triangles / 1000).toFixed(0)}k triangles · ${nearCount.toLocaleString()} meshes / ${(forest.length - nearCount).toLocaleString()} imposters`; }
 });

@@ -169,6 +169,6 @@ renderer.setAnimationLoop(() => {
   if (!all && $('spin').checked) stage.rotation.y += dt * 0.35;
   controls.update();
   renderer.render(scene, camera);
-  if (raw > 0) fps += (1 / raw - fps) * 0.05;
+  if (raw > 0) fps += (1 / raw - fps) * Math.min(1, raw * 2);   // weighted by the frame's own length: a two-second frame counts in full, not five percent
   if ((shown += raw) > 0.5) { shown = 0; const line = '<b>' + Math.round(fps) + ' fps</b>'; $('hud').innerHTML = line; $('fps').innerHTML = line; }
 });

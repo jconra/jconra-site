@@ -224,6 +224,6 @@ renderer.setAnimationLoop(() => {
   lamps.update(dt, innerHeight * renderer.getPixelRatio());
   if ($('autoFocus').checked) post.focus = camera.position.distanceTo(controls.target);
   post.render(dt);
-  if (raw > 0) fps += (1 / raw - fps) * 0.05;
+  if (raw > 0) fps += (1 / raw - fps) * Math.min(1, raw * 2);   // weighted by the frame's own length: a two-second frame counts in full, not five percent
   if ((fpsShown += raw) > 0.5) { fpsShown = 0; $('fps').textContent = Math.round(fps) + ' fps · ' + renderer.info.render.calls + ' draws · focus ' + Math.round(post.focus) + ' m'; }
 });
