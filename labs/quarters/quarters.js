@@ -305,7 +305,7 @@ function loadRoom(name) {
   placeSitter();
   $('boot')?.remove();
   bootProgress('cabin', 1); loadSitter(); loadStation();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; if (e.total) bootProgress('cabin', e.loaded / e.total); },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -813,7 +813,7 @@ function showSet(name) {
   if (!inMap) { poked = null; $('mapCaption').classList.remove('on'); }
   room.visible = inCabin; for (const sc of SCREENS) sc.visible = inCabin;
   if (sitter) sitter.visible = (inCabin || inHangar) && SITTER.on;
-  if (helmet) helmet.visible = inHangar;
+  if (helmet) helmet.visible = inHangar || (inCabin && HELMET.show);
   if (station) station.visible = name === 'station';
   if (hangarSet) hangarSet.floor.visible = inHangar;
   if (!inHangar && sitter && sitter.parent !== room && sitter.parent !== chairPivot) chairPivot.add(sitter);
@@ -1076,7 +1076,25 @@ function wearHelmet() {
   for (const cx of [box.min.x, box.max.x]) for (const cy of [box.min.y, box.max.y]) for (const cz of [box.min.z, box.max.z]) top = Math.max(top, up.dot(new THREE.Vector3(cx, cy, cz)));
   const want = centre.clone().addScaledVector(up, (top - up.dot(centre)) + across * 0.1 - hsize.y * k * 0.5);
   helmet.position.copy(want).sub(hcentre.clone().multiplyScalar(k).applyQuaternion(helmet.quaternion));
-  helmet.visible = currentSet === 'hangar';
+  // the measured fit is the base; the HELMET nudges are laid on top of it (applyHelmetFit)
+  const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(helmet.quaternion), right = up.clone().cross(fwd).normalize();
+  helmet.userData.base = { position: helmet.position.clone(), quaternion: helmet.quaternion.clone(), scale: k, up: up.clone(), fwd, right, headWidth: across };
+  applyHelmetFit();
+}
+// HELMET FIT. Nudges on top of the measured fit: size (%), up/down and forward/back (cm, in his
+// frame), and tilt (degrees, positive nods the visor down). Set in the panel, baked from Copy settings.
+const HELMET = { show: false, size: 100, up: 0, forward: 0, tilt: 0, turn: 0, roll: 0 };   // turn: about the vertical, counter-clockwise seen from above; roll: about his facing, clockwise seen from the front
+function applyHelmetFit() {
+  if (!helmet || !helmet.userData.base) return;
+  const B = helmet.userData.base, k = B.scale * HELMET.size / 100;
+  const headScale = sitter ? sitter.getWorldScale(new THREE.Vector3()).x : 1;     // cm in the world -> the bone's frame
+  helmet.scale.setScalar(k);
+  helmet.quaternion.copy(B.quaternion)
+    .premultiply(new THREE.Quaternion().setFromAxisAngle(B.right, -THREE.MathUtils.degToRad(HELMET.tilt)))
+    .premultiply(new THREE.Quaternion().setFromAxisAngle(B.up, THREE.MathUtils.degToRad(HELMET.turn)))
+    .premultiply(new THREE.Quaternion().setFromAxisAngle(B.fwd, -THREE.MathUtils.degToRad(HELMET.roll)));
+  helmet.position.copy(B.position).addScaledVector(B.up, HELMET.up / 100 / headScale).addScaledVector(B.fwd, HELMET.forward / 100 / headScale);
+  helmet.visible = currentSet === 'hangar' || (currentSet === 'cabin' && HELMET.show);
 }
 function faceCamera(amount) {
   const head = sitter.getObjectByName('Head'); if (!head) return;
@@ -1410,6 +1428,12 @@ const SLIDERS = {
   chairX:     [v => { CHAIR.x = v; placeChair(); }, v => v + ' cm'],
   chairY:     [v => { CHAIR.y = v; placeChair(); }, v => v + ' cm'],
   chairHeight:[v => { CHAIR.height = v; placeChair(); }, v => v + '%'],
+  helmetSize: [v => { HELMET.size = v; applyHelmetFit(); }, v => v + '%'],
+  helmetUp:   [v => { HELMET.up = v; applyHelmetFit(); }, v => v + ' cm'],
+  helmetFwd:  [v => { HELMET.forward = v; applyHelmetFit(); }, v => v + ' cm'],
+  helmetTilt: [v => { HELMET.tilt = v; applyHelmetFit(); }, v => v + '°'],
+  helmetTurn: [v => { HELMET.turn = v; applyHelmetFit(); }, v => v + '°'],
+  helmetRoll: [v => { HELMET.roll = v; applyHelmetFit(); }, v => v + '°'],
   screenW:    [v => { fitOf(screenPick).w = v; applyScreenFit(); }, v => v + ' cm'],
   screenH:    [v => { fitOf(screenPick).h = v; applyScreenFit(); }, v => v + ' cm'],
   screenX:    [v => { fitOf(screenPick).x = v; applyScreenFit(); }, v => v + ' cm'],
@@ -1483,6 +1507,7 @@ $('playIntro').onclick = playIntro;
 const CHECKS = {
   openWindows: () => applyWindows(),
   swivel: e => { CHAIR.swivel = e.target.checked; },
+  helmetShow: e => { HELMET.show = e.target.checked; applyHelmetFit(); },
   scrubOn: e => { SEQ.scrub = e.target.checked; controls.enableZoom = !SEQ.scrub; },
   sitterOn: e => { SITTER.on = e.target.checked; if (SITTER.on) loadSitter(); if (sitter) sitter.visible = SITTER.on; },
   post: e => { post.enabled = e.target.checked; },
@@ -1493,7 +1518,7 @@ const CHECKS = {
 for (const [id, fn] of Object.entries(CHECKS)) { $(id).addEventListener('change', fn); fn({ target: $(id) }); }
 $('min').onclick = () => { $('panel').classList.toggle('min'); $('min').textContent = $('panel').classList.contains('min') ? 'show' : 'hide'; };
 $('copy').onclick = () => {
-  const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, props: PROPS.map(({ obj, ...p }) => p), screens: SCREEN_FIT[build] || [], intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) }, earth: { ...EARTH },
+  const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, helmet: (({ show, ...h }) => h)(HELMET), props: PROPS.map(({ obj, ...p }) => p), screens: SCREEN_FIT[build] || [], intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) }, earth: { ...EARTH },
     light: { cabin: cabin.intensity, screens: screens.intensity, sun: sun.intensity, ambient: ambient.intensity, exposure: renderer.toneMappingExposure },
     openWindows: $('openWindows').checked };
   $('out').style.display = 'block'; $('out').value = JSON.stringify(out, null, 2); $('out').select();

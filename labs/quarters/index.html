@@ -87,6 +87,13 @@
 
     <h2>Jacob</h2>
     <label class="check" for="sitterOn"><input id="sitterOn" type="checkbox" checked> Jacob in the chair</label>
+    <label class="check" for="helmetShow"><input id="helmetShow" type="checkbox"> Show the helmet here (it goes on in the hangar)</label>
+    <div class="row"><label for="helmetSize">Helmet size</label><output id="helmetSizeOut"></output><input id="helmetSize" type="range" min="70" max="140" step="1" value="100"></div>
+    <div class="row"><label for="helmetUp">Helmet up / down</label><output id="helmetUpOut"></output><input id="helmetUp" type="range" min="-15" max="15" step="0.5" value="0"></div>
+    <div class="row"><label for="helmetFwd">Helmet forward / back</label><output id="helmetFwdOut"></output><input id="helmetFwd" type="range" min="-15" max="15" step="0.5" value="0"></div>
+    <div class="row"><label for="helmetTilt">Helmet tilt (visor down)</label><output id="helmetTiltOut"></output><input id="helmetTilt" type="range" min="-90" max="90" step="1" value="0"></div>
+    <div class="row"><label for="helmetTurn">Helmet turn (counter-clockwise from above)</label><output id="helmetTurnOut"></output><input id="helmetTurn" type="range" min="-180" max="180" step="1" value="0"></div>
+    <div class="row"><label for="helmetRoll">Helmet roll (clockwise from the front)</label><output id="helmetRollOut"></output><input id="helmetRoll" type="range" min="-90" max="90" step="1" value="0"></div>
     <p class="note">Model 5, sitting, turning with the chair. He is put on the seat pan from the chair's own shape; nudge him if he is not quite on it.</p>
     <div class="row"><label for="sitHeight">Up / down</label><output id="sitHeightOut"></output><input id="sitHeight" type="range" min="-25" max="25" step="0.5" value="0"></div>
     <div class="row"><label for="sitForward">Forward / back</label><output id="sitForwardOut"></output><input id="sitForward" type="range" min="-25" max="25" step="0.5" value="0"></div>
