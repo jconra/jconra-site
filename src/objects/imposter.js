@@ -92,7 +92,7 @@ const VERTEX = `
       attribute vec3 iPos; attribute float iYaw; attribute float iScale; attribute vec3 iTint; attribute float iFade;
       uniform float radius; uniform vec3 centre; uniform float grid; uniform float hemi;
       uniform vec3 viewDirOverride; uniform float useOverride;
-      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius;
+      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius; varying vec4 vShadowToCam;
       // direction (in the tree's frame) -> the square
       vec2 octEncode(vec3 d) {
         float s = abs(d.x) + abs(d.y) + abs(d.z); float x = d.x / s, z = d.z / s;
@@ -116,11 +116,14 @@ const VERTEX = `
         #include <logdepthbuf_vertex>
         vec4 worldPosition = vec4(world, 1.0); vec3 transformedNormal = vToCamView;
         #include <shadowmap_vertex>
+        #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
+        vShadowToCam = directionalShadowMatrix[0] * vec4(toCam, 0.0);      // so the shadow can be looked up at the surface's depth, not the card's
+        #endif
       }`;
 // the atlas lookup shared by both fragment stages: colour (straight alpha = coverage) and normal + depth
 const LOOKUP = `
       uniform sampler2D atlas; uniform sampler2D atlasN; uniform float grid; uniform float blend;
-      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius;
+      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius; varying vec4 vShadowToCam;
       uniform mat4 projectionMatrix; uniform float useDepth;
       vec4 cellSample(sampler2D t, vec2 cell) { vec2 uv = (cell + clamp(vQuad, 0.002, 0.998)) / grid; return texture2D(t, uv); }
       void lookup(out vec4 col, out vec4 nrm) {
@@ -141,7 +144,7 @@ const LOOKUP = `
       // the fragment's depth moved to where the tree's surface is (the atlas's depth), so the
       // imposter sorts against the ground and its neighbours, and shadows itself, as a solid would
       float surfaceDepth(vec4 nrm) {
-        float off = (0.5 - nrm.a) * 2.0 * vRadius;                                     // toward the viewer
+        float off = (0.5 - clamp(nrm.a, 0.0, 1.0)) * 2.0 * vRadius;                                     // toward the viewer
         vec3 p = vViewPos + vToCamView * off;
         vec4 clip = projectionMatrix * vec4(p, 1.0);
         return (clip.z / clip.w) * 0.5 + 0.5;
@@ -165,27 +168,41 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
       #include <packing>
       #include <logdepthbuf_pars_fragment>
       #include <shadowmap_pars_fragment>
+      #include <lights_pars_begin>
       uniform vec3 sunDir; uniform float ambient; uniform float useShadow;
       ` + LOOKUP + `
       void main() {
         #include <logdepthbuf_fragment>
-        // dithered fade
-        float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+        // dithered fade, the COMPLEMENT of the mesh's: the mesh keeps the pixels where its fade beats the dither, the imposter the others, so in the crossfade every pixel is drawn by exactly one of them
+        float dither = 1.0 - fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
         if (vFade < dither) discard;
         vec4 col; vec4 nrm; lookup(col, nrm);
         if (col.a < 0.45) discard;
         #ifdef GL_EXT_frag_depth
-        if (useDepth > 0.5) gl_FragDepthEXT = surfaceDepth(nrm);
+        if (useDepth > 0.5) gl_FragDepthEXT = surfaceDepth(nrm / max(col.a, 0.001));
         #endif
-        vec3 n = normalize(nrm.rgb * 2.0 - 1.0);
+        nrm /= max(col.a, 0.001); vec3 n = normalize(nrm.rgb * 2.0 - 1.0);   // read through the colour's coverage: filtered against the empty background otherwise
         float c = cos(vYaw), s = sin(vYaw);
         vec3 nw = vec3(c * n.x + s * n.z, n.y, -s * n.x + c * n.z);          // the tree's normal, turned as the instance is
-        float shadow = 1.0;
-        #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
-        if (useShadow > 0.5) shadow = getShadow(directionalShadowMap[0], directionalLightShadows[0].shadowMapSize, directionalLightShadows[0].shadowBias, directionalLightShadows[0].shadowRadius, vDirectionalShadowCoord[0]);
+        vec3 nv = normalize((viewMatrix * vec4(nw, 0.0)).xyz);              // in view space, where three keeps its lights
+        float off = (0.5 - nrm.a) * 2.0 * vRadius;
+        // lit the way MeshStandardMaterial's diffuse is: the sun (shadowed) and the sky/ground light,
+        // over pi, so a mesh and its imposter come out the same colour
+        vec3 irradiance = vec3(0.0);
+        #if NUM_DIR_LIGHTS > 0
+        {
+          float shadow = 1.0;
+          #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
+          if (useShadow > 0.5) shadow = getShadow(directionalShadowMap[0], directionalLightShadows[0].shadowMapSize, directionalLightShadows[0].shadowBias, directionalLightShadows[0].shadowRadius, vDirectionalShadowCoord[0] + vShadowToCam * (useDepth > 0.5 ? off : 0.0));
+          #endif
+          irradiance += directionalLights[0].color * max(0.0, dot(nv, directionalLights[0].direction)) * shadow;
+        }
         #endif
-        float light = ambient + (1.0 - ambient) * max(0.0, dot(nw, normalize(sunDir))) * shadow;
-        gl_FragColor = vec4(col.rgb / max(col.a, 0.001) * vTint * light, 1.0);
+        #if NUM_HEMI_LIGHTS > 0
+        irradiance += mix(hemisphereLights[0].groundColor, hemisphereLights[0].skyColor, dot(nv, hemisphereLights[0].direction) * 0.5 + 0.5);
+        #endif
+        vec3 albedo = col.rgb / max(col.a, 0.001) * vTint;
+        gl_FragColor = vec4(albedo * irradiance * RECIPROCAL_PI, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }`,
@@ -202,13 +219,13 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
       #include <packing>
       ` + LOOKUP + `
       void main() {
-        float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+        float dither = 1.0 - fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
         if (vFade < dither) discard;
         vec4 col; vec4 nrm; lookup(col, nrm);
         if (col.a < 0.45) discard;
         float z = gl_FragCoord.z;
         #ifdef GL_EXT_frag_depth
-        if (useDepth > 0.5) { z = surfaceDepth(nrm); gl_FragDepthEXT = z; }
+        if (useDepth > 0.5) { z = surfaceDepth(nrm / max(col.a, 0.001)); gl_FragDepthEXT = z; }
         #endif
         gl_FragColor = packDepthToRGBA(z);
       }`,

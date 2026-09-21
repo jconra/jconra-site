@@ -22,7 +22,7 @@ camera.position.set(0, 40, 120);
 const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.target.set(0, 12, 0); controls.maxDistance = 3000;
 const sun = new THREE.DirectionalLight(0xfff4e0, 2.4); sun.position.set(300, 600, 200); scene.add(sun); scene.add(sun.target);
 // the sun's shadow covers a square that follows the camera's target
-sun.castShadow = false; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.6;
+sun.castShadow = false; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0015; sun.shadow.normalBias = 1.2;
 { const c = sun.shadow.camera; c.left = c.bottom = -400; c.right = c.top = 400; c.near = 10; c.far = 2500; }
 const SUN_OFF = new THREE.Vector3(300, 600, 200);
 const hemi = new THREE.HemisphereLight(0xbfe3ff, 0x466b3a, 1.0); scene.add(hemi);
@@ -133,6 +133,8 @@ function buildDraws() {
       if (!o.isMesh) return;
       const m = new THREE.InstancedMesh(o.geometry, o.material.clone(), Math.min(SET.nearCap, n));
       m.count = 0; m.frustumCulled = false; m.castShadow = SET.shadows; m.receiveShadow = true;
+      // the same per-tree tint the imposter gets, so a tree keeps its colour across the swap
+      m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m.instanceMatrix.count * 3), 3); m.instanceColor.setUsage(THREE.DynamicDrawUsage);
       const mf = new THREE.InstancedBufferAttribute(new Float32Array(m.instanceMatrix.count), 1); mf.setUsage(THREE.DynamicDrawUsage);
       m.geometry = o.geometry.clone(); m.geometry.setAttribute('iFade', mf);
       m.material.onBeforeCompile = (sh) => {
@@ -170,9 +172,9 @@ function assign() {
     near.forEach(([t, f], k) => {
       tmpQ.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.yaw); tmpS.setScalar(t.scale * sp.unit); tmpP.copy(t.pos); tmpP.y -= sp.baseY * t.scale * sp.unit;
       tmpM.compose(tmpP, tmpQ, tmpS);
-      for (const m of meshes) { m.setMatrixAt(k, tmpM.clone().multiply(m.userData.local)); m.userData.fade.array[k] = f; }
+      for (const m of meshes) { m.setMatrixAt(k, tmpM.clone().multiply(m.userData.local)); m.userData.fade.array[k] = f; m.setColorAt(k, t.tint); }
     });
-    for (const m of meshes) { m.count = near.length; m.instanceMatrix.needsUpdate = true; m.userData.fade.needsUpdate = true; m.visible = SET.show !== 'imposters'; }
+    for (const m of meshes) { m.count = near.length; m.instanceMatrix.needsUpdate = true; m.userData.fade.needsUpdate = true; m.instanceColor.needsUpdate = true; m.visible = SET.show !== 'imposters'; }
     nearCount += near.length;
   }
 }
@@ -197,7 +199,38 @@ $('detail').addEventListener('change', async e => { SET.detail = e.target.value;
 $('blend').addEventListener('change', e => { SET.blend = e.target.checked; for (const b of built) { b.imposter.material.uniforms.blend.value = SET.blend ? 1 : 0; b.imposter.material.userData.depthMaterial.uniforms.blend.value = SET.blend ? 1 : 0; } });
 $('depth').addEventListener('change', e => { SET.depth = e.target.checked; for (const b of built) { b.imposter.material.uniforms.useDepth.value = SET.depth ? 1 : 0; b.imposter.material.userData.depthMaterial.uniforms.useDepth.value = SET.depth ? 1 : 0; } });
 $('shadows').addEventListener('change', e => { SET.shadows = e.target.checked; sun.castShadow = SET.shadows; renderer.shadowMap.enabled = SET.shadows; for (const b of built) { b.imposter.castShadow = SET.shadows; b.imposter.material.uniforms.useShadow.value = SET.shadows ? 1 : 0; for (const m of b.meshes) m.castShadow = SET.shadows; } });
-$('ss').addEventListener('change', e => { SET.ss = e.target.checked; renderer.setPixelRatio(SET.ss ? Math.min(devicePixelRatio * 2, 4) : Math.min(devicePixelRatio, 2)); });
+$('ss').addEventListener('change', e => { SET.ss = e.target.checked; applyScale(); });
+// render scale: the picture drawn at a fraction of the screen's pixels and stretched up - the cheap
+// opposite of supersampling, and the first thing to try on a weak GPU
+SET.scale = 1;
+function applyScale() { renderer.setPixelRatio(Math.min(devicePixelRatio, 2) * SET.scale * (SET.ss ? 2 : 1)); }
+$('scale').addEventListener('input', e => { SET.scale = +e.target.value; $('scaleOut').textContent = Math.round(SET.scale * 100) + '%'; applyScale(); });
+// PROFILE: a second of frames at each of a few settings, so the lab says what costs what on this
+// machine instead of leaving it to guesswork
+$('profile').addEventListener('click', async () => {
+  const keep = { show: SET.show, shadows: SET.shadows, scale: SET.scale, ss: SET.ss, imposterAt: SET.imposterAt };
+  const setShadows = (on) => { sun.castShadow = on; renderer.shadowMap.enabled = on; for (const b of built) { b.imposter.castShadow = on; b.imposter.material.uniforms.useShadow.value = on ? 1 : 0; for (const m of b.meshes) m.castShadow = on; } };
+  const runs = [
+    ['as it is now', () => {}],
+    ['shadows off', () => setShadows(false)],
+    ['imposters only, no shadows', () => { setShadows(false); SET.show = 'imposters'; SET.dirty = true; }],
+    ['meshes only, no shadows', () => { setShadows(false); SET.show = 'meshes'; SET.dirty = true; }],
+    ['as it is now, at 50% scale', () => { SET.scale = 0.5; applyScale(); }],
+    ['as it is now, window a quarter the size', () => { renderer.setSize(innerWidth / 2, innerHeight / 2, false); }],
+  ];
+  const out = [];
+  for (const [name, apply] of runs) {
+    SET.show = keep.show; setShadows(keep.shadows); SET.scale = keep.scale; applyScale(); renderer.setSize(innerWidth, innerHeight, false); SET.dirty = true;
+    apply(); assign();
+    // a few frames to settle (a resize rebuilds the drawing buffer), then a second of counting
+    await new Promise(r => { let k = 0; const tick = () => { if (++k < 8) requestAnimationFrame(tick); else r(); }; requestAnimationFrame(tick); });
+    const t0 = performance.now(); let n = 0;
+    await new Promise(r => { const tick = () => { n++; if (performance.now() - t0 < 1000) requestAnimationFrame(tick); else r(); }; requestAnimationFrame(tick); });
+    out.push([name, Math.round(n / ((performance.now() - t0) / 1000))]);
+  }
+  SET.show = keep.show; setShadows(keep.shadows); SET.scale = keep.scale; applyScale(); renderer.setSize(innerWidth, innerHeight, false); SET.dirty = true; assign();
+  $('profileOut').innerHTML = out.map(([n, f]) => `<div><b>${f} fps</b> ${n}</div>`).join('');
+});
 $('show').addEventListener('change', e => { SET.show = e.target.value; SET.dirty = true; });
 $('atlasOn').addEventListener('change', e => { $('atlas').style.display = e.target.checked ? 'block' : 'none'; if (e.target.checked) drawAtlas(); });
 $('atlasSpecies').addEventListener('change', drawAtlas);
