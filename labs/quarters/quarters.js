@@ -157,7 +157,17 @@ function drawBootOverlay() {
   // the column fills the height, centred; on a wide screen there is black either side, as a
   // terminal window would have
   const k = Math.min(W / term.canvas.width, H / term.canvas.height), sw = term.canvas.width * k, sh = term.canvas.height * k;
-  termCtx.drawImage(term.canvas, (W - sw) / 2, (H - sh) / 2, sw, sh);
+  const ox = (W - sw) / 2, oy = (H - sh) / 2;
+  termCtx.drawImage(term.canvas, ox, oy, sw, sh);
+  // the link sits on the cursor row, in the terminal's own type, so it is exactly where the
+  // terminal prints the same line at the end - and it goes when that line is up
+  const a = $('basic');
+  if (a) {
+    const dpr = W / innerWidth;
+    a.style.left = (ox + term.pad * k) / dpr + 'px'; a.style.top = (oy + (term.cursorY() + 2) * k) / dpr + 'px';
+    a.style.fontSize = (term.size * k) / dpr + 'px'; a.style.lineHeight = (term.size * k) / dpr + 'px';
+    a.style.display = term.printed('> Click here for the basic site') ? 'none' : '';
+  }
 }
 let bootDone = false;
 function checkBoot() {

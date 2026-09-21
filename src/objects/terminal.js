@@ -84,6 +84,13 @@ export class Terminal {
   }
 
   get done() { return !this.queue.length && !this.typing && this.waiting <= 0 && this.lines.every(l => !l.bar || l.shown >= 1); }
+  // the row the cursor is on (where the next line will print), in canvas pixels from the top,
+  // allowing for the scroll when the text has run past the bottom; and whether a line is up
+  cursorY() {
+    const rows = this.lines.length + (this.typing ? 1 : 0), maxRows = Math.floor((this.canvas.height - this.pad * 2) / this.lineH);
+    return this.pad + (rows - Math.max(0, rows - maxRows)) * this.lineH;
+  }
+  printed(text) { return this.lines.some(l => l.text === text); }
 
   draw() {
     this.dirty = false;
