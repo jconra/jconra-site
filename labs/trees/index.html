@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tree Lab</title>
+<style>
+  @font-face { font-family: nasa; src: url("../../fonts/nasalization-rg.ttf"); font-display: swap; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; background:#000; color:#ccd6de; font:13px/1.45 ui-sans-serif, system-ui, sans-serif; }
+  canvas { display:block; touch-action:none; }
+  #panel { position:fixed; top:12px; right:12px; bottom:12px; width:300px; overflow-y:auto; z-index:5;
+           background:rgba(10,13,17,.9); border:1px solid #212a34; border-radius:6px; padding:12px 14px; }
+  #panel.min { bottom:auto; } #panel.min .body { display:none; }
+  h1 { font:400 17px/1 nasa, ui-sans-serif, sans-serif; letter-spacing:.05em; color:#e8f1f5; display:flex; justify-content:space-between; align-items:center; }
+  h1 button { font:600 11px ui-monospace,monospace; background:none; border:1px solid #212a34; color:#8494a0; border-radius:3px; padding:3px 7px; cursor:pointer; }
+  h2 { font:600 10.5px/1 ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:#5b6873; margin:16px 0 8px; }
+  .note { color:#6d7a85; font-size:11.5px; margin:8px 0 4px; }
+  .row { display:grid; grid-template-columns:1fr auto; gap:2px 8px; align-items:center; margin:6px 0; }
+  .row label { color:#aeb9c2; }
+  .row output { font:12px ui-monospace,monospace; color:#e8f1f5; font-variant-numeric:tabular-nums; }
+  .row input[type=range] { grid-column:1 / -1; width:100%; accent-color:#35e07d; }
+  .check { display:flex; gap:8px; align-items:center; margin:6px 0; color:#aeb9c2; cursor:pointer; }
+  .check input { accent-color:#35e07d; }
+  select { background:#05070a; color:#e8f1f5; border:1px solid #212a34; border-radius:3px; padding:3px 6px; font:12px ui-monospace,monospace; }
+  #boot { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; font:13px nasa, monospace; letter-spacing:4px; color:#b9c8d2; background:#000; z-index:9; }
+  #hud { position:fixed; top:36px; left:16px; z-index:6; pointer-events:none; font:11.5px/1.5 ui-monospace,monospace; color:#0b1a12; text-shadow:0 1px 4px #fff8; }
+  #hud b { color:#0a5a2a; font-weight:600; }
+  #back { position:fixed; top:14px; left:16px; z-index:6; font:11px ui-monospace,monospace; letter-spacing:.14em; color:#0b1a12; text-decoration:none; text-transform:uppercase; }
+  #atlas { position:fixed; left:16px; bottom:16px; width:min(40vw, 420px); height:auto; z-index:6; display:none; border:1px solid #212a34; background:#222; image-rendering:auto; }
+  @media (max-width:700px) { #panel, #panel.min { width:auto; left:12px; top:auto; bottom:12px; max-height:46vh; } }
+</style>
+</head>
+<body>
+<div id="boot">LOADING TREES… <span id="pct"></span></div>
+<a id="back" href="../">&larr; labs</a>
+<div id="hud"></div>
+<canvas id="atlas"></canvas>
+<div id="panel">
+  <h1>Tree Lab <button id="min" type="button">hide</button></h1>
+  <div class="body">
+    <p class="note">A forest drawn two ways: the real mesh near you, an octahedral imposter beyond a line, crossfading through a band. The imposter atlases are baked here, from the same trees. Drag to orbit, WASD flies (Q/E down/up, Shift faster).</p>
+
+    <h2>Forest</h2>
+    <div class="row"><label for="count">Trees</label><output id="countOut"></output><input id="count" type="range" min="100" max="50000" step="100" value="4000"></div>
+    <div class="row"><label for="radius">Spread</label><output id="radiusOut"></output><input id="radius" type="range" min="200" max="4000" step="50" value="1400"></div>
+
+    <h2>Meshes and imposters</h2>
+    <div class="row"><label for="imposterAt">Imposters from</label><output id="imposterAtOut"></output><input id="imposterAt" type="range" min="20" max="1500" step="10" value="220"></div>
+    <div class="row"><label for="band">Crossfade band</label><output id="bandOut"></output><input id="band" type="range" min="0" max="300" step="5" value="60"></div>
+    <div class="row"><label for="show">Show</label><select id="show"><option value="both" selected>both, crossfading</option><option value="meshes">meshes only</option><option value="imposters">imposters only</option></select></div>
+    <label class="check" for="circle"><input id="circle" type="checkbox"> Circle one tree at the line, to watch the swap</label>
+
+    <h2>Atlas</h2>
+    <div class="row"><label for="grid">Views across</label><output id="gridOut"></output><input id="grid" type="range" min="4" max="24" step="2" value="12"></div>
+    <div class="row"><label for="cell">View size</label><output id="cellOut"></output><input id="cell" type="range" min="32" max="256" step="32" value="128"></div>
+    <label class="check" for="hemi"><input id="hemi" type="checkbox" checked> Half octahedron (top half only)</label>
+    <label class="check" for="blend"><input id="blend" type="checkbox" checked> Blend the three nearest views</label>
+    <label class="check" for="atlasOn"><input id="atlasOn" type="checkbox"> Show the atlas</label>
+    <div class="row"><label for="atlasSpecies">Of</label><select id="atlasSpecies"></select></div>
+    <p class="note">Views across × view size is the atlas edge: 12 × 128 = 1536 px. A change re-bakes every species.</p>
+  </div>
+</div>
+
+<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+<script type="importmap">
+{ "imports": {
+    "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+} }
+</script>
+<script type="module" src="./trees.js"></script>
+</body>
+</html>
