@@ -10,7 +10,7 @@ function rnd(seed) { let s = seed; return () => (s = (s * 16807) % 2147483647) /
 export class Screen extends THREE.Mesh {
   constructor({ centre, normal, width, height, kind = 'telemetry', href = null, colour = '#7fd0ff' }) {
     const canvas = document.createElement('canvas');
-    canvas.width = 512; canvas.height = Math.round(512 * height / width);
+    canvas.width = kind === 'terminal' ? 1536 : 512; canvas.height = Math.round(canvas.width * height / width);   // the terminal is read up close: it gets the pixels
     const map = new THREE.CanvasTexture(canvas);
     map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 4;
     super(new THREE.PlaneGeometry(width * 0.9, height * 0.86),
@@ -29,14 +29,17 @@ export class Screen extends THREE.Mesh {
     if (this.t < this.next) return;
     this.next = this.t + (this.kind === 'terminal' ? 0.04 : 0.12);   // the terminal types fast; the rest need eight a second
     const g = this.ctx, W = this.canvas.width, H = this.canvas.height, t = this.t;
-    g.fillStyle = '#04080f'; g.fillRect(0, 0, W, H);
-    g.strokeStyle = 'rgba(127,208,255,0.10)'; g.lineWidth = 1;
-    for (let y = 0; y < H; y += 4) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
     if (this.kind === 'terminal' && this.source) {
-      // the terminal's portrait column on the left of the display, like a window on a desktop
-      const src = this.source, sh = H - 16, sw = sh * src.width / src.height;
-      g.drawImage(src, 8, 8, sw, sh);
-    } else this['draw_' + this.kind](g, W, H, t);
+      // the terminal fills the display, black behind it: as large as it goes without stretching
+      g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+      const src = this.source, k = Math.min(W / src.width, H / src.height), sw = src.width * k, sh = src.height * k;
+      g.drawImage(src, (W - sw) / 2, (H - sh) / 2, sw, sh);
+    } else {
+      g.fillStyle = '#04080f'; g.fillRect(0, 0, W, H);
+      g.strokeStyle = 'rgba(127,208,255,0.10)'; g.lineWidth = 1;
+      for (let y = 0; y < H; y += 4) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+      this['draw_' + this.kind](g, W, H, t);
+    }
     // a slow sweep of brightness down the panel, as a screen looks when it is filmed
     const grad = g.createLinearGradient(0, ((t * 40) % (H + 120)) - 120, 0, ((t * 40) % (H + 120)));
     grad.addColorStop(0, 'rgba(255,255,255,0)'); grad.addColorStop(0.5, 'rgba(255,255,255,0.05)'); grad.addColorStop(1, 'rgba(255,255,255,0)');

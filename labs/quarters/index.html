@@ -78,6 +78,8 @@
     <label class="check" for="swivel"><input id="swivel" type="checkbox" checked> Chair swivels</label>
     <div class="row"><label for="chairSpeed">Swivel speed</label><output id="chairSpeedOut"></output><input id="chairSpeed" type="range" min="-90" max="90" step="1" value="12"></div>
     <div class="row"><label for="chairAngle">Chair angle (when still)</label><output id="chairAngleOut"></output><input id="chairAngle" type="range" min="-180" max="180" step="1" value="0"></div>
+    <div class="row"><label for="chairX">Chair left / right</label><output id="chairXOut"></output><input id="chairX" type="range" min="-120" max="120" step="1" value="0"></div>
+    <div class="row"><label for="chairZ">Chair toward the window</label><output id="chairZOut"></output><input id="chairZ" type="range" min="-120" max="120" step="1" value="0"></div>
     <label class="check" for="openWindows"><input id="openWindows" type="checkbox" checked> Take the window glass out</label>
 
     <h2>Jacob</h2>
@@ -114,7 +116,8 @@
     <h2>Keys</h2>
     <p class="note">The camera, where it looks, the chair and how much he faces the camera, at each moment. Pick a key and move it; the scene jumps there so you see it. Add a key at the current time, then Copy settings when it is right and I will bake it in.</p>
     <div class="btns" id="keys"></div>
-    <div class="btns" style="margin-top:6px"><button id="addKey" type="button">Add key here</button><button id="delKey" type="button">Delete key</button></div>
+    <div class="btns" style="margin-top:6px"><button id="addKey" type="button">Add key here</button><button id="delKey" type="button">Delete key</button><button id="useView" type="button">Use this view</button></div>
+    <p class="note">In free look, place the camera where you want it, pick a key and press "Use this view": the key takes the camera's place and what it looks at. Changing a key's sliders from free look does the same first, so the camera stays where you put it. Editing holds the timeline; scrolling the scene lets it play on.</p>
     <div class="row"><label for="keyT">Key time</label><output id="keyTOut"></output><input id="keyT" type="range" min="0" max="40" step="0.05" value="0" data-key="t"></div>
     <div class="row"><label for="camX">Camera left / right</label><output id="camXOut"></output><input id="camX" type="range" min="-1.7" max="1.7" step="0.01" value="0" data-key="x"></div>
     <div class="row"><label for="camY">Camera height</label><output id="camYOut"></output><input id="camY" type="range" min="0.3" max="2.5" step="0.01" value="1.3" data-key="y"></div>

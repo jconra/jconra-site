@@ -7,13 +7,16 @@
 // The canvas is a portrait column, so on a phone it fills the screen, and on the monitor it sits
 // in the left part of the display like a terminal window.
 export class Terminal {
-  constructor({ width = 720, height = 1120, font = 'Console, ui-monospace, Menlo, Consolas, monospace', colour = '#5eff8a', cps = 700 } = {}) {
+  // The canvas takes the shape of the screen it will fill (portrait on a phone, wide on a desktop),
+  // so nothing is stretched, at a size that keeps the text crisp.
+  constructor({ width, height, font = 'Console, ui-monospace, Menlo, Consolas, monospace', colour = '#5eff8a', cps = 700 } = {}) {
+    if (!width) { const portrait = innerHeight > innerWidth; width = portrait ? 720 : 1600; height = Math.round(width * innerHeight / innerWidth); }
     this.canvas = document.createElement('canvas');
     this.canvas.width = width; this.canvas.height = height;
     this.ctx = this.canvas.getContext('2d');
     this.font = font; this.colour = colour; this.cps = cps;      // characters per second
-    this.size = Math.round(width / 30);                          // about 30 columns...
-    this.size = 26; this.lineH = 34; this.pad = 28;
+    this.size = Math.max(22, Math.min(34, Math.round(width / 28)));   // 26 px on the phone column, 34 on a wide screen
+    this.lineH = Math.round(this.size * 1.3); this.pad = 28;
     this.cols = Math.floor((width - this.pad * 2) / (this.size * 0.6));
     this.lines = [];           // { text, done } typed lines, or { bar, label, frac } progress bars
     this.queue = [];           // lines still to type, in order

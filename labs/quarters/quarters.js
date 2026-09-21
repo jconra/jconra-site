@@ -110,7 +110,9 @@ post.setSize(innerWidth, innerHeight);
 const room = new THREE.Group();
 scene.add(room);
 let windows = null, chairPivot = null, props = [];
-const CHAIR = { swivel: true, speed: 12, angle: 0 };
+const CHAIR = { swivel: true, speed: 12, angle: 0, x: 0, z: 0 };   // x, z: nudges in cm from where the chair stood in the model
+let chairBase = null;
+function placeChair() { if (chairPivot && chairBase) chairPivot.position.copy(chairBase).add(new THREE.Vector3(CHAIR.x / 100, 0, CHAIR.z / 100)); }
 
 // Two builds of the same cabin, to compare: the full Tripo export, and a lighter one whose props
 // share a single texture atlas and one mesh, with the flat panels merged and the rest collapsed.
@@ -154,8 +156,8 @@ function drawBootOverlay() {
   termCtx.fillStyle = '#020604'; termCtx.fillRect(0, 0, W, H);
   // the column fills the height, centred; on a wide screen there is black either side, as a
   // terminal window would have
-  const sh = H, sw = sh * term.canvas.width / term.canvas.height, sx = Math.min((W - sw) / 2, W * 0.08);
-  termCtx.drawImage(term.canvas, Math.max(0, sx), 0, Math.min(sw, W), sh);
+  const k = Math.min(W / term.canvas.width, H / term.canvas.height), sw = term.canvas.width * k, sh = term.canvas.height * k;
+  termCtx.drawImage(term.canvas, (W - sw) / 2, (H - sh) / 2, sw, sh);
 }
 let bootDone = false;
 function checkBoot() {
@@ -173,10 +175,9 @@ function bootCamera() {
   const w = sc.geometry.parameters.width * sc.scale.x, h = sc.geometry.parameters.height * sc.scale.y;
   const vfov = THREE.MathUtils.degToRad(camera.fov), hfov = 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect);
   const d = Math.max(w / (2 * Math.tan(hfov / 2)), h / (2 * Math.tan(vfov / 2))) * 1.02;
-  // on a phone the terminal column is on the left of the monitor: aim at that column
-  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(sc.quaternion);
-  const colW = h * term.canvas.width / term.canvas.height, portrait = innerWidth < innerHeight;
-  const at = sc.position.clone().addScaledVector(right, portrait ? -(w - colW) / 2 : 0);
+  // on a phone the terminal is a column in the middle of the display: close in on the column
+  const colW = Math.min(w, h * term.canvas.width / term.canvas.height), portrait = innerWidth < innerHeight;
+  const at = sc.position.clone();
   const dd = portrait ? Math.max(colW / (2 * Math.tan(hfov / 2)), h / (2 * Math.tan(vfov / 2))) * 1.02 : d;
   return { pos: at.clone().addScaledVector(n, dd), at };
 }
@@ -196,6 +197,7 @@ function stepPull(dt) {
   pull.t += dt;
   const u = Math.min(1, pull.t / pull.len), e = u * u * (3 - 2 * u);
   camera.position.lerpVectors(pull.from, pull.to, e); controls.target.lerpVectors(pull.at, pull.toAt, e); camera.lookAt(controls.target);
+  post.focus = camera.position.distanceTo(controls.target);
   if (u >= 1) { pull = null; finishBoot(); }
 }
 function finishBoot() { BOOT.phase = 'done'; BOOT.on = false; if (!SEQ.active) activateIntro(); SEQ.T = 0; SEQ.playing = true; }
@@ -260,6 +262,7 @@ function loadRoom(name) {
       chairPivot.position.copy(axis);
       chairPivot.updateMatrixWorld(true);
       chairPivot.attach(o);
+      chairBase = axis.clone(); placeChair();
     } else props.push(o);
   }
   buildPropList();
@@ -451,8 +454,8 @@ function placeSitter() {
 // way is looking at stars.
 const WINDOW = [0.05, 1.8, -1.62];
 const KEYS = [
-  { t: 0.0,  cam: [0.85, 1.30, 1.55], look: 'him',    chair: 0,        face: 0 },   // at the door
-  { t: 1.2,  cam: [0.90, 1.30, 1.40], look: 'him',    chair: 0,        face: 0 },   // the beat before he turns
+  { t: 0.0,  cam: [0.70, 1.30, -0.88], look: [-0.07, 1.62, -1.20], chair: -112, face: 0 },   // at the computer, on the terminal (the pull-back lands here)
+  { t: 1.4,  cam: [0.95, 1.32, 0.25],  look: 'him',    chair: -112,     face: 0 },   // backing away, the beat before he turns
   { t: 2.5,  cam: [1.05, 1.30, 1.05], look: 'him',    chair: 'turned', face: 1 },   // turned, on the camera
   { t: 7.0,  cam: [1.35, 1.30, 0.20], look: 'him',    chair: 'turned', face: 1 },
   { t: 9.5,  cam: [1.10, 1.40, -0.40], look: 'him',   chair: 'turned', face: 0.6 }, // he is up
@@ -507,8 +510,8 @@ const ACTS = { wave: 1.9, stand: 8.2, walk: 10.0, walkSpeed: 1.1, walkDir: 35 };
 // at the edge of the screen, and how quickly it follows
 const FLY = { roll: 0, target: 0, maxRoll: 45, follow: 0.08 };
 // a scrub pauses the intro; after three seconds with no scrolling and nothing pressed, it plays on
-const RESUME = { after: 3, last: 0, held: false };
-function scrubbed() { RESUME.last = performance.now(); }
+const RESUME = { after: 3, last: 0, held: false, hold: false };   // hold: set by editing in the panel, cleared by a scrub
+function scrubbed() { RESUME.last = performance.now(); RESUME.hold = false; }
 // the story on the map: which state lights when, and what is said. Poking a state with the
 // pointer lights it and shows its line (or just its name) and holds the timeline.
 const TOUR = [
@@ -1056,7 +1059,7 @@ function stepSequence(dt) {
     // left alone for a few seconds after a scrub, it plays on (not while a panel control has the
     // focus - someone editing a key wants the frame to hold)
     const editing = document.activeElement && document.activeElement.closest && document.activeElement.closest('#panel');
-    if (!SEQ.playing && !RESUME.held && !editing && SEQ.T < total() && performance.now() - RESUME.last > RESUME.after * 1000) SEQ.playing = true;
+    if (!SEQ.playing && !RESUME.held && !RESUME.hold && !editing && SEQ.T < total() && performance.now() - RESUME.last > RESUME.after * 1000) SEQ.playing = true;
     if (SEQ.playing) { seek(SEQ.T + dt); if (SEQ.T >= total()) SEQ.playing = false; }
     else if (SEQ.T >= HANGAR.roll && Math.abs(FLY.roll - FLY.target) > 0.05) seek(SEQ.T);     // paused in flight, the fighter still banks to the pointer
   } else {
@@ -1132,8 +1135,15 @@ function showKey() {
   set('keyChair', chairDeg(k.chair).toFixed(0)); set('keyFace', k.face);
   const look = $('keyLook'); if (look) look.value = typeof k.look === 'string' ? k.look : 'point';
 }
+// the camera as it is now, written into a key in that key's own frame (its set's metres)
+function captureView(k) {
+  const off = setOf(k) === 'station' ? STATION_AT : setOf(k) === 'hangar' ? HANGAR_AT : setOf(k) === 'map' ? MAP_AT : new THREE.Vector3();
+  k.cam = camera.position.clone().sub(off).toArray().map(v => +v.toFixed(3));
+  k.look = controls.target.clone().sub(off).toArray().map(v => +v.toFixed(3));
+}
 function editKey(id, v) {
   const k = KEYS[keyIndex], [field, idx] = KEYFIELDS[id];
+  if (controls.enabled && !SEQ.active) captureView(k);      // edited from free look: the key takes the view first, so the camera does not jump away
   if (field === 'cam') { if (!Array.isArray(k.cam)) k.cam = camOf(k).toArray(); k.cam[idx] = v; } else k[field] = v;   // editing bakes a hangar-relative key
   if (field === 't') { KEYS.sort((x, y) => x.t - y.t); keyIndex = KEYS.indexOf(k); buildKeyList(); $('seqTime').max = total().toFixed(2); }
   if (!SEQ.active) activateIntro();
@@ -1323,6 +1333,8 @@ const SLIDERS = {
   exposure:   [v => renderer.toneMappingExposure = v, v => v.toFixed(2)],
   chairSpeed: [v => CHAIR.speed = v, v => v + '°/s'],
   chairAngle: [v => { CHAIR.angle = v; if (chairPivot && !CHAIR.swivel) chairPivot.rotation.y = THREE.MathUtils.degToRad(v); }, v => v + '°'],
+  chairX:     [v => { CHAIR.x = v; placeChair(); }, v => v + ' cm'],
+  chairZ:     [v => { CHAIR.z = v; placeChair(); }, v => v + ' cm'],
   sitHeight:  [v => { SITTER.height = v; placeSitter(); }, v => v + ' cm'],
   sitForward: [v => { SITTER.forward = v; placeSitter(); }, v => v + ' cm'],
   sitTurn:    [v => { SITTER.turn = v; placeSitter(); }, v => v + '°'],
@@ -1358,7 +1370,11 @@ for (const [id, [apply, fmt]] of Object.entries(SLIDERS)) {
   el.addEventListener('input', run);
   if (id in KEYFIELDS || id in PROPFIELDS) $(id + 'Out').textContent = fmt(+el.value); else run();   // key and prop sliders read from their object, they do not write it at start
 }
-$('keyLook').addEventListener('change', e => { const v = e.target.value; KEYS[keyIndex].look = v === 'point' ? controls.target.toArray() : v; seek(KEYS[keyIndex].t); });
+$('keyLook').addEventListener('change', e => { const v = e.target.value; const k = KEYS[keyIndex]; if (v === 'point') captureView(k); else k.look = v; seek(k.t); });
+$('useView').addEventListener('click', () => { const k = KEYS[keyIndex]; if (!k) return; captureView(k); showKey(); });
+// working in the panel holds the timeline: no playing on by itself until the scene is scrolled again
+$('panel').addEventListener('input', () => { RESUME.hold = true; });
+$('panel').addEventListener('change', () => { RESUME.hold = true; });
 $('addKey').onclick = addKeyHere; $('delKey').onclick = deleteKey;
 // Flat is the default. The face's colour map already carries light and shade, painted in by Tripo,
 // and a strong key lays a second set of shadows over it that disagree with the first. Soft light
