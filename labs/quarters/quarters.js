@@ -436,7 +436,7 @@ function placeSitter() {
   // he stands on his origin facing +z, so the seat of the trousers is SEAT.up above that and SEAT.back behind
   const f = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
   sitter.position.set(seat.x, seatY - SEAT.up + SITTER.height / 100, seat.z).addScaledVector(f, SEAT.back + SITTER.forward / 100);
-  sitter.rotation.y = yaw;
+  sitter.rotation.set(0, yaw, 0);
   sitter.userData.seatPos = sitter.position.clone(); sitter.userData.seatYaw = yaw;
   sitter.visible = SITTER.on;
 }
@@ -896,7 +896,7 @@ function seek(T) {
       const y = yaw + (Math.atan2(Math.sin(dirYaw - yaw), Math.cos(dirYaw - yaw))) * w;
       sitter.position.copy(feet);
       if (walking) sitter.position.add(new THREE.Vector3(Math.sin(dirYaw), 0, Math.cos(dirYaw)).multiplyScalar(ACTS.walkSpeed * Math.max(0, T - ACTS.walk - 0.25)));
-      sitter.rotation.y = y;
+      sitter.rotation.set(0, y, 0);
     } else if (sitter.parent !== chairPivot) { chairPivot.add(sitter); placeSitter(); }
     sitAction.setEffectiveWeight(standing ? 0 : 1); sitAction.time = T % sitAction.getClip().duration;
     if (standAction) { standAction.setEffectiveWeight(standing && !walking ? 1 : 0); standAction.time = Math.min(SEQ.standLen, Math.max(0, T - ACTS.stand)); }
@@ -959,7 +959,7 @@ function stepHangar(T, a, b, u, set = 'hangar') {
       const from = new THREE.Vector3(...HANGAR.from), to = new THREE.Vector3(...HANGAR.to);
       const dist = from.distanceTo(to), gone = Math.min(dist, HANGAR.speed * Math.max(0, T - HANGAR.walk - 0.2));
       sitter.position.copy(from).addScaledVector(to.clone().sub(from).normalize(), gone);
-      sitter.rotation.y = Math.atan2(to.x - from.x, to.z - from.z);
+      sitter.rotation.set(0, Math.atan2(to.x - from.x, to.z - from.z), 0);     // upright (scrubbed back out of the seat, the recline must not stay)
     }
     const walking = !seated && T > HANGAR.walk + 0.2 && sitter.position.distanceTo(new THREE.Vector3(...HANGAR.to)) > 0.01;
     if (sitAction) { sitAction.setEffectiveWeight(seated ? 1 : 0); sitAction.time = T % sitAction.getClip().duration; }

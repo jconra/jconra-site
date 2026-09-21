@@ -13,7 +13,7 @@ export const RING_FILES = ['ring', 'ring1', 'ring2', 'ring3', 'ring3t', 'ring4',
 export const PART_FILES = [...RING_FILES, 'tower', 'arm1', 'arm2', 'hangar', 'hangar2', 'satellite', 'fighter', 'ship1', 'ship2', 'freighter'];
 // Parts modelled with their mouth or nose along +z are turned at load so they lie along +x like the
 // rest of the kit (long axis outward, the hangar's back toward the arm).
-const TURN_TO_X = { hangar2: true, ship1: true, ship2: true };
+const TURN_TO_X = { hangar2: true, ship1: true };      // ship2 already lies along +x, nose at +x (it was parked sideways while it was turned too)
 // The inside of each hangar model, measured in its own units after that turn: where the deck is,
 // how far in the back wall is and how far out the mouth, and the half width between the side
 // walls. A fighter is parked on the deck by these.
@@ -26,8 +26,8 @@ export const BAYS = {
 // mouth, `side` the fraction of the half width (negative to the right of the mouth's view), and
 // `length` a multiple of the deck fighter's length.
 export const PARKED = [
-  { kind: 'ship2a', along: 0.16, side: -0.66, length: 1.15, turn: 180 },   // turned to point out of the mouth
-  { kind: 'ship2b', along: 0.16, side: 0.66, length: 1.15, turn: 180 },
+  { kind: 'ship2a', along: 0.16, side: -0.66, length: 1.15, turn: 0 },     // noses out of the mouth
+  { kind: 'ship2b', along: 0.16, side: 0.66, length: 1.15, turn: 0 },
 ];
 export const G = 9.81;
 
