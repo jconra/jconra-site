@@ -14,6 +14,7 @@ import { Screen } from '../../src/objects/screens.js';
 import { Terminal } from '../../src/objects/terminal.js';
 import { loadKit, StationKit, DEFAULT_LAYOUT } from '../../src/objects/stationKit.js';
 import { buildHangarSet } from '../../src/objects/hangarSet.js';
+import { loadUSMap } from '../../src/objects/usMap.js';
 
 const Q = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -480,6 +481,14 @@ const KEYS = [
   { t: 43.0,  set: 'hangar', cam: { at: 'chase', back: 9, up: 2.6, side: -4.5 }, look: 'ship' },
   { t: 49.0,  set: 'hangar', cam: { at: 'chase', back: 12, up: 3.2, side: 3.5 }, look: 'ship' },
   { t: 58.0,  set: 'hangar', cam: { at: 'chase', back: 15, up: 4.0, side: 0 },   look: 'ship' },
+  // THE MAP. Earth as the photograph, large, the fighter flying in over it toward the States;
+  // the outline of the country glows on the picture, then the states of his story light up one
+  // by one with a line each. Keys are in the picture's own units (pixels of the photograph,
+  // centred, y up), the picture in the z = 0 plane and the camera out along +z.
+  { t: 58.01, set: 'map', cam: [-40, 60, 980],  look: [33, 83, 0] },
+  { t: 61.5,  set: 'map', cam: [33, 83, 380],   look: [33, 83, 0] },
+  { t: 74.0,  set: 'map', cam: [30, 80, 330],   look: [25, 88, 0] },
+  { t: 77.0,  set: 'map', cam: [34, 78, 320],   look: [25, 88, 0] },
 ];
 const ACTS = { wave: 1.9, stand: 8.2, walk: 10.0, walkSpeed: 1.1, walkDir: 35 };   // seconds; m/s; degrees from +z toward +x
 // in the hangar: when he starts walking in, where from (metres beside the fighter's spot, the
@@ -491,6 +500,16 @@ const FLY = { roll: 0, target: 0, maxRoll: 45, follow: 0.08 };
 // a scrub pauses the intro; after three seconds with no scrolling and nothing pressed, it plays on
 const RESUME = { after: 3, last: 0, held: false };
 function scrubbed() { RESUME.last = performance.now(); }
+// the story on the map: which state lights when, and what is said. Poking a state with the
+// pointer lights it and shows its line (or just its name) and holds the timeline.
+const TOUR = [
+  { id: 'CO', t: 61.8, title: 'Colorado',    text: 'Born and raised.' },
+  { id: 'NM', t: 64.2, title: 'New Mexico',  text: 'Where the Air Force story starts.' },
+  { id: 'MD', t: 66.6, title: 'Maryland',    text: 'NSA and Fort Meade: the training that made a network security engineer.' },
+  { id: 'MS', t: 69.0, title: 'Mississippi', text: 'Keesler AFB: teaching Cyberspace Warfare Operations.' },
+  { id: 'WA', t: 71.4, title: 'Washington',  text: 'Seattle: home now, AWS systems engineering.' },
+];
+const MAP = { glow: 59.6, tourEnd: 74.0, shipIn: 58.0, shipAt: 64.0 };
 const HANGAR = { walk: 33.0, from: [0.3, 0, -8.2], to: [0.3, 0, -2.4], speed: 1.1, sit: 39.0, canopy: 39.4, canopyLen: 2.4, roll: 42.5, accel: 2.5 };
 // The greeting comes in parts: each is its own hologram over his head, which forms, holds, and
 // dissolves again as the next one forms.
@@ -503,6 +522,8 @@ const PARTS = [
 // layout (the one set in the Station Builder). Shown only while the timeline is outside.
 const STATION_AT = new THREE.Vector3(100000, 0, 0);
 const HANGAR_AT = new THREE.Vector3(-100000, 0, 0);       // the human-scale hangar, off on its own
+const MAP_AT = new THREE.Vector3(0, 0, 120000);            // the map over the photograph, off on its own
+let mapSet = null, poked = null;
 let station = null, stationLoading = false, hangarAt = null, bayAt = null, hangarMouth = null, currentSet = 'cabin', hangarSet = null, helmet = null;
 function loadStation() {
   if (station || stationLoading) return;
@@ -522,11 +543,63 @@ function loadStation() {
     earthOut.position.set(hangarSet.mouth.x + 12000, -3400, 0); earthOut.scale.setScalar(14);
     earthOut.rotation.set(0, -Math.PI / 2, 0); earthOut.rotateX(Math.atan2(3400, 12000));
     hangarSet.floor.add(earthOut);
+    buildMapSet(parts);
     loader.load('../../models/props/helmet.glb', (g) => {
       helmet = g.scene; helmet.traverse(o => { if (o.isMesh) { o.castShadow = true; if (o.material.map) o.material.map.colorSpace = THREE.SRGBColorSpace; } });
       wearHelmet();
     });
   }).catch(e => console.error(e));
+}
+// THE MAP SET: the photograph as a big flat picture (its own pixels as units), the states laid on
+// it, and a copy of the fighter to fly in over it.
+function buildMapSet(parts) {
+  const floor = new THREE.Group(); floor.position.copy(MAP_AT); floor.visible = false; scene.add(floor);
+  const pic = new THREE.Mesh(new THREE.PlaneGeometry(833, 827), picture.material); floor.add(pic);
+  const F = parts.ship1, ship = new THREE.Mesh(F.geometry, F.material); ship.scale.setScalar(26 / F.size.x); floor.add(ship);
+  mapSet = { floor, pic, ship, map: null };
+  loadUSMap('../map/us.svg').then(map => { mapSet.map = map; pic.add(map.group); }).catch(e => console.error(e));
+}
+function stepMap(T, a, b, u, set = 'map') {
+  const MS = mapSet; if (!MS) return;
+  // the fighter comes in from the top left and settles high over the country
+  const w = THREE.MathUtils.smoothstep(T, MAP.shipIn, MAP.shipAt);
+  const from = new THREE.Vector3(-420, 330, 260), to = new THREE.Vector3(20, 110, 60);
+  MS.ship.position.lerpVectors(from, to, w).add(new THREE.Vector3(0, Math.sin(T * 0.8) * 3, 0));
+  const dir = to.clone().sub(from).normalize(); MS.ship.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir);
+  MS.ship.rotation.x = THREE.MathUtils.degToRad(FLY.roll);
+  if (MS.map) {
+    MS.map.glow(THREE.MathUtils.smoothstep(T, MAP.glow, MAP.glow + 1.4));
+    // the story: the current state, unless one is being poked at
+    let current = null;
+    for (const s of TOUR) if (T >= s.t && T < MAP.tourEnd) current = s;
+    const show = poked ? (TOUR.find(s => s.id === poked) || { id: poked, title: MS.map.states.get(poked)?.name || poked, text: '' }) : current;
+    for (const st of MS.map.states.values()) {
+      const want = show && st.id === show.id ? 1 : 0;
+      st.amount += (want - st.amount) * 0.25; MS.map.apply(st);
+    }
+    const cap = $('mapCaption');
+    if (show) { cap.querySelector('b').textContent = show.title; cap.querySelector('span').textContent = show.text; cap.classList.add('on'); }
+    else cap.classList.remove('on');
+  }
+  camera.position.copy(cameraAt(T)).add(MAP_AT);
+  controls.target.copy(lookPoint(a.look, set).lerp(lookPoint(b.look, set), u)); camera.lookAt(controls.target);
+  post.focus = camera.position.distanceTo(controls.target);
+  for (const h of holos) h.fill = 0;
+  const el = $('seqTime'); if (el && document.activeElement !== el) el.value = T.toFixed(2);
+  $('seqTimeOut').textContent = T.toFixed(1) + ' s';
+}
+// poking at the map: the state under the pointer lights up and the timeline holds while it is
+{
+  const ray = new THREE.Raycaster();
+  const at = (e) => {
+    if (currentSet !== 'map' || !mapSet || !mapSet.map) return;
+    ray.setFromCamera(new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
+    const id = mapSet.map.pick(ray);
+    if (id !== poked) { poked = id; if (!SEQ.playing) seek(SEQ.T); }
+    if (id) { SEQ.playing = false; scrubbed(); }
+  };
+  renderer.domElement.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse') at(e); });
+  renderer.domElement.addEventListener('pointerup', (e) => { if (e.pointerType !== 'mouse') at(e); });
 }
 // TRAFFIC. Nothing is parked in space: what flies, flies on the timeline. A freighter crosses far
 // behind the station while the camera is wide, and a pair of fighters comes past close in front
@@ -598,7 +671,9 @@ const setOf = (k) => k.set || 'cabin';
 function showSet(name) {
   if (name === currentSet) return;
   currentSet = name;
-  const inCabin = name === 'cabin', inHangar = name === 'hangar';
+  const inCabin = name === 'cabin', inHangar = name === 'hangar', inMap = name === 'map';
+  if (mapSet) mapSet.floor.visible = inMap;
+  if (!inMap) { poked = null; $('mapCaption').classList.remove('on'); }
   room.visible = inCabin; for (const sc of SCREENS) sc.visible = inCabin;
   if (sitter) sitter.visible = (inCabin || inHangar) && SITTER.on;
   if (helmet) helmet.visible = inHangar;
@@ -612,8 +687,8 @@ function showSet(name) {
   else {
     // aimed at the set, not the cabin: from 100 km away a light aimed at the origin arrives sideways.
     // In the hangar the sun comes in through the mouth (+x), low, and the fill lights the inside.
-    const AT = inHangar ? HANGAR_AT : STATION_AT;
-    sun.position.copy(AT).add((inHangar ? new THREE.Vector3(1, 0.35, 0.25) : new THREE.Vector3(1, 0.6, 0.45)).multiplyScalar(5000)); sun.target.position.copy(AT);
+    const AT = inHangar ? HANGAR_AT : inMap ? MAP_AT : STATION_AT;
+    sun.position.copy(AT).add((inHangar ? new THREE.Vector3(1, 0.35, 0.25) : inMap ? new THREE.Vector3(0.4, 0.6, 1) : new THREE.Vector3(1, 0.6, 0.45)).multiplyScalar(5000)); sun.target.position.copy(AT);
     spaceFill.position.copy(AT).add((inHangar ? new THREE.Vector3(0.3, 0.9, -0.4) : new THREE.Vector3(-0.6, -0.8, -0.3)).multiplyScalar(5000)); spaceFill.target.position.copy(AT);
     sun.intensity = 3.2; sun.color.setHex(0xfff4e6); cabin.intensity = 0; screens.intensity = 0;
          ambient.intensity = inHangar ? 0.9 : 0.35; ambient.color.setHex(0x8aa0b8); ambient.groundColor.setHex(0x2a3340); renderer.toneMappingExposure = 1.05;
@@ -651,7 +726,7 @@ const lookPoint = (l, set) => {
   if (l === 'bay') return bayAt ? bayAt.clone() : lookPoint('hangar', set);          // the fighter on the hangar's deck
   if (l === 'ship') return hangarSet ? hangarSet.ship.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 1.2, 0)) : HANGAR_AT.clone();
   if (l === 'cockpit') return hangarSet ? hangarSet.ship.localToWorld(hangarSet.seat.clone().add(new THREE.Vector3(0, 0.7, 0))) : HANGAR_AT.clone();
-  const p = new THREE.Vector3(...l); return set === 'station' ? p.add(STATION_AT) : set === 'hangar' ? p.add(HANGAR_AT) : p;
+  const p = new THREE.Vector3(...l); return set === 'station' ? p.add(STATION_AT) : set === 'hangar' ? p.add(HANGAR_AT) : set === 'map' ? p.add(MAP_AT) : p;
 };
 const chairDeg = (c) => c === 'turned' ? SEQ.turned : (c || 0);
 const ease = (u) => { u = Math.min(1, Math.max(0, u)); return u * u * u * (u * (u * 6 - 15) + 10); };   // brisk both ends
@@ -695,6 +770,7 @@ function seek(T) {
   const { a, b, u, set } = keysAround(T);
   showSet(set);
   if (set === 'hangar') { stepHangar(T, a, b, u); return; }
+  if (set === 'map') { stepMap(T, a, b, u); return; }
   if (set === 'station') {
     // outside: the rings turn with time, 1 g at the rim, and the camera runs in the station's frame
     if (station) for (const sp of station.spinners) sp.turntable.rotation.y = sp.sign * (Math.PI * 2 / StationKit.period(sp.radius)) * T;
@@ -932,7 +1008,7 @@ function buildKeyList() {
   const list = $('keys'); if (!list) return;
   list.innerHTML = '';
   KEYS.forEach((k, i) => {
-    const b = document.createElement('button'); b.type = 'button'; b.textContent = (setOf(k) === 'station' ? 'out ' : setOf(k) === 'hangar' ? 'in ' : '') + k.t.toFixed(1) + ' s';
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = ({ station: 'out ', hangar: 'in ', map: 'map ' }[setOf(k)] || '') + k.t.toFixed(1) + ' s';
     b.classList.toggle('on', i === keyIndex); b.onclick = () => { keyIndex = i; buildKeyList(); showKey(); seek(KEYS[i].t); };
     list.appendChild(b);
   });
@@ -941,7 +1017,7 @@ function showKey() {
   const k = KEYS[keyIndex]; if (!k) return;
   const set = (id, v) => { const el = $(id); if (!el) return; el.value = v; $(id + 'Out').textContent = SLIDERS[id][1](+v); };
   // the camera sliders span the cabin in metres, or the station in hundreds of them
-  const out = setOf(k) === 'station', inH = setOf(k) === 'hangar';
+  const out = setOf(k) === 'station' || setOf(k) === 'map', inH = setOf(k) === 'hangar';
   for (const [id, lo, hi] of [['camX', -1.7, 1.7], ['camY', 0.3, 2.5], ['camZ', -2.2, 1.7]]) { const el = $(id); el.min = out ? -2500 : inH ? -20 : lo; el.max = out ? 2500 : inH ? 20 : hi; el.step = out ? 5 : inH ? 0.05 : 0.01; }
   const cam = Array.isArray(k.cam) ? k.cam : camOf(k).toArray();      // a hangar-relative key shows where it resolves to
   set('keyT', k.t); set('camX', cam[0]); set('camY', cam[1]); set('camZ', cam[2]);

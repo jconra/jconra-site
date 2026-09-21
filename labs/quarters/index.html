@@ -37,6 +37,12 @@
   #basic { position:absolute; left:max(28px, 8vw); bottom:max(28px, env(safe-area-inset-bottom, 0px) + 20px); font:22px Console, ui-monospace, monospace; color:#dfffe6; text-decoration:none; background:#020604; padding:8px 12px; border:1px solid #2f7d55; }
   #basic:hover, #basic:focus { color:#5eff8a; }
   #boot { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; font:13px nasa, monospace; letter-spacing:4px; color:#b9c8d2; background:#000; z-index:9; }
+  #mapCaption { position:fixed; left:50%; bottom:60px; transform:translateX(-50%); z-index:6; pointer-events:none; max-width:min(92vw, 560px);
+                padding:12px 18px; background:rgba(4,8,12,.72); border:1px solid rgba(53,224,125,.45); border-radius:6px; text-align:center;
+                opacity:0; transition:opacity .35s; }
+  #mapCaption.on { opacity:1; }
+  #mapCaption b { display:block; font:400 17px nasa, ui-sans-serif, sans-serif; letter-spacing:.08em; color:#35e07d; margin-bottom:4px; }
+  #mapCaption span { font:14px/1.45 ui-sans-serif, system-ui, sans-serif; color:#e8f1f5; }
   #hud { position:fixed; top:36px; left:16px; z-index:6; pointer-events:none;
          font:11.5px/1.5 ui-monospace,monospace; color:#9fb3c2; text-shadow:0 1px 4px #000; }
   #hud b { color:#35e07d; font-weight:600; font-variant-numeric:tabular-nums; }
@@ -49,6 +55,7 @@
 <div id="bootOverlay"><canvas id="term"></canvas><a id="basic" href="https://jacobconrads.com/about.html">&gt; Click here for the basic site</a></div>
 <a id="back" href="../">&larr; labs</a>
 <div id="hud"></div>
+<div id="mapCaption"><b></b><span></span></div>
 <div id="panel">
   <h1>Quarters Lab <button id="min" type="button">hide</button></h1>
   <div class="body">
