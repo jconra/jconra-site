@@ -95,8 +95,8 @@ const VERTEX = `
       #include <shadowmap_pars_vertex>
       attribute vec3 iPos; attribute float iYaw; attribute float iScale; attribute vec3 iTint; attribute float iFade;
       uniform float radius; uniform float halfW; uniform float halfH; uniform vec3 centre; uniform float grid; uniform float hemi;
-      uniform vec3 viewDirOverride; uniform float useOverride; uniform float blendDist;
-      varying float vBlend;
+      uniform vec3 viewDirOverride; uniform float useOverride; uniform float blendDist; uniform float blend;
+      varying vec2 vC0; varying vec2 vC1; varying vec2 vC2; varying vec3 vW;
       varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius; varying vec4 vShadowToCam;
       // direction (in the tree's frame) -> the square
       vec2 octEncode(vec3 d) {
@@ -116,7 +116,17 @@ const VERTEX = `
         // every cell boundary, trunk and all, and the trees look as if they are walking.)
         vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam)); vec3 up = cross(toCam, right);
         vec3 world = worldCentre + (right * position.x * halfW * 2.0 + up * position.y * halfH * 2.0) * iScale;
-        vBlend = useOverride > 0.5 ? 0.0 : (distance(cameraPosition, worldCentre) < blendDist ? 1.0 : 0.0);   // the three-view blend only near: far away two reads do
+        // Which atlas cells this card shows, and their weights: the three cells of the triangle the
+        // view direction falls in (near, when blending), else the nearest one. Worked out here, once
+        // per card and in full precision - done per pixel, a phone's GPU split one card between
+        // neighbouring cells along straight lines.
+        bool near = useOverride < 0.5 && distance(cameraPosition, worldCentre) < blendDist;
+        vec2 g = vFrame * grid - 0.5; vec2 base = floor(g); vec2 f = g - base;
+        if (blend > 0.5 && near) {
+          if (f.x + f.y < 1.0) { vC0 = base; vC1 = base + vec2(1.0, 0.0); vC2 = base + vec2(0.0, 1.0); vW = vec3(1.0 - f.x - f.y, f.x, f.y); }
+          else { vC0 = base + vec2(1.0, 1.0); vC1 = base + vec2(0.0, 1.0); vC2 = base + vec2(1.0, 0.0); vW = vec3(f.x + f.y - 1.0, 1.0 - f.x, 1.0 - f.y); }
+        } else { vC0 = vC1 = vC2 = floor(vFrame * grid); vW = vec3(1.0, 0.0, 0.0); }
+        vC0 = clamp(vC0, 0.0, grid - 1.0); vC1 = clamp(vC1, 0.0, grid - 1.0); vC2 = clamp(vC2, 0.0, grid - 1.0);
         vQuad = uv; vTint = iTint; vFade = iFade; vYaw = iYaw; vRadius = radius * iScale;
         vec4 mv = viewMatrix * vec4(world, 1.0); vViewPos = mv.xyz; vToCamView = (viewMatrix * vec4(toCam, 0.0)).xyz;
         gl_Position = projectionMatrix * mv;
@@ -130,23 +140,16 @@ const VERTEX = `
 // the atlas lookup shared by both fragment stages: colour (straight alpha = coverage) and normal + depth
 const LOOKUP = `
       uniform sampler2D atlas; uniform sampler2D atlasN; uniform float grid; uniform float blend;
-      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius; varying vec4 vShadowToCam; varying float vBlend;
+      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius; varying vec4 vShadowToCam;
+      varying vec2 vC0; varying vec2 vC1; varying vec2 vC2; varying vec3 vW;
       uniform mat4 projectionMatrix; uniform float useDepth;
       vec4 cellSample(sampler2D t, vec2 cell) { vec2 uv = (cell + clamp(vQuad, 0.002, 0.998)) / grid; return texture2D(t, uv); }
+      // the cells and weights come from the vertex stage, the same for the whole card
       void lookup(out vec4 col, out vec4 nrm) {
-        vec2 g = vFrame * grid - 0.5; vec2 base = floor(g); vec2 f = g - base;
-        if (blend > 0.5 && vBlend > 0.5) {
-          // the three cells of the triangle the point falls in, weighted by where it falls
-          vec2 c0, c1, c2; float w0, w1, w2;
-          if (f.x + f.y < 1.0) { c0 = base; c1 = base + vec2(1.0, 0.0); c2 = base + vec2(0.0, 1.0); w1 = f.x; w2 = f.y; w0 = 1.0 - w1 - w2; }
-          else { c0 = base + vec2(1.0, 1.0); c1 = base + vec2(0.0, 1.0); c2 = base + vec2(1.0, 0.0); w1 = 1.0 - f.x; w2 = 1.0 - f.y; w0 = 1.0 - w1 - w2; }
-          c0 = clamp(c0, 0.0, grid - 1.0); c1 = clamp(c1, 0.0, grid - 1.0); c2 = clamp(c2, 0.0, grid - 1.0);
-          col = cellSample(atlas, c0) * w0 + cellSample(atlas, c1) * w1 + cellSample(atlas, c2) * w2;
-          nrm = cellSample(atlasN, c0) * w0 + cellSample(atlasN, c1) * w1 + cellSample(atlasN, c2) * w2;
-        } else {
-          vec2 cell = clamp(floor(vFrame * grid), 0.0, grid - 1.0);
-          col = cellSample(atlas, cell); nrm = cellSample(atlasN, cell);
-        }
+        if (vW.y + vW.z > 0.0005) {
+          col = cellSample(atlas, vC0) * vW.x + cellSample(atlas, vC1) * vW.y + cellSample(atlas, vC2) * vW.z;
+          nrm = cellSample(atlasN, vC0) * vW.x + cellSample(atlasN, vC1) * vW.y + cellSample(atlasN, vC2) * vW.z;
+        } else { col = cellSample(atlas, vC0); nrm = cellSample(atlasN, vC0); }
       }
       // the fragment's depth moved to where the tree's surface is (the atlas's depth), so the
       // imposter sorts against the ground and its neighbours, and shadows itself, as a solid would
