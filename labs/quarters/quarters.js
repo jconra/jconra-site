@@ -13,6 +13,7 @@ import { Hologram } from '../../src/objects/hologram.js';
 import { Screen } from '../../src/objects/screens.js';
 import { Terminal } from '../../src/objects/terminal.js';
 import { loadKit, StationKit, DEFAULT_LAYOUT } from '../../src/objects/stationKit.js';
+import { buildHangarSet } from '../../src/objects/hangarSet.js';
 
 const Q = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -363,6 +364,7 @@ function loadSitter() {
     const clip = gltf.animations.find(c => /sit/i.test(c.name));
     if (clip) { sitAction = sitterMixer.clipAction(clip); sitAction.play(); }
     placeSitter();
+    wearHelmet();
     // The wave came from Mixamo standing up, so only its upper body is kept, and it is made
     // additive: the arm's movement is laid over the sitting pose instead of replacing it.
     loader.load('../../models/wave_clip.glb', (g) => {
@@ -464,8 +466,23 @@ const KEYS = [
   { t: 26.0,  set: 'station', cam: { at: 'mouth', out: 900, up: 380, side: 500 }, look: 'hangar' },   // panning right
   { t: 30.0,  set: 'station', cam: { at: 'mouth', out: 260, up: 40 },  look: 'hangar' },              // at the mouth
   { t: 33.0,  set: 'station', cam: { at: 'mouth', out: 60, up: 22 },   look: 'bay' },                 // in, onto the fighter
+  // INSIDE THE HANGAR, at human scale: the same hangar and fighter, the fighter 6 m long. He walks
+  // in from the right, in his helmet, to the cockpit; then he is in the seat, the canopy closes,
+  // and the fighter rolls out of the mouth. Keys are in the set's metres: the fighter's spot on the
+  // deck is the origin, the deck is y = 0, the mouth is toward +x.
+  { t: 33.01, set: 'hangar', cam: { at: 'mouth', out: 7.3, up: 2.7 }, look: 'ship' },     // the same framing as the last shot outside
+  { t: 36.5,  set: 'hangar', cam: [5.5, 1.9, -5.5],   look: 'him' },
+  { t: 39.0,  set: 'hangar', cam: [3.4, 2.1, -3.2],   look: 'him' },
+  { t: 39.01, set: 'hangar', cam: [2.6, 2.3, -3.4],   look: 'cockpit' },                  // he is in the seat
+  { t: 42.0,  set: 'hangar', cam: [4.2, 2.0, -4.6],   look: 'cockpit' },                  // the canopy comes down
+  { t: 45.0,  set: 'hangar', cam: [6.5, 1.6, -6.5],   look: 'ship' },                     // he rolls out
+  { t: 49.0,  set: 'hangar', cam: [9.0, 2.2, -5.0],   look: 'ship' },
 ];
 const ACTS = { wave: 1.9, stand: 8.2, walk: 10.0, walkSpeed: 1.1, walkDir: 35 };   // seconds; m/s; degrees from +z toward +x
+// in the hangar: when he starts walking in, where from (metres beside the fighter's spot, the
+// right of the mouth's view is -z), when he is in the seat, when the canopy starts down and how
+// long it takes, and when the fighter rolls, at what acceleration
+const HANGAR = { walk: 33.0, from: [0.3, 0, -8.2], to: [0.3, 0, -2.4], speed: 1.1, sit: 39.0, canopy: 39.4, canopyLen: 2.4, roll: 42.5, accel: 2.5 };
 // The greeting comes in parts: each is its own hologram over his head, which forms, holds, and
 // dissolves again as the next one forms.
 const PARTS = [
@@ -476,7 +493,8 @@ const PARTS = [
 // The second set, 100 km from the cabin in the same scene, built from the kit with its default
 // layout (the one set in the Station Builder). Shown only while the timeline is outside.
 const STATION_AT = new THREE.Vector3(100000, 0, 0);
-let station = null, stationLoading = false, hangarAt = null, bayAt = null, hangarMouth = null, currentSet = 'cabin';
+const HANGAR_AT = new THREE.Vector3(-100000, 0, 0);       // the human-scale hangar, off on its own
+let station = null, stationLoading = false, hangarAt = null, bayAt = null, hangarMouth = null, currentSet = 'cabin', hangarSet = null, helmet = null;
 function loadStation() {
   if (station || stationLoading) return;
   stationLoading = true;
@@ -485,6 +503,12 @@ function loadStation() {
     station = new StationKit(parts).build(DEFAULT_LAYOUT);
     station.position.copy(STATION_AT); station.visible = false; scene.add(station); checkBoot();
     pickHangar();
+    hangarSet = buildHangarSet(parts, { shipLength: 6, bayLength: DEFAULT_LAYOUT.bay.length, along: DEFAULT_LAYOUT.bay.along });
+    hangarSet.floor.position.copy(HANGAR_AT); hangarSet.floor.visible = false; scene.add(hangarSet.floor);
+    loader.load('../../models/props/helmet.glb', (g) => {
+      helmet = g.scene; helmet.traverse(o => { if (o.isMesh) { o.castShadow = true; if (o.material.map) o.material.map.colorSpace = THREE.SRGBColorSpace; } });
+      wearHelmet();
+    });
   }).catch(e => console.error(e));
 }
 // The hangar the camera turns to is the one on the RIGHT of the wide shot (the last key that looks
@@ -511,20 +535,26 @@ const setOf = (k) => k.set || 'cabin';
 function showSet(name) {
   if (name === currentSet) return;
   currentSet = name;
-  const inCabin = name === 'cabin';
+  const inCabin = name === 'cabin', inHangar = name === 'hangar';
   room.visible = inCabin; for (const sc of SCREENS) sc.visible = inCabin;
-  if (sitter) sitter.visible = inCabin && SITTER.on;
-  if (station) station.visible = !inCabin;
+  if (sitter) sitter.visible = (inCabin || inHangar) && SITTER.on;
+  if (helmet) helmet.visible = inHangar;
+  if (station) station.visible = name === 'station';
+  if (hangarSet) hangarSet.floor.visible = inHangar;
+  if (!inHangar && sitter && sitter.parent !== room && sitter.parent !== chairPivot) chairPivot.add(sitter);
   // space light: a hard sun and almost nothing else; the cabin gets its preset back
   spaceFill.intensity = inCabin ? 0 : 1.8;      // earthshine: the planet below lights the undersides blue
   if (inCabin) setLight(lightName);
   if (inCabin) { sun.position.set(2.5, 2.0, -5); sun.target.position.set(0, 0, 0); spaceFill.target.position.set(0, 0, 0); }
   else {
-    // aimed at the station, not the cabin: from 100 km away a light aimed at the origin arrives sideways
-    sun.position.copy(STATION_AT).add(new THREE.Vector3(1, 0.6, 0.45).multiplyScalar(5000)); sun.target.position.copy(STATION_AT);
-    spaceFill.position.copy(STATION_AT).add(new THREE.Vector3(-0.6, -0.8, -0.3).multiplyScalar(5000)); spaceFill.target.position.copy(STATION_AT);
+    // aimed at the set, not the cabin: from 100 km away a light aimed at the origin arrives sideways.
+    // In the hangar the sun comes in through the mouth (+x), low, and the fill lights the inside.
+    const AT = inHangar ? HANGAR_AT : STATION_AT;
+    sun.position.copy(AT).add((inHangar ? new THREE.Vector3(1, 0.35, 0.25) : new THREE.Vector3(1, 0.6, 0.45)).multiplyScalar(5000)); sun.target.position.copy(AT);
+    spaceFill.position.copy(AT).add((inHangar ? new THREE.Vector3(0.3, 0.9, -0.4) : new THREE.Vector3(-0.6, -0.8, -0.3)).multiplyScalar(5000)); spaceFill.target.position.copy(AT);
     sun.intensity = 3.2; sun.color.setHex(0xfff4e6); cabin.intensity = 0; screens.intensity = 0;
-         ambient.intensity = 0.35; ambient.color.setHex(0x8aa0b8); ambient.groundColor.setHex(0x2a3340); renderer.toneMappingExposure = 1.05; }
+         ambient.intensity = inHangar ? 0.9 : 0.35; ambient.color.setHex(0x8aa0b8); ambient.groundColor.setHex(0x2a3340); renderer.toneMappingExposure = 1.05;
+         spaceFill.intensity = inHangar ? 1.2 : 1.8; }
 }
 const holos = [];          // the greeting is on the terminal now, not floating over his head; Hologram stays for later
 const SEQ = { hold: 0.9, turn: 1.3, draw: 1.8, waveLen: 1.5, standLen: 2.0, T: 0, playing: false, active: false, scrub: true, turned: 0 };
@@ -556,7 +586,9 @@ const lookPoint = (l, set) => {
   if (l === 'station') return STATION_AT.clone().add(new THREE.Vector3(0, 300, 0));
   if (l === 'hangar') return hangarAt ? hangarAt.clone() : STATION_AT.clone().add(new THREE.Vector3(0, 240, 740));
   if (l === 'bay') return bayAt ? bayAt.clone() : lookPoint('hangar', set);          // the fighter on the hangar's deck
-  const p = new THREE.Vector3(...l); return set === 'station' ? p.add(STATION_AT) : p;
+  if (l === 'ship') return hangarSet ? hangarSet.ship.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 1.2, 0)) : HANGAR_AT.clone();
+  if (l === 'cockpit') return hangarSet ? hangarSet.ship.localToWorld(hangarSet.seat.clone().add(new THREE.Vector3(0, 0.7, 0))) : HANGAR_AT.clone();
+  const p = new THREE.Vector3(...l); return set === 'station' ? p.add(STATION_AT) : set === 'hangar' ? p.add(HANGAR_AT) : p;
 };
 const chairDeg = (c) => c === 'turned' ? SEQ.turned : (c || 0);
 const ease = (u) => { u = Math.min(1, Math.max(0, u)); return u * u * u * (u * (u * 6 - 15) + 10); };   // brisk both ends
@@ -576,6 +608,10 @@ function keysAround(T) {
 function camOf(key) {
   const c = key.cam;
   if (Array.isArray(c)) return new THREE.Vector3(...c);
+  if (setOf(key) === 'hangar') {          // relative to the human-scale hangar's mouth, in the set's own metres
+    const mouth = hangarSet ? hangarSet.mouth.clone() : new THREE.Vector3();
+    return mouth.add(new THREE.Vector3(c.out || 0, c.up || 0, -(c.side || 0)));
+  }
   const base = c.at === 'bay' && bayAt ? bayAt.clone() : hangarMouth ? hangarMouth.at.clone() : STATION_AT.clone();
   const dir = hangarMouth ? hangarMouth.dir : new THREE.Vector3(1, 0, 0), right = dir.clone().cross(new THREE.Vector3(0, 1, 0));
   return base.sub(STATION_AT).addScaledVector(dir, c.out || 0).add(new THREE.Vector3(0, c.up || 0, 0)).addScaledVector(right, c.side || 0);
@@ -594,6 +630,7 @@ function seek(T) {
   SEQ.T = T = Math.min(total(), Math.max(0, T));
   const { a, b, u, set } = keysAround(T);
   showSet(set);
+  if (set === 'hangar') { stepHangar(T, a, b, u); return; }
   if (set === 'station') {
     // outside: the rings turn with time, 1 g at the rim, and the camera runs in the station's frame
     if (station) for (const sp of station.spinners) sp.turntable.rotation.y = sp.sign * (Math.PI * 2 / StationKit.period(sp.radius)) * T;
@@ -663,6 +700,87 @@ function seek(T) {
   $('seqTimeOut').textContent = T.toFixed(1) + ' s';
   if (document.activeElement && document.activeElement.dataset && document.activeElement.dataset.key === undefined) showKey();
 }
+// The hangar beat: he walks in from the side to the cockpit, then is in the seat, the canopy
+// closes over him, and the fighter rolls out through the mouth. Everything from T, so it scrubs.
+function stepHangar(T, a, b, u, set = 'hangar') {
+  const HS = hangarSet; if (!HS) return;
+  const seated = T >= HANGAR.sit;
+  HS.setCanopy((T - HANGAR.canopy) / HANGAR.canopyLen);
+  const roll = Math.max(0, T - HANGAR.roll);
+  HS.ship.position.set(0.5 * HANGAR.accel * roll * roll, 0, 0);
+  if (sitter && sitterMixer) {
+    if (seated) {
+      if (sitter.parent !== HS.ship) HS.ship.add(sitter);
+      sitter.position.copy(HS.seat).add(new THREE.Vector3(0, -SEAT.up, 0)).addScaledVector(new THREE.Vector3(1, 0, 0), SEAT.back);
+      sitter.rotation.y = Math.PI / 2;                                        // facing the nose, +x
+    } else {
+      if (sitter.parent !== HS.floor) HS.floor.add(sitter);
+      const from = new THREE.Vector3(...HANGAR.from), to = new THREE.Vector3(...HANGAR.to);
+      const dist = from.distanceTo(to), gone = Math.min(dist, HANGAR.speed * Math.max(0, T - HANGAR.walk - 0.2));
+      sitter.position.copy(from).addScaledVector(to.clone().sub(from).normalize(), gone);
+      sitter.rotation.y = Math.atan2(to.x - from.x, to.z - from.z);
+    }
+    const walking = !seated && T > HANGAR.walk + 0.2 && sitter.position.distanceTo(new THREE.Vector3(...HANGAR.to)) > 0.01;
+    if (sitAction) { sitAction.setEffectiveWeight(seated ? 1 : 0); sitAction.time = T % sitAction.getClip().duration; }
+    if (standAction) { standAction.setEffectiveWeight(!seated && !walking ? 1 : 0); standAction.time = SEQ.standLen; }   // the end of standing up: upright, still
+    if (walkAction) { walkAction.setEffectiveWeight(walking ? 1 : 0); walkAction.time = Math.max(0, T - HANGAR.walk) % walkAction.getClip().duration; }
+    if (waveAction) waveAction.setEffectiveWeight(0);
+    const headBone = sitter.getObjectByName('Head'); if (headBone && headBone.userData.restQ) headBone.quaternion.copy(headBone.userData.restQ);
+    sitterMixer.update(0);
+    const model = sitter.children[0], rest = sitter.userData.hipRest, hipBone = model.getObjectByName('Hip');
+    if (walking && rest && hipBone) {
+      model.updateMatrixWorld(true);
+      const now = model.worldToLocal(hipBone.getWorldPosition(new THREE.Vector3()));
+      model.position.set(rest.x - now.x, 0, rest.z - now.z);
+    } else model.position.set(0, 0, 0);
+  }
+  camera.position.copy(cameraAt(T)).add(HANGAR_AT);
+  controls.target.copy(lookPoint(a.look, set).lerp(lookPoint(b.look, set), u)); camera.lookAt(controls.target);
+  post.focus = camera.position.distanceTo(controls.target);
+  for (const h of holos) h.fill = 0;
+  const el = $('seqTime'); if (el && document.activeElement !== el) el.value = T.toFixed(2);
+  $('seqTimeOut').textContent = T.toFixed(1) + ' s';
+}
+// The helmet hangs on his head bone, sized to his head and turned the way he faces, so it goes
+// where the head goes. Its place is the middle of the head's skin: the vertices the head bone owns,
+// taken in the bone's own bind-pose frame, so the fit does not depend on how he is posed now.
+function wearHelmet() {
+  if (!helmet || !sitter) return;
+  const head = sitter.getObjectByName('Head'); if (!head) return;
+  sitter.updateMatrixWorld(true);
+  const box = new THREE.Box3(), v = new THREE.Vector3();
+  let bindWorld = null;
+  sitter.traverse(o => {
+    if (!o.isSkinnedMesh) return;
+    const hi = o.skeleton.bones.indexOf(head); if (hi < 0) return;
+    const toBone = o.skeleton.boneInverses[hi].clone().multiply(o.bindMatrix);      // mesh vertex -> the head bone's frame
+    if (!bindWorld) bindWorld = o.matrixWorld.clone().multiply(o.bindMatrixInverse).multiply(o.skeleton.boneInverses[hi].clone().invert());   // the bone's bind pose in the world
+    const idx = o.geometry.attributes.skinIndex, w = o.geometry.attributes.skinWeight, pos = o.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      let own = 0; for (let j = 0; j < 4; j++) if (idx.getComponent(i, j) === hi) own += w.getComponent(i, j);
+      if (own > 0.6) box.expandByPoint(v.fromBufferAttribute(pos, i).applyMatrix4(toBone));
+    }
+  });
+  if (box.isEmpty() || !bindWorld) return;
+  const centre = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());   // in the bone's frame
+  const hbox = new THREE.Box3().setFromObject(helmet), hsize = hbox.getSize(new THREE.Vector3()), hcentre = hbox.getCenter(new THREE.Vector3());
+  // the head's width across is whichever of the bone frame's axes is not the bone's own length
+  const bindQ = new THREE.Quaternion().setFromRotationMatrix(bindWorld);
+  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(bindQ.clone().invert());                     // the world's up in the bone's frame
+  const across = Math.abs(up.x) > 0.7 ? Math.min(size.y, size.z) : Math.abs(up.y) > 0.7 ? Math.min(size.x, size.z) : Math.min(size.x, size.y);
+  const k = (across * 1.3) / hsize.x;                                        // a helmet a third wider than the head
+  head.add(helmet);
+  helmet.scale.setScalar(k);
+  // turned to face the way he faces, in the bone's frame
+  helmet.quaternion.copy(bindQ.clone().invert().multiply(sitter.getWorldQuaternion(new THREE.Quaternion())));
+  // placed from the crown down: the helmet's top a little above the top of the head (the neck's
+  // vertices belong to the head bone too and pull the middle low, so the middle is no guide)
+  let top = -Infinity;
+  for (const cx of [box.min.x, box.max.x]) for (const cy of [box.min.y, box.max.y]) for (const cz of [box.min.z, box.max.z]) top = Math.max(top, up.dot(new THREE.Vector3(cx, cy, cz)));
+  const want = centre.clone().addScaledVector(up, (top - up.dot(centre)) + across * 0.1 - hsize.y * k * 0.5);
+  helmet.position.copy(want).sub(hcentre.clone().multiplyScalar(k).applyQuaternion(helmet.quaternion));
+  helmet.visible = currentSet === 'hangar';
+}
 function faceCamera(amount) {
   const head = sitter.getObjectByName('Head'); if (!head) return;
   head.updateWorldMatrix(true, false);
@@ -724,7 +842,7 @@ function buildKeyList() {
   const list = $('keys'); if (!list) return;
   list.innerHTML = '';
   KEYS.forEach((k, i) => {
-    const b = document.createElement('button'); b.type = 'button'; b.textContent = (setOf(k) === 'station' ? 'out ' : '') + k.t.toFixed(1) + ' s';
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = (setOf(k) === 'station' ? 'out ' : setOf(k) === 'hangar' ? 'in ' : '') + k.t.toFixed(1) + ' s';
     b.classList.toggle('on', i === keyIndex); b.onclick = () => { keyIndex = i; buildKeyList(); showKey(); seek(KEYS[i].t); };
     list.appendChild(b);
   });
@@ -733,8 +851,8 @@ function showKey() {
   const k = KEYS[keyIndex]; if (!k) return;
   const set = (id, v) => { const el = $(id); if (!el) return; el.value = v; $(id + 'Out').textContent = SLIDERS[id][1](+v); };
   // the camera sliders span the cabin in metres, or the station in hundreds of them
-  const out = setOf(k) === 'station';
-  for (const [id, lo, hi] of [['camX', -1.7, 1.7], ['camY', 0.3, 2.5], ['camZ', -2.2, 1.7]]) { const el = $(id); el.min = out ? -2500 : lo; el.max = out ? 2500 : hi; el.step = out ? 5 : 0.01; }
+  const out = setOf(k) === 'station', inH = setOf(k) === 'hangar';
+  for (const [id, lo, hi] of [['camX', -1.7, 1.7], ['camY', 0.3, 2.5], ['camZ', -2.2, 1.7]]) { const el = $(id); el.min = out ? -2500 : inH ? -20 : lo; el.max = out ? 2500 : inH ? 20 : hi; el.step = out ? 5 : inH ? 0.05 : 0.01; }
   const cam = Array.isArray(k.cam) ? k.cam : camOf(k).toArray();      // a hangar-relative key shows where it resolves to
   set('keyT', k.t); set('camX', cam[0]); set('camY', cam[1]); set('camZ', cam[2]);
   set('keyChair', chairDeg(k.chair).toFixed(0)); set('keyFace', k.face);

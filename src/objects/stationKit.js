@@ -10,10 +10,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { hullMaterial, boxProjectUVs, sideMaterial, splitSides } from './hull.js';
 
 export const RING_FILES = ['ring', 'ring1', 'ring2', 'ring3', 'ring3t', 'ring4', 'ring5', 'ring5t', 'ring7'];
-export const PART_FILES = [...RING_FILES, 'tower', 'arm1', 'arm2', 'hangar', 'hangar2', 'satellite', 'fighter', 'ship1', 'freighter'];
+export const PART_FILES = [...RING_FILES, 'tower', 'arm1', 'arm2', 'hangar', 'hangar2', 'satellite', 'fighter', 'ship1', 'ship2', 'freighter'];
 // Parts modelled with their mouth or nose along +z are turned at load so they lie along +x like the
 // rest of the kit (long axis outward, the hangar's back toward the arm).
-const TURN_TO_X = { hangar2: true, ship1: true };
+const TURN_TO_X = { hangar2: true, ship1: true, ship2: true };
 // The inside of each hangar model, measured in its own units after that turn: where the deck is,
 // how far in the back wall is and how far out the mouth, and the half width between the side
 // walls. A fighter is parked on the deck by these.
@@ -57,7 +57,7 @@ export const DEFAULT_LAYOUT = {
   satellites: { count: 0, radius: 4900, scale: 120, seed: 7 },
   // traffic: fighters parked around the hangars, freighters standing off the station
   fighters: { count: 0, radius: 200, y: -1200, scale: 10 },
-  freighters: { count: 1, radius: 2500, y: 200, scale: 260 },
+  freighters: { count: 0, radius: 2500, y: 200, scale: 260 },   // nothing parked in space: traffic flies by on the intro's timeline
   spin: true,
   timeScale: 1,
 };
@@ -185,6 +185,25 @@ export async function loadKit(base = '../../models/kit/', onProgress) {
       res();
     }, (e) => { loaded[name] = e.loaded; totals[name] = e.total || totals[name] || 0; report(); }, rej);
   })));
+  // ship2 came as two of the same fighter stacked, one canopy shut and one open: split into ship2a
+  // (shut, the lower) and ship2b (open), each stood on y = 0 and centred
+  if (parts.ship2) {
+    const g = parts.ship2.geometry, pos = g.attributes.position;
+    const pick = (keep) => {
+      const src = g.index ? g.toNonIndexed() : g, sp = src.attributes.position, sn = src.attributes.normal, su = src.attributes.uv, idx = [];
+      for (let i = 0; i < sp.count; i += 3) { const y = (sp.getY(i) + sp.getY(i + 1) + sp.getY(i + 2)) / 3; if (keep(y)) idx.push(i, i + 1, i + 2); }
+      const out = new THREE.BufferGeometry(), P = new Float32Array(idx.length * 3), N = new Float32Array(idx.length * 3), U = su ? new Float32Array(idx.length * 2) : null;
+      idx.forEach((k, j) => { P[j * 3] = sp.getX(k); P[j * 3 + 1] = sp.getY(k); P[j * 3 + 2] = sp.getZ(k); N[j * 3] = sn.getX(k); N[j * 3 + 1] = sn.getY(k); N[j * 3 + 2] = sn.getZ(k); if (U) { U[j * 2] = su.getX(k); U[j * 2 + 1] = su.getY(k); } });
+      out.setAttribute('position', new THREE.BufferAttribute(P, 3)); out.setAttribute('normal', new THREE.BufferAttribute(N, 3)); if (U) out.setAttribute('uv', new THREE.BufferAttribute(U, 2));
+      out.computeBoundingBox(); const b = out.boundingBox, c = b.getCenter(new THREE.Vector3());
+      out.translate(-c.x, -b.min.y, -c.z);
+      return out;
+    };
+    const cut = (parts.ship2.box.min.y + parts.ship2.box.max.y) / 2 - 0.05;
+    for (const [name, keep] of [['ship2a', y => y < cut], ['ship2b', y => y >= cut]]) {
+      const geo = pick(keep); parts[name] = { geometry: geo, material: parts.ship2.material, ...measure(geo) };
+    }
+  }
   for (const k of RING_FILES) if (parts[k]) { parts[k].circle = rimCircle(parts[k].geometry); parts[k].rim = parts[k].circle.radius; }
   // Where the parts meet: the middle of an arm's far end, and the middle of the hangar's back face,
   // in the part's own units. The hangar hangs off the arm's tip, and its back is not centred on
@@ -342,8 +361,11 @@ export class StationKit extends THREE.Group {
     for (let i = 0; i < count; i++) {
       const a = angles ? angles[i] : (i / count) * Math.PI * 2;
       // local +x (or +z) points away from the axis
-      e.set(THREE.MathUtils.degToRad(tiltDeg), along === 'z' ? a : a - Math.PI / 2, 0);
-      q.setFromEuler(e);
+      // turned to point outward, then tilted about its own crosswise axis, so a positive tilt
+      // lifts every arm the same way whichever direction it points (tilting about the world's x
+      // lifted some and dropped others)
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), along === 'z' ? a : a - Math.PI / 2);
+      q.multiply(new THREE.Quaternion().setFromAxisAngle(along === 'z' ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1), THREE.MathUtils.degToRad(tiltDeg) * (along === 'z' ? -1 : 1)));
       pos.set(Math.sin(a) * radius, y, Math.cos(a) * radius);
       if (side) pos.add(new THREE.Vector3(-Math.cos(a), 0, Math.sin(a)).multiplyScalar(side));   // along the part's own z, sideways
       mesh.setMatrixAt(i, m.compose(pos, q, sc));

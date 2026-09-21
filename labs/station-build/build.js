@@ -66,48 +66,38 @@ let station = null;
 // ── the layout, and the controls that write into it ─────────────────────────────
 const layout = JSON.parse(JSON.stringify(DEFAULT_LAYOUT));
 const CONTROLS = {
-  ringRadius:   [v => layout.ringRadius = v, v => v.toLocaleString() + ' m'],
-  panelMetres:  [v => layout.panelMetres = v, v => v + ' m'],
-  sideMetres:   [v => layout.sideMetres = v, v => v + ' m'],
-  rings:        [v => layout.rings = v, v => v],
-  ringGap:      [v => layout.ringGap = v, v => v + ' m'],
-  ringY:        [v => layout.ringY = v, v => v + ' m'],
-  hubCut:       [v => layout.hubCut = v, v => Math.round(v * 100) + '%'],
-  collarRadius: [v => layout.collarRadius = v, v => v + ' m'],
-  collarLength: [v => layout.collarLength = v, v => v.toLocaleString() + ' m'],
-  towerHeight:  [v => layout.towerHeight = v, v => v.toLocaleString() + ' m'],
-  ringArmCount: [v => layout.ringArms.count = v, v => v],
-  ringArmScale: [v => layout.ringArms.scale = v, v => v + ' m'],
-  ringArmInset: [v => layout.ringArms.inset = v, v => v + ' m'],
-  ringArmY:     [v => layout.ringArms.y = v, v => v + ' m'],
-  ringArmTilt:  [v => layout.ringArms.tilt = v, v => v + '°'],
-  armCount:     [v => layout.towerArms.count = v, v => v],
-  armRadius:    [v => layout.towerArms.radius = v, v => v + ' m'],
-  armY:         [v => layout.towerArms.y = v, v => v + ' m'],
-  armScale:     [v => layout.towerArms.scale = v, v => v + ' m'],
-  armTilt:      [v => layout.towerArms.tilt = v, v => v + '°'],
-  hangarEvery:  [v => layout.hangars.every = v, v => v === 0 ? 'none' : 'every ' + v],
-  hangarScale:  [v => layout.hangars.scale = v, v => v + ' m'],
-  hangarY:      [v => layout.hangars.y = v, v => v + ' m'],
-  hangarSide:   [v => layout.hangars.side = v, v => v + ' m'],
-  hangarReach:  [v => layout.hangars.reach = v, v => v + ' m'],
-  panelCount:   [v => layout.panels.count = v, v => v],
-  panelY:       [v => layout.panels.y = v, v => v + ' m'],
-  panelScale:   [v => layout.panels.scale = v, v => v + ' m'],
-  panelRadius:  [v => layout.panels.radius = v, v => v === 0 ? 'on the tower' : v + ' m'],
-  panelTilt:    [v => layout.panels.tilt = v, v => v + '°'],
-  fighterCount:   [v => layout.fighters.count = v, v => v],
-  fighterRadius:  [v => layout.fighters.radius = v, v => v + ' m'],
-  fighterY:       [v => layout.fighters.y = v, v => v + ' m'],
-  fighterScale:   [v => layout.fighters.scale = v, v => v + ' m'],
-  freighterCount: [v => layout.freighters.count = v, v => v],
-  freighterRadius:[v => layout.freighters.radius = v, v => v + ' m'],
-  freighterY:     [v => layout.freighters.y = v, v => v + ' m'],
-  freighterScale: [v => layout.freighters.scale = v, v => v + ' m'],
-  satCount:     [v => layout.satellites.count = v, v => v],
-  satRadius:    [v => layout.satellites.radius = v, v => v.toLocaleString() + ' m'],
-  satScale:     [v => layout.satellites.scale = v, v => v + ' m'],
-  satSeed:      [v => layout.satellites.seed = v, v => v],
+  ringRadius:   [v => layout.ringRadius = v, v => v.toLocaleString() + ' m', () => layout.ringRadius],
+  panelMetres:  [v => layout.panelMetres = v, v => v + ' m', () => layout.panelMetres],
+  sideMetres:   [v => layout.sideMetres = v, v => v + ' m', () => layout.sideMetres],
+  rings:        [v => layout.rings = v, v => v, () => layout.rings],
+  ringGap:      [v => layout.ringGap = v, v => v + ' m', () => layout.ringGap],
+  ringY:        [v => layout.ringY = v, v => v + ' m', () => layout.ringY],
+  hubCut:       [v => layout.hubCut = v, v => Math.round(v * 100) + '%', () => layout.hubCut],
+  collarRadius: [v => layout.collarRadius = v, v => v + ' m', () => layout.collarRadius],
+  collarLength: [v => layout.collarLength = v, v => v.toLocaleString() + ' m', () => layout.collarLength],
+  towerHeight:  [v => layout.towerHeight = v, v => v.toLocaleString() + ' m', () => layout.towerHeight],
+  ringArmCount: [v => layout.ringArms.count = v, v => v, () => layout.ringArms.count],
+  ringArmScale: [v => layout.ringArms.scale = v, v => v + ' m', () => layout.ringArms.scale],
+  ringArmInset: [v => layout.ringArms.inset = v, v => v + ' m', () => layout.ringArms.inset],
+  ringArmY:     [v => layout.ringArms.y = v, v => v + ' m', () => layout.ringArms.y],
+  ringArmTilt:  [v => layout.ringArms.tilt = v, v => v + '°', () => layout.ringArms.tilt],
+  armCount:     [v => layout.towerArms.count = v, v => v, () => layout.towerArms.count],
+  armRadius:    [v => layout.towerArms.radius = v, v => v + ' m', () => layout.towerArms.radius],
+  armY:         [v => layout.towerArms.y = v, v => v + ' m', () => layout.towerArms.y],
+  armScale:     [v => layout.towerArms.scale = v, v => v + ' m', () => layout.towerArms.scale],
+  armTilt:      [v => layout.towerArms.tilt = v, v => v + '°', () => layout.towerArms.tilt],
+  hangarEvery:  [v => layout.hangars.every = v, v => v === 0 ? 'none' : 'every ' + v, () => layout.hangars.every],
+  hangarScale:  [v => layout.hangars.scale = v, v => v + ' m', () => layout.hangars.scale],
+  hangarY:      [v => layout.hangars.y = v, v => v + ' m', () => layout.hangars.y],
+  hangarSide:   [v => layout.hangars.side = v, v => v + ' m', () => layout.hangars.side],
+  hangarReach:  [v => layout.hangars.reach = v, v => v + ' m', () => layout.hangars.reach],
+  bayLength:    [v => layout.bay.length = v, v => Math.round(v * 100) + '% of the hangar', () => layout.bay.length],
+  bayAlong:     [v => layout.bay.along = v, v => v === 0 ? 'at the back' : v === 1 ? 'at the mouth' : Math.round(v * 100) + '% to the mouth', () => layout.bay.along],
+  panelCount:   [v => layout.panels.count = v, v => v, () => layout.panels.count],
+  panelY:       [v => layout.panels.y = v, v => v + ' m', () => layout.panels.y],
+  panelScale:   [v => layout.panels.scale = v, v => v + ' m', () => layout.panels.scale],
+  panelRadius:  [v => layout.panels.radius = v, v => v === 0 ? 'on the tower' : v + ' m', () => layout.panels.radius],
+  panelTilt:    [v => layout.panels.tilt = v, v => v + '°', () => layout.panels.tilt],
 };
 let rebuildSoon = null;
 function rebuild() {
@@ -124,11 +114,30 @@ function readout() {
   $('rim').textContent = StationKit.rimSpeed(R).toFixed(0) + ' m/s';
   $('across').textContent = (R * 2 / 1000).toFixed(2) + ' km';
 }
-for (const [id, [apply, fmt]] of Object.entries(CONTROLS)) {
+for (const [id, [apply, fmt, read]] of Object.entries(CONTROLS)) {
   const el = $(id);
   const run = () => { apply(+el.value); $(id + 'Out').textContent = fmt(+el.value); queueRebuild(); };
   el.addEventListener('input', run);
-  CONTROLS[id].run = () => { apply(+el.value); $(id + 'Out').textContent = fmt(+el.value); };
+  // the slider starts at the layout's value (the same default the quarters uses), not the page's
+  CONTROLS[id].run = () => { if (read) el.value = read(); apply(+el.value); $(id + 'Out').textContent = fmt(+el.value); };
+}
+for (const [id, get] of [['towerFlip', () => layout.towerFlip], ['collar', () => layout.collar], ['collarAuto', () => layout.collarAuto]]) $(id).checked = get();
+for (const [id, get] of [['ringModel', () => layout.ringModel], ['ringSurface', () => layout.ringSurface], ['armKind', () => layout.towerArms.kind], ['ringArmKind', () => layout.ringArms.kind], ['hangarModel', () => layout.hangarModel]]) $(id).value = get();
+$('collarRadius').disabled = $('collarLength').disabled = layout.collarAuto;
+$('hangarModel').addEventListener('change', e => { layout.hangarModel = e.target.value; queueRebuild(); });
+// the panel's sections fold: a click on a heading opens or closes it, and which are open is kept
+{
+  const body = document.querySelector('#panel .body'), kids = [...body.children];
+  let open = ['Rings']; try { open = JSON.parse(localStorage.getItem('stationBuilder.open')) || open; } catch (e) {}
+  let det = null;
+  for (const el of kids) {
+    if (el.tagName === 'H2') {
+      det = document.createElement('details'); det.className = 'sec'; det.open = open.includes(el.textContent);
+      const sm = document.createElement('summary'); sm.textContent = el.textContent; det.appendChild(sm);
+      det.addEventListener('toggle', () => { try { localStorage.setItem('stationBuilder.open', JSON.stringify([...document.querySelectorAll('details.sec')].filter(d => d.open).map(d => d.querySelector('summary').textContent))); } catch (e) {} });
+      body.insertBefore(det, el); el.remove();
+    } else if (det) det.appendChild(el);
+  }
 }
 $('towerFlip').addEventListener('change', e => { layout.towerFlip = e.target.checked; queueRebuild(); });
 $('ringModel').addEventListener('change', e => { layout.ringModel = e.target.value; queueRebuild(); });

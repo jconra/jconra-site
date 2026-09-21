@@ -16,6 +16,11 @@
   h1 { font:400 17px/1 nasa, ui-sans-serif, sans-serif; letter-spacing:.05em; color:#e8f1f5; display:flex; justify-content:space-between; align-items:center; }
   h1 button { font:600 11px ui-monospace,monospace; background:none; border:1px solid #212a34; color:#8494a0; border-radius:3px; padding:3px 7px; cursor:pointer; }
   h2 { font:600 10.5px/1 ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:#5b6873; margin:16px 0 8px; }
+  details.sec { margin:10px 0 0; border-top:1px solid #1a2129; padding-top:6px; }
+  details.sec summary { font:600 10.5px/1 ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:#8494a0; cursor:pointer; list-style:none; padding:6px 0; user-select:none; }
+  details.sec summary::before { content:"▸ "; color:#35e07d; }
+  details.sec[open] summary::before { content:"▾ "; }
+  details.sec[open] summary { color:#e8f1f5; }
   .row { display:grid; grid-template-columns:1fr auto; gap:2px 8px; align-items:center; margin:6px 0; }
   .row label { color:#aeb9c2; }
   .row output { font:12px ui-monospace,monospace; color:#e8f1f5; font-variant-numeric:tabular-nums; }
@@ -96,16 +101,9 @@
     <div class="row"><label for="hangarY">Hangar up / down</label><output id="hangarYOut"></output><input id="hangarY" type="range" min="-200" max="200" step="1" value="0"></div>
     <div class="row"><label for="hangarSide">Hangar sideways</label><output id="hangarSideOut"></output><input id="hangarSide" type="range" min="-200" max="200" step="1" value="0"></div>
     <div class="row"><label for="hangarReach">Hangar in / out</label><output id="hangarReachOut"></output><input id="hangarReach" type="range" min="-200" max="200" step="1" value="0"></div>
-
-    <h2>Traffic</h2>
-    <div class="row"><label for="fighterCount">Fighters</label><output id="fighterCountOut"></output><input id="fighterCount" type="range" min="0" max="16" step="1" value="0"></div>
-    <div class="row"><label for="fighterRadius">Fighters out from the axis</label><output id="fighterRadiusOut"></output><input id="fighterRadius" type="range" min="200" max="3000" step="20" value="200"></div>
-    <div class="row"><label for="fighterY">Fighters height</label><output id="fighterYOut"></output><input id="fighterY" type="range" min="-1200" max="1200" step="10" value="-1200"></div>
-    <div class="row"><label for="fighterScale">Fighter length</label><output id="fighterScaleOut"></output><input id="fighterScale" type="range" min="10" max="200" step="2" value="10"></div>
-    <div class="row"><label for="freighterCount">Freighters</label><output id="freighterCountOut"></output><input id="freighterCount" type="range" min="0" max="8" step="1" value="1"></div>
-    <div class="row"><label for="freighterRadius">Freighters out from the axis</label><output id="freighterRadiusOut"></output><input id="freighterRadius" type="range" min="400" max="6000" step="50" value="2200"></div>
-    <div class="row"><label for="freighterY">Freighters height</label><output id="freighterYOut"></output><input id="freighterY" type="range" min="-2000" max="2000" step="20" value="240"></div>
-    <div class="row"><label for="freighterScale">Freighter length</label><output id="freighterScaleOut"></output><input id="freighterScale" type="range" min="40" max="800" step="10" value="260"></div>
+    <div class="row"><label for="hangarModel">Hangar model</label><select id="hangarModel"><option value="hangar2" selected>hangar2 (open bay, deck "03")</option><option value="hangar">hangar (closed box)</option></select></div>
+    <div class="row"><label for="bayLength">Fighter on the deck</label><output id="bayLengthOut"></output><input id="bayLength" type="range" min="0.05" max="0.5" step="0.01" value="0.2"></div>
+    <div class="row"><label for="bayAlong">Fighter's spot</label><output id="bayAlongOut"></output><input id="bayAlong" type="range" min="0" max="1" step="0.05" value="0.45"></div>
 
     <h2>Solar panels</h2>
     <div class="row"><label for="panelCount">How many</label><output id="panelCountOut"></output><input id="panelCount" type="range" min="0" max="12" step="1" value="4"></div>
@@ -113,12 +111,6 @@
     <div class="row"><label for="panelScale">Wing span</label><output id="panelScaleOut"></output><input id="panelScale" type="range" min="60" max="1500" step="10" value="520"></div>
     <div class="row"><label for="panelRadius">Push out from the tower</label><output id="panelRadiusOut"></output><input id="panelRadius" type="range" min="0" max="1200" step="10" value="250"></div>
     <div class="row"><label for="panelTilt">Tilt</label><output id="panelTiltOut"></output><input id="panelTilt" type="range" min="-90" max="90" step="1" value="0"></div>
-
-    <h2>Free-flying craft</h2>
-    <div class="row"><label for="satCount">How many</label><output id="satCountOut"></output><input id="satCount" type="range" min="0" max="60" step="1" value="0"></div>
-    <div class="row"><label for="satRadius">How far out</label><output id="satRadiusOut"></output><input id="satRadius" type="range" min="200" max="6000" step="50" value="1400"></div>
-    <div class="row"><label for="satScale">Size</label><output id="satScaleOut"></output><input id="satScale" type="range" min="20" max="400" step="5" value="120"></div>
-    <div class="row"><label for="satSeed">Scatter</label><output id="satSeedOut"></output><input id="satSeed" type="range" min="1" max="40" step="1" value="7"></div>
 
     <h2>Lamps</h2>
     <label class="check" for="lampsOn"><input id="lampsOn" type="checkbox" checked> Hull lamps</label>
