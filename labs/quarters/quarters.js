@@ -729,8 +729,11 @@ function stepMap(T, a, b, u, set = 'map') {
 // another over a span of seconds; each craft points along its path and is only there while it
 // is on it.
 const FLYBYS = [
-  // the freighter crosses slowly in the FOREGROUND, right to left, while the camera is wide
-  { part: 'freighter', size: 260, inView: true, from: { fwd: 950, right: 780, up: 220 }, to: { fwd: 1150, right: -900, up: 60 }, t0: 17.0, t1: 26.8 },
+  // the freighter cruises in a STRAIGHT line, right to left across the camera's view as it is at
+  // `at` seconds (the wide shot): the line is set out in that view - so much ahead and up, this
+  // long, along the view's right - and then it is just a line in the world, so it never backs up
+  // or turns however the camera moves
+  { part: 'freighter', size: 260, line: { at: 21.5, fwd: 1300, up: 120, span: 2600 }, t0: 16.5, t1: 27.5 },
   // the pair's path is set against the camera's own view at its start and end - metres ahead, to
   // the right and up from where the camera is and looks at that moment - so it crosses the frame
   // the pair's path is given in the camera's view the whole way (`inView`), not just at its ends,
@@ -757,8 +760,18 @@ function buildTraffic(parts) {
       group.add(m);
     }
     // pointed along the path: the parts lie along +x
-    const from = Array.isArray(f.from) ? new THREE.Vector3(...f.from) : f.inView ? new THREE.Vector3() : viewPoint(f.t0, f.from);
-    const to = Array.isArray(f.to) ? new THREE.Vector3(...f.to) : f.inView ? new THREE.Vector3(1, 0, 0) : viewPoint(f.t1, f.to), dir = to.clone().sub(from).normalize();
+    let from, to;
+    if (f.line) {
+      const { a, b, u, set } = keysAround(f.line.at);
+      const cam = cameraAt(f.line.at), target = lookPoint(a.look, set).lerp(lookPoint(b.look, set), u).sub(STATION_AT);
+      const fwd = target.sub(cam).normalize(), right = fwd.clone().cross(new THREE.Vector3(0, 1, 0)).normalize();
+      const centre = viewPoint(f.line.at, { fwd: f.line.fwd, right: 0, up: f.line.up });
+      from = centre.clone().addScaledVector(right, f.line.span / 2); to = centre.clone().addScaledVector(right, -f.line.span / 2);
+    } else {
+      from = Array.isArray(f.from) ? new THREE.Vector3(...f.from) : f.inView ? new THREE.Vector3() : viewPoint(f.t0, f.from);
+      to = Array.isArray(f.to) ? new THREE.Vector3(...f.to) : f.inView ? new THREE.Vector3(1, 0, 0) : viewPoint(f.t1, f.to);
+    }
+    const dir = to.clone().sub(from).normalize();
     group.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir);
     group.visible = false;
     station.add(group);
