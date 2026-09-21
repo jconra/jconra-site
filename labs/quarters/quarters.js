@@ -110,9 +110,19 @@ post.setSize(innerWidth, innerHeight);
 const room = new THREE.Group();
 scene.add(room);
 let windows = null, chairPivot = null, props = [];
-const CHAIR = { swivel: true, speed: 12, angle: 0, x: 0, z: 0 };   // x, z: nudges in cm from where the chair stood in the model
+const CHAIR = { swivel: true, speed: 12, angle: 0, x: 0, y: 0, z: 0 };   // x, y, z: nudges in cm from where the chair stands
 let chairBase = null;
-function placeChair() { if (chairPivot && chairBase) chairPivot.position.copy(chairBase).add(new THREE.Vector3(CHAIR.x / 100, 0, CHAIR.z / 100)); }
+function placeChair() { if (chairPivot && chairBase) chairPivot.position.copy(chairBase).add(new THREE.Vector3(CHAIR.x / 100, CHAIR.y / 100, CHAIR.z / 100)); }
+// The chair's base is set down on the floor under it: the model can carry it a little high, and a
+// chair on castors that float is the first thing anyone sees.
+function dropChair() {
+  if (!chairPivot || !chairBase) return;
+  const chair = chairPivot.children.find(c => c.isMesh); if (!chair) return;
+  const targets = []; room.traverse(o => { if (o.isMesh && o !== chair && o.name !== 'Roof' && o.name !== 'RoofLid') targets.push(o); });
+  const ray = new THREE.Raycaster(chairBase.clone().add(new THREE.Vector3(0, 0.3, 0)), new THREE.Vector3(0, -1, 0)); ray.far = 2;
+  const hit = ray.intersectObjects(targets, true).find(h => h.face && h.point.y <= chairBase.y + 0.05);
+  if (hit) { chairBase.y = hit.point.y; placeChair(); }
+}
 
 // Two builds of the same cabin, to compare: the full Tripo export, and a lighter one whose props
 // share a single texture atlas and one mesh, with the flat panels merged and the rest collapsed.
@@ -272,7 +282,7 @@ function loadRoom(name) {
       chairPivot.position.copy(axis);
       chairPivot.updateMatrixWorld(true);
       chairPivot.attach(o);
-      chairBase = axis.clone(); placeChair();
+      chairBase = axis.clone(); dropChair(); placeChair();
     } else props.push(o);
   }
   buildPropList();
@@ -1376,6 +1386,7 @@ const SLIDERS = {
   chairSpeed: [v => CHAIR.speed = v, v => v + '°/s'],
   chairAngle: [v => { CHAIR.angle = v; if (chairPivot && !CHAIR.swivel) chairPivot.rotation.y = THREE.MathUtils.degToRad(v); }, v => v + '°'],
   chairX:     [v => { CHAIR.x = v; placeChair(); }, v => v + ' cm'],
+  chairY:     [v => { CHAIR.y = v; placeChair(); }, v => v + ' cm'],
   screenW:    [v => { fitOf(screenPick).w = v; applyScreenFit(); }, v => v + ' cm'],
   screenH:    [v => { fitOf(screenPick).h = v; applyScreenFit(); }, v => v + ' cm'],
   screenX:    [v => { fitOf(screenPick).x = v; applyScreenFit(); }, v => v + ' cm'],
