@@ -15,6 +15,22 @@ import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 // with it, which tore when the canopy swung. Measured in Blender, 2026-09-20.
 const SHIP1_CANOPY = { xMin: -0.115, xMax: 0.21, hinge: { x: -0.10, y: 0.215 }, slopeDeg: 30, closeDeg: -50 };
 
+// The fighter with its canopy SHUT, for the flights: the hull and the split-off canopy turned down
+// onto the sill (the same numbers the hangar uses), in the part's own units under a group.
+export function shutFighter(F, { deg = -50, drop = 0.05, slide = 0.02, metres = 7 } = {}) {
+  const fu = metres / F.size.x, g = new THREE.Group();
+  const { hull, canopy } = splitCanopy(F.geometry, SHIP1_CANOPY);
+  const hullMesh = new THREE.Mesh(hull, F.material); hullMesh.castShadow = true;
+  const canopyMesh = new THREE.Mesh(canopy, F.material); canopyMesh.castShadow = true;
+  canopyMesh.position.set(SHIP1_CANOPY.hinge.x + slide / fu, SHIP1_CANOPY.hinge.y - drop / fu, 0);
+  canopyMesh.rotation.z = THREE.MathUtils.degToRad(deg);
+  { const pos = canopy.attributes.position, pts = []; for (let i = 0; i < pos.count; i += 2) pts.push(new THREE.Vector3().fromBufferAttribute(pos, i));
+    const glass = new THREE.Mesh(new ConvexGeometry(pts), new THREE.MeshPhysicalMaterial({ color: 0x223a52, metalness: 0.1, roughness: 0.08, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }));
+    glass.renderOrder = 2; canopyMesh.add(glass); }
+  g.add(hullMesh, canopyMesh); g.scale.setScalar(fu); g.position.y = -F.box.min.y * fu;
+  return g;
+}
+
 export function buildHangarSet(parts, { shipLength = 6, bayLength = 0.2, along = 0.45, hangarKind = 'hangar2', fighterKind = 'ship1' } = {}) {
   const H = parts[hangarKind], F = parts[fighterKind], bay = BAYS[hangarKind];
   const hu = shipLength / (bayLength * H.size.x);                 // metres per hangar unit, keeping the station's proportion

@@ -13,7 +13,7 @@ import { Hologram } from '../../src/objects/hologram.js';
 import { Screen } from '../../src/objects/screens.js';
 import { Terminal } from '../../src/objects/terminal.js';
 import { loadKit, StationKit, DEFAULT_LAYOUT } from '../../src/objects/stationKit.js';
-import { buildHangarSet } from '../../src/objects/hangarSet.js';
+import { buildHangarSet, shutFighter } from '../../src/objects/hangarSet.js';
 import { loadUSMap } from '../../src/objects/usMap.js';
 import { buildTown } from '../../src/objects/town.js';
 
@@ -705,7 +705,7 @@ function liveTown(dt) {
 function buildMapSet(parts) {
   const floor = new THREE.Group(); floor.position.copy(MAP_AT); floor.visible = false; scene.add(floor);
   const pic = new THREE.Mesh(new THREE.PlaneGeometry(833, 827), picture.material); floor.add(pic);
-  const F = parts.ship1, ship = new THREE.Mesh(F.geometry, F.material); ship.scale.setScalar(26 / F.size.x); floor.add(ship);
+  const ship = new THREE.Group(); ship.add(shutFighter(parts.ship1, { metres: 26 })); floor.add(ship);      // canopy shut for the flight
   // re-entry fire: a soft orange glow on the nose, drawn once on a canvas
   const glowCanvas = document.createElement('canvas'); glowCanvas.width = glowCanvas.height = 128;
   { const g = glowCanvas.getContext('2d'), r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
@@ -837,7 +837,7 @@ const FLYBYS = [
   // `at` seconds (the wide shot): the line is set out in that view - so much ahead and up, this
   // long, along the view's right - and then it is just a line in the world, so it never backs up
   // or turns however the camera moves
-  { part: 'freighter', size: 260, line: { at: 21.5, fwd: 1300, up: 120, span: 2600 }, t0: 16.5, t1: 27.5 },
+  { part: 'freighter', size: 260, flip: true, line: { at: 21.5, fwd: 1300, up: 120, span: 2600 }, t0: 16.5, t1: 27.5 },   // flip: the part's nose is at -x
   // the pair's path is set against the camera's own view at its start and end - metres ahead, to
   // the right and up from where the camera is and looks at that moment - so it crosses the frame
   // the pair's path is given in the camera's view the whole way (`inView`), not just at its ends,
@@ -877,6 +877,7 @@ function buildTraffic(parts) {
     }
     const dir = to.clone().sub(from).normalize();
     group.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir);
+    if (f.flip) for (const m of group.children) m.rotation.y = Math.PI;      // the part's nose is at -x
     group.visible = false;
     station.add(group);
     traffic.push({ ...f, group, from, to, spec: f });

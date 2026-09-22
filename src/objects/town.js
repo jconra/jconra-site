@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { Forest } from './forest.js';
 import { groundMaterial } from './ground.js';
+import { shutFighter } from './hangarSet.js';
 
 const ROAD = 62;            // pitch of the grid the buildings stand on
 const LOT = [36, 27];       // a building's footprint, 4:3 like the screenshots
@@ -88,13 +89,13 @@ export function buildTown(parts, projects, { shipLength = 7, renderer, origin = 
 
   // THE FIGHTER
   const F = parts.ship1, jet = new THREE.Group();
-  const body = new THREE.Mesh(F.geometry, F.material); body.scale.setScalar(shipLength / F.size.x); body.position.y = -F.box.min.y * shipLength / F.size.x - 1.5;
-  body.castShadow = true; jet.add(body); floor.add(jet);
+  const body = shutFighter(F, { metres: shipLength }); body.position.y -= 1.5;      // canopy shut for the flight
+  jet.add(body); floor.add(jet);
   const state = { pos: new THREE.Vector3(0, 56, -900), heading: 0, speed: 46, bank: 0, turn: 0, alt: 56 };   // above the tallest roof
   const fwd = () => new THREE.Vector3(Math.sin(state.heading), 0, Math.cos(state.heading));
   const place = () => {
     jet.position.copy(state.pos);
-    jet.rotation.set(0, state.heading, 0); jet.rotateY(Math.PI / 2);          // the part's nose is +x; heading 0 is +z
+    jet.rotation.set(0, state.heading, 0); jet.rotateY(-Math.PI / 2);         // the part's nose is +x; heading 0 is +z (turning +x onto +z is a -90 about y)
     jet.rotateX(state.bank);
   };
 
