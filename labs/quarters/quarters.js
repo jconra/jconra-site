@@ -773,6 +773,7 @@ function stepMap(T, a, b, u, set = 'map') {
   }
   MS.ship.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir);
   MS.ship.rotateX(THREE.MathUtils.degToRad(FLY.roll));
+  { const bn = MS.ship.children[0] && MS.ship.children[0].userData.burner; if (bn) { bn.setThrust(d > 0 ? 1 : 0.55); bn.update(1 / 60); } }   // full burn for the dive
   // fire on the nose, and the wash-out over the frame
   const fire = THREE.MathUtils.smoothstep(T, MAP.fire, MAP.flash) * (1 - THREE.MathUtils.smoothstep(T, MAP.flash, MAP.clear));
   MS.plume.position.copy(MS.ship.position).addScaledVector(dir, 10);
@@ -1133,6 +1134,8 @@ function stepHangar(T, a, b, u, set = 'hangar') {
   HS.setCanopy((T - HANGAR.canopy) / HANGAR.canopyLen, HANGAR.canopyDeg, HANGAR.canopyDrop, HANGAR.canopySlide);
   const roll = Math.max(0, T - HANGAR.roll);
   HS.ship.position.set(0.5 * HANGAR.accel * roll * roll, 0, 0);
+  // the burner lights as he rolls: a flicker first, full burn as it clears the mouth
+  if (HS.burner) { HS.burner.setThrust(roll <= 0 ? 0 : THREE.MathUtils.clamp(0.2 + roll * 0.35, 0, 1)); HS.burner.update(1 / 60); }
   if (twin) for (const sp of twin.spinners) sp.turntable.rotation.y = sp.sign * (Math.PI * 2 / StationKit.period(sp.radius)) * T;   // the station outside keeps turning
   // banking to the mouse once he is out of the mouth; level while he is still in the bay
   if (HS.ship.position.x > HS.mouth.x) FLY.roll += (FLY.target - FLY.roll) * FLY.follow; else FLY.roll = 0;

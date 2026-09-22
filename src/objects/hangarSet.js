@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { BAYS, PARKED } from './stationKit.js';
 import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
+import { addAfterburner } from './afterburner.js';
 
 // The open canopy of ship1 is welded to its hull. It is picked out by a WEDGE in the part's own
 // units after the kit's turn to +x: everything above a line rising from the hinge toward the nose
@@ -28,6 +29,7 @@ export function shutFighter(F, { deg = -50, drop = 0.05, slide = 0.02, metres = 
     const glass = new THREE.Mesh(new ConvexGeometry(pts), new THREE.MeshPhysicalMaterial({ color: 0x223a52, metalness: 0.1, roughness: 0.08, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }));
     glass.renderOrder = 2; canopyMesh.add(glass); }
   g.add(hullMesh, canopyMesh); g.scale.setScalar(fu); g.position.y = -F.box.min.y * fu;
+  addAfterburner(g, F);
   return g;
 }
 
@@ -63,6 +65,7 @@ export function buildHangarSet(parts, { shipLength = 6, bayLength = 0.2, along =
   }
   const body = new THREE.Group(); body.scale.setScalar(fu); body.position.y = -F.box.min.y * fu;
   body.add(hullMesh); body.add(canopyMesh);
+  const burner = addAfterburner(body, F); burner.setThrust(0);      // cold on the deck
   ship.add(body);
   floor.add(ship);
 
@@ -79,7 +82,7 @@ export function buildHangarSet(parts, { shipLength = 6, bayLength = 0.2, along =
   }
 
   return {
-    floor, hangar, ship, body, canopy: canopyMesh, others, hu, fu, bay, fx,
+    floor, hangar, ship, body, canopy: canopyMesh, others, hu, fu, bay, fx, burner,
     // where things are, in the set's metres
     mouth: new THREE.Vector3((bay.mouth - fx) * hu, 0, 0),
     back: new THREE.Vector3((bay.back - fx) * hu, 0, 0),

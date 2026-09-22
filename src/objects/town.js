@@ -135,11 +135,13 @@ export function buildTown(parts, projects, { shipLength = 7, renderer, origin = 
       state.speed = THREE.MathUtils.clamp(state.speed + (input.throttle || 0) * 30 * dt, 25, 90);
       state.bank += (-state.turn * 0.75 - state.bank) * Math.min(1, dt * 4);
       state.pos.addScaledVector(fwd(), state.speed * dt);
+      // the burner answers the throttle: idling at cruise, full when pushed, a glow when eased off
+      const bn = body.userData.burner; if (bn) { bn.setThrust(input.throttle > 0 ? 1 : input.throttle < 0 ? 0.15 : 0.45 + 0.4 * (state.speed - 25) / 65); bn.update(dt); }
       state.pos.y = state.alt + Math.sin(performance.now() * 0.0012) * 0.6;
       place(); relay(state.pos.x, state.pos.z);
     },
     // the flight as a function of time for the scrubbable part: straight in over the town
-    poseAt(t) { state.pos.set(0, state.alt, -900 + 46 * t); state.heading = 0; state.bank = 0; state.turn = 0; place(); relay(state.pos.x, state.pos.z); },
+    poseAt(t) { const bn = body.userData.burner; if (bn) { bn.setThrust(0.7); bn.update(1 / 60); } state.pos.set(0, state.alt, -900 + 46 * t); state.heading = 0; state.bank = 0; state.turn = 0; place(); relay(state.pos.x, state.pos.z); },
     // the clouds: 1 = solid, 0 = gone
     setCloud(k) { for (const c of clouds) { c.material.opacity = THREE.MathUtils.clamp(k, 0, 1); c.visible = k > 0.01; } },
     faceClouds(camera) { for (const c of clouds) c.quaternion.copy(camera.quaternion); },
