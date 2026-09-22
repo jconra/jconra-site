@@ -95,7 +95,7 @@ export function groundMaterial({ base = '../../textures/ground/', metresPerTile 
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, { forestMap: { value: forest }, needlesMap: { value: needles }, leavesMap: { value: leaves }, mossMap: { value: moss }, dirtMap: { value: dirt },
       fernsMap: { value: ferns || moss }, darkDirtMap: { value: darkDirt || dirt }, tileM: { value: metresPerTile }, clearingAt: { value: new THREE.Vector3(clearing.x, clearing.z, clearing.radius) },
-      layoutMap: { value: layout ? layout.map : dirt }, layoutMetres: { value: layout ? layout.metres : 0 }, roadMap: { value: roadTexture() }, grassMap: { value: grassTexture() } });
+      layoutMap: { value: layout ? layout.map : dirt }, layoutMetres: { value: layout ? layout.metres : 0 }, roadMap: { value: L('asphalt', roadTexture) }, grassMap: { value: L('grassMed', grassTexture) } });
     sh.vertexShader = 'varying vec3 vWorld;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = `
       uniform sampler2D forestMap; uniform sampler2D needlesMap; uniform sampler2D leavesMap; uniform sampler2D mossMap; uniform sampler2D dirtMap;
