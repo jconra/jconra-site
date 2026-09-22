@@ -16,6 +16,7 @@ import { loadKit, StationKit, DEFAULT_LAYOUT } from '../../src/objects/stationKi
 import { buildHangarSet, shutFighter } from '../../src/objects/hangarSet.js';
 import { loadUSMap } from '../../src/objects/usMap.js';
 import { buildTown } from '../../src/objects/town.js';
+import { loadTownLayout } from '../../src/objects/townLayout.js';
 
 const Q = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -634,8 +635,8 @@ const PROJECTS_FRONT = [
   { name: 'The Labs', text: 'Where this site is built: the station, the quarters, the characters, the props.', href: 'https://jconra.com/labs/', colour: '#2a1e1a' },
 ];
 function buildTownSet(parts) {
-  fetch('../../textures/projects/old-site.json').then(r => r.json()).catch(() => []).then(old => {
-    town = buildTown(parts, [...PROJECTS_FRONT, ...old], { renderer, origin: TOWN_AT, light: !renderer.capabilities.isWebGL2 });   // a machine without WebGL2 gets imposters only, no shadows
+  Promise.all([fetch('../../textures/projects/old-site.json').then(r => r.json()).catch(() => []), loadTownLayout()]).then(([old, layout]) => {
+    town = buildTown(parts, [...PROJECTS_FRONT, ...old], { renderer, origin: TOWN_AT, light: !renderer.capabilities.isWebGL2, layout });   // a machine without WebGL2 gets imposters only, no shadows
     town.floor.position.copy(TOWN_AT); town.floor.visible = false; scene.add(town.floor);
     town.poseAt(0);
   });

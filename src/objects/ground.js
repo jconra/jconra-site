@@ -35,6 +35,13 @@ export function dirtTexture(size = 512) {
     speck(g, s, r, 400, ['#4e3d2a', '#a58a68'], 1, 4, 0.8);
   });
 }
+export function roadTexture(size = 512) {
+  return tileable(size, 29, (g, s, r) => {
+    g.fillStyle = '#4a4d52'; g.fillRect(0, 0, s, s);
+    speck(g, s, r, 2600, ['#3f4247', '#565a60', '#43474c', '#5d6167'], 1, 3, 0.7);
+    speck(g, s, r, 120, ['#2f3236', '#6a6e74'], 2, 6, 0.5);
+  });
+}
 export function rockTexture(size = 512) {
   return tileable(size, 8, (g, s, r) => {
     g.fillStyle = '#6f7378'; g.fillRect(0, 0, s, s);
@@ -75,7 +82,9 @@ function mossTexture(size = 512) {
     speck(g, s, r, 1800, ['#5f8a34', '#3f5f24', '#76a040', '#4d7a2c'], 2, 6, 0.7);
   });
 }
-export function groundMaterial({ base = '../../textures/ground/', metresPerTile = 1.6, clearing = { x: 0, z: 0, radius: 260 }, light = false } = {}) {
+// `layout`: { map: class texture (R road, G grass, B water), metres } from townLayout.js, laid over
+// the town's square; where it says road or grass the noise floor gives way to asphalt or lawn
+export function groundMaterial({ base = '../../textures/ground/', metresPerTile = 1.6, clearing = { x: 0, z: 0, radius: 260 }, light = false, layout = null } = {}) {
   // Jacob's set (2026-09-22): forest litter as the base, needle duff and leaf drifts by noise, fern
   // and moss patches, dirt on the paths, dark dirt in the clearing. Seven pictures; a machine
   // without WebGL2 has too few texture units for them all, so it drops the ferns and the dark dirt.
@@ -85,12 +94,14 @@ export function groundMaterial({ base = '../../textures/ground/', metresPerTile 
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0 });
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, { forestMap: { value: forest }, needlesMap: { value: needles }, leavesMap: { value: leaves }, mossMap: { value: moss }, dirtMap: { value: dirt },
-      fernsMap: { value: ferns || moss }, darkDirtMap: { value: darkDirt || dirt }, tileM: { value: metresPerTile }, clearingAt: { value: new THREE.Vector3(clearing.x, clearing.z, clearing.radius) } });
+      fernsMap: { value: ferns || moss }, darkDirtMap: { value: darkDirt || dirt }, tileM: { value: metresPerTile }, clearingAt: { value: new THREE.Vector3(clearing.x, clearing.z, clearing.radius) },
+      layoutMap: { value: layout ? layout.map : dirt }, layoutMetres: { value: layout ? layout.metres : 0 }, roadMap: { value: roadTexture() }, grassMap: { value: grassTexture() } });
     sh.vertexShader = 'varying vec3 vWorld;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = `
       uniform sampler2D forestMap; uniform sampler2D needlesMap; uniform sampler2D leavesMap; uniform sampler2D mossMap; uniform sampler2D dirtMap;
       ${light ? '' : 'uniform sampler2D fernsMap; uniform sampler2D darkDirtMap;'}
       uniform float tileM; uniform vec3 clearingAt;
+      uniform sampler2D layoutMap; uniform float layoutMetres; uniform sampler2D roadMap; uniform sampler2D grassMap;
       varying vec3 vWorld;
       float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -115,6 +126,15 @@ export function groundMaterial({ base = '../../textures/ground/', metresPerTile 
       float clearingW = 1.0 - smoothstep(0.85, 1.15, toTown + (n2 - 0.5) * 0.25);
       ground = mix(ground, twice(dirtMap, uvW, 0.23, vec2(0.71, 0.29)), path * 0.9);
       ${light ? 'ground = mix(ground, twice(dirtMap, uvW, 0.23, vec2(0.71, 0.29)) * 0.6, clearingW);' : 'ground = mix(ground, twice(darkDirtMap, uvW, 0.23, vec2(0.51, 0.19)), clearingW);'}
+      // the drawn layout: roads, lawns and water where the map says, inside its square
+      if (layoutMetres > 0.0) {
+        vec2 luv = rel / layoutMetres + 0.5;
+        if (luv.x > 0.0 && luv.x < 1.0 && luv.y > 0.0 && luv.y < 1.0) {
+          vec3 cls = texture2D(layoutMap, luv).rgb;
+          vec3 road = twice(roadMap, uvW * 0.4, 0.31, vec2(0.2, 0.6)), lawn = twice(grassMap, uvW * 0.9, 0.27, vec2(0.8, 0.3));
+          ground = mix(ground, lawn, cls.g); ground = mix(ground, road, cls.r); ground = mix(ground, vec3(0.16, 0.34, 0.5), cls.b);
+        }
+      }
       diffuseColor.rgb *= ground;
     `);
     mat.userData.shader = sh;

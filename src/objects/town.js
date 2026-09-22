@@ -8,6 +8,7 @@ import { Forest } from './forest.js';
 import { groundMaterial } from './ground.js';
 import { Understory } from './understory.js';
 import { ForceField } from './forceField.js';
+import { classTexture } from './townLayout.js';
 import { shutFighter } from './hangarSet.js';
 
 const ROAD = 62;            // pitch of the grid the buildings stand on
@@ -55,36 +56,44 @@ function wallTexture(seed) {
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
 }
 
-export function buildTown(parts, projects, { shipLength = 7, renderer, origin = new THREE.Vector3(), light = false } = {}) {
+export function buildTown(parts, projects, { shipLength = 7, renderer, origin = new THREE.Vector3(), light = false, layout = null } = {}) {
   const floor = new THREE.Group();
   const loader = new THREE.TextureLoader();
 
   // GROUND: the plain, and pavement under the town
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), groundMaterial({ clearing: { x: origin.x, z: origin.z, radius: TOWN_R }, light }));
+  const drawn = layout && layout.map ? { map: classTexture(layout.map), metres: layout.metres } : null;
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), groundMaterial({ clearing: { x: origin.x, z: origin.z, radius: drawn ? 0.01 : TOWN_R }, light, layout: drawn }));
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; floor.add(ground);
-  const pave = new THREE.Mesh(new THREE.PlaneGeometry(ROAD * 7, ROAD * 7), new THREE.MeshStandardMaterial({ color: 0x5b6169, roughness: 0.95 }));
-  pave.rotation.x = -Math.PI / 2; pave.position.y = 0.05; floor.add(pave);
-  // road lines between the lots
-  { const g = new THREE.Group(); const m = new THREE.MeshStandardMaterial({ color: 0xd8d8c8, roughness: 0.9 });
+  // without a drawn layout: the old paved square with road lines between the lots
+  if (!drawn) {
+    const pave = new THREE.Mesh(new THREE.PlaneGeometry(ROAD * 7, ROAD * 7), new THREE.MeshStandardMaterial({ color: 0x5b6169, roughness: 0.95 }));
+    pave.rotation.x = -Math.PI / 2; pave.position.y = 0.05; floor.add(pave);
+    const g = new THREE.Group(); const m = new THREE.MeshStandardMaterial({ color: 0xd8d8c8, roughness: 0.9 });
     for (let i = -3; i <= 3; i++) { const a = new THREE.Mesh(new THREE.PlaneGeometry(ROAD * 7, 0.8), m); a.rotation.x = -Math.PI / 2; a.position.set(0, 0.08, i * ROAD + ROAD / 2); g.add(a);
       const b = new THREE.Mesh(new THREE.PlaneGeometry(0.8, ROAD * 7), m); b.rotation.x = -Math.PI / 2; b.position.set(i * ROAD + ROAD / 2, 0.08, 0); g.add(b); }
-    floor.add(g); }
+    floor.add(g);
+  }
 
   // BUILDINGS: one per project, spiralling out from the centre, roof = the screenshot
+  // the lots: the drawn rectangles in order (a project each; extra projects go unbuilt), else the spiral
   const buildings = [], lots = spiral(projects.length), r = rnd(31);
+  const drawnLots = drawn ? layout.buildings : null;
   projects.forEach((pr, i) => {
-    const [lx, lz] = lots[i], h = 14 + r() * 26;
+    if (drawnLots && i >= drawnLots.length) return;
+    const lot = drawnLots ? drawnLots[i] : null;
+    const [lx, lz] = lots[i], h = lot ? 10 + Math.min(lot.w, lot.d) * 0.6 + r() * 8 : 14 + r() * 26;
+    const W = lot ? lot.w : LOT[0], Dp = lot ? lot.d : LOT[1], cx = lot ? lot.x : lx * ROAD, cz = lot ? lot.z : lz * ROAD;
     const walls = new THREE.MeshStandardMaterial({ map: wallTexture(i * 7 + 3), roughness: 0.8 });
     walls.map.repeat.set(2, Math.max(1, Math.round(h / 12)));
     const roof = new THREE.MeshStandardMaterial({ map: roofTexture(pr, loader), roughness: 0.6 });
     const floorMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
-    const b = new THREE.Mesh(new THREE.BoxGeometry(LOT[0], h, LOT[1]), [walls, walls, roof, floorMat, walls, walls]);
-    b.position.set(lx * ROAD, h / 2, lz * ROAD); b.castShadow = b.receiveShadow = true;
+    const b = new THREE.Mesh(new THREE.BoxGeometry(W, h, Dp), [walls, walls, roof, floorMat, walls, walls]);
+    b.position.set(cx, h / 2, cz); b.castShadow = b.receiveShadow = true;
     b.userData.project = pr; floor.add(b); buildings.push(b);
     // a rim round the roof, so the picture reads as something laid on the building: its top a
     // hand's width below the roof, so the two never share a plane
-    const rim = new THREE.Mesh(new THREE.BoxGeometry(LOT[0] + 1.6, 1.2, LOT[1] + 1.6), new THREE.MeshStandardMaterial({ color: 0x2a2f36 }));
-    rim.position.set(lx * ROAD, h - 0.75, lz * ROAD); floor.add(rim);
+    const rim = new THREE.Mesh(new THREE.BoxGeometry(W + 1.6, 1.2, Dp + 1.6), new THREE.MeshStandardMaterial({ color: 0x2a2f36 }));
+    rim.position.set(cx, h - 0.75, cz); floor.add(rim);
   });
 
   // FOREST: the imposter forest, laid out on tiles around the fighter; the town's circle kept clear
@@ -92,7 +101,10 @@ export function buildTown(parts, projects, { shipLength = 7, renderer, origin = 
     clear: (x, z) => Math.hypot(x, z) < TOWN_R, sunDir: new THREE.Vector3(0.5, 1, 0.3) });
   const relay = () => {};
   // THE FENCE: the force field round the town, an octagon of emitter posts just inside the tree line
-  const fence = (() => { const c = []; for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 + Math.PI / 8; c.push(new THREE.Vector3(Math.sin(a) * (TOWN_R - 22), 0, Math.cos(a) * (TOWN_R - 22))); } return new ForceField({ corners: c, height: 12, postEvery: 36 }); })();
+  const fence = (() => { const c = [];
+    if (drawn && layout.fence.length > 2) for (const p of layout.fence) c.push(new THREE.Vector3(p.x, 0, p.z));
+    else for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 + Math.PI / 8; c.push(new THREE.Vector3(Math.sin(a) * (TOWN_R - 22), 0, Math.cos(a) * (TOWN_R - 22))); }
+    return new ForceField({ corners: c, height: 12, postEvery: 36 }); })();
   floor.add(fence.group);
   const understory = new Understory(floor, { clear: (x, z) => Math.hypot(x, z) < TOWN_R, reach: light ? 160 : 260, perTile: light ? 120 : 260 });
 
