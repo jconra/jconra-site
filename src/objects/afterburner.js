@@ -85,8 +85,9 @@ export function findNozzles(F, { tailFrac = 0.08 } = {}) {
 
 // `group` is the fighter (in the part's units); the plumes are added to it and the group gets
 // userData.burner with setThrust(k) and update(dt)
-// ship1's two nacelles, measured in Blender (2026-09-20): their exhaust ends in the part's units
-export const SHIP1_NOZZLES = [new THREE.Vector3(-0.43, 0.12, -0.115), new THREE.Vector3(-0.43, 0.12, 0.115)];
+// ship1's three engines, measured in Blender (2026-09-20): the two nacelles either side, and the
+// centre engine under the fin, higher and further aft; their exhaust ends in the part's units
+export const SHIP1_NOZZLES = [new THREE.Vector3(-0.43, 0.12, -0.115), new THREE.Vector3(-0.43, 0.12, 0.115), new THREE.Vector3(-0.5, 0.185, 0)];
 export function addAfterburner(group, F, { radius = 0.05, length = 0.6, coreColour = 0xff8a2a, outerColour = 0x7a3cff, nozzles = SHIP1_NOZZLES } = {}) {
   nozzles = nozzles || findNozzles(F);
   const geo = new THREE.CylinderGeometry(1, 1, 1, 18, 24, true); geo.translate(0, 0.5, 0);   // y 0..1
