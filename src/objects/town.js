@@ -27,10 +27,12 @@ function spiral(n) {
 }
 
 // a roof with the picture on it, or the name set in type when there is no picture
+// (the box's top face has its picture upside down to a camera coming in over the forest, so it is turned round)
+const upright = (t) => { t.center.set(0.5, 0.5); t.rotation = Math.PI; return t; };
 function roofTexture(project, loader) {
   if (project.img) {
     const t = loader.load(`../../textures/projects/${project.img}.jpg`); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
-    return t;
+    return upright(t);
   }
   const cv = document.createElement('canvas'); cv.width = 512; cv.height = 384; const g = cv.getContext('2d');
   g.fillStyle = project.colour || '#1c2733'; g.fillRect(0, 0, 512, 384);
@@ -39,7 +41,7 @@ function roofTexture(project, loader) {
   for (const w of words) { if ((line + ' ' + w).trim().length > 14) { lines.push(line); line = w; } else line = (line ? line + ' ' : '') + w; }
   lines.push(line);
   lines.forEach((l, i) => g.fillText(l, 256, 192 + (i - (lines.length - 1) / 2) * 64 + 18));
-  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return upright(t);
 }
 
 function wallTexture(seed) {
@@ -77,9 +79,10 @@ export function buildTown(parts, projects, { shipLength = 7, renderer, origin = 
     const b = new THREE.Mesh(new THREE.BoxGeometry(LOT[0], h, LOT[1]), [walls, walls, roof, floorMat, walls, walls]);
     b.position.set(lx * ROAD, h / 2, lz * ROAD); b.castShadow = b.receiveShadow = true;
     b.userData.project = pr; floor.add(b); buildings.push(b);
-    // a rim round the roof, so the picture reads as something laid on the building
+    // a rim round the roof, so the picture reads as something laid on the building: its top a
+    // hand's width below the roof, so the two never share a plane
     const rim = new THREE.Mesh(new THREE.BoxGeometry(LOT[0] + 1.6, 1.2, LOT[1] + 1.6), new THREE.MeshStandardMaterial({ color: 0x2a2f36 }));
-    rim.position.set(lx * ROAD, h - 0.6, lz * ROAD); floor.add(rim);
+    rim.position.set(lx * ROAD, h - 0.75, lz * ROAD); floor.add(rim);
   });
 
   // FOREST: the imposter forest, laid out on tiles around the fighter; the town's circle kept clear
