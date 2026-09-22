@@ -61,7 +61,7 @@ export function buildTown(parts, projects, { shipLength = 7, renderer, origin = 
   const loader = new THREE.TextureLoader();
 
   // GROUND: the plain, and pavement under the town
-  const drawn = layout && layout.map ? { map: classTexture(layout.map), metres: layout.metres } : null;
+  const drawn = layout && layout.map ? { map: classTexture(layout.map, 'A'), map2: classTexture(layout.map, 'B'), metres: layout.metres } : null;
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), groundMaterial({ clearing: { x: origin.x, z: origin.z, radius: drawn ? 0.01 : TOWN_R }, light, layout: drawn }));
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; floor.add(ground);
   // without a drawn layout: the old paved square with road lines between the lots

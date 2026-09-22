@@ -5,7 +5,7 @@
 // rectangles and fence copied as JSON: the town reads both (src/objects/townLayout.js).
 const $ = (id) => document.getElementById(id);
 const cv = $('map'), g = cv.getContext('2d'), SIZE = 600;
-export const COLOURS = { floor: '#5a3f2a', road: '#5b6169', grass: '#4c8a34', water: '#2c6fa8' };
+export const COLOURS = { floor: '#5a3f2a', road: '#5b6169', grass: '#4c8a34', water: '#2c6fa8', concrete: '#b8b8b0', dry: '#b9a05a', dark: '#2e5a24' };
 const BUILDING = '#c9a23a', FENCE = '#26aeff';
 
 let tool = 'road', brush = 14, painting = false, drag = null;

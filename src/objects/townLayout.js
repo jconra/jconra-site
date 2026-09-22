@@ -5,7 +5,7 @@
 // fence from the JSON. Without the files the town uses its old spiral of lots and an octagon.
 import * as THREE from 'three';
 
-export const LAYOUT_COLOURS = { floor: [0x5a, 0x3f, 0x2a], road: [0x5b, 0x61, 0x69], grass: [0x4c, 0x8a, 0x34], water: [0x2c, 0x6f, 0xa8] };
+export const LAYOUT_COLOURS = { floor: [0x5a, 0x3f, 0x2a], road: [0x5b, 0x61, 0x69], grass: [0x4c, 0x8a, 0x34], water: [0x2c, 0x6f, 0xa8], concrete: [0xb8, 0xb8, 0xb0], dry: [0xb9, 0xa0, 0x5a], dark: [0x2e, 0x5a, 0x24] };
 
 export async function loadTownLayout(base = '../../textures/town/') {
   try {
@@ -18,15 +18,17 @@ export async function loadTownLayout(base = '../../textures/town/') {
 
 // The class map turned into a texture the ground shader can read as weights: R = road, G = grass,
 // B = water, so a pixel's class is whichever channel is lit (forest floor is none).
-export function classTexture(mapTex) {
+// Two maps: A carries road / grass / water in R / G / B, B carries concrete / dry grass / dark grass.
+export function classTexture(mapTex, set = 'A') {
   const img = mapTex.image, w = img.width, h = img.height;
   const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const g = cv.getContext('2d'); g.drawImage(img, 0, 0);
   const d = g.getImageData(0, 0, w, h), px = d.data;
   const near = (r, gg, b, c) => Math.abs(r - c[0]) + Math.abs(gg - c[1]) + Math.abs(b - c[2]) < 60;
+  const keys = set === 'A' ? ['road', 'grass', 'water'] : ['concrete', 'dry', 'dark'];
   for (let i = 0; i < px.length; i += 4) {
     const r = px[i], gg = px[i + 1], b = px[i + 2];
-    const road = near(r, gg, b, LAYOUT_COLOURS.road), grass = near(r, gg, b, LAYOUT_COLOURS.grass), water = near(r, gg, b, LAYOUT_COLOURS.water);
-    px[i] = road ? 255 : 0; px[i + 1] = grass ? 255 : 0; px[i + 2] = water ? 255 : 0; px[i + 3] = 255;
+    for (let k = 0; k < 3; k++) px[i + k] = near(r, gg, b, LAYOUT_COLOURS[keys[k]]) ? 255 : 0;
+    px[i + 3] = 255;
   }
   g.putImageData(d, 0, 0);
   const t = new THREE.CanvasTexture(cv); t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; t.flipY = false;

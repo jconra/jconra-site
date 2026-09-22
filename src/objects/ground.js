@@ -95,13 +95,14 @@ export function groundMaterial({ base = '../../textures/ground/', metresPerTile 
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, { forestMap: { value: forest }, needlesMap: { value: needles }, leavesMap: { value: leaves }, mossMap: { value: moss }, dirtMap: { value: dirt },
       fernsMap: { value: ferns || moss }, darkDirtMap: { value: darkDirt || dirt }, tileM: { value: metresPerTile }, clearingAt: { value: new THREE.Vector3(clearing.x, clearing.z, clearing.radius) },
-      layoutMap: { value: layout ? layout.map : dirt }, layoutMetres: { value: layout ? layout.metres : 0 }, roadMap: { value: L('asphalt', roadTexture) }, grassMap: { value: L('grassMed', grassTexture) } });
+      layoutMap: { value: layout ? layout.map : dirt }, layoutMap2: { value: layout ? layout.map2 : dirt }, layoutMetres: { value: layout ? layout.metres : 0 },
+      roadMap: { value: L('asphalt', roadTexture) }, grassMap: { value: L('grassMed', grassTexture) }, concreteMap: { value: L('concrete', rockTexture) }, dryMap: { value: L('grassDry', grassTexture) }, darkGrassMap: { value: L('grassDark', grassTexture) } });
     sh.vertexShader = 'varying vec3 vWorld;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = `
       uniform sampler2D forestMap; uniform sampler2D needlesMap; uniform sampler2D leavesMap; uniform sampler2D mossMap; uniform sampler2D dirtMap;
       ${light ? '' : 'uniform sampler2D fernsMap; uniform sampler2D darkDirtMap;'}
       uniform float tileM; uniform vec3 clearingAt;
-      uniform sampler2D layoutMap; uniform float layoutMetres; uniform sampler2D roadMap; uniform sampler2D grassMap;
+      uniform sampler2D layoutMap; uniform sampler2D layoutMap2; uniform float layoutMetres; uniform sampler2D roadMap; uniform sampler2D grassMap; uniform sampler2D concreteMap; uniform sampler2D dryMap; uniform sampler2D darkGrassMap;
       varying vec3 vWorld;
       float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -130,9 +131,11 @@ export function groundMaterial({ base = '../../textures/ground/', metresPerTile 
       if (layoutMetres > 0.0) {
         vec2 luv = rel / layoutMetres + 0.5;
         if (luv.x > 0.0 && luv.x < 1.0 && luv.y > 0.0 && luv.y < 1.0) {
-          vec3 cls = texture2D(layoutMap, luv).rgb;
+          vec3 cls = texture2D(layoutMap, luv).rgb, cls2 = texture2D(layoutMap2, luv).rgb;
           vec3 road = twice(roadMap, uvW * 0.4, 0.31, vec2(0.2, 0.6)), lawn = twice(grassMap, uvW * 0.9, 0.27, vec2(0.8, 0.3));
-          ground = mix(ground, lawn, cls.g); ground = mix(ground, road, cls.r); ground = mix(ground, vec3(0.16, 0.34, 0.5), cls.b);
+          ground = mix(ground, twice(darkGrassMap, uvW * 0.9, 0.27, vec2(0.6, 0.1)), cls2.b);
+          ground = mix(ground, twice(dryMap, uvW * 0.9, 0.27, vec2(0.3, 0.7)), cls2.g);
+          ground = mix(ground, lawn, cls.g); ground = mix(ground, twice(concreteMap, uvW * 0.5, 0.31, vec2(0.4, 0.2)), cls2.r); ground = mix(ground, road, cls.r); ground = mix(ground, vec3(0.16, 0.34, 0.5), cls.b);
         }
       }
       diffuseColor.rgb *= ground;
