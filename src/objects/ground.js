@@ -43,41 +43,75 @@ export function rockTexture(size = 512) {
   });
 }
 
-// `clearing`: { x, z, radius } of the town, where the ground goes to dirt and paving
-export function groundMaterial({ maps = null, metresPerTile = 14, clearing = { x: 0, z: 0, radius: 260 } } = {}) {
-  const grass = maps?.grass || grassTexture(), dirt = maps?.dirt || dirtTexture(), rock = maps?.rock || rockTexture();
+// The layers, and where each goes. Files are looked for in textures/ground/ (leaves.jpg, needles.jpg,
+// dirt.jpg, moss.jpg, with an optional _n.png normal map beside each); a missing one falls back to
+// a drawn stand-in. `clearing`: { x, z, radius } of the town, where the ground goes to bare dirt.
+export const GROUND_FILES = { leaves: 'leaves', needles: 'needles', dirt: 'dirt', moss: 'moss' };
+function loadOr(name, fallback, base) {
+  const loader = new THREE.TextureLoader();
+  const t = fallback();
+  loader.load(`${base}${name}.jpg`, (tex) => { tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8; t.image = tex.image; t.needsUpdate = true; }, undefined, () => {});
+  return t;
+}
+function leavesTexture(size = 512) {
+  return tileable(size, 13, (g, s, r) => {
+    g.fillStyle = '#6b4a2e'; g.fillRect(0, 0, s, s);
+    speck(g, s, r, 900, ['#b8541f', '#c9732a', '#8f3f1c', '#d98b3a', '#7a3a1a', '#a85a22'], 6, 16, 0.85);
+    speck(g, s, r, 500, ['#3e2614', '#e0a050'], 1, 4, 0.6);
+  });
+}
+function needlesTexture(size = 512) {
+  return tileable(size, 17, (g, s, r) => {
+    g.fillStyle = '#5a3320'; g.fillRect(0, 0, s, s);
+    g.lineCap = 'round';
+    for (let i = 0; i < 2600; i++) { const x = r() * s, y = r() * s, a = r() * Math.PI, L = 6 + r() * 14; g.strokeStyle = ['#8a4a2a', '#a35a30', '#6e3a20', '#b0623a'][Math.floor(r() * 4)]; g.globalAlpha = 0.6 + r() * 0.4; g.lineWidth = 1 + r();
+      for (const dx of [-s, 0, s]) for (const dy of [-s, 0, s]) { g.beginPath(); g.moveTo(x + dx, y + dy); g.lineTo(x + dx + Math.cos(a) * L, y + dy + Math.sin(a) * L); g.stroke(); } }
+    g.globalAlpha = 1;
+  });
+}
+function mossTexture(size = 512) {
+  return tileable(size, 21, (g, s, r) => {
+    g.fillStyle = '#4a6a2a'; g.fillRect(0, 0, s, s);
+    speck(g, s, r, 1800, ['#5f8a34', '#3f5f24', '#76a040', '#4d7a2c'], 2, 6, 0.7);
+  });
+}
+export function groundMaterial({ base = '../../textures/ground/', metresPerTile = 6, clearing = { x: 0, z: 0, radius: 260 } } = {}) {
+  const leaves = loadOr('leaves', leavesTexture, base), needles = loadOr('needles', needlesTexture, base), dirt = loadOr('dirt', dirtTexture, base), moss = loadOr('moss', mossTexture, base);
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0 });
   mat.onBeforeCompile = (sh) => {
-    sh.uniforms.grassMap = { value: grass }; sh.uniforms.dirtMap = { value: dirt }; sh.uniforms.rockMap = { value: rock };
+    sh.uniforms.leavesMap = { value: leaves }; sh.uniforms.needlesMap = { value: needles }; sh.uniforms.dirtMap = { value: dirt }; sh.uniforms.mossMap = { value: moss };
     sh.uniforms.tileM = { value: metresPerTile }; sh.uniforms.clearingAt = { value: new THREE.Vector3(clearing.x, clearing.z, clearing.radius) };
     sh.vertexShader = 'varying vec3 vWorld;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = `
-      uniform sampler2D grassMap; uniform sampler2D dirtMap; uniform sampler2D rockMap; uniform float tileM; uniform vec3 clearingAt;
+      uniform sampler2D leavesMap; uniform sampler2D needlesMap; uniform sampler2D dirtMap; uniform sampler2D mossMap; uniform float tileM; uniform vec3 clearingAt;
       varying vec3 vWorld;
-      // value noise, a few octaves, over world metres
       float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
         return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), f.x), mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), f.x), f.y); }
       float fbm(vec2 p) { return 0.5 * vnoise(p) + 0.25 * vnoise(p * 2.03 + 7.1) + 0.125 * vnoise(p * 4.1 + 3.3) + 0.0625 * vnoise(p * 8.3 + 1.7); }
+      // a texture read at two scales and blended, so its repeat is not seen
+      vec3 twice(sampler2D t, vec2 uv, float k, vec2 off) { return mix(texture2D(t, uv).rgb, texture2D(t, uv * k + off).rgb, 0.4); }
     ` + sh.fragmentShader.replace('#include <map_fragment>', `
-      vec2 uvW = (vWorld.xz - clearingAt.xy) / tileM;
-      // the same texture read twice at different scales, so the repeat is not seen
-      vec3 gr = mix(texture2D(grassMap, uvW).rgb, texture2D(grassMap, uvW * 0.23 + 0.37).rgb, 0.45);
-      vec3 di = mix(texture2D(dirtMap, uvW).rgb, texture2D(dirtMap, uvW * 0.19 + 0.11).rgb, 0.45);
-      vec3 ro = mix(texture2D(rockMap, uvW * 0.7).rgb, texture2D(rockMap, uvW * 0.17 + 0.5).rgb, 0.4);
-      // where each goes: dirt in the low noise, rock in the high, grass between; the clearing is dirt
-      vec2 rel = vWorld.xz - clearingAt.xy;                       // metres from the town, so the noise keeps its precision far from the origin
-      float n = fbm(rel * 0.012), n2 = fbm(rel * 0.05 + 40.0);
-      float dirtW = smoothstep(0.55, 0.72, n) * 0.9 + smoothstep(0.75, 0.9, n2) * 0.5;
-      float rockW = smoothstep(0.62, 0.8, n2) * smoothstep(0.35, 0.55, n) * 0.9;
+      vec2 rel = vWorld.xz - clearingAt.xy;
+      vec2 uvW = rel / tileM;
+      vec3 le = twice(leavesMap, uvW, 0.31, vec2(0.37, 0.11));
+      vec3 ne = twice(needlesMap, uvW, 0.27, vec2(0.13, 0.59));
+      vec3 di = twice(dirtMap, uvW, 0.23, vec2(0.71, 0.29));
+      vec3 mo = twice(mossMap, uvW * 1.3, 0.29, vec2(0.41, 0.83));
+      // the floor: needles as the base; leaves in drifts by the low-frequency noise; moss in the damp
+      // spots by a higher one; bare dirt on the paths (a thin band of one noise) and in the clearing
+      float n = fbm(rel * 0.010), n2 = fbm(rel * 0.045 + 40.0), n3 = fbm(rel * 0.02 + 90.0);
+      float leavesW = smoothstep(0.42, 0.62, n);
+      float mossW = smoothstep(0.66, 0.82, n2) * (1.0 - leavesW * 0.5);
+      float path = 1.0 - smoothstep(0.0, 0.035, abs(n3 - 0.5));
       float toTown = distance(vWorld.xz, clearingAt.xy) / clearingAt.z;
       float clearingW = 1.0 - smoothstep(0.85, 1.15, toTown + (n2 - 0.5) * 0.25);
-      dirtW = max(dirtW, clearingW);
-      vec3 ground = mix(gr, di, clamp(dirtW, 0.0, 1.0)); ground = mix(ground, ro, clamp(rockW * (1.0 - clearingW), 0.0, 1.0));
+      float dirtW = max(path * 0.9, clearingW);
+      vec3 ground = mix(ne, le, leavesW); ground = mix(ground, mo, clamp(mossW, 0.0, 1.0)); ground = mix(ground, di, clamp(dirtW, 0.0, 1.0));
       diffuseColor.rgb *= ground;
     `);
     mat.userData.shader = sh;
   };
-  mat.customProgramCacheKey = () => 'splat-ground';
+  mat.customProgramCacheKey = () => 'splat-ground-4';
   return mat;
 }

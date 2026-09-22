@@ -8,6 +8,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { bakeImposterSteps, imposterMaterial } from '../../src/objects/imposter.js';
 import { groundMaterial } from '../../src/objects/ground.js';
+import { Understory } from '../../src/objects/understory.js';
 
 const Q = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -32,6 +33,8 @@ const SUN_OFF = new THREE.Vector3(300, 600, 200);
 const hemi = new THREE.HemisphereLight(0xbfe3ff, 0x466b3a, 1.0); scene.add(hemi);
 // the town's splat ground (grass, dirt and rock by noise, a dirt clearing at the origin), so it can be judged here
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(12000, 12000), groundMaterial({ clearing: { x: 0, z: 0, radius: 120 } }));
+// ferns and bushes on the floor, thinned with distance; ?nounder to leave them out
+const understory = Q.has('nounder') ? null : new Understory(scene, { clear: (x, z) => Math.hypot(x, z) < 120, reach: 260 });
 ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
 
 // ── the species: baked from ez-tree presets, scaled to a height in metres ──────────────
@@ -327,6 +330,7 @@ renderer.setAnimationLoop(() => {
   if (move.lengthSq()) { move.normalize().multiplyScalar(speed); camera.position.add(move); controls.target.add(move); }
   if (circling) { circleAt += dt * 0.25; const r = SET.imposterAt; controls.target.set(0, 10, 0); camera.position.set(Math.sin(circleAt) * r, 14, Math.cos(circleAt) * r); }
   controls.update();
+  if (understory) understory.update(camera.position, camera.position);
   sun.target.position.copy(controls.target); sun.position.copy(controls.target).add(SUN_OFF);   // the shadow square follows the view
   if (baking) baking.tick();
   if ((assignAt += raw) > 0.08 && built.length && (camera.position.distanceToSquared(lastAssignAt) > 1 || controls.target.distanceToSquared(lastTargetAt) > 1 || SET.dirty)) { assignAt = 0; SET.dirty = false; lastAssignAt.copy(camera.position); lastTargetAt.copy(controls.target); assign(); }

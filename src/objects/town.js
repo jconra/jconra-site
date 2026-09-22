@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { Forest } from './forest.js';
 import { groundMaterial } from './ground.js';
+import { Understory } from './understory.js';
 import { shutFighter } from './hangarSet.js';
 
 const ROAD = 62;            // pitch of the grid the buildings stand on
@@ -89,6 +90,7 @@ export function buildTown(parts, projects, { shipLength = 7, renderer, origin = 
   const forest = new Forest(renderer, floor, { base: '../../models/trees/', light, tile: 420, tiles: 7, perTile: light ? 120 : 220, imposterAt: light ? 0 : 140, band: 40, grid: light ? 8 : 12, cell: 192, detail: 'coarse', shadows: false,
     clear: (x, z) => Math.hypot(x, z) < TOWN_R, sunDir: new THREE.Vector3(0.5, 1, 0.3) });
   const relay = () => {};
+  const understory = new Understory(floor, { clear: (x, z) => Math.hypot(x, z) < TOWN_R, reach: light ? 160 : 260, perTile: light ? 120 : 260 });
 
   // THE FIGHTER
   const F = parts.ship1, jet = new THREE.Group();
@@ -117,7 +119,7 @@ export function buildTown(parts, projects, { shipLength = 7, renderer, origin = 
   return {
     floor, jet, buildings, state, clouds, forest,
     // every frame, whatever set is showing: the forest bakes, re-lays its tiles round the fighter and sorts near from far
-    frame(camera, target) { forest.update({ position: floor.worldToLocal(camera.position.clone()) }, floor.worldToLocal(target.clone()), state.pos); },
+    frame(camera, target) { const cp = floor.worldToLocal(camera.position.clone()); forest.update({ position: cp }, floor.worldToLocal(target.clone()), state.pos); understory.update(state.pos, cp); },
     // the fighter's way, and a point ahead of it to look at
     forward: fwd,
     lookAhead(d = 26) { return state.pos.clone().addScaledVector(fwd(), d); },
