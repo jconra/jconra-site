@@ -42,7 +42,7 @@ export class Terminal {
     }
     return this;
   }
-  cmd(text) { return this.say(this.prompt + text, 28).wait(0.35); }   // typed like a person, then Enter
+  cmd(text) { return this.say(this.prompt + text, 40).wait(0.08); }   // typed like a person, then Enter; the answer comes at once
   out(text) { return this.say(text, 900); }                          // printed like output
   wait(seconds) { this.queue.push({ wait: seconds }); return this; }
   // hold the script here until every bar so far has filled (the files have arrived)

@@ -160,11 +160,12 @@ function bootProgress(name, frac) { const b = BOOT.bars[name]; if (b) b.frac = M
 // The session. Commands are typed at a human pace and their output printed, so it reads as a
 // terminal and takes a few seconds however fast the files arrive; the greeting script waits for
 // the bars, so it is never read over a half-loaded room.
-term.cmd('whoami').out('jacob').wait(0.5)
-    .cmd('groups').out('aws-systems-engineer  air-force-security-engineer  threejs-enthusiast  bass-guitarist').wait(0.7)
+// quick all the way through, then a pause at the end for the message to be read
+term.cmd('whoami').out('jacob').wait(0.15)
+    .cmd('groups').out('aws-systems-engineer  air-force-security-engineer  threejs-enthusiast  bass-guitarist').wait(0.15)
     .cmd('./station --enter').out('bringing the cabin up ...');
 bootBar('cabin'); bootBar('jacob'); bootBar('clips'); bootBar('station');
-term.gate().wait(0.4)
+term.gate().wait(0.15)
     .cmd('./greeting.sh')
     .out('Welcome to jconra.com.').out('Hello! I am Jacob Conrads, a Systems Engineer. This station is a project to play around with and highlight my skills.')
     .out('Thank you for visiting! Scroll or swipe to move through it, or wait for the animation.').wait(0.3)
@@ -230,7 +231,7 @@ function stepPull(dt) {
   post.focus = camera.position.distanceTo(controls.target);
   if (u >= 1) { pull = null; finishBoot(); }
 }
-function finishBoot() { BOOT.phase = 'done'; BOOT.on = false; if (!SEQ.active) activateIntro(); SEQ.T = 0; SEQ.playing = true; }
+function finishBoot() { BOOT.phase = 'done'; BOOT.on = false; pull = null; if (!SEQ.active) activateIntro(); SEQ.T = 0; SEQ.playing = true; scrubbed(); }
 
 function loadRoom(name) {
   build = name;
@@ -1251,7 +1252,7 @@ function stepSequence(dt) {
     // left alone for a few seconds after a scrub, it plays on (not while a panel control has the
     // focus - someone editing a key wants the frame to hold)
     const editing = document.activeElement && document.activeElement.closest && document.activeElement.closest('#panel');
-    if (!SEQ.playing && !RESUME.held && !RESUME.hold && !editing && SEQ.T < total() && performance.now() - RESUME.last > RESUME.after * 1000) SEQ.playing = true;
+    if (!SEQ.playing && !RESUME.held && !RESUME.hold && !editing && !BOOT.on && !pull && SEQ.T < total() && performance.now() - RESUME.last > RESUME.after * 1000) SEQ.playing = true;   // (not during the boot: it played under the pull-back and the camera snapped back to the monitor)
     if (SEQ.playing) { seek(SEQ.T + dt); if (SEQ.T >= total()) SEQ.playing = false; }
     else if (currentSet === 'town' && SEQ.T >= total() - 1e-6) liveTown(dt);                   // the timeline is done: the flight is live
     else if (SEQ.T >= HANGAR.roll && Math.abs(FLY.roll - FLY.target) > 0.05) seek(SEQ.T);     // paused in flight, the fighter still banks to the pointer
@@ -1697,7 +1698,7 @@ renderer.setAnimationLoop(() => {
   term.update(dt);
   if (BOOT.on) {
     drawBootOverlay();
-    if (BOOT.phase === 'typed' && term.done) { BOOT.phase = 'hold'; setTimeout(startPullBack, 900); }
+    if (BOOT.phase === 'typed' && term.done) { BOOT.phase = 'hold'; setTimeout(startPullBack, 2500); }   // a couple of seconds to read the greeting
     stepPull(dt);
   }
   stepSequence(dt);
