@@ -8,7 +8,8 @@ const cv = $('map'), g = cv.getContext('2d'), SIZE = 600;
 export const COLOURS = { floor: '#5a3f2a', road: '#5b6169', grass: '#4c8a34', water: '#2c6fa8', concrete: '#b8b8b0', dry: '#b9a05a', dark: '#2e5a24' };
 const BUILDING = '#c9a23a', FENCE = '#26aeff';
 
-let tool = 'road', brush = 14, painting = false, drag = null;
+let tool = 'road', brush = 14, painting = false, drag = null, lineStart = null, lineMode = false;
+const snap = (p) => { const s = (v) => { const g = Math.round(v / 50) * 50; return Math.abs(v - g) <= 3 ? g : v; }; return { x: s(p.x), y: s(p.y) }; };
 const state = { buildings: [], fence: [] };
 const paint = document.createElement('canvas'); paint.width = paint.height = SIZE;   // the painted classes alone
 const pg = paint.getContext('2d'); pg.fillStyle = COLOURS.floor; pg.fillRect(0, 0, SIZE, SIZE);
@@ -35,22 +36,33 @@ function draw() {
     g.fillStyle = FENCE; for (const p of state.fence) { g.beginPath(); g.arc(p.x, p.y, 3.5, 0, Math.PI * 2); g.fill(); }
     g.lineWidth = 1;
   }
+  // the line being laid
+  if (lineStart) { g.strokeStyle = COLOURS[tool] || '#fff'; g.lineWidth = brush; g.lineCap = 'round'; g.globalAlpha = 0.6; g.beginPath(); g.moveTo(lineStart.x, lineStart.y); if (hover) g.lineTo(hover.x, hover.y); else g.lineTo(lineStart.x + 0.1, lineStart.y); g.stroke(); g.globalAlpha = 1; g.lineWidth = 1; }
   // an arrow for where the fighter comes from
   g.fillStyle = 'rgba(255,255,255,0.5)'; g.font = '11px ui-monospace, monospace'; g.fillText('N', SIZE / 2 - 3, 12); g.fillText('fighter arrives ↑', SIZE / 2 - 48, SIZE - 6);
   list(); json();
 }
 function dab(p) { pg.fillStyle = COLOURS[tool]; pg.beginPath(); pg.arc(p.x, p.y, brush / 2, 0, Math.PI * 2); pg.fill(); }
 function line(a, b) { const n = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / (brush / 4)) + 1; for (let i = 0; i <= n; i++) dab({ x: a.x + (b.x - a.x) * i / n, y: a.y + (b.y - a.y) * i / n }); }
-let last = null;
+let last = null, hover = null;
+$('lineMode').addEventListener('change', e => { lineMode = e.target.checked; lineStart = null; draw(); });
+addEventListener('keydown', e => { if (e.key === 'Escape') { lineStart = null; draw(); } });
 cv.addEventListener('pointerdown', (e) => {
   const p = at(e); cv.setPointerCapture(e.pointerId);
   if (tool === 'fence') { snapshot(); state.fence.push(p); draw(); return; }
   if (tool === 'building') { snapshot(); drag = { x: p.x, y: p.y, w: 0, h: 0 }; return; }
+  if (lineMode && !e.shiftKey) {
+    // straight lines: the first click sets the start, the second draws the line and starts the next from its end
+    const q = snap(p);
+    if (!lineStart) { lineStart = q; draw(); return; }
+    snapshot(); line(lineStart, q); lineStart = q; draw(); return;
+  }
   snapshot(); painting = true; last = p; dab(p); draw();
 });
 cv.addEventListener('pointermove', (e) => {
   const p = at(e);
   if (drag) { drag.w = p.x - drag.x; drag.h = p.y - drag.y; draw(); return; }
+  if (lineStart) { hover = snap(p); draw(); return; }
   if (!painting) return; line(last, p); last = p; draw();
 });
 const up = () => {
@@ -85,4 +97,10 @@ fetch('../../textures/town/layout.json').then(r => r.ok ? r.json() : null).then(
   state.fence = (j.fence || []).map(p => ({ x: p.x + SIZE / 2, y: p.z + SIZE / 2 }));
   const img = new Image(); img.onload = () => { pg.drawImage(img, 0, 0, SIZE, SIZE); draw(); }; img.onerror = draw; img.src = '../../textures/town/layout.png';
 }).catch(() => {});
+// the projects, in the order the buildings take them
+fetch('../../textures/projects/old-site.json').then(r => r.json()).catch(() => []).then(old => {
+  const front = ['RMRF', 'Sound Lab', 'The Labs'];
+  const names = [...front, ...old.map(p => p.name)];
+  $('projects').innerHTML = `${names.length} projects, one building each, in this order:<br>` + names.map((n, i) => `${String(i + 1).padStart(2, '0')}. ${n}`).join('<br>');
+});
 draw();

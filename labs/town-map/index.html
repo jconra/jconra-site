@@ -53,10 +53,13 @@
       <button data-tool="fence"><i style="background:#26aeff"></i>Fence (click corners)</button>
     </div>
     <div class="row"><label for="brush">Brush</label><output id="brushOut">14 m</output><input id="brush" type="range" min="2" max="60" step="1" value="14"></div>
+    <label class="check" for="lineMode" style="display:flex;gap:8px;align-items:center;margin:6px 0;color:#aeb9c2;cursor:pointer"><input id="lineMode" type="checkbox" style="accent-color:#35e07d"> Straight lines (click the start, click the end; hold Shift for freehand)</label>
+    <p class="note">Lines snap to the grid when they are within 3 m of it, so streets meet cleanly.</p>
     <div class="btns"><button id="undo" type="button">Undo</button><button id="clearFence" type="button">Clear fence</button><button id="clearAll" type="button">Clear all</button></div>
 
     <h2>Buildings</h2>
-    <p class="note">In the order drawn. Click one in the list to delete it. Height is set from the footprint; the roof shows the project's picture.</p>
+    <p class="note">In the order drawn: each rectangle is the next project in the list below. Click one to delete it. Height is set from the footprint; the roof shows the project's picture.</p>
+    <div id="projects" class="note" style="font-family:ui-monospace,monospace;font-size:11px"></div>
     <div id="list"></div>
 
     <h2>Save</h2>
