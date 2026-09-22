@@ -4,6 +4,8 @@
 // opens the project. The forest is tiles of trees that are re-laid around the fighter as it goes,
 // so it never ends. Everything is in metres, the town's centre at the origin, +y up.
 import * as THREE from 'three';
+import { Forest } from './forest.js';
+import { groundMaterial } from './ground.js';
 
 const ROAD = 62;            // pitch of the grid the buildings stand on
 const LOT = [36, 27];       // a building's footprint, 4:3 like the screenshots
@@ -48,12 +50,12 @@ function wallTexture(seed) {
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
 }
 
-export function buildTown(parts, projects, { shipLength = 7 } = {}) {
+export function buildTown(parts, projects, { shipLength = 7, renderer, origin = new THREE.Vector3(), light = false } = {}) {
   const floor = new THREE.Group();
   const loader = new THREE.TextureLoader();
 
   // GROUND: the plain, and pavement under the town
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), new THREE.MeshStandardMaterial({ color: 0x3f6b35, roughness: 1 }));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), groundMaterial({ clearing: { x: origin.x, z: origin.z, radius: TOWN_R } }));
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; floor.add(ground);
   const pave = new THREE.Mesh(new THREE.PlaneGeometry(ROAD * 7, ROAD * 7), new THREE.MeshStandardMaterial({ color: 0x5b6169, roughness: 0.95 }));
   pave.rotation.x = -Math.PI / 2; pave.position.y = 0.05; floor.add(pave);
@@ -79,44 +81,10 @@ export function buildTown(parts, projects, { shipLength = 7 } = {}) {
     rim.position.set(lx * ROAD, h - 0.6, lz * ROAD); floor.add(rim);
   });
 
-  // FOREST: tiles of trees, laid out again around the fighter as it goes
-  const treeGeo = (() => {
-    const cone = new THREE.ConeGeometry(4.2, 14, 7); cone.translate(0, 11, 0);
-    const trunk = new THREE.CylinderGeometry(0.8, 1.0, 5, 6); trunk.translate(0, 2.5, 0);
-    const cone2 = new THREE.ConeGeometry(3.2, 9, 7); cone2.translate(0, 17, 0);
-    return mergeGeometries([cone, trunk, cone2]);
-  })();
-  const treeMat = new THREE.MeshStandardMaterial({ color: 0x2e7d3a, roughness: 0.9, vertexColors: false });
-  const tiles = [];
-  const PER = 300;
-  for (let i = 0; i < TILES * TILES; i++) {
-    const m = new THREE.InstancedMesh(treeGeo, treeMat, PER);
-    m.castShadow = true; m.frustumCulled = false;
-    const col = new Float32Array(PER * 3);
-    m.instanceColor = new THREE.InstancedBufferAttribute(col, 3);
-    floor.add(m); tiles.push({ mesh: m, tx: null, tz: null });
-  }
-  // fills one tile's trees for the tile at (tx, tz), skipping the town
-  const layTile = (t, tx, tz) => {
-    t.tx = tx; t.tz = tz;
-    const rr = rnd(tx * 7919 + tz * 104729 + 17), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), c = new THREE.Color();
-    for (let i = 0; i < PER; i++) {
-      const x = tx * TILE + (rr() - 0.5) * TILE, z = tz * TILE + (rr() - 0.5) * TILE;
-      const inTown = Math.hypot(x, z) < TOWN_R;
-      const k = inTown ? 0 : 0.7 + rr() * 0.8;
-      p.set(x, 0, z); q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rr() * Math.PI * 2); s.set(k, k * (0.8 + rr() * 0.5), k);
-      t.mesh.setMatrixAt(i, m4.compose(p, q, s));
-      c.setHSL(0.3 + rr() * 0.08, 0.5, 0.22 + rr() * 0.14); t.mesh.setColorAt(i, c);
-    }
-    t.mesh.instanceMatrix.needsUpdate = true; t.mesh.instanceColor.needsUpdate = true;
-  };
-  const relay = (x, z) => {
-    const cx = Math.round(x / TILE), cz = Math.round(z / TILE), half = (TILES - 1) / 2;
-    const want = []; for (let i = -half; i <= half; i++) for (let j = -half; j <= half; j++) want.push([cx + i, cz + j]);
-    const have = new Set(tiles.map(t => t.tx + ',' + t.tz));
-    const free = tiles.filter(t => !want.some(([a, b]) => a === t.tx && b === t.tz));
-    for (const [a, b] of want) if (!have.has(a + ',' + b)) layTile(free.pop(), a, b);
-  };
+  // FOREST: the imposter forest, laid out on tiles around the fighter; the town's circle kept clear
+  const forest = new Forest(renderer, floor, { base: '../../models/trees/', light, tile: 420, tiles: 7, perTile: light ? 120 : 220, imposterAt: light ? 0 : 140, band: 40, grid: light ? 8 : 12, cell: 192, detail: 'coarse', shadows: false,
+    clear: (x, z) => Math.hypot(x, z) < TOWN_R, sunDir: new THREE.Vector3(0.5, 1, 0.3) });
+  const relay = () => {};
 
   // THE FIGHTER
   const F = parts.ship1, jet = new THREE.Group();
@@ -143,7 +111,9 @@ export function buildTown(parts, projects, { shipLength = 7 } = {}) {
     } }
 
   return {
-    floor, jet, buildings, state, clouds,
+    floor, jet, buildings, state, clouds, forest,
+    // every frame, whatever set is showing: the forest bakes, re-lays its tiles round the fighter and sorts near from far
+    frame(camera, target) { forest.update({ position: floor.worldToLocal(camera.position.clone()) }, floor.worldToLocal(target.clone()), state.pos); },
     // the fighter's way, and a point ahead of it to look at
     forward: fwd,
     lookAhead(d = 26) { return state.pos.clone().addScaledVector(fwd(), d); },
@@ -173,20 +143,4 @@ export function buildTown(parts, projects, { shipLength = 7 } = {}) {
     pick(raycaster) { const hit = raycaster.intersectObjects(buildings, false)[0]; return hit ? hit.object : null; },
     groundPoint(raycaster) { const hit = raycaster.intersectObject(ground, false)[0]; return hit ? hit.point : null; },
   };
-}
-
-// the parts of a tree as one geometry (BufferGeometryUtils' merge, done here to keep one import)
-function mergeGeometries(geos) {
-  let n = 0, ni = 0; for (const g of geos) { n += g.attributes.position.count; ni += g.index.count; }
-  const pos = new Float32Array(n * 3), nrm = new Float32Array(n * 3), uv = new Float32Array(n * 2), idx = new Uint32Array(ni);
-  let vo = 0, io = 0;
-  for (const g of geos) {
-    pos.set(g.attributes.position.array, vo * 3); nrm.set(g.attributes.normal.array, vo * 3); uv.set(g.attributes.uv.array, vo * 2);
-    for (let i = 0; i < g.index.count; i++) idx[io + i] = g.index.array[i] + vo;
-    vo += g.attributes.position.count; io += g.index.count;
-  }
-  const out = new THREE.BufferGeometry();
-  out.setAttribute('position', new THREE.BufferAttribute(pos, 3)); out.setAttribute('normal', new THREE.BufferAttribute(nrm, 3)); out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-  out.setIndex(new THREE.BufferAttribute(idx, 1));
-  return out;
 }

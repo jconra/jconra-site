@@ -634,7 +634,7 @@ const PROJECTS_FRONT = [
 ];
 function buildTownSet(parts) {
   fetch('../../textures/projects/old-site.json').then(r => r.json()).catch(() => []).then(old => {
-    town = buildTown(parts, [...PROJECTS_FRONT, ...old]);
+    town = buildTown(parts, [...PROJECTS_FRONT, ...old], { renderer, origin: TOWN_AT, light: !renderer.capabilities.isWebGL2 });   // a machine without WebGL2 gets imposters only, no shadows
     town.floor.position.copy(TOWN_AT); town.floor.visible = false; scene.add(town.floor);
     town.poseAt(0);
   });
@@ -945,7 +945,7 @@ function showSet(name) {
     sun.position.copy(AT).add((inHangar ? new THREE.Vector3(1, 0.35, 0.25) : inMap ? new THREE.Vector3(0.4, 0.6, 1) : inTown ? new THREE.Vector3(0.5, 1, 0.3) : new THREE.Vector3(1, 0.6, 0.45)).multiplyScalar(5000)); sun.target.position.copy(AT);
     spaceFill.position.copy(AT).add((inHangar ? new THREE.Vector3(0.3, 0.9, -0.4) : new THREE.Vector3(-0.6, -0.8, -0.3)).multiplyScalar(5000)); spaceFill.target.position.copy(AT);
     sun.intensity = 3.2; sun.color.setHex(0xfff4e6); cabin.intensity = 0; screens.intensity = 0;
-         ambient.intensity = inHangar ? 0.6 : inTown ? 1.1 : 0.35; ambient.color.setHex(inTown ? 0xbfe3ff : 0x8aa0b8); ambient.groundColor.setHex(inTown ? 0x466b3a : 0x2a3340); renderer.toneMappingExposure = 1.05;
+         ambient.intensity = inHangar ? 0.6 : inTown ? 1.6 : 0.35; ambient.color.setHex(inTown ? 0xcfe9ff : 0x8aa0b8); ambient.groundColor.setHex(inTown ? 0x5a8a48 : 0x2a3340); renderer.toneMappingExposure = inTown ? 1.15 : 1.05;
          spaceFill.intensity = inHangar ? 1.2 : inTown ? 0 : 1.8; if (inTown) { sun.intensity = 2.4; sun.color.setHex(0xfff6e4); } }
 }
 const holos = [];          // the greeting is on the terminal now, not floating over his head; Hologram stays for later
@@ -1260,6 +1260,7 @@ function stepSequence(dt) {
     if (sitterMixer) sitterMixer.update(dt);
   }
   for (const h of holos) h.update(dt);
+  if (town) town.frame(camera, controls.target);
   for (const sc of SCREENS) sc.update(dt);
 }
 // the wheel scrubs time instead of zooming, when that is switched on; a first scroll starts the intro

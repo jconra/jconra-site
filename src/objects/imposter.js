@@ -126,7 +126,8 @@ const VERTEX = `
       }
       void main() {
         float c = cos(iYaw), s = sin(iYaw);
-        vec3 worldCentre = iPos + vec3(0.0, centre.y * iScale, 0.0) + vec3(c * centre.x + s * centre.z, 0.0, -s * centre.x + c * centre.z) * iScale;
+        vec3 localCentre = iPos + vec3(0.0, centre.y * iScale, 0.0) + vec3(c * centre.x + s * centre.z, 0.0, -s * centre.x + c * centre.z) * iScale;
+        vec3 worldCentre = (modelMatrix * vec4(localCentre, 1.0)).xyz;     // the cards live in their group's frame (a forest set off at a distance)
         vec3 toCam = useOverride > 0.5 ? normalize(viewDirOverride) : normalize(cameraPosition - worldCentre);
         // the view direction in the tree's own frame: the instance's spin undone
         vec3 d = vec3(c * toCam.x - s * toCam.z, toCam.y, s * toCam.x + c * toCam.z);
