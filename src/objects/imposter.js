@@ -98,8 +98,24 @@ const VERTEX = `
       #include <shadowmap_pars_vertex>
       attribute vec3 iPos; attribute float iYaw; attribute float iScale; attribute vec3 iTint; attribute float iFade;
       uniform float radius; uniform float halfW; uniform float halfH; uniform vec3 centre; uniform float grid; uniform float hemi;
-      uniform vec3 viewDirOverride; uniform float useOverride; uniform float blendDist; uniform float blend;
-      varying vec2 vC0; varying vec2 vC1; varying vec2 vC2; varying vec3 vW;
+      uniform vec3 viewDirOverride; uniform float useOverride; uniform float blendDist; uniform float blend; uniform float parallax;
+      varying vec2 vC0; varying vec2 vC1; varying vec2 vC2; varying vec3 vW; varying vec2 vP0; varying vec2 vP1; varying vec2 vP2;
+      // the square -> a direction (the inverse of octEncode), for the cell centres
+      vec3 octDecode(vec2 uv) {
+        float x, y, z;
+        if (hemi > 0.5) { float a = uv.x * 2.0 - 1.0, b = uv.y * 2.0 - 1.0; x = (a - b) * 0.5; z = (a + b) * 0.5; y = 1.0 - abs(x) - abs(z); }
+        else { x = uv.x * 2.0 - 1.0; z = uv.y * 2.0 - 1.0; y = 1.0 - abs(x) - abs(z); if (y < 0.0) { float nx = (1.0 - abs(z)) * (x >= 0.0 ? 1.0 : -1.0); float nz = (1.0 - abs(x)) * (z >= 0.0 ? 1.0 : -1.0); x = nx; z = nz; } }
+        return normalize(vec3(x, y, z));
+      }
+      // PARALLAX. A cell's picture was taken from its own direction; the camera is a little off it.
+      // A pixel that sits 'depth' in front of the card should appear shifted toward the camera's
+      // side by depth x that offset. This is the offset, in the card's right/up axes, per unit of
+      // depth, in atlas-cell units - the fragment multiplies it by the pixel's own depth.
+      vec2 parallaxOf(vec2 cell, vec3 dTree, vec3 rightTree, vec3 upTree) {
+        vec3 dc = octDecode((cell + 0.5) / grid);
+        vec3 off = dTree - dc;                                        // how far the true direction is from the baked one
+        return vec2(dot(off, rightTree), dot(off, upTree));
+      }
       varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius; varying vec4 vShadowToCam;
       // direction (in the tree's frame) -> the square
       vec2 octEncode(vec3 d) {
@@ -130,6 +146,12 @@ const VERTEX = `
           else { vC0 = base + vec2(1.0, 1.0); vC1 = base + vec2(0.0, 1.0); vC2 = base + vec2(1.0, 0.0); vW = vec3(f.x + f.y - 1.0, 1.0 - f.x, 1.0 - f.y); }
         } else { vC0 = vC1 = vC2 = floor(vFrame * grid); vW = vec3(1.0, 0.0, 0.0); }
         vC0 = clamp(vC0, 0.0, grid - 1.0); vC1 = clamp(vC1, 0.0, grid - 1.0); vC2 = clamp(vC2, 0.0, grid - 1.0);
+        // the card's axes in the tree's frame, for the parallax
+        vec3 dn = normalize(d);
+        vec3 rightTree = vec3(c * right.x - s * right.z, right.y, s * right.x + c * right.z);
+        vec3 upTree = vec3(c * up.x - s * up.z, up.y, s * up.x + c * up.z);
+        vP0 = vP1 = vP2 = vec2(0.0);
+        if (parallax > 0.5 && useOverride < 0.5) { vP0 = parallaxOf(vC0, dn, rightTree, upTree); vP1 = parallaxOf(vC1, dn, rightTree, upTree); vP2 = parallaxOf(vC2, dn, rightTree, upTree); }
         vQuad = uv; vTint = iTint; vFade = iFade; vYaw = iYaw; vRadius = radius * iScale;
         vec4 mv = viewMatrix * vec4(world, 1.0); vViewPos = mv.xyz; vToCamView = (viewMatrix * vec4(toCam, 0.0)).xyz;
         gl_Position = projectionMatrix * mv;
@@ -144,15 +166,29 @@ const VERTEX = `
 const LOOKUP = `
       uniform sampler2D atlas; uniform sampler2D atlasN; uniform float grid; uniform float blend;
       varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius; varying vec4 vShadowToCam;
-      varying vec2 vC0; varying vec2 vC1; varying vec2 vC2; varying vec3 vW;
-      uniform mat4 projectionMatrix; uniform float useDepth;
-      vec4 cellSample(sampler2D t, vec2 cell) { vec2 uv = (cell + clamp(vQuad, 0.002, 0.998)) / grid; return texture2D(t, uv); }
+      varying vec2 vC0; varying vec2 vC1; varying vec2 vC2; varying vec3 vW; varying vec2 vP0; varying vec2 vP1; varying vec2 vP2;
+      uniform mat4 projectionMatrix; uniform float useDepth; uniform float parallax; uniform float halfWc; uniform float halfHc;
+      vec4 cellSampleAt(sampler2D t, vec2 cell, vec2 q) { vec2 uv = (cell + clamp(q, 0.002, 0.998)) / grid; return texture2D(t, uv); }
+      vec4 cellSample(sampler2D t, vec2 cell) { return cellSampleAt(t, cell, vQuad); }
+      // one cell's colour and normal, the sample shifted by the pixel's depth times the view offset
+      // (the depth read first at the unshifted spot: one extra read)
+      void cellRead(vec2 cell, vec2 par, out vec4 col, out vec4 nrm) {
+        vec2 q = vQuad;
+        if (parallax > 0.5) {
+          vec4 n0 = cellSampleAt(atlasN, cell, q);
+          float a0 = cellSampleAt(atlas, cell, q).a;
+          float depth = (0.5 - n0.a / max(a0, 0.001)) * 2.0;             // metres in front of the card, per unit radius: -1..1
+          q += par * depth * vec2(vRadius / (halfWc * 2.0), vRadius / (halfHc * 2.0));
+        }
+        col = cellSampleAt(atlas, cell, q); nrm = cellSampleAt(atlasN, cell, q);
+      }
       // the cells and weights come from the vertex stage, the same for the whole card
       void lookup(out vec4 col, out vec4 nrm) {
+        vec4 c0, n0; cellRead(vC0, vP0, c0, n0);
         if (vW.y + vW.z > 0.0005) {
-          col = cellSample(atlas, vC0) * vW.x + cellSample(atlas, vC1) * vW.y + cellSample(atlas, vC2) * vW.z;
-          nrm = cellSample(atlasN, vC0) * vW.x + cellSample(atlasN, vC1) * vW.y + cellSample(atlasN, vC2) * vW.z;
-        } else { col = cellSample(atlas, vC0); nrm = cellSample(atlasN, vC0); }
+          vec4 c1, n1, c2, n2; cellRead(vC1, vP1, c1, n1); cellRead(vC2, vP2, c2, n2);
+          col = c0 * vW.x + c1 * vW.y + c2 * vW.z; nrm = n0 * vW.x + n1 * vW.y + n2 * vW.z;
+        } else { col = c0; nrm = n0; }
       }
       // the fragment's depth moved to where the tree's surface is (the atlas's depth), so the
       // imposter sorts against the ground and its neighbours, and shadows itself, as a solid would
@@ -169,7 +205,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, {
     atlas: { value: null }, atlasN: { value: null }, grid: { value: bake.grid }, hemi: { value: bake.hemi ? 1 : 0 },
     radius: { value: bake.radius }, halfW: { value: bake.halfW }, halfH: { value: bake.halfH }, centre: { value: bake.centre.clone() }, sunDir: { value: sunDir.clone().normalize() },
-    blend: { value: blend ? 1 : 0 }, blendDist: { value: 400 }, ambient: { value: 0.45 }, useDepth: { value: depth ? 1 : 0 }, useShadow: { value: shadows ? 1 : 0 },
+    blend: { value: blend ? 1 : 0 }, blendDist: { value: 400 }, parallax: { value: 0 }, halfWc: { value: bake.halfW }, halfHc: { value: bake.halfH }, ambient: { value: 0.45 }, useDepth: { value: depth ? 1 : 0 }, useShadow: { value: shadows ? 1 : 0 },
     viewDirOverride: { value: new THREE.Vector3(0, 1, 0) }, useOverride: { value: 0 },
   }]);
   uniforms.atlas.value = bake.colour; uniforms.atlasN.value = bake.normal;
@@ -224,7 +260,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
   // three's shadow maps expect
   mat.userData.depthMaterial = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([{ atlas: { value: null }, atlasN: { value: null }, grid: { value: bake.grid }, hemi: { value: bake.hemi ? 1 : 0 }, radius: { value: bake.radius }, halfW: { value: bake.halfW }, halfH: { value: bake.halfH }, centre: { value: bake.centre.clone() },
-      blend: { value: blend ? 1 : 0 }, blendDist: { value: 0 }, useDepth: { value: depth ? 1 : 0 }, viewDirOverride: { value: sunDir.clone().normalize() }, useOverride: { value: 1 } }]),
+      blend: { value: blend ? 1 : 0 }, blendDist: { value: 0 }, parallax: { value: 0 }, halfWc: { value: bake.halfW }, halfHc: { value: bake.halfH }, useDepth: { value: depth ? 1 : 0 }, viewDirOverride: { value: sunDir.clone().normalize() }, useOverride: { value: 1 } }]),
     side: THREE.DoubleSide, extensions: { fragDepth: true },
     vertexShader: VERTEX,
     fragmentShader: `
