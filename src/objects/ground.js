@@ -75,43 +75,50 @@ function mossTexture(size = 512) {
     speck(g, s, r, 1800, ['#5f8a34', '#3f5f24', '#76a040', '#4d7a2c'], 2, 6, 0.7);
   });
 }
-export function groundMaterial({ base = '../../textures/ground/', metresPerTile = 6, clearing = { x: 0, z: 0, radius: 260 } } = {}) {
-  const leaves = loadOr('leaves', leavesTexture, base), needles = loadOr('needles', needlesTexture, base), dirt = loadOr('dirt', dirtTexture, base), moss = loadOr('moss', mossTexture, base);
+export function groundMaterial({ base = '../../textures/ground/', metresPerTile = 1.6, clearing = { x: 0, z: 0, radius: 260 }, light = false } = {}) {
+  // Jacob's set (2026-09-22): forest litter as the base, needle duff and leaf drifts by noise, fern
+  // and moss patches, dirt on the paths, dark dirt in the clearing. Seven pictures; a machine
+  // without WebGL2 has too few texture units for them all, so it drops the ferns and the dark dirt.
+  const L = (name, fb) => loadOr(name, fb, base);
+  const forest = L('forest', needlesTexture), needles = L('needles', needlesTexture), leaves = L('leaves', leavesTexture), moss = L('moss', mossTexture), dirt = L('dirt', dirtTexture);
+  const ferns = light ? null : L('ferns', mossTexture), darkDirt = light ? null : L('darkDirt', dirtTexture);
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0 });
   mat.onBeforeCompile = (sh) => {
-    sh.uniforms.leavesMap = { value: leaves }; sh.uniforms.needlesMap = { value: needles }; sh.uniforms.dirtMap = { value: dirt }; sh.uniforms.mossMap = { value: moss };
-    sh.uniforms.tileM = { value: metresPerTile }; sh.uniforms.clearingAt = { value: new THREE.Vector3(clearing.x, clearing.z, clearing.radius) };
+    Object.assign(sh.uniforms, { forestMap: { value: forest }, needlesMap: { value: needles }, leavesMap: { value: leaves }, mossMap: { value: moss }, dirtMap: { value: dirt },
+      fernsMap: { value: ferns || moss }, darkDirtMap: { value: darkDirt || dirt }, tileM: { value: metresPerTile }, clearingAt: { value: new THREE.Vector3(clearing.x, clearing.z, clearing.radius) } });
     sh.vertexShader = 'varying vec3 vWorld;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = `
-      uniform sampler2D leavesMap; uniform sampler2D needlesMap; uniform sampler2D dirtMap; uniform sampler2D mossMap; uniform float tileM; uniform vec3 clearingAt;
+      uniform sampler2D forestMap; uniform sampler2D needlesMap; uniform sampler2D leavesMap; uniform sampler2D mossMap; uniform sampler2D dirtMap;
+      ${light ? '' : 'uniform sampler2D fernsMap; uniform sampler2D darkDirtMap;'}
+      uniform float tileM; uniform vec3 clearingAt;
       varying vec3 vWorld;
       float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
         return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), f.x), mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), f.x), f.y); }
       float fbm(vec2 p) { return 0.5 * vnoise(p) + 0.25 * vnoise(p * 2.03 + 7.1) + 0.125 * vnoise(p * 4.1 + 3.3) + 0.0625 * vnoise(p * 8.3 + 1.7); }
-      // a texture read at two scales and blended, so its repeat is not seen
+      // a picture read at two scales and blended, so its repeat is not seen
       vec3 twice(sampler2D t, vec2 uv, float k, vec2 off) { return mix(texture2D(t, uv).rgb, texture2D(t, uv * k + off).rgb, 0.4); }
     ` + sh.fragmentShader.replace('#include <map_fragment>', `
       vec2 rel = vWorld.xz - clearingAt.xy;
       vec2 uvW = rel / tileM;
-      vec3 le = twice(leavesMap, uvW, 0.31, vec2(0.37, 0.11));
-      vec3 ne = twice(needlesMap, uvW, 0.27, vec2(0.13, 0.59));
-      vec3 di = twice(dirtMap, uvW, 0.23, vec2(0.71, 0.29));
-      vec3 mo = twice(mossMap, uvW * 1.3, 0.29, vec2(0.41, 0.83));
-      // the floor: needles as the base; leaves in drifts by the low-frequency noise; moss in the damp
-      // spots by a higher one; bare dirt on the paths (a thin band of one noise) and in the clearing
-      float n = fbm(rel * 0.010), n2 = fbm(rel * 0.045 + 40.0), n3 = fbm(rel * 0.02 + 90.0);
-      float leavesW = smoothstep(0.42, 0.62, n);
-      float mossW = smoothstep(0.66, 0.82, n2) * (1.0 - leavesW * 0.5);
+      float n = fbm(rel * 0.010), n2 = fbm(rel * 0.045 + 40.0), n3 = fbm(rel * 0.02 + 90.0), n4 = fbm(rel * 0.03 + 150.0);
+      vec3 ground = twice(forestMap, uvW, 0.29, vec2(0.37, 0.11));
+      // needle duff in the higher ground of the slow noise, leaf drifts in the low
+      ground = mix(ground, twice(needlesMap, uvW, 0.27, vec2(0.13, 0.59)), smoothstep(0.52, 0.66, n));
+      ground = mix(ground, twice(leavesMap, uvW, 0.31, vec2(0.71, 0.29)), smoothstep(0.46, 0.34, n));
+      // moss in the damp spots, fern patches by their own noise
+      ground = mix(ground, twice(mossMap, uvW * 1.2, 0.29, vec2(0.41, 0.83)), smoothstep(0.64, 0.8, n2));
+      ${light ? '' : 'ground = mix(ground, twice(fernsMap, uvW * 0.8, 0.27, vec2(0.23, 0.67)), smoothstep(0.62, 0.76, n4));'}
+      // bare dirt on the winding paths; the clearing is dark, trodden earth
       float path = 1.0 - smoothstep(0.0, 0.035, abs(n3 - 0.5));
       float toTown = distance(vWorld.xz, clearingAt.xy) / clearingAt.z;
       float clearingW = 1.0 - smoothstep(0.85, 1.15, toTown + (n2 - 0.5) * 0.25);
-      float dirtW = max(path * 0.9, clearingW);
-      vec3 ground = mix(ne, le, leavesW); ground = mix(ground, mo, clamp(mossW, 0.0, 1.0)); ground = mix(ground, di, clamp(dirtW, 0.0, 1.0));
+      ground = mix(ground, twice(dirtMap, uvW, 0.23, vec2(0.71, 0.29)), path * 0.9);
+      ${light ? 'ground = mix(ground, twice(dirtMap, uvW, 0.23, vec2(0.71, 0.29)) * 0.6, clearingW);' : 'ground = mix(ground, twice(darkDirtMap, uvW, 0.23, vec2(0.51, 0.19)), clearingW);'}
       diffuseColor.rgb *= ground;
     `);
     mat.userData.shader = sh;
   };
-  mat.customProgramCacheKey = () => 'splat-ground-4';
+  mat.customProgramCacheKey = () => 'splat-ground-7' + (light ? 'L' : '');
   return mat;
 }

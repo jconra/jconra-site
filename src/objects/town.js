@@ -60,7 +60,7 @@ export function buildTown(parts, projects, { shipLength = 7, renderer, origin = 
   const loader = new THREE.TextureLoader();
 
   // GROUND: the plain, and pavement under the town
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), groundMaterial({ clearing: { x: origin.x, z: origin.z, radius: TOWN_R } }));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), groundMaterial({ clearing: { x: origin.x, z: origin.z, radius: TOWN_R }, light }));
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; floor.add(ground);
   const pave = new THREE.Mesh(new THREE.PlaneGeometry(ROAD * 7, ROAD * 7), new THREE.MeshStandardMaterial({ color: 0x5b6169, roughness: 0.95 }));
   pave.rotation.x = -Math.PI / 2; pave.position.y = 0.05; floor.add(pave);
