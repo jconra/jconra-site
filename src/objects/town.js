@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { Forest } from './forest.js';
 import { groundMaterial } from './ground.js';
 import { Understory } from './understory.js';
+import { ForceField } from './forceField.js';
 import { shutFighter } from './hangarSet.js';
 
 const ROAD = 62;            // pitch of the grid the buildings stand on
@@ -90,6 +91,9 @@ export function buildTown(parts, projects, { shipLength = 7, renderer, origin = 
   const forest = new Forest(renderer, floor, { base: '../../models/trees/', light, tile: 420, tiles: 7, perTile: light ? 120 : 220, imposterAt: light ? 0 : 140, band: 40, grid: light ? 8 : 12, cell: 192, detail: 'coarse', shadows: false,
     clear: (x, z) => Math.hypot(x, z) < TOWN_R, sunDir: new THREE.Vector3(0.5, 1, 0.3) });
   const relay = () => {};
+  // THE FENCE: the force field round the town, an octagon of emitter posts just inside the tree line
+  const fence = (() => { const c = []; for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 + Math.PI / 8; c.push(new THREE.Vector3(Math.sin(a) * (TOWN_R - 22), 0, Math.cos(a) * (TOWN_R - 22))); } return new ForceField({ corners: c, height: 12, postEvery: 36 }); })();
+  floor.add(fence.group);
   const understory = new Understory(floor, { clear: (x, z) => Math.hypot(x, z) < TOWN_R, reach: light ? 160 : 260, perTile: light ? 120 : 260 });
 
   // THE FIGHTER
@@ -117,9 +121,9 @@ export function buildTown(parts, projects, { shipLength = 7, renderer, origin = 
     } }
 
   return {
-    floor, jet, buildings, state, clouds, forest,
+    floor, jet, buildings, state, clouds, forest, fence,
     // every frame, whatever set is showing: the forest bakes, re-lays its tiles round the fighter and sorts near from far
-    frame(camera, target) { const cp = floor.worldToLocal(camera.position.clone()); forest.update({ position: cp }, floor.worldToLocal(target.clone()), state.pos); understory.update(state.pos, cp); },
+    frame(camera, target, dt = 1 / 60) { const cp = floor.worldToLocal(camera.position.clone()); forest.update({ position: cp }, floor.worldToLocal(target.clone()), state.pos); understory.update(state.pos, cp); fence.update(dt); },
     // the fighter's way, and a point ahead of it to look at
     forward: fwd,
     lookAhead(d = 26) { return state.pos.clone().addScaledVector(fwd(), d); },

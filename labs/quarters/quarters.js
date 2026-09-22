@@ -1265,7 +1265,7 @@ function stepSequence(dt) {
     if (sitterMixer) sitterMixer.update(dt);
   }
   for (const h of holos) h.update(dt);
-  if (town) town.frame(camera, controls.target);
+  if (town) town.frame(camera, controls.target, dt);
   for (const sc of SCREENS) sc.update(dt);
 }
 // the wheel scrubs time instead of zooming, when that is switched on; a first scroll starts the intro
