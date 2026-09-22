@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { bakeImposterSteps, imposterMaterial } from '../../src/objects/imposter.js';
+import { groundMaterial } from '../../src/objects/ground.js';
 
 const Q = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -29,7 +30,8 @@ sun.castShadow = false; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0
 { const c = sun.shadow.camera; c.left = c.bottom = -400; c.right = c.top = 400; c.near = 10; c.far = 2500; }
 const SUN_OFF = new THREE.Vector3(300, 600, 200);
 const hemi = new THREE.HemisphereLight(0xbfe3ff, 0x466b3a, 1.0); scene.add(hemi);
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(12000, 12000), new THREE.MeshStandardMaterial({ color: 0x3f6b35, roughness: 1 }));
+// the town's splat ground (grass, dirt and rock by noise, a dirt clearing at the origin), so it can be judged here
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(12000, 12000), groundMaterial({ clearing: { x: 0, z: 0, radius: 120 } }));
 ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
 
 // ── the species: baked from ez-tree presets, scaled to a height in metres ──────────────
