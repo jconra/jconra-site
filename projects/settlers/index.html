@@ -1,0 +1,533 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<style>
+body {    
+margin: 0px;
+padding: 0px;
+background-image:url('water.jpg');}
+canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="myCanvas" width="1000" height="1000"></canvas>
+
+
+<script>
+var can, ctx, canX, canY, xDown, yDown, mouseIsDown = 0, scale = 1, change = false, i, j;
+bbutton=false, mbutton=false, buyHouse=false, buyCastle=false, buyRoad=false, buyCard=false, hex=true;
+var touch=false;
+var select = {x:0,y:0};
+
+
+can = document.getElementById("myCanvas");
+ctx = can.getContext("2d");
+function resize(){
+ can.width = window.innerWidth;
+ can.height = window.innerHeight;
+ cw=can.width;
+ ch=can.height;
+ }
+resize();
+var x = -cw/2-50, y = -ch/2;
+if (cw>1000) var xw = 1000;
+else        var xw = cw;
+var rat = xw/1000;
+
+
+
+
+function selectSpot(mode){
+ ctx.save();
+ hex=false;
+ var snapY = Math.floor(((canY-80*scale-ch/2)/scale-y)/112);
+ var offx=(snapY%2==1)?-75:0;
+ var snapX = Math.floor(((canX-50*scale-cw/2)/scale-x-offx)/150);
+ var newX = (x+30+offx+snapX*150)*scale+cw/2;
+ var newY = (y+-10+snapY*112)*scale+ch/2;
+ var off=(snapY%2==0)?-1:0;
+ var off2=(snapY%2==1)?-1:0;
+ ctx.beginPath();
+ ctx.stroke();
+ if ((snapX<9)&&(snapX>=0)&&(snapY<8)&&(snapY>=0)){
+   var tb=town[snapY][snapX];
+   var cb=city[snapY][snapX];
+   if (mode==1) var sy=590, sh=180, dw=40, dh=25;
+   else         var sy=780, sh=220, dw=66, dh=40;
+   if (newX+100*scale<canX){
+      if (((tb==0)||(tb==3))&&((cb==0)||(cb==3))&&check(snapX,snapY,2)){
+        //ctx.fillText("2 came back True",10,260);
+        ctx.drawImage(pics, 290, sy, 290, sh, newX+105*scale, newY+110*scale, dw*scale, dh*scale);}}
+    else{
+      if (((tb==0)||(tb==2))&&((cb==0)||(cb==2))&&check(snapX,snapY,1)){
+        //ctx.fillText("1 came back True",10,260);
+        ctx.drawImage(pics, 290, sy, 290, sh, newX+30*scale, newY+150*scale, dw*scale, dh*scale);}}
+  }
+  
+  //ctx.fillText(map[snapY+1][snapX+1+off2],canX+120,canY+60);
+  //ctx.fillText(map[snapY+1][snapX+off2],canX+20,canY+60);
+  //ctx.fillText(map[snapY][snapX+2+off+off2],canX+120,canY);
+      
+ ctx.beginPath();
+ ctx.fillStyle="#333333";
+ if (touch) ctx.rect(cw-300*rat,ch-180*rat,200*rat,90*rat);
+ ctx.rect(100*rat,ch-180*rat,200*rat,90*rat);
+ ctx.fill();
+ ctx.stroke();
+ ctx.beginPath();
+ ctx.fillStyle="#FF0000";
+ ctx.font = 40*rat + 'pt Calibri';
+ if (touch) ctx.fillText("Confirm",cw-289*rat,ch-120*rat);
+ ctx.fillText("Cancel",111*rat,ch-120*rat);
+ ctx.fill();
+ ctx.restore();
+ select.x=snapX;
+ select.y=snapY;
+ }
+
+
+function buildScreen(){
+  var bw=500*rat, bh=600*rat;
+  var bx=cw/2-bw/2, by=ch/2-bh/2;
+  ctx.beginPath();
+  ctx.fillStyle="#333333";
+  ctx.strokeStyle="#111111";
+  ctx.rect(bx,by,bw,bh);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.fillStyle="#111111";
+  ctx.strokeStyle="#555555";
+  for(i=0;i<4;i++){ctx.rect(bx+40*rat,by+220*rat+i*100*rat,420*rat,70*rat);}
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = 40*rat + 'pt Calibri';
+  ctx.fillStyle="#FF0000";
+  ctx.fillText("Build Screen",bx+100*rat,by+50*rat);
+  ctx.font = 30*rat + 'pt Calibri';
+var xar=[30,180,340,120,280];
+var yar=[120,120,120,200,200];
+for(i=0;i<5;i++){
+  ctx.fillText(money[i], bx+xar[i]*rat, by+yar[i]*rat)
+  }
+ctx.fillText("Buy House", bx+60*rat, by+270*rat);
+ctx.fillText("Buy Castle", bx+60*rat, by+370*rat);
+ctx.fillText("Buy Road", bx+60*rat, by+470*rat);
+ctx.fillText("Buy Card", bx+60*rat, by+570*rat);
+ctx.drawImage(pics,0,590,290,180,bx+250*rat,by+230*rat, 80*rat, 50*rat);
+ctx.drawImage(pics,0,780,290,180,bx+240*rat,by+320*rat, 100*rat, 60*rat);
+ctx.drawImage(pics,1090,90,20,180,bx+280*rat,by+420*rat,15*rat,70*rat);
+ctx.beginPath();
+ctx.fillStyle="#FFFFFF";
+ctx.strokeStyle="#0000FF";
+ctx.rect(bx+265*rat,by+528*rat,40*rat,55*rat);
+ctx.fill();
+ctx.stroke();
+xar=[60,210,370,390,150,320,360,405,360,370,400,340,380,420,360,400,360,370,400,360,400,380];
+yar=[80, 65, 65, 75,150,150,230,230,255,250,255,325,325,325,355,355,440,435,440,530,525,560];
+tar=[1,2,3,3,4,5,1,4,3,3,5,2,2,2,1,1,3,3,5,1,2,4];
+var b=1;
+for(i=0;i<22;i++){
+if (i==6) b=2.5;
+if (tar[i]==1)ctx.drawImage(pics, 20, 320, 305, 200, bx+xar[i]*rat, by+yar[i]*rat, 90/b*rat, 50/b*rat);
+if (tar[i]==2)ctx.drawImage(pics, 740, 0, 300, 310, bx+xar[i]*rat, by+yar[i]*rat, 90/b*rat, 90/b*rat);
+if (tar[i]==3)ctx.drawImage(pics, 1400, 0, 200, 330, bx+xar[i]*rat, by+yar[i]*rat, 35/b*rat, 60/b*rat);
+if (tar[i]==4)ctx.drawImage(pics, 976, 385, 306, 213, bx+xar[i]*rat, by+yar[i]*rat, 75/b*rat, 60/b*rat);
+if (tar[i]==5)ctx.drawImage(pics, 1290, 370, 320, 200, bx+xar[i]*rat, by+yar[i]*rat, 80/b*rat, 70/b*rat);
+}
+}
+
+
+function menuScreen(){
+  var bx=cw/8, by=ch/8;
+  ctx.fillStyle="#333333";
+  ctx.strokeStyle="#111111";
+  ctx.beginPath();
+  ctx.rect(bx,by,500,600);
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = '40pt Calibri';
+  ctx.fillStyle="#FF0000";
+  ctx.fillText("Main Menu",bx+50,by+50);
+  }
+
+
+
+
+can.addEventListener('gestureend', function(e) {
+    if (e.scale < 1.0) {scale-=.5;} 
+ else if (e.scale > 1.0) {scale+=.5;}
+}, false);
+can.addEventListener("mousedown",  mouseDown, false);
+can.addEventListener("mousemove",  mouseXY,   false);
+can.addEventListener("touchstart", touchDown, false);
+can.addEventListener("touchmove",  touchXY,   true);
+can.addEventListener("touchend",   touchUp,   false);
+can.addEventListener("mousewheel", wheel,     false)
+document.body.addEventListener("mouseup",     mouseUp, false);
+document.body.addEventListener("touchcancel", touchUp, false);
+window.addEventListener('resize', resize, false);
+
+
+
+
+function wheel(e){if (e.wheelDelta<0)scale-=.2;else scale+=.2;}
+function mouseUp(e)   {mouseIsDown = 0;mouseXY(e);}
+function touchUp(e)   {mouseIsDown = 0;showPos(e);}
+function mouseDown(e) {mouseIsDown = 1; mouseXY(e); button(1);}
+function touchDown(e) {mouseIsDown = 1; change = true; touchXY(e); button(2);}
+function mouseXY(e) {
+ if (!e)
+ var e = event;
+ xDown=canX; yDown=canY;
+ canX = e.pageX - can.offsetLeft;
+ canY = e.pageY - can.offsetTop;
+ showPos();
+ }
+
+
+
+
+function touchXY(e) {
+ touch=true;
+ if (!e)
+ var e = event;
+ e.preventDefault();
+ xDown=canX; yDown=canY;
+ canX = e.targetTouches[0].pageX - can.offsetLeft;
+ canY = e.targetTouches[0].pageY - can.offsetTop;
+ if (change){
+  xDown=canX; yDown=canY; change = false;
+ }
+ showPos();
+}
+
+
+ function showPos() {
+ if (mouseIsDown){x+=(canX-xDown)/scale;y+=(canY-yDown)/scale;}
+ draw();
+}
+  
+function button(mode){
+  var bw=500*rat, bh=600*rat;
+  var bx=cw/2-bw/2, by=ch/2-bh/2;
+  if ((buyHouse)||(buyCastle)){
+    if (!touch) touch=true;
+    if ((canY>(ch-180*rat))&&(canY<(ch-180*rat+90*rat))){
+      if (canX<300*rat) {touch=false; buyHouse=false; buyCastle=false; hex=true;}
+      else if ((canX>(cw-300*rat))&&touch) {touch=false; buyHouse=false; buyCastle=false; hex=true;}
+    }
+  }
+  if (bbutton){
+  if ((canX>bx) && (canX<(bx+bw))){
+        if      ((canY>(by+220*rat)) && (canY<(by+300*rat))){buyHouse=true; bbutton=false;}
+ else if ((canY>(by+320*rat)) && (canY<(by+400*rat))){buyCastle=true; bbutton=false;}
+ else if ((canY>(by+420*rat)) && (canY<(by+500*rat))){buyRoad=true; bbutton=false;}
+ else if ((canY>(by+520*rat)) && (canY<(by+600*rat))){buyCard=true; bbutton=false;}
+    }
+  }
+  if (canY>(ch-100*rat)){
+    if (canX<190*rat){
+      if (mbutton) mbutton=false;
+      else         mbutton=true;
+      bbutton=false;
+      }
+    if ((canX>190*rat) && (canX<350*rat)){
+      if (bbutton) bbutton=false;
+      else         bbutton=true;
+      mbutton=false;
+      }
+    }
+  }
+
+
+var thisPlayer = 0;
+var playerNames = ["you","Other"];
+var map =  [[0,0,0,0,0,0,0,0,0],[0,0,0,4,2,1,3,0,0],[0,0,3,1,5,4,2,0,0],[0,0,1,3,1,2,1,5,0],[0,1,2,4,1,1,3,1,0],[0,0,2,5,1,4,3,1,0],[0,0,5,1,1,3,2,0,0],[0,0,0,3,4,1,5,0,0]];
+var town = [[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0]];
+var city = [[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0]];
+var road = [[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0]];
+var turn = 0;
+var money = [0,0,0,0,0];
+
+
+var pics  = new Image();
+pics.src  = "pics.png";
+
+
+function rn(min,max){return Math.floor( Math.random()*(max-min)+min);}
+
+
+function drawitscaled(imgobject, sx, sy, sw, sh, offx, offy, width, height){
+ if (j%2==1) offx-=75;
+ ctx.drawImage(imgobject, sx, sy, sw, sh, (x+offx+i*150)*scale+cw/2, (y+offy+j*112)*scale+ch/2, width*scale, height*scale);
+}
+
+
+function drawbuilding(sy, sh, hx, hy, dw, dh, num){
+ if (num==0) return 0;
+ mult = Math.floor(num/100);
+ num=num%100;
+ for (var i=1;i<4;i++){
+  if (num%2==0)
+    drawitscaled(pics, 290*mult, sy, 290, sh, 120+hx , 90+hy, dw, dh);
+  if (num%3==0)
+    drawitscaled(pics, 290*mult, sy, 290, sh, 45+hx , 130+hy, dw, dh);
+ }
+}
+
+
+
+
+function drawHex(){
+  snapY = Math.floor(((canY-25*scale-ch/2)/scale-y)/112);
+  var offx=(snapY%2==1)?-75:0;
+  snapX = Math.floor(((canX-cw/2)/scale-x-offx)/150);
+  
+  var off=(snapY%2==0)?-1:0;
+
+  /*
+  ctx.fillText((snapY)+","+(snapX),canX,canY);
+  if (check(snapX,snapY,2)){
+    ctx.fillText((snapY+1)+","+(snapX+1),canX+60,canY+60);
+    ctx.fillText(map[snapY+1][snapX+1],canX+120,canY+60);
+    }
+
+
+  if (check(snapX,snapY,1)){
+    ctx.fillText((snapY+1)+","+(snapX),canX-40,canY+60);
+    ctx.fillText(map[snapY+1][snapX],canX+20,canY+60);
+    }
+    
+  if (check(snapX,snapY,3)){
+    ctx.fillText((snapY)+","+(snapX+2+off),canX+60,canY);
+    ctx.fillText(map[snapY][snapX+2+off],canX+120,canY);
+    }
+  for(var i=1;i<8;i++){
+    for(var j=1;j<8;j++){
+      ctx.fillText(map[j][i],canX-300+30*i,canY-300+30*j);
+      }
+    }  
+
+   */
+
+   var snapX = (x+30+offx+snapX*150)*scale+cw/2;
+   var snapY = (y+-10+snapY*112)*scale+ch/2;
+   ctx.fillStyle= 'rgba(0,0,0,.2)';
+   ctx.beginPath();
+   ctx.moveTo(snapX-25*scale,snapY+60*scale);
+   ctx.lineTo(snapX+50*scale,snapY+20*scale);
+   ctx.lineTo(snapX+125*scale,snapY+60*scale);
+   ctx.lineTo(snapX+125*scale,snapY+130*scale);
+   ctx.lineTo(snapX+50*scale,snapY+172*scale);
+   ctx.lineTo(snapX-25*scale,snapY+130*scale);
+   ctx.lineTo(snapX-25*scale,snapY+60*scale);
+   ctx.fill();
+   ctx.stroke();
+ }
+
+
+function check(xx,yy,mode){
+  var off1=(yy%2==0)?-1:0;
+  var off2=(yy%2==1)?-1:0;
+  //ctx.fillText(xx+","+yy,10,110);
+  if ((xx<0) || (xx>8) || (yy<0) || (yy>7)) return false;
+  
+  //ctx.fillText("map[xx][yy]="+map[yy][xx],10,140);
+  if (map[yy][xx]>0) return true;
+  
+  //ctx.fillText("yy+1="+(yy+1)+"  xx+1+off2="+(xx+1+off2),10,170);
+  if (((yy+1)<8) && ((xx+1+off2)<9)){
+    if (map[yy+1][xx+1+off2]>0) 
+      return true;
+    }  
+    
+  //ctx.fillText("yy+1="+(yy+1)+"  xx+off2="+(xx+off2)+"  xx+off2="+(xx+off2),10,200);
+  if (((yy+1)<8) && ((xx+off2)<9) && ((xx+off2)>=0)){
+    if ((mode==1) && (map[yy+1][xx+off2]>0)) 
+      return true;
+      }
+      
+  //ctx.fillText("xx+2+off+off2="+(xx+2+off1+off2),10,230);
+  if ((xx+2+off1+off2)<9){
+    if ((mode==2) && (map[yy][xx+2+off1+off2]>0)) 
+      return true;
+      }
+  //ctx.fillText("The End",10,260);
+  return false;
+  }
+
+var sray = [];
+for(i=0;i<21;i++){
+  sray.push (rn(0,2));
+  sray.push (rn(40,90));
+  if (i%3==0)
+    sray.push (rn(30,44));
+  else if (i%3==1)
+    sray.push (rn(45,59));
+  else
+    sray.push (rn(60,74));
+}
+
+
+var tray = [];
+for(i=0;i<280;i++){
+  tray.push (rn(30,120));
+  tray.push (rn(20,110));
+  }
+
+
+function draw(){
+  ctx.clearRect(0, 0, cw, ch);
+  var sheepcnt=0;
+  var treecnt=0;
+  if (scale<.4) scale=.4;
+
+
+
+
+ for(i=1;i<8;i++){
+  for(j=1;j<8;j++){
+   if (map[j][i]!=0)
+   drawitscaled(pics, 320, 0, 400, 400, -15, -15, 200, 200);              //Draw Shore
+  }
+ }
+ for(i=1;i<8;i++){
+  for(j=1;j<8;j++){
+   if (map[j][i]!=0)
+   drawitscaled(pics, 2, 0, 300, 300, 10, 10, 150, 150);                  //Draw Land
+  }
+ }
+ 
+ for(i=1;i<8;i++){
+  for(j=1;j<8;j++){
+   var num = road[j][i];                                                  //Draw Roads
+   if (num!=0){
+     if (num%2==0)  drawitscaled(pics, 1090, 90, 20, 180, 148, 45, 15, 82);
+     if (num%3==0)  drawitscaled(pics, 1150, 50, 180, 113, 73, 110, 95, 60);
+     if (num%5==0)  drawitscaled(pics, 1150, 185, 180, 113, -5, 110, 95, 60);
+   }
+  
+   if (map[j][i]==1)                                                      //Draw Farms
+   drawitscaled(pics, 20, 320, 305, 200, 30, 60, 120, 60);
+
+
+   else if (map[j][i]==2)                                                 //Draw Mountains
+   drawitscaled(pics, 740, 0, 300, 310, 30, 20, 120, 120);
+   
+   else if (map[j][i]==3){                                                //Draw Trees
+    for(var k=0;k<20;k++){
+     drawitscaled(pics, 1400, 0, 200, 330, tray[treecnt++], tray[treecnt++], 20, 30); 
+    }
+   }
+   else if (map[j][i]==4){                                                //Draw Sheep
+    for(var k=0;k<3;k++){
+     if (sray[sheepcnt++]!=1)
+      drawitscaled(pics, 670, 385, 306, 213, sray[sheepcnt++], sray[sheepcnt++], 30, 20);
+     else
+      drawitscaled(pics, 976, 385, 306, 213, sray[sheepcnt++], sray[sheepcnt++], 30, 20);
+    }
+   }
+   else if (map[j][i]==5)                                                 //Draw Bricks
+   drawitscaled(pics, 1290, 370, 320, 200, 60, 60, 50, 50);
+
+
+
+
+   drawbuilding(590, 180, 15, 10, 40, 25, town[j][i]);                            //Draw Houses
+   drawbuilding(780, 220,  0,  0, 66, 40, city[j][i]);                            //Draw Cities
+   var offx=0;
+   if (j%2==1) offx-=75;
+   //ctx.fillText(j,(i*150+x+offx+60)*scale+cw/2,(j*112+y+60)*scale+ch/2);
+   //ctx.fillText(i,(i*150+x+offx+100)*scale+cw/2,(j*112+y+60)*scale+ch/2); 
+  }
+ }
+ if (hex) drawHex();
+ ctx.beginPath();
+ ctx.rect(4,ch-64*rat,cw-8,60*rat);
+ ctx.rect(4,4,cw-8,60*rat);
+ ctx.fillStyle="#333333";
+ ctx.strokeStyle="#111111";
+ ctx.lineWidth=8;
+ ctx.fill();
+ ctx.stroke();
+ tileInfoPanel(xw);
+ ctx.font = xw/25 + 'pt Calibri';
+ ctx.fillStyle="#FF0000";
+ ctx.fillText("Menu", 30*rat, ch-15*rat);
+ ctx.fillText("Build", 200*rat, ch-15*rat);
+ var msg = "Hello " + playerNames[thisPlayer];
+ if (thisPlayer == turn) msg += "! It is Your Turn.";
+ else msg += "! It is " + playerNames[turn] + "'s Turn.";
+ ctx.fillText(msg, 10, 50*rat);
+ ctx.font = xw/33 + 'pt Calibri';
+ function image(sx,sy,sw,sh,dx,dy,dw,dh){
+ ctx.drawImage(pics, sx, sy, sw, sh, cw-dx*rat, ch-dy*rat, dw*rat, dh*rat);
+ }
+ image(20, 320, 305, 200, 570, 50, 60, 35);
+ image(740, 0, 300, 310, 445, 55, 50, 50);
+ image(1400, 0, 200, 330, 320, 50, 25, 45);
+ image(1400, 0, 200, 330, 300, 55, 25, 45);
+ image(976, 385, 306, 213, 195, 50, 50, 40);
+ image(1290, 370, 320, 200, 70, 50, 50, 40);
+ var tar=[620,495,370,255,120];
+ for(i=0;i<5;i++){
+ ctx.fillText(money[i], cw-tar[i]*rat, ch-20*rat)
+ }
+
+
+ if (buyHouse)  selectSpot(1);
+ if (buyCastle) selectSpot(2);
+ ctx.save();
+ if (bbutton) buildScreen();
+ if (mbutton) menuScreen();
+ ctx.restore();
+}
+
+
+
+
+function tileInfoPanel(xw){
+ var msg1 = "Ocean", msg2 = "None";
+ snapY = Math.floor(((canY-can.height/2)/scale-y)/112);
+ var offx=(snapY%2==1)?-75:0;
+ snapX = Math.floor(((canX-cw/2)/scale-x-offx)/150);
+ if ((snapY>0) && (snapX>0) && (snapY<8) && (snapX<8)){
+  var t = map[snapY][snapX];
+  if (t==1) msg1 = "Farm";
+  if (t==2) msg1 = "Ore";
+  if (t==3) msg1 = "Forest";
+  if (t==4) msg1 = "Sheep";
+  if (t==5) msg1 = "Brick";
+   }
+ ctx.rect(10*rat,10+70*rat,300*rat,80*rat);
+ ctx.fillStyle="#333333";
+ ctx.strokeStyle="#111111";
+ ctx.lineWidth=4;
+ ctx.fill();
+ ctx.stroke();
+ ctx.fillStyle="#FF0000";
+ ctx.fillText("Resource: " + msg1, 15*rat, 10+105*rat);
+       }
+
+
+pics.onload = function() {draw();};
+function start(){
+
+
+ function frame(){
+  for(i=1;i<63;i+=3){
+   if (rn(1,10)==1){
+    if (sray[i-1]==1) sray[i]++;
+    else    sray[i]--;
+    if (sray[i]<40) sray[i-1]=1;
+    if (sray[i]>90) sray[i-1]=0;
+   }
+  }
+ draw();
+ }
+var id = setInterval(frame, 100)}
+start();
+</script>
+</body>
+</html>

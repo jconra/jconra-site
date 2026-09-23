@@ -1,0 +1,277 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+<title>jconra.com</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>  
+<link rel="stylesheet" href="styles/main.css">
+<style>
+p{color: rgb(200,200,200);}
+hr{border:1px solid;}
+.crop{width:50px; height:50px; overflow:hidden; float:left; margin-right:50px;}
+</style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+<canvas id="back"></canvas>
+<canvas id="fwd"></canvas>
+
+
+<div class="container">
+  <div class="col-xs-12">
+
+    <nav class="navbar transparent navbar-inverse">
+      <div class="container-fluid">
+        <ul class="nav navbar-nav">
+          <li><a href="#">Home</a></li>
+          <li><a href="projects.html">Projects</a></li>
+          <li><a href="contact.html">Contact Info</a></li>
+          <li><a href="index.html">Go 3D</a></li>
+        </ul>
+      </div>
+    </nav>
+    
+    <div class="well">
+      <img style="width:120px; height:150px; border-radius:20px; margin:20px;" src="pic.jpg">
+      <div class="text" style="width:700px">
+        
+    
+    <h2>Hello,</h2>
+    <p>     
+    I am a software engineer with a background in network security. My current job is a Cyberspace Warfare Operations Instructor for the US Air Force. However, I am planning on settling in the Seattle area in the fall. I love programming and I hope to find a company with an exciting mission for this next chapter of my life.
+    </p>
+    <hr>
+    <div class="crop">
+      <img src="images/spritesheet.png" style="margin:-200px 0 0 0">
+    </div>
+    <h2>US Air Force</h2>
+    <p>
+    I am a Technical Sergeant in the US Air Force. I am grateful to the Air Force and NSA for putting me through so much training. The Air Force has helped me become a better person by teaching me leadership skills and encouraging me to always improve myself physically and mentally.
+    </p>
+    <hr>
+    <div class="crop">
+      <img src="images/spritesheet.png" style="margin:-150px 0 0 0">
+    </div>
+    <h2>Instructor</h2>
+    <p>
+    My current job at Keesler AFB involves teaching Cyberspace Warfare Operations. I have gotten very comfortable getting up in front of groups and explaining difficult computer and networking concepts. My current classes are Windows, Linux and Scripting in Python, PowerShell, and Bash. In addition to keeping these skills solid, I am always getting better at public speaking and conveying technical information.
+    </p>
+    <hr>
+    <div class="crop">
+      <img src="images/spritesheet.png" style="margin:-100px 0 0 -200px">
+    </div>
+    <h2>JavaScript</h2>
+    <p>
+    JavaScript is my language of choice, and then probably english. I have been teaching myself JS for at least five years. I think it's awesome that I can sit down at any machine and bang out some JS without having to download any additonal software. I have experience using node.js, but usually I find myself trying to push client-side JS to its full potential. I am always excited to learn more!
+    </p>
+    <hr>
+    <div class="crop">
+      <img src="images/spritesheet.png" style="margin:-100px 0 0 -150px">
+    </div>
+    <h2>THREE.js</h2>
+    <p>
+    I have become a huge fan of the THREE.js library. I love to work with code in three dimensions. WebGL is a fantastic technology that can bring any sort of experience to the browser that you can imagine. I am always trying to push my skills to the next level. My last project involved writting custom GLSL code, animation keyframes, texture splatting, shadowmaps, collision physics, and more.
+    </p>
+    <hr>
+    <div class="crop">
+      <img src="images/spritesheet.png" style="margin:-150px 0 0 -150px">
+    </div>
+    <h2>HTML5</h2>
+    <p>
+    I love web technology and I strive to master everything that HTML5 has to offer. I have spent countless hours using the canvas. I also enjoy playing with Websockets and AJAX to make dynamic pages.
+    </p>
+    <hr>
+    <div class="crop">
+      <img src="images/spritesheet.png" style="margin:-150px 0 0 -200px">
+    </div>
+    <h2>Python</h2>
+    <p>
+    Python is another great language that I have used for several work projects. It is my go-to language to quickly find a solution for problems involving lots of data and/or files.
+    </p>
+    <hr>
+    <div class="crop">
+      <img src="images/spritesheet.png" style="margin:-50px 0 0 -200px">
+    </div>
+    <h2>Blender</h2>
+    <p>
+    My attraction to 3D applications has given me lots of opportunities to use Blender to create 3D models with texture and animation.
+    </p>
+    <hr>
+    <div class="crop">
+      <img src="images/spritesheet.png" style="margin:-200px 0 0 -150px">
+    </div>
+    <h2>Linux</h2>
+    <p>
+    At my current job, one of my favorite classes to teach is Linux. The class teaches many skills that cyber operators need to know such as vim, regular expressions, /proc, package managers, iptables, cronjobs, investigating suspicious processes/connections, nfs, and much more.
+    </p>
+    <hr>
+    <div class="crop">
+      <img src="images/spritesheet.png" style="margin:-200px 0 0 -200px">
+    </div>
+    <h2>Windows</h2>
+    <p>
+    My work defending and attacking (as part of Red Team) the Department of Defense networks has given me plenty of experience on Windows Systems. I also teach a class on Windows.
+    </p>
+    <hr>
+    <div class="crop">
+      <img src="images/spritesheet.png" style="margin:-200px 0 0 -100px">
+    </div>
+    <h2>PowerShell</h2>
+    <p>
+    I have worked on several projects using PowerShell. For example, I made a client and server script that could transfer files that were encrypted and split into small pieces. This was useful to transfer files using a primitive php web-shell. I also teach PowerShell at my current job.
+    </p>
+    <hr>
+    <div class="crop">
+      <img src="images/spritesheet.png" style="margin:-150px 0 0 -100px">
+    </div>
+    <h2>Electronics</h2>
+    <p>
+    I love to bridge the gap between software and the physical world. I have experience using PIC Microcontrollers to control servos, motors, LEDs, and more. One of my favorite projects was making an electronic Star Wars style dog door. My dogs could activate a button that would start an opening, wait, and closing sequence. I also made a web-controlled dog treat dispenser and a programmable laser for my dogs to chase.
+    </p>
+    <hr>
+    <div class="crop">
+      <img src="images/spritesheet.png" style="margin:-150px 0 0 -50px">
+    </div>
+    <h2>Avionics</h2>
+    <p>
+    My first job in the Air Force was MQ-1 and MQ-9 (Predator and Reaper) avionics at Holloman AFB. This gave me experience replacing and troubleshooting avionics systems including KU-Band Satellite and C-Band Line-Of-Sight communications. I am comfortable with schematics and wiring diagrams.
+    </p>
+      </div>
+    </div>
+    
+  </div>
+</div>
+
+<script type="text/javascript">
+var canvas = document.getElementById('canvas');
+var ctx = canvas.getContext('2d');
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+
+var back = document.getElementById('back');
+var btx = back.getContext('2d');
+resizer();
+
+var fwd = document.getElementById('fwd');
+var ftx = fwd.getContext('2d');
+var fw = fwd.width = 300;
+var fh = fwd.height = 100;
+
+var points=[];
+var lines=[];
+
+for (var i=0; i<20; i++) {
+    points.push({x:rn(-100,100),y:rn(-20,20),z:rn(-100,100)});
+}
+
+for (var i=0; i<20; i++) {
+  var p1 = points[i];
+  for (var j=i+1; j<20; j++) {
+    var p2 = points[j];
+    if (Math.sqrt(Math.pow(p2.x-p1.x,2) + Math.pow(p2.y-p1.y,2) + Math.pow(p2.z-p1.z,2)) < 65)
+    lines.push([i,j]);
+  }
+}
+
+function animate() {
+  window.requestAnimationFrame(animate);
+  draw();
+  var x,y,xdist,ax;
+  for (var i=0; i<20; i++) {
+    x = points[i].x;
+    z = points[i].z;
+    xdist = Math.sqrt(z*z + x*x);
+    ax = Math.atan2(x,z);
+    ax += .5/180*Math.PI;
+    points[i].z=Math.cos(ax)*xdist;
+    points[i].x=Math.sin(ax)*xdist;
+  }
+}
+
+function draw() {
+  var p, pn;
+  ftx.strokeStyle="rgba(255,255,255,.4)";
+  ftx.clearRect(0,0,fw,fh);
+  ftx.fillStyle="white";
+  for (var i=0; i<20; i++) {
+    p = getPt(i);
+    ftx.beginPath();
+    ftx.arc(p.x,p.y,p.z,0,Math.PI*2);
+    ftx.fill();
+  }
+  for (var i=0, len=lines.length; i<len; i++) {
+    var p1 = getPt(lines[i][0]);
+    var p2 = getPt(lines[i][1]);
+    line(p1.x,p1.y,p2.x,p2.y);
+  }
+}
+
+function getPt(n) {
+  return {z:(points[n].z+100)/100+1,
+             x:points[n].x+fw/2,
+             y:points[n].y*(points[n].z/50)+fh/2};
+}
+
+function line(x1,y1,x2,y2) {
+  ftx.beginPath();
+  ftx.moveTo(x1,y1);
+  ftx.lineTo(x2,y2);
+  ftx.stroke();
+}
+
+animate();
+function background() {
+  var bSize = 20;
+  ctx.strokeStyle="grey";
+  for (var y=0; y<ch/bSize+1; y++){
+    for (var x=0; x<cw/bSize+1; x++){
+      ctx.beginPath();
+      var g=rn(100,255);
+      ctx.fillStyle="rgb("+g+","+g+","+g+")";
+      ctx.rect(x*bSize,y*bSize,bSize,bSize);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+  btx.font="900 90px Lucida Console";
+  btx.fillStyle="white";
+  btx.fillText("jconra.com",100,80);
+  btx.globalCompositeOperation = "source-out";
+  btx.fillStyle="rgba(0,0,0,.95)";
+  btx.fillRect(0,0,cw,ch);
+  btx.globalCompositeOperation = "source-over";
+  btx.strokeStyle="#333333";
+  btx.lineWidth=3;
+  btx.strokeText("jconra.com",100,80);
+  var grd = btx.createLinearGradient(0,0,0,120);
+  grd.addColorStop(0,"rgba(0,0,0,1)");
+  grd.addColorStop(.5,"rgba(0,0,0,0)");
+  grd.addColorStop(1,"rgba(0,0,0,1)");
+  btx.fillStyle=grd;
+  btx.fillRect(0,0,cw,120);
+  var grd = btx.createLinearGradient(0,0,cw,0);
+  grd.addColorStop(0,"rgba(0,0,0,.1)");
+  grd.addColorStop(.2,"rgba(255,255,255,.2)");
+  grd.addColorStop(1,"rgba(0,0,0,.1)");
+  btx.fillStyle=grd;
+  btx.fillRect(0,120,cw,40);
+}
+
+function rn(min,max) {return Math.floor( Math.random()*((max+1)-min)+min);}
+
+window.addEventListener("resize", resizer, false);
+function resizer() {
+  canvas.width = cw = window.innerWidth;
+  canvas.height = ch = window.innerHeight;
+  back.width = cw;
+  back.height = ch;
+  background();
+  }
+
+</script>
+</body>
+</html>

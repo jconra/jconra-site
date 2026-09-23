@@ -1,0 +1,9 @@
+var a=document.createElement("canvas");document.body.appendChild(a);var ch=a.height=window.innerHeight,cw=a.width=window.innerWidth,xPos,yPos,s=0,fade=0.01;
+a.style.cssText="position:fixed;z-index:999;top:0px;left:0px";var c=a.getContext("2d");c.fillStyle="black";c.font="25px Arial";c.fillRect(0,0,cw,ch);
+function b() {c.fillStyle="rgba(0,0,0,"+s+")";s+=fade;if (s > 1 && fade > 0) fade *=-1;if(s<0&&fade<0) {xPos = Math.random()*cw; yPos=Math.random()*ch;fade*=-1;}c.clearRect(0,0,cw,ch);c.fillText("I am watching you",xPos,yPos);window.requestAnimationFrame(b);}b();
+
+
+
+
+
+(function a(){setTimeout(function(){ele=document.createElement("button");ele.style.cssText="width:1200px; height:600px; background-color:transparent; border:50px ridge red; transform:rotate(-20deg); position:fixed; top:20%; left:10%; z-index:999; color:red; font-size:400px";ele.innerText="FAIL"; document.body.appendChild(ele); setTimeout(function(){document.body.removeChild(ele);a()},1000)},60000*Math.random());})()

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Basic Game</title>
+</head>
+<body style="margin:0px; overflow:hidden;" onload="init()">
+<canvas id="canvas"></canvas>
+<script>
+var canvas = document.getElementById("canvas");
+var ctx = canvas.getContext('2d');
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+
+//Declare global variables
+var cities,attacks,defends,score,speed,pause;
+var NUMOFCITY = 5;
+
+//init contains initialization code
+function init() {
+  pause = true;
+  drawMessage(0);
+}
+
+//reset clears the game so it can start over
+//first all variables are cleared, then cities and missiles are filled
+function reset() {
+  cities = [];
+  attacks = [];
+  defends = [];
+  score = 0;
+  speed = 0;
+  pause = false;
+
+  //This loop builds the cities array with new cities. The calculation is
+  //to evenly space out the cities across the bottom. The result that gets
+  //sent to city is the x position for that city
+  for (var i=0; i<NUMOFCITY; i++) {
+    cities.push(new city(cw/NUMOFCITY*i+cw/(NUMOFCITY*2)));
+  }
+
+  //This loop fills the missiles array. Increasing the number of missiles
+  //could make the game more difficult.
+  for (var i=0; i<5; i++) {
+    attacks.push(new missile());
+  }
+}
+
+//this function returns a new city. Its properties are its x position and
+//a boolean for destoryed
+function city(x) {
+  return {
+    x:x,
+    destroyed:false
+  }
+}
+
+//this function returns a new missile. A missile starts at a random
+//x position at the top of the screen and goes directly towards its
+//target city. The target will equal an index in the cities array.
+//progress determines how close the missile is to its target.
+//explode determines the size of the missiles fireball
+//speed determines how quickly the progress increases. The global
+//varible speed will increase over time.
+function missile() {
+  return {
+    x:rn(0,cw),
+    target:findCity(),
+    progress:0,
+    explode:0,
+    speed:(rn(80,100)+speed)/350
+  }
+}
+
+//findCity will return a city that isn't yet destroyed. It works by
+//building an array of cities that are still standing and then
+//picking randomly one of the still standing cities.
+function findCity() {
+  var stillStanding = []
+  for (var i=0, ilen=cities.length; i<ilen; i++) {
+      if (cities[i].destroyed == false) stillStanding.push(i);
+    }
+  var len = stillStanding.length;
+  if (len == 0) return -1;
+  else return stillStanding[rn(0,len-1)];
+}
+
+//animate will loop over and over and contains everything
+//that needs to get updated every frame
+function animate() {
+  updateMissiles();
+  if (!pause) {
+    window.requestAnimationFrame(animate);
+    updateDefenses();
+    detectHits();
+    draw();
+  }
+  score += 1;
+  if (score%100==0) speed += 1;
+}
+
+//this function contains the logic for the missiles. It will
+//loop through each missile. Each missile has 2 phases, first
+//its progress will go from 0 to 100. If it reaches 100 that
+//means it reached the city it is targeting and will explode.
+//If it gets intercepted then it will cause the missile to
+//explode. Once the exploding phase starts it will increase to
+//100 and then the missile will be deleted and a new one created.
+function updateMissiles() {
+  for (var i=0, ilen=attacks.length; i<ilen; i++) {
+  	var m = attacks[i];
+    if (m.explode > 0) m.explode += 2;
+    else m.progress += m.speed;
+    if (m.progress >= 100) {
+    	attacks[i].explode=20;
+      attacks[i].progress=99;
+      cities[m.target].destroyed=true;
+    }
+    if (m.explode >= 100) {
+      attacks.splice(i,1);
+      attacks.push(new missile());
+      if (attacks[attacks.length-1].target == -1) {
+        pause = true;
+        drawMessage(1);
+      }
+    }
+  }
+}
+
+//A defend is created when the user clicks, This causes the explosion
+//To grow until it gets to a certain size, then it dissapears
+function updateDefenses() {
+  for (var j=0, jlen=defends.length; j<jlen; j++) {
+    defends[j].explode += 1;
+    if (defends[j].explode >= 50) {
+      defends.splice(j,1);
+      jlen -= 1;
+    }
+  }
+}
+
+//detect hits has 2 parts, First, it loops through all the missiles. It
+//checks to see if the current missile is exploding. If not, it loops to
+//check to see if it is within the radius of any currently exploding
+//missile. If it is then it will cause it to also explode.
+//The second part checks to see if any defenses are exploding within
+//range. If a defense successfuly destroys a missile then it causes the
+//speed to increase.
+function detectHits() {
+	var m1, x, y;
+	for (var i=0, ilen=attacks.length; i<ilen; i++) {		
+    if (attacks[i].explode > 0) continue;
+		for (var j=0, jlen=attacks.length; j<jlen; j++) {
+			if (i==j || attacks[j].explode == 0) continue;
+			var m1 = missileCoords(i)
+			var m2 = missileCoords(j)
+			if (dist(m1,m2) < attacks[j].explode) {
+        attacks[i].explode=20;
+        score+=100;
+      }
+		}
+		for (var j=0, jlen=defends.length; j<jlen; j++) {
+      if (dist(defends[j], missileCoords(i)) < defends[j].explode+attacks[i].explode) {
+        attacks[i].explode=20;
+        speed += 1;
+      }
+		}
+	}
+}
+
+//returns an object with the x and y coordinates of the missile
+//The x coordinate needs to calculate the shift between the missile's
+//starting position and its target's x position. Then it calculates
+//the current position based on the missiles progress.
+function missileCoords(n){
+	console.log(n);
+  m = attacks[n];
+	return {x:m.x+(cities[m.target].x - m.x)/100*m.progress,
+			y:ch/100*m.progress}
+}
+
+//draw function that draws the scene (mostly by calling other draw functions)
+function draw() {
+  ctx.fillStyle="black";
+  ctx.fillRect(0,0,cw,ch);
+  drawAttacks();
+  drawDefends();
+  drawCities();
+  drawScore();
+}
+
+//drawAttacks will draw a line for each missile, the line goes from the
+//missile's starting position to its current position. This function also
+//draw's the explosion if the missile is exploding.
+function drawAttacks() {
+  var x, y, m, p;
+  ctx.lineWidth="5"
+  ctx.strokeStyle="rgba(255,255,255,.6)";
+  for (var i=0, ilen=attacks.length; i<ilen; i++) {
+	  m = missileCoords(i)
+    line(attacks[i].x, 0, m.x, m.y);
+    if (attacks[i].explode > 0) {
+      circle(m.x,m.y,attacks[i].explode,"white");
+    }
+  }
+}
+
+//drawDefends draws the explosions that happen when the user clicks
+function drawDefends() {
+	for (var i=0, len=defends.length; i<len; i++) {
+		circle(defends[i].x, defends[i].y, defends[i].explode, "yellow");
+	}
+}
+
+//drawCities loops through the cities and calls the drawCity function.
+//If the city is destroyed then the last argument passed is smaller
+//to indicate that it is rubble
+function drawCities() {
+  for (var i=0, ilen=cities.length; i<ilen; i++) {
+    if (cities[i].destroyed) drawCity(cities[i].x,.2);
+    else drawCity(cities[i].x,1);
+  }
+}
+
+//This just prints the score on the screen
+function drawScore() {
+  ctx.fillStyle = "yellow";
+  ctx.fillText("Saved "+score+" humans!", 50, 25);
+}
+
+//This prints the Welcome (m == 0) and End (m == 1) Game Messages 
+function drawMessage(m) {
+  if (m == 0) {
+    ctx.fillStyle = "black";
+    ctx.fillRect(0,0,cw,ch);
+  }
+  ctx.fillStyle = "yellow";
+  ctx.font="90px Arial";
+  ctx.fillText("Missile Defense", cw/2-300, ch/3);
+  ctx.font="30px Arial";
+  if (m == 0) ctx.fillText("Click the mouse to start",cw/2-150, ch/2);
+  else        ctx.fillText("Game Over", cw/2-60, ch/2);
+}
+
+//Line drawing function
+function line(x1, y1, x2, y2) {
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+}
+
+//Circle drawing function
+function circle(x,y,r,c) {
+  ctx.fillStyle=c;
+  ctx.beginPath();
+  ctx.arc(x,y,r,0,Math.PI*2);
+  ctx.fill();
+}
+
+//City drawing is done by drawing 4 buildings with different sizes
+function drawCity(x,s) {
+  drawBuilding(x-40,ch-40*s,20,40*s);
+  drawBuilding(x-15,ch-50*s,15,50*s);
+  drawBuilding(x+5,ch-45*s,20,45*s);
+  drawBuilding(x+30,ch-30*s,10,30*s);
+}
+
+//Buildings are basically just a rectangle, if the Height is above
+//30 then it hasn't been destroyed and the lights/windows get drawn
+//using 2 for loops.
+function drawBuilding(x,y,w,h) {
+  ctx.fillStyle="#555555";
+  ctx.fillRect(x,y,w,h);
+  if (h<30) return;
+  ctx.fillStyle="yellow";
+  for (var i=0; i<10; i++) {
+    for (var j=0; j<4; j++) {
+      ctx.fillRect(x+(w/4)*j+(w/12),y+(h/10)*i+(h/20),w/8,h/20);
+    }
+  }
+}
+
+//This is the mouse listener to detect clicks on the canvas
+canvas.addEventListener("click", function(event) {mouseClick(event);});
+
+//If the game is not started (score == 0) then clicking will start the game
+//When a mouse click is detected, a defend object is pushed into the
+//defends array that includes the x and y position and the explosion progress
+function mouseClick(event) {
+  if (pause) {reset(); animate();}
+  else if (defends.length<5)
+		defends.push({x:event.clientX,y:event.clientY,explode:0})
+}
+
+//helper function to return a random number between/including min and max
+function rn(min,max) {
+  return Math.floor( Math.random()*((max+1)-min)+min);
+}
+
+//helper function to return the distance between two points
+function dist(p1,p2) {
+	return Math.sqrt(Math.pow(p1.x-p2.x,2)+Math.pow(p1.y-p2.y,2));
+}
+
+</script>
+</body>
+</html>

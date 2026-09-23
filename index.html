@@ -1,37 +1,217 @@
-<!DOCTYPE html> 
-<html> 
-<head lang="en"> 
-<meta charset="utf-8"> 
-<title>jconra.com</title> 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>jconra.com</title>
 <style>
-body { margin: 0; overflow: hidden; } 
-#ui { position: fixed; z-index:5; pointer-events: none }
-@font-face { font-family: nasa; src: url("fonts/nasalization-rg.ttf");}
+  @font-face { font-family: nasa; src: url("fonts/nasalization-rg.ttf"); font-display: swap; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; background:#000; color:#ccd6de; font:13px/1.45 ui-sans-serif, system-ui, sans-serif; }
+  canvas { display:block; touch-action:none; }
+  #panel { position:fixed; top:12px; right:12px; bottom:12px; width:290px; overflow-y:auto; z-index:5;
+           background:rgba(10,13,17,.9); border:1px solid #212a34; border-radius:6px; padding:12px 14px; }
+  #panel.min { bottom:auto; }
+  #panel.min .body { display:none; }
+  h1 { font:400 17px/1 nasa, ui-sans-serif, sans-serif; letter-spacing:.05em; color:#e8f1f5; display:flex; justify-content:space-between; align-items:center; }
+  h1 button { font:600 11px ui-monospace,monospace; background:none; border:1px solid #212a34; color:#8494a0; border-radius:3px; padding:3px 7px; cursor:pointer; }
+  h2 { font:600 10.5px/1 ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:#5b6873; margin:16px 0 8px; }
+  .row { display:grid; grid-template-columns:1fr auto; gap:2px 8px; align-items:center; margin:6px 0; }
+  .row label { color:#aeb9c2; }
+  .row output { font:12px ui-monospace,monospace; color:#e8f1f5; font-variant-numeric:tabular-nums; }
+  .row input[type=range] { grid-column:1 / -1; width:100%; accent-color:#35e07d; }
+  .check { display:flex; gap:8px; align-items:center; margin:6px 0; color:#aeb9c2; cursor:pointer; }
+  .check input { accent-color:#35e07d; }
+  .note { color:#6d7a85; font-size:11.5px; margin:8px 0 4px; }
+  .btns { display:flex; flex-wrap:wrap; gap:6px; }
+  .btns button, #copy { font:600 11px ui-monospace,monospace; letter-spacing:.05em; text-transform:uppercase; background:rgba(53,224,125,.12);
+                  color:#35e07d; border:1px solid #2f7d55; border-radius:4px; padding:6px 8px; cursor:pointer; }
+  #props { display:grid; grid-template-columns:repeat(3,1fr); gap:2px 6px; max-height:170px; overflow-y:auto; }
+  #props label { display:flex; gap:4px; align-items:center; font:11px ui-monospace,monospace; color:#aeb9c2; cursor:pointer; }
+  #copy { width:100%; margin-top:14px; }
+  #out { display:none; width:100%; height:140px; margin-top:6px; background:#05070a; color:#ccd6de; border:1px solid #212a34; font:11px ui-monospace,monospace; }
+  @font-face { font-family: Console; src: url("fonts/console.ttf"); font-display: swap; }
+  #bootOverlay { position:fixed; inset:0; z-index:9; background:#020604; transition:opacity .8s ease; }
+  #bootOverlay.gone { opacity:0; pointer-events:none; }
+  #term { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  /* the link sits on the terminal's cursor row (placed by script), so it is where the terminal will print the same line */
+  #basic { position:absolute; left:28px; top:60%; font:22px Console, ui-monospace, monospace; color:#dfffe6; text-decoration:none; background:#020604; padding:2px 6px 2px 0; white-space:nowrap; }
+  #basic:hover, #basic:focus { color:#5eff8a; }
+  #boot { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; font:13px nasa, monospace; letter-spacing:4px; color:#b9c8d2; background:#000; z-index:9; }
+  #mapCaption { position:fixed; left:50%; bottom:60px; transform:translateX(-50%); z-index:6; pointer-events:none; max-width:min(92vw, 560px);
+                padding:12px 18px; background:rgba(4,8,12,.72); border:1px solid rgba(53,224,125,.45); border-radius:6px; text-align:center;
+                opacity:0; transition:opacity .35s; }
+  #mapCaption.on { opacity:1; }
+  #townCard { position:fixed; z-index:6; pointer-events:none; width:280px; padding:10px 14px; background:rgba(4,8,12,.84); border:1px solid rgba(53,224,125,.5); border-radius:6px; opacity:0; transition:opacity .2s; }
+  #townCard.on { opacity:1; }
+  #townCard b { display:block; font:400 15px nasa, ui-sans-serif, sans-serif; letter-spacing:.06em; color:#35e07d; margin-bottom:4px; }
+  #townCard span { font:12.5px/1.4 ui-sans-serif, system-ui, sans-serif; color:#e8f1f5; }
+  #flash { position:fixed; inset:0; z-index:5; pointer-events:none; opacity:0;
+           background:radial-gradient(ellipse at 50% 60%, #fff4d6 0%, #ffb347 30%, #ff5a1f 60%, #6b1400 100%); }
+  #mapCaption b { display:block; font:400 17px nasa, ui-sans-serif, sans-serif; letter-spacing:.08em; color:#35e07d; margin-bottom:4px; }
+  #mapCaption span { font:14px/1.45 ui-sans-serif, system-ui, sans-serif; color:#e8f1f5; }
+  #hud { position:fixed; top:36px; left:16px; z-index:6; pointer-events:none;
+         font:11.5px/1.5 ui-monospace,monospace; color:#9fb3c2; text-shadow:0 1px 4px #000; }
+  #hud b { color:#35e07d; font-weight:600; font-variant-numeric:tabular-nums; }
+  .btns button.on { background:rgba(53,224,125,.3); }
+  #back { position:fixed; top:14px; left:16px; z-index:6; font:11px ui-monospace,monospace; letter-spacing:.14em; color:#8494a0; text-decoration:none; text-transform:uppercase; }
+  /* the editing panel, HUD and labs link only show with ?edit */
+  body:not(.edit) #panel, body:not(.edit) #hud, body:not(.edit) #back { display:none; }
+  @media (max-width:700px) { #panel, #panel.min { width:auto; left:12px; top:auto; bottom:12px; max-height:46vh; } }
 </style>
-<script>document.fonts.load('10pt "nasa"').then(function(){console.log("Font Loaded")});</script> 
+</head>
+<body>
+<div id="bootOverlay"><canvas id="term"></canvas><a id="basic" href="/projects/old-site/about.html">&gt; Click here for the basic site</a></div>
+<a id="back" href="/labs/">&larr; labs</a>
+<div id="hud"></div>
+<div id="mapCaption"><b></b><span></span></div>
+<div id="flash"></div>
+<div id="townCard"><b></b><span></span></div>
+<div id="panel">
+  <h1>Quarters Lab <button id="min" type="button">hide</button></h1>
+  <div class="body">
+    <p class="note">Jacob's cabin on the station: the chair swivels and Earth turns past outside the window.</p>
+    <div class="row" style="grid-template-columns:1fr"><span id="fps"></span></div>
+
+    <h2>Build</h2>
+    <div class="btns" id="builds"></div>
+    <p class="note" id="buildNote"></p>
+
+    <h2>Camera</h2>
+    <div class="btns"><button id="freeLook" type="button">Free look</button></div>
+    <p class="note">Free look takes the camera off the intro: drag to orbit, wheel or pinch to zoom, right-drag or two fingers to slide, and it can go through walls. The named views below are the intro's fixed shots.</p>
+    <div class="btns" id="cams"></div>
+
+    <h2>Chair and windows</h2>
+    <label class="check" for="swivel"><input id="swivel" type="checkbox" checked> Chair swivels</label>
+    <div class="row"><label for="chairSpeed">Swivel speed</label><output id="chairSpeedOut"></output><input id="chairSpeed" type="range" min="-90" max="90" step="1" value="12"></div>
+    <div class="row"><label for="chairAngle">Chair angle (when still)</label><output id="chairAngleOut"></output><input id="chairAngle" type="range" min="-180" max="180" step="1" value="0"></div>
+    <div class="row"><label for="chairX">Chair left / right</label><output id="chairXOut"></output><input id="chairX" type="range" min="-120" max="120" step="1" value="25"></div>
+    <div class="row"><label for="chairZ">Chair toward the window</label><output id="chairZOut"></output><input id="chairZ" type="range" min="-120" max="120" step="1" value="-55"></div>
+    <div class="row"><label for="chairY">Chair up / down</label><output id="chairYOut"></output><input id="chairY" type="range" min="-40" max="40" step="0.5" value="0"></div>
+    <div class="row"><label for="chairHeight">Seat height</label><output id="chairHeightOut"></output><input id="chairHeight" type="range" min="70" max="120" step="1" value="100"></div>
+    <label class="check" for="openWindows"><input id="openWindows" type="checkbox" checked> Take the window glass out</label>
+
+    <h2>Jacob</h2>
+    <label class="check" for="sitterOn"><input id="sitterOn" type="checkbox" checked> Jacob in the chair</label>
+    <label class="check" for="helmetShow"><input id="helmetShow" type="checkbox"> Show the helmet here (it goes on in the hangar)</label>
+    <div class="row"><label for="helmetSize">Helmet size</label><output id="helmetSizeOut"></output><input id="helmetSize" type="range" min="70" max="140" step="1" value="100"></div>
+    <div class="row"><label for="helmetUp">Helmet up / down</label><output id="helmetUpOut"></output><input id="helmetUp" type="range" min="-15" max="15" step="0.5" value="0"></div>
+    <div class="row"><label for="helmetFwd">Helmet forward / back</label><output id="helmetFwdOut"></output><input id="helmetFwd" type="range" min="-15" max="15" step="0.5" value="0"></div>
+    <div class="row"><label for="helmetTilt">Helmet tilt (visor down)</label><output id="helmetTiltOut"></output><input id="helmetTilt" type="range" min="-90" max="90" step="1" value="0"></div>
+    <div class="row"><label for="helmetTurn">Helmet turn (counter-clockwise from above)</label><output id="helmetTurnOut"></output><input id="helmetTurn" type="range" min="-180" max="180" step="1" value="45"></div>
+    <div class="row"><label for="helmetRoll">Helmet roll (clockwise from the front)</label><output id="helmetRollOut"></output><input id="helmetRoll" type="range" min="-90" max="90" step="1" value="0"></div>
+
+    <h2>Map</h2>
+    <p class="note">The states are fitted to the photograph from five landmarks; these nudge the whole map about the middle of the country.</p>
+    <div class="row"><label for="mapTurn">Turn (clockwise)</label><output id="mapTurnOut"></output><input id="mapTurn" type="range" min="-15" max="15" step="0.1" value="0"></div>
+    <div class="row"><label for="mapX">Left / right</label><output id="mapXOut"></output><input id="mapX" type="range" min="-60" max="60" step="0.5" value="0"></div>
+    <div class="row"><label for="mapY">Up / down</label><output id="mapYOut"></output><input id="mapY" type="range" min="-60" max="60" step="0.5" value="0"></div>
+    <div class="row"><label for="mapSize">Size</label><output id="mapSizeOut"></output><input id="mapSize" type="range" min="80" max="120" step="0.5" value="100"></div>
+
+    <h2>Map pins</h2>
+    <p class="note">Pick a state and the film jumps to it; the sliders move its pin across the state. Each pin stands on a place: Cortez, Alamogordo, Columbia, Biloxi, Seattle. Copy settings gives the spots.</p>
+    <div class="row"><label for="pinState">State</label><select id="pinState"><option value="CO">Colorado</option><option value="NM">New Mexico</option><option value="MD">Maryland</option><option value="MS">Mississippi</option><option value="WA">Washington</option></select></div>
+    <div class="row"><label for="pinX">West to east</label><output id="pinXOut"></output><input id="pinX" type="range" min="0" max="100" step="0.5" value="50"></div>
+    <div class="row"><label for="pinY">North to south</label><output id="pinYOut"></output><input id="pinY" type="range" min="0" max="100" step="0.5" value="50"></div>
+
+    <h2>In the fighter</h2>
+    <p class="note">How he sits in the cockpit (from 39 s). Pick a key in the hangar and move these; the frame follows.</p>
+    <div class="row"><label for="seatFwd">Seat forward / back</label><output id="seatFwdOut"></output><input id="seatFwd" type="range" min="-60" max="60" step="1" value="0"></div>
+    <div class="row"><label for="seatDown">Seat down / up</label><output id="seatDownOut"></output><input id="seatDown" type="range" min="-30" max="60" step="1" value="17"></div>
+    <div class="row"><label for="seatRecline">Recline</label><output id="seatReclineOut"></output><input id="seatRecline" type="range" min="-10" max="60" step="1" value="24"></div>
+    <div class="row"><label for="canopyDeg">Canopy shut angle</label><output id="canopyDegOut"></output><input id="canopyDeg" type="range" min="-80" max="0" step="1" value="-50"></div>
+    <div class="row"><label for="canopyDrop">Canopy shut, let down</label><output id="canopyDropOut"></output><input id="canopyDrop" type="range" min="-20" max="40" step="0.5" value="5"></div>
+    <div class="row"><label for="canopySlide">Canopy shut, slid to the nose</label><output id="canopySlideOut"></output><input id="canopySlide" type="range" min="-40" max="40" step="0.5" value="2"></div>
+    <p class="note">Model 5, sitting, turning with the chair. He is put on the seat pan from the chair's own shape; nudge him if he is not quite on it.</p>
+    <div class="row"><label for="sitHeight">Up / down</label><output id="sitHeightOut"></output><input id="sitHeight" type="range" min="-25" max="25" step="0.5" value="0"></div>
+    <div class="row"><label for="sitForward">Forward / back</label><output id="sitForwardOut"></output><input id="sitForward" type="range" min="-25" max="25" step="0.5" value="0"></div>
+    <div class="row"><label for="sitTurn">Turn</label><output id="sitTurnOut"></output><input id="sitTurn" type="range" min="-60" max="60" step="1" value="0"></div>
+
+    <h2>Placed props</h2>
+    <p class="note">Extra models in the room. Pick one and nudge it; Copy settings writes the numbers out to be baked in.</p>
+    <div class="btns" id="propPick"></div>
+    <div class="row"><label for="propX">Left / right</label><output id="propXOut"></output><input id="propX" type="range" min="-1.9" max="1.9" step="0.01" value="0" data-prop="x"></div>
+    <div class="row"><label for="propZ">Toward the window</label><output id="propZOut"></output><input id="propZ" type="range" min="-1.9" max="1.9" step="0.01" value="0" data-prop="z"></div>
+    <div class="row"><label for="propY">Height off the floor</label><output id="propYOut"></output><input id="propY" type="range" min="0" max="2.5" step="0.01" value="0.45" data-prop="y"></div>
+    <div class="row"><label for="propYaw">Turn</label><output id="propYawOut"></output><input id="propYaw" type="range" min="-180" max="180" step="1" value="0" data-prop="yaw"></div>
+    <div class="row"><label for="propLean">Lean back</label><output id="propLeanOut"></output><input id="propLean" type="range" min="-30" max="45" step="1" value="0" data-prop="lean"></div>
+    <div class="row"><label for="propH">Size (height)</label><output id="propHOut"></output><input id="propH" type="range" min="0.05" max="2.5" step="0.01" value="1" data-prop="height"></div>
+
+    <h2>Earth outside</h2>
+    <div class="btns" id="earthMode"></div>
+    <p class="note">Globe: the real sphere, 55k triangles; it turns, and shifts between the two windows. Picture: the old site's photograph of Earth on one flat rectangle below, 2 triangles, drifting past.</p>
+    <div class="row"><label for="earthSpin">Turn speed</label><output id="earthSpinOut"></output><input id="earthSpin" type="range" min="0" max="6" step="0.05" value="0.35"></div>
+    <div class="row"><label for="earthAlt">Altitude</label><output id="earthAltOut"></output><input id="earthAlt" type="range" min="120" max="2000" step="10" value="420"></div>
+    <div class="row"><label for="earthTilt">Angle below the window</label><output id="earthTiltOut"></output><input id="earthTilt" type="range" min="0" max="80" step="1" value="18"></div>
+    <div class="row"><label for="earthGlow">Air glow</label><output id="earthGlowOut"></output><input id="earthGlow" type="range" min="0" max="3" step="0.05" value="0.3"></div>
+
+    <h2>Intro</h2>
+    <p class="note">The site's first shot: he is at the desk, someone comes in, he turns and waves, the greeting forms, then he gets up and walks off as the camera goes over the computer, out of the window, and outside: it turns to find the station, pulls out, and closes on a hangar. It plays on its own, or the wheel scrubs it either way.</p>
+    <div class="btns"><button id="playIntro" type="button">Play intro</button></div>
+    <label class="check" for="scrubOn"><input id="scrubOn" type="checkbox" checked> Wheel or a finger drag scrubs time (instead of zooming)</label>
+    <div class="row"><label for="seqTime">Time</label><output id="seqTimeOut"></output><input id="seqTime" type="range" min="0" max="30" step="0.02" value="0"></div>
+
+    <h2>Keys</h2>
+    <p class="note">The camera, where it looks, the chair and how much he faces the camera, at each moment. Pick a key and move it; the scene jumps there so you see it. Add a key at the current time, then Copy settings when it is right and I will bake it in.</p>
+    <div class="btns" id="keys"></div>
+    <div class="btns" style="margin-top:6px"><button id="addKey" type="button">Add key here</button><button id="delKey" type="button">Delete key</button><button id="useView" type="button">Use this view</button></div>
+    <p class="note">In free look, place the camera where you want it, pick a key and press "Use this view": the key takes the camera's place and what it looks at. Changing a key's sliders from free look does the same first, so the camera stays where you put it. Editing holds the timeline; scrolling the scene lets it play on.</p>
+    <div class="row"><label for="keyT">Key time</label><output id="keyTOut"></output><input id="keyT" type="range" min="0" max="40" step="0.05" value="0" data-key="t"></div>
+    <div class="row"><label for="camX">Camera left / right</label><output id="camXOut"></output><input id="camX" type="range" min="-1.7" max="1.7" step="0.01" value="0" data-key="x"></div>
+    <div class="row"><label for="camY">Camera height</label><output id="camYOut"></output><input id="camY" type="range" min="0.3" max="2.5" step="0.01" value="1.3" data-key="y"></div>
+    <div class="row"><label for="camZ">Camera toward the window</label><output id="camZOut"></output><input id="camZ" type="range" min="-2.2" max="1.7" step="0.01" value="0" data-key="z"></div>
+    <div class="row"><label for="keyLook">Camera looks at</label><select id="keyLook"><option value="him">him</option><option value="window">the window</option><option value="station">the station</option><option value="hangar">the hangar</option><option value="point">where it is looking now</option></select></div>
+    <div class="row"><label for="keyChair">Chair angle</label><output id="keyChairOut"></output><input id="keyChair" type="range" min="-180" max="180" step="1" value="0" data-key="chair"></div>
+    <div class="row"><label for="keyFace">He faces the camera</label><output id="keyFaceOut"></output><input id="keyFace" type="range" min="0" max="1" step="0.05" value="0" data-key="face"></div>
+
+    <h2>What he does, and when</h2>
+    <div class="row"><label for="actWave">Wave</label><output id="actWaveOut"></output><input id="actWave" type="range" min="0" max="20" step="0.1" value="1.9"></div>
+    <div class="row"><label for="actStand">Stand up</label><output id="actStandOut"></output><input id="actStand" type="range" min="0" max="20" step="0.1" value="8.2"></div>
+    <div class="row"><label for="actWalk">Walk off</label><output id="actWalkOut"></output><input id="actWalk" type="range" min="0" max="20" step="0.1" value="10"></div>
+    <div class="row"><label for="walkDir">Walks toward</label><output id="walkDirOut"></output><input id="walkDir" type="range" min="-180" max="180" step="5" value="35"></div>
+
+    <h2>Light</h2>
+    <div class="btns" id="lights"></div>
+    <div class="row"><label for="cabinLight">Cabin lights</label><output id="cabinLightOut"></output><input id="cabinLight" type="range" min="0" max="30" step="0.5" value="6"></div>
+    <div class="row"><label for="screenLight">Screen glow</label><output id="screenLightOut"></output><input id="screenLight" type="range" min="0" max="20" step="0.5" value="3"></div>
+
+    <h2>Screens</h2>
+    <p class="note">The live screens are sized from the bezels they find. Where one comes up short of the painted display, set its real size and nudge it.</p>
+    <div class="row"><label for="screenPick">Which screen</label><select id="screenPick"></select></div>
+    <div class="row"><label for="screenW">Width</label><output id="screenWOut"></output><input id="screenW" type="range" min="20" max="140" step="1" value="60"></div>
+    <div class="row"><label for="screenH">Height</label><output id="screenHOut"></output><input id="screenH" type="range" min="15" max="90" step="1" value="40"></div>
+    <div class="row"><label for="screenX">Left / right</label><output id="screenXOut"></output><input id="screenX" type="range" min="-30" max="30" step="0.5" value="0"></div>
+    <div class="row"><label for="screenY">Up / down</label><output id="screenYOut"></output><input id="screenY" type="range" min="-30" max="30" step="0.5" value="0"></div>
+    <div class="row"><label for="sunLight">Sunlight through the window</label><output id="sunLightOut"></output><input id="sunLight" type="range" min="0" max="10" step="0.1" value="2.6"></div>
+    <div class="row"><label for="ambient">Ambient</label><output id="ambientOut"></output><input id="ambient" type="range" min="0" max="3" step="0.01" value="0.45"></div>
+    <div class="row"><label for="exposure">Exposure</label><output id="exposureOut"></output><input id="exposure" type="range" min="0.3" max="2.5" step="0.01" value="1.1"></div>
+
+    <h2>Camera effects</h2>
+    <label class="check" for="post"><input id="post" type="checkbox"> Post-processing (off looks clearer in here)</label>
+    <label class="check" for="bloomOn"><input id="bloomOn" type="checkbox" checked> Bloom</label>
+    <div class="row"><label for="bloomStr">Bloom strength</label><output id="bloomStrOut"></output><input id="bloomStr" type="range" min="0" max="3" step="0.01" value="0.18"></div>
+    <label class="check" for="dofOn"><input id="dofOn" type="checkbox" checked> Depth of field</label>
+    <label class="check" for="autoFocus"><input id="autoFocus" type="checkbox" checked> Focus on the orbit centre</label>
+    <div class="row"><label for="dofBlur">Background blur</label><output id="dofBlurOut"></output><input id="dofBlur" type="range" min="0" max="16" step="0.1" value="2"></div>
+    <label class="check" for="flareOn"><input id="flareOn" type="checkbox"> Lens flare</label>
+    <div class="row"><label for="vignette">Vignette</label><output id="vignetteOut"></output><input id="vignette" type="range" min="0" max="1" step="0.01" value="0.2"></div>
+    <div class="row"><label for="grain">Film grain</label><output id="grainOut"></output><input id="grain" type="range" min="0" max="1" step="0.01" value="0.12"></div>
+
+    <h2>Props</h2>
+    <div id="props"></div>
+    <button id="copy" type="button">Copy settings</button>
+    <textarea id="out" readonly></textarea>
+  </div>
+</div>
+
 <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
 <script type="importmap">
-  {
-    "imports": {
-      "three": "https://unpkg.com/three@0.156.1/build/three.module.js",
-      "orbit": "https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js",
-      "fontLoader": "https://unpkg.com/three@0.138.3/examples/jsm/loaders/FontLoader.js",
-      "textGeometry": "https://unpkg.com/three@0.161.0/examples/jsm/geometries/TextGeometry.js",
-      "three/addons/": "https://unpkg.com/three@0.156.1/examples/jsm/",
-      "stats": "https://cdnjs.cloudflare.com/ajax/libs/stats.js/r17/Stats.min.js",
-      "draw": "./modules/Draw.js",
-      "texture": "./modules/Textures.js",
-      "displays": "./modules/Displays.js",
-      "controls": "./modules/Controls.js",
-      "scene_models": "./modules/SceneModels.js",
-      "keyframes": "./modules/KeyFrames.js"
-    }
-  }
+{ "imports": {
+    "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+} }
 </script>
-</head> 
-<body>
-<canvas id="ui"></canvas>
-<script type="module" src="./main.js">
-</script> 
-</body> 
+<script type="module" src="/src/quarters.js"></script>
+</body>
 </html>

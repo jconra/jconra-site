@@ -1,0 +1,103 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body {margin: 0px;padding: 0px; background-color:black; overflow: hidden;}
+table {margin:0 auto;}
+canvas {display: block; padding: 0; position: absolute; margin:auto; top:0; bottom:0; left:0; right:0;}
+.fixed {position:fixed; height:100%; overflow:auto;}
+#controls {left:0px; width:200px; background-color:#222;}
+#main {right:0px; background-color:#444}
+.controlDiv {margin:0 auto; margin-top: 20px; width:80%; text-align:center; background-color:#DDD;}
+.short {width:40px;}
+</style>
+</head>
+<body onload="init()">
+<div id="controls" class="fixed"></div>
+<div id="main" class="fixed">
+<canvas id="mainCanvas"></canvas>
+</div>
+<script>
+
+var cDiv = {"divs":[
+  {
+    "name":"Game Size",
+    "table":[
+      [{"element":"label","attr":{"innerText":"Width"}},
+        {"element":"input","attr":{"id":"gameWidth","className":"short","value":"30"}}],
+      [{"element":"label","attr":{"innerText":"Height"}},
+        {"element":"input","attr":{"id":"gameHeight","className":"short","value":"20"}}]],
+    "button":{"element":"button","attr":{"value":"Apply Size","onclick":"applySize"}}
+  }
+]};
+
+var p = document.getElementById("controls");
+for (var i=0, len=cDiv.divs.length; i<len; i++) {
+  var d = document.createElement("div");
+  var h = document.createElement("h2");
+  h.innerText = cDiv.divs[i].name;
+  d.className = "controlDiv";
+  var c = document.createElement("div");
+  c.appendChild(htmlTable(cDiv.divs[i].table));
+  d.appendChild(h);
+  d.appendChild(c);
+  p.appendChild(d);
+}
+
+function htmlTable(rows) {
+  var tbl = document.createElement("table");
+  var tblBody = document.createElement("tbody");
+  for (var i=0, len=rows.length; i<len; i++) {
+    var row = document.createElement("tr");
+    for (var j=0, jlen=rows[i].length; j<jlen; j++) {
+      var cell = document.createElement("td");
+      cell.appendChild(htmlElement(rows[i][j]));
+      row.appendChild(cell);
+    }
+    tblBody.appendChild(row);
+  }
+  tbl.appendChild(tblBody);
+  return tbl;
+}
+
+function htmlElement(obj) {
+  var element = document.createElement(obj.element);
+  for (i in obj.attr)
+    element[i]=obj.attr[i];
+  return element;
+}
+
+var can = document.getElementById("mainCanvas");
+var ctx = can.getContext("2d");
+var cw, ch;
+
+function init() {
+  resize();
+  applySize(); 
+}
+
+function draw() {
+  ctx.fillStyle="#444499";
+  ctx.fillRect(0,0,cw,ch);
+}
+
+function applySize() {
+  var gameWidth = document.getElementById("gameWidth").value;
+  var gameHeight = document.getElementById("gameHeight").value;
+  if (gameWidth > 10 && gameWidth < 1000)
+    cw = can.width = gameWidth * 32;
+  if (gameHeight > 10 && gameHeight < 1000)
+    ch = can.height = gameHeight * 32;
+  draw();
+  console.log("size function");
+}
+
+function resize() {
+  document.getElementById("main").style["width"] = (window.innerWidth-200)+"px";
+}
+window.addEventListener("resize", function() {resize()});
+
+</script>
+</body>
+</html>

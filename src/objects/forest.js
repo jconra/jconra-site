@@ -20,7 +20,7 @@ export const FOREST_SPECIES = [
 
 export class Forest {
   // `clear(x, z)` says whether a spot is kept free of trees (the town); `light` is the weak-GPU mode
-  constructor(renderer, scene, { base = '../../models/trees/', tile = 420, tiles = 7, perTile = 90, imposterAt = 140, band = 40, ahead = 0.75,
+  constructor(renderer, scene, { base = '/models/trees/', tile = 420, tiles = 7, perTile = 90, imposterAt = 140, band = 40, ahead = 0.75,
                                  grid = 12, cell = 192, light = false, detail = 'coarse', clear = null, sunDir = new THREE.Vector3(0.5, 1, 0.3), shadows = false } = {}) {
     Object.assign(this, { renderer, scene, base, tile, tiles, perTile, imposterAt: light ? 0 : imposterAt, band, ahead, grid: light ? 8 : grid, cell, detail, clear, sunDir, shadows: shadows && !light, light });
     this.group = new THREE.Group(); scene.add(this.group);

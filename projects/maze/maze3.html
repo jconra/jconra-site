@@ -1,0 +1,209 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body {
+margin: 0px;
+padding: 0px; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<script>
+
+var canvas = document.getElementById('canvas');
+var ctx = canvas.getContext('2d');
+
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+var WIDTH = 40;
+var HEIGHT = 40;
+var maze = [];
+var mazes = [];
+
+function createmaze(){
+  for(var i=0; i<HEIGHT; i++){
+		maze[i] = [];
+    for(var j=0; j<WIDTH; j++){
+      maze[i].push({down:rn(1,10)>5,right:rn(1,10)>5,open:false,up:false,left:false});
+	    if (j == 0 || maze[i][j-1].right) maze[i][j].left = true;
+      if (i == 0 || maze[i-1][j].down) maze[i][j].up = true;
+      if (j == WIDTH-1) maze[i][j].right = true;
+      if (i == HEIGHT-1) maze[i][j].down = true;
+    }
+	}
+}
+
+function astar(start, end){
+
+  for (var y=0; y<HEIGHT; y++) {for (var x=0; x<WIDTH; x++) maze[y][x].open = false;}
+
+  addToOpen = function(x,y) {
+    if (maze[y][x].open == false) {
+      openList.push({x:x,y:y});
+      maze[y][x].open = true;
+      maze[y][x].parent = {x:coords.x,y:coords.y}
+      maze[y][x].from = p.from + 1
+      maze[y][x].to = dist({x:x,y:y},end)*10;
+      return false;
+    } 
+    return true;
+  }
+
+  findLowest = function(li) {
+    low = 0;
+    for (var i=0; i<openList.length; i++) {
+      var p1 = maze[li[i].y][li[i].x]
+      var p2 = maze[li[low].y][li[low].x]
+      if (p1.from + p1.to < low.from + low.to) low = i;
+    }
+    return low
+  }
+
+  isParent = function(sq, pr) {return (sq.parent.x == pr.x && sq.parent.y == pr.y)}
+
+	var low, coords, p, closedList = [];
+  var openList = [{x:start.x,y:start.y}];
+  maze[start.y][start.x].from = 0;
+  maze[start.y][start.x].to = dist(start, end)*10;
+  maze[start.y][start.x].open = true;
+  count = 0
+  while (openList.length > 0 && count < 1000000) {
+    low = findLowest(openList);
+    coords = {x:openList[low].x, y:openList[low].y};
+    if (coords.x == end.x && coords.y == end.y) break;
+    p = maze[coords.y][coords.x];
+    closedList.push(coords);
+    openList.splice(low,1);
+
+    if (p.left == false) {
+      if (addToOpen(coords.x-1,coords.y)) {
+        if (isParent(p, {x:coords.x-1,y:coords.y}) == false) {
+          maze[coords.y][coords.x-1].right = true;
+          p.left = true;
+        }
+      }
+    }
+    if (p.right == false) {
+      if (addToOpen(coords.x+1,coords.y)) {
+        if (isParent(p, {x:coords.x+1,y:coords.y}) == false) {
+          maze[coords.y][coords.x+1].left = true;
+          p.right = true;
+        }
+      }
+    }
+    if (p.up == false) {
+      if (addToOpen(coords.x,coords.y-1)) {
+        if (isParent(p, {x:coords.x,y:coords.y-1}) == false) {
+          maze[coords.y-1][coords.x].down = true;
+          p.up = true;
+        }
+      }
+    }
+    if (p.down == false) {
+      if (addToOpen(coords.x,coords.y+1)) {
+        if (isParent(p, {x:coords.x,y:coords.y+1}) == false) {
+          maze[coords.y+1][coords.x].up = true;
+          p.down = true;
+        }
+      }
+    }
+    count += 1
+  }
+  path = []
+  if (openList.length == 0) {
+    low = findLowest(closedList);
+    end = {x:closedList[low].x,y:closedList[low].y}
+  }
+  path.push(end)
+  while (path[path.length-1].x != start.x || path[path.length-1].y != start.y) {
+    end = maze[end.y][end.x].parent
+    path.push(end);
+  }
+  return path
+
+}
+
+function snipSnip() {
+  while (true) {
+    row = rn(0,HEIGHT-1);
+    for(var i=0; i<WIDTH-1; i++) {
+      if (maze[row][i].open && maze[row][i].right && maze[row][i+1].open == false) {
+        maze[row][i].right = false;
+        maze[row][i+1].left = false;
+        return true
+      }
+    }
+    col = rn(0,WIDTH-1);
+    for(var i=0; i<HEIGHT-1; i++) {
+      if (maze[i][col].open && maze[i][col].down && maze[i+1][col].open == false) {
+        maze[i][col].down = false;
+        maze[i+1][col].up = false;
+        return true;
+      }
+    }
+  }
+}
+
+function go() {
+  createmaze();
+  for (var y=0; y<HEIGHT; y++) {
+    for (var x=0; x<WIDTH; x++) {
+      path = astar({x:x,y:y},{x:WIDTH-1,y:HEIGHT-1});
+      if (path[0].x != WIDTH-1 || path[0].y != HEIGHT-1) {
+        snipSnip();
+      }
+    }
+  }
+  mazes.push({maze:JSON.parse(JSON.stringify(maze)),
+              path:astar({x:0,y:0},{x:WIDTH-1,y:HEIGHT-1})});
+  mazes[mazes.length-1].len = mazes[mazes.length-1].path.length;
+}
+
+for(var num=0; num<1; num++) {
+  go()
+}
+draw(0)
+
+function draw(n) {
+  ctx.clearRect(0,0,cw,ch);
+  var sw = (cw-10)/WIDTH;
+  var sh = (ch-10)/HEIGHT;
+
+  for (var y=0; y<HEIGHT; y++) {
+    for (var x=0; x<WIDTH; x++) {
+      if (mazes[n].maze[y][x].up) line(x*sw, y*sh, x*sw+sw, y*sh);
+      if (mazes[n].maze[y][x].right) line(x*sw+sw, y*sh, x*sw+sw, y*sh+sh);
+      if (mazes[n].maze[y][x].left) line(x*sw, y*sh, x*sw, y*sh+sh);
+      if (mazes[n].maze[y][x].down) line(x*sw, y*sh+sh, x*sw+sw, y*sh+sh);
+    }
+  }
+  ctx.fillStyle="red";
+  for (var i=0; i<mazes[n].path.length; i++) {
+    ctx.fillRect(5+mazes[n].path[i].x*sw+sw/3,5+ mazes[n].path[i].y*sh+sh/3, sw/3, sh/3);
+  }
+}
+
+window.addEventListener("keydown", function(e) {draw(parseInt(e.key))});
+
+function dist(p1, p2) {
+  return Math.sqrt(Math.pow(p1.x-p2.x,2)+Math.pow(p1.y-p2.y,2));
+}
+
+function rn(min,max){return Math.floor( Math.random()*((max+1)-min)+min);}
+
+function line(x1,y1,x2,y2){
+	ctx.beginPath();
+	ctx.lineWidth = 2;
+	ctx.strokeStyle = 'black';
+	ctx.moveTo(5+x1,5+y1);
+	ctx.lineTo(5+x2,5+y2);
+	ctx.stroke();
+}
+
+</script>
+</body>
+</html>

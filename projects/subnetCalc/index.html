@@ -1,0 +1,599 @@
+<!DOCTYPE HTML>
+<!-- Please save this file as a .htm and reopen!
+  In notepad you can click "File", "Save As", then add ".htm" on the file name.
+  Also be sure that you allow your browser to run "Active" content when you open
+  the web page, it may produce a warning.-->
+
+<!-- Subnetting practice and calculating program.
+  Developed by Jacob Conrads.
+  Contact me at Jacobtc23@gmail.com.-->
+
+<html>
+<head>
+<title>Subnetting</title>
+<meta charset="utf-8">
+<style>
+div {
+  padding:10px;
+  border: solid 3px black;
+  }
+#warning{
+  height:100%; 
+  width:100%; 
+  position:fixed; 
+  top:0px;
+  left:0px;
+  background:white;
+  margins:0px;
+  }
+.t{
+  height:25px;
+  font-size:22px;
+  width:250px;
+  }
+.v{text-align:center;}
+.outer{
+  margin:0 auto;
+  margin-top:30px;
+  border-radius:10px;
+  }
+</style>
+</head>
+<body onload="init()" id="body">
+<canvas id="canvas" style="position:fixed; z-index:-5"></canvas>
+<div class="f outer" id="title" style="text-align:center; width:400px;">
+  <h1>Subnetting Calculator</h1>
+  <input type="button" onclick="toggleDiv(questions)" value="Ask Me a Question">
+  <input type="button" onclick="toggleDiv(instructions)" value="Instructions">
+  <input type="button" value="Change Theme" id="b9" onclick="changeStyle()"><br><br>
+</div>
+
+<div id="instructions" class="f outer" style="display:none; text-align:center; width:1000px;">
+  <table style="width:400px; margin: 0 auto;">
+    <tr>
+      <td valign="top" style="padding:10px;">
+        You can enter an IP Address using shorthand notation:
+      </td>
+      <td valign="top" style="padding:10px;">
+        <input type="text" value="84.23.85.145/24" readonly>
+      </td>
+    </tr>
+    <tr>
+      <td valign="top" style="padding:10px;">
+        Or using a subnet mask:
+      </td>
+      <td valign="top" style="padding:10px;">
+        <input type="text" value="84.23.85.145" readonly><br>
+        <input type="text" value="255.255.255.0" readonly>
+      </td>
+      </tr>
+  </table>
+  <br><br>
+  <div style="width:80%; margin:auto; border:none; text-align:left;">
+    If you are practicing then you can fill out the boxes on 
+    your own. When you press the Show Answers button any boxes 
+    that you have attempted will either turn green or red 
+    depending on if you answered correctly or not. If the box is 
+    empty then the correct answer will be shown in the box. 
+    Therefore, if you are having trouble solving for a box you 
+    can clear it and click the Show Answers button to see what 
+    answer the calculator was looking for.
+    <br><br>
+    The drop down menu will fill in the binary 
+    representation of whatever you select from the drop-down. 
+    The Show Colors button is able to help you solve 
+    without giving away all the answers.
+    <br><br>
+  </div>
+  Developed by Jacob Conrads<br>
+  Contact me at Jacobtc23@gmail.com<br>
+  Feel free to modify and/or distribute.
+  <br><br>
+  <input type="button" value="Close" onclick="toggleDiv(instructions)">
+  <br><br>
+</div>
+
+<form id="subsub" name="subsub">
+
+<div id="binaryBoxDiv"  class="f outer" style="width:1000px;">
+  <table style="text-align:center;">
+    <tr>
+      <td width="30%">
+      <select name="drop" id="drop" onmouseup="dropdown()" style="width:200px;" class="f">
+        <option value="ip" selected>IP Address</option>
+        <option value="ni">Network ID</option>
+        <option value="si">Subnet ID</option>
+        <option value="ns">Next Subnet ID</option>
+        <option value="ls">Last Subnet ID</option>
+        <option value="bi">Broadcast ID</option>
+        <option value="fh">First Host</option>
+        <option value="lh">Last Host</option>
+      </select></td>
+      <td width="20%">
+        <input type="button" value="Show IP" onclick="toggleShowIP()" id="showip">
+      </td>
+      <td width="20%">
+        <input type="button" value="Show Colors" onclick="showColors()">
+      </td>
+      <td width="10%">
+        <input type="text" tabindex="-1" value="Network" id="netColor" class="f v">
+      </td>
+      <td width="10%">
+        <input type="text" tabindex="-1" value="Subnets" id="subColor" class="f v">
+      </td>
+      <td width="10%">
+        <input type="text" tabindex="-1" value="Hosts" id="hostColor" class="f v">
+      </td>
+    </tr>
+  </table>
+
+  <div id="binaryDiv" style="border:none; margin-top:0px;"></div>
+</div>
+
+<div id="questions" class="f outer" style="display:none; text-align:center; width:1000px;">
+  <p id="question" style="font-size:20px;"></p>
+  Answer:
+  <input type="text"  value="" id="answer" class="f t"><br><br>
+  <input type="button"  onclick="check()" value="Check My Answer">
+  <input type="button"  onclick="ask()" value="New Question">
+  <input type="button"  onclick="toggleDiv(questions)" value="Close">
+</div>
+
+<div id="textBoxDiv"  class="f outer" style="width:1000px; font-size:22px;">
+  <table width="1000px">
+    <tr>
+      <td colspan=4 style="text-align:center;">
+      <input type="button" onclick="generateip(1)" value="Generate Random IP">
+      <input type="button" onclick="clearall()" value="Reset Form">
+      <input type="button" onclick="showAnswers(1)" value="Show Answers"><br><br>
+      </td>
+    </tr>
+    <tr> 
+      <td width=170>IP Address</td><td width=230> <input type="text" class="f t" id="ipaddress" onkeyup="showAnswers(0)"></td>
+      <td width=170>Network ID</td><td width=230> <input type="text" class="f t" id="netnum"></td>
+    </tr>
+    <tr>
+      <td>Subnet Mask</td>    <td> <input type="text" class="f t" id="maskinput">  </td>
+      <td>Subnet ID</td>      <td> <input type="text" class="f t" id="subnetid">   </td>
+    </tr>
+    <tr> 
+      <td>Class</td>          <td> <input type="text" class="f t" id="type">       </td>
+      <td>First Host</td>     <td> <input type="text" class="f t" id="firsthost">  </td> 
+    </tr>
+    <tr> 
+      <td>Network Bits</td>   <td> <input type="text" class="f t" id="netbits">    </td>
+      <td>Last Host</td>      <td> <input type="text" class="f t" id="lasthost">   </td> 
+    </tr>
+    <tr> 
+      <td>Subnet Bits</td>    <td> <input type="text" class="f t" id="subbits">    </td>
+      <td>Broadcast ID</td>   <td> <input type="text" class="f t" id="broadcast">  </td>
+    </tr>
+    <tr> 
+      <td>Host Bits</td>      <td> <input type="text" class="f t" id="hostbits">   </td>
+      <td>Next Subnet ID</td> <td> <input type="text" class="f t" id="nextsubid">  </td>
+    </tr>
+    <tr> 
+      <td>Total Subnets</td>  <td> <input type="text" class="f t" id="totalsubs">  </td>
+      <td></td><td></td> 
+    </tr>
+    <tr> 
+      <td>Total Hosts</td>    <td> <input type="text" class="f t" id="totalhosts"> </td>
+      <td>Last Subnet ID</td> <td> <input type="text" class="f t" id="lastsubid">  </td>
+      
+    </tr>
+  </table>
+</div>
+
+</form>
+
+<div id="warning">
+<h1 style="margin:200px;">Javascript is not able to run. You need to allow your browser to run scripts in order
+for the Subnetting Calculator to work. There should be a warning on the page with a button to press.
+The reason for this warning is because you are running the file locally instead of from a web server.
+The JavaScript is harmless and the source code is commented and easy to understand.</h1>
+</div>
+
+<script type="text/javascript"> 
+var mask, netbits, octets, type, qneed, questionNum=0;
+var theme={name:"light"}, answersDisplayed=false, showip=false;
+
+var canvas = document.getElementById("canvas");
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+var ctx = canvas.getContext("2d");
+var size = 8;
+
+var grd=ctx.createRadialGradient(cw/2,ch/2,0,cw/2,ch/2,ch/2);
+grd.addColorStop(0,"black");
+grd.addColorStop(1,"red");
+ctx.fillStyle=grd
+ctx.fillRect(0,0,canvas.width,canvas.height);
+
+i=canvas.width/2;
+j=canvas.height/2;
+
+for(var i=0; i<cw/(size*6); i++){
+  for(var j=0; j<ch/(size*1.5);j++){
+    ctx.fillStyle="rgb("+rn(1,30)+","+rn(200,250)+","+rn(1,50)+")";
+    var x=i*6*size*1.1;
+    var y=j*1.5*size*1.1;
+    if (j%2==0) x+=3*size*1.1;
+    ctx.beginPath();
+    ctx.moveTo(x+size,y-size*1.5)
+    ctx.lineTo(x-size,y-size*1.5)
+    ctx.lineTo(x-size*2,y,x-size)
+    ctx.lineTo(x+-size,y+size*1.5)
+    ctx.lineTo(x+size,y+size*1.5)
+    ctx.lineTo(x+size*2,y,x+size)
+    ctx.fill();
+    }
+  }
+
+var grd=ctx.createLinearGradient(0,0,cw,0);
+grd.addColorStop(0,"black");
+grd.addColorStop(.5,"transparent");
+grd.addColorStop(1,"black");
+ctx.fillStyle=grd;
+ctx.fillRect(0,0,cw,ch);
+
+var grd=ctx.createLinearGradient(0,0,0,ch);
+grd.addColorStop(0,"black");
+grd.addColorStop(.4,"rgba(0,0,0,.7)");
+grd.addColorStop(.5,"rgba(0,0,0,.4)");
+grd.addColorStop(.6,"rgba(0,0,0,.7)");
+grd.addColorStop(1,"black");
+ctx.fillStyle=grd;
+ctx.fillRect(0,0,cw,ch);
+
+function rn(min,max){return Math.floor(Math.random()*(max-min+1)+min)}
+
+function init(){ 
+  //Removes warning about not having javascript enabled
+  document.getElementById("warning").style.display = "none";
+  
+  binaryDisplay();
+  changeStyle();
+  }
+ 
+//This function fills in the binary display which is repetative html.
+function binaryDisplay() {
+  var text = '<table width="805"><tr>' 
+  for(a=0;a<32;a++){
+    text += '<td width="23" style="text-align:center; font-size:18px;">'+Math.pow(2,7-a%8)+'</td>';
+    if ((a%8==7)&&(a!=31))text +='<td width="23">.</td>';
+    }
+  text += "</tr><tr>";
+  for(a=0;a<32;a++){
+    text += '<td width="23"><input type="text" value="" class="f t" name="ipbox'+a;
+    text += '" onKeyup="autotab(this, document.subsub.ipbox'+(a+1);
+    text += ')" maxlength=1 style="width:20px; text-align:center; font-size:25px;';
+    text += 'font-weight:bold;" onclick="clickBit(this)" id="ip'+a+'"></td>';
+    if ((a%8==7)&&(a!=31))text += '<td width="23">.</td>';
+    }
+    document.getElementById("binaryDiv").innerHTML=text+'</tr></table>';
+  }
+
+function changeStyle(){
+  if (theme.name == "dark") {
+  theme = {name:"light", 
+            bg:"#E7F7FF",
+            div:"#EAEAFF",
+            text:"black", 
+            border:"#BBBBBB",
+            box:"white",
+            red:"#FFCCCC",
+            blue:"#CCCCFF",
+            green:"#CCFFCC"}
+    document.getElementById("canvas").style.display = "none";
+    }
+  else {
+    theme = {name:"dark", 
+             bg:"#111111",
+             div:"rgba(0,0,0,.8)",
+             text:"white", 
+             border:"#444444",
+             box:"black",
+             red:"#660000",
+             blue:"#000066",
+             green:"#006600"}
+    document.getElementById("canvas").style.display = "block";
+    }
+  setStyle();
+  }
+  
+function setStyle(){
+  var body = document.getElementById("body")
+  body.style["backgroundColor"] = theme.bg;
+  body.style["color"] = theme.text;
+  var fields = document.getElementsByClassName("f");
+  for(var i=0, l=fields.length;i<l;i++){
+    box = fields[i].style;
+    box.background=theme.box;
+    box.borderColor=theme.border;
+    box.color=theme.text;
+    }
+  var fields = document.getElementsByClassName("outer");
+  for(var i=0, l=fields.length;i<l;i++){fields[i].style.background=theme.div;}
+  document.getElementById("netColor").style.background=theme.green;
+  document.getElementById("subColor").style.background=theme.red;
+  document.getElementById("hostColor").style.background=theme.blue;
+  }
+ 
+//getipinfo() is called when the checkanswers() or showColors() functions
+//are called. It checks the form to see what IP address and subnet mask
+//the user entered. It then splits the address into octets for other functions.
+function getipinfo(){
+  var ipaddress = document.getElementById("ipaddress").value;
+  var subnetmask = document.getElementById("maskinput").value;
+  var n=ipaddress.indexOf("/");
+  if (n>1){
+     mask=ipaddress.substr((n+1),2)
+     ipaddress = ipaddress.substr(0,n)}
+  else if (subnetmask.length>0){
+     mask=submask(subnetmask);}
+  else if (questionNum<6) n=33;
+  octets= ipaddress.split(".");
+  if (octets[0]<128)      {netbits=8;  type="A";}
+  else if (octets[0]<192) {netbits=16; type="B";}
+  else                    {netbits=24; type="C";}
+  if (n==33) mask = netbits;
+  }
+ 
+ 
+//generateip is called when the user pushes the Generate IP button. It creates a random IP
+//address and a subnet mask that is appropriate for the class generated. Then it is posted to the form.
+function generateip(c){
+  clearall();
+  var createip, b, a;
+  if (c==1) createip = Math.floor((Math.random()*255));
+  else createip = Math.floor((Math.random()*191));
+  if (createip<128) b=21;
+  else if (createip<192) b=13;
+  else b=5;
+  for(a=0;a<3;a++){ createip += "." + Math.floor((Math.random()*255));}
+  if (c==1) createip += "/" + (30-Math.floor((Math.random()*b)));
+  document.getElementById("ipaddress").value= createip;
+  }
+
+
+//submask() is called from getipinfo(). It looks at the subnet mask given by the user
+//and returns the shorthand notation of it for the program to use.
+function submask(a){
+  subocts= a.split(".");
+  array=dectobin(subocts);
+  for (var a=0;a<32;a++){
+  if (array[a]==0) break;}
+  return a;
+  }
+ 
+ 
+//bintodec() (Binary to Decimal) is frequently used in showAnswers() to turn an array of
+//32 ones and zeros into the decimal equivalent in string from. This is used to display to the user.
+//The first arguement b designates how much of the array is to be processed.
+function bintodec(b,ipnum){
+  var octet = new Array(4);
+  for(var c=0;c<4;c++){
+    octet[c]=0;
+    for(var d=0;d<8;d++){
+      var e = (c*8)+d;
+      if (e<b) octet[c] += ipnum[e]*Math.pow(2,(7-d));
+      }
+    }
+  var built = octet[0] + "." + octet[1] + "." + octet[2] + "." + octet[3];
+  return (built);
+  }
+ 
+ 
+//dectobin() (Decimal to Binary) takes an array of 4 decimal octets and returns an array of 32 ones and zeros.
+function dectobin(inarray){
+  outarray=new Array(32);
+  for(var a=0;a<32;a++){outarray[a]=0;}
+    for(var a=0;a<4;a++){
+      var c=inarray[a];
+      if (c>127){outarray[(a*8)]=1; c=c-128;}
+      if (c>63){outarray[(a*8)+1]=1; c=c-64;}
+      if (c>31){outarray[(a*8)+2]=1; c=c-32;}
+      if (c>15){outarray[(a*8)+3]=1; c=c-16;}
+      if (c>7){outarray[(a*8)+4]=1; c=c-8;}
+      if (c>3){outarray[(a*8)+5]=1; c=c-4;}
+      if (c>1){outarray[(a*8)+6]=1; c=c-2;}
+      if (c==1){outarray[(a*8)+7]=1;
+      }
+    }
+  return outarray;
+  }
+ 
+ 
+//change() will go through a specified range of an array changing everything 
+//to ones or zeros and returns the array.
+function change(start,stop,type,array){
+  for(var a=start;a<stop;a++){ array[a]=type;}
+  return array;
+  }
+ 
+ 
+//increment() will increase a binary number by one. It goes through the specified
+//range from the least to most significant digit.
+function increment(a,b,array){
+  for(var c=1;c<=(b-a);c++){
+    if (array[b-c]==0) break;
+    else array[b-c]=0;
+    }
+  array[b-c]=1;
+  return array;
+  }
+ 
+ 
+//showColors() is used to display theme that represent the network, subnet and host
+//bits. It can be called from the user to help keep track of the different bits before
+//they are acctually ready to see the answers. It is also called by showAnswers().
+function showColors(){
+  getipinfo();
+  var color = theme.green;
+  for(var a=0;a<32;a++){
+    if (a==netbits) color = theme.red;
+    if (a==mask) color = theme.blue;
+    document.getElementById("ip"+a).style.background = color;
+    }
+  }
+
+ 
+//showAnswers() will fill in all the fields on the form. It uses nested functions to
+//achieve the correct calculations.
+function showAnswers(m){
+  if (m) answersDisplayed = true;
+  if (answersDisplayed){
+    showColors();
+    for(var i=0;i<32;i++){document.getElementById("ip"+i).value = dectobin(octets)[i];}
+    showField("maskinput", bintodec(32,change(0,mask,1,change(mask,32,0,dectobin(octets)))), m);
+    showField("type", type, m);
+    showField("netbits", netbits, m);
+    showField("subbits", mask-netbits, m);
+    showField("hostbits", 32-mask, m);
+    showField("netnum", bintodec(netbits,dectobin(octets)), m);
+    showField("subnetid", bintodec(mask,dectobin(octets)), m);
+    showField("nextsubid", bintodec(mask,increment(netbits,mask,dectobin(octets))), m);
+    showField("lastsubid", bintodec(mask,change(netbits,mask,1,dectobin(octets))), m);
+    showField("broadcast", bintodec(32,change(mask,32,1,dectobin(octets))), m);
+    showField("firsthost", bintodec(32,change(31,32,1,change(mask,32,0,dectobin(octets)))), m);
+    showField("lasthost", bintodec(32,change(31,32,0,change(mask,32,1,dectobin(octets)))), m);
+    showField("totalsubs", Math.pow(2,(mask-netbits)), m);
+    showField("totalhosts", Math.pow(2,(32-mask))-2, m);
+    
+    //Test for Rollover on nextsubid. If the return from increment is all zeros then a rollover occured
+ var rollover = true;
+ var temp = increment(netbits,mask,dectobin(octets));
+ for (var i=netbits; i < mask; i++) if (temp[i]==1) rollover = false;
+    if (rollover)
+      document.getElementById("nextsubid").value = "Current subnet is last";
+    }
+  }
+  
+//showField takes a field id and the answer that should go in the field.
+//If there is text in the field then it will turn red or green to indicate if it matches.
+//If the field is blank then it is filled in with the correct answer.
+function showField(id, answer, m) {
+  var box = document.getElementById(id);
+  if (box == null) console.log(i)
+  if (box.value.length > 0 && m == 1) {
+    if (box.value == answer) box.style.background=theme.green;
+    else                     box.style.background=theme.red;
+    }
+  else box.value = answer;
+  }
+
+function ask(){
+  document.getElementById("answer").style.background="#FFFFFF";
+  questionNum = Math.floor(Math.random()*8);
+  if (questionNum<6) generateip(1);
+  if (questionNum>5) generateip(0);
+  var question, ipnum;
+  ipnum = document.getElementById("ipaddress").value;
+  qneed = Math.floor(Math.random()*2500)+3;
+  switch(questionNum){
+    case 0: question= "What is the First Host of "+ipnum+"?"; break;
+    case 1: question= "What is the Last Host of "+ipnum+"?"; break;
+    case 2: question= "What is the Subnet Mask of "+ipnum+"?"; break;
+    case 3: question= "What is the Network ID of "+ipnum+"?"; break;
+    case 4: question= "What is the Subnet ID of "+ipnum+"?"; break;
+    case 5: question= "What is the Broadcast ID of "+ipnum+"?"; break;
+    case 6: question= "What is the Subnet Mask if your IP Address is "+ipnum+" and you need "+qneed+" Hosts?"; break;
+    case 7: question= "What is the Subnet Mask if your IP Address is "+ipnum+" and you need "+qneed+" Subnets?"; break;
+    }
+  document.getElementById("question").innerHTML = question;
+  }
+
+
+function check(){
+  var answer;
+  getipinfo();
+  if (questionNum>5) {
+    for (var a=0;a<24;a++){ if (Math.pow(2,a)>=qneed) break;}
+    if ((questionNum==6)&&(Math.pow(2,a)<(qneed+2))) a++;
+    }
+  if (questionNum==6) mask = 32-a;
+  if (questionNum==7) mask = netbits + a;
+  switch(questionNum){
+    case 0: answer = bintodec(32,change(31,32,1,change(mask,32,0,dectobin(octets)))); break;
+    case 1: answer = bintodec(32,change(31,32,0,change(mask,32,1,dectobin(octets)))); break;
+    case 2: answer = bintodec(32,change(0,mask,1,change(mask,32,0,dectobin(octets)))); break;
+    case 3: answer = bintodec(netbits,dectobin(octets)); break;
+    case 4: answer = bintodec(mask,dectobin(octets)); break;
+    case 5: answer = bintodec(32,change(mask,32,1,dectobin(octets))); break;
+    case 6: answer = bintodec(32,change(0,mask,1,change(mask,32,0,dectobin(octets))));
+    case 7: answer = bintodec(32,change(0,mask,1,change(mask,32,0,dectobin(octets))));
+    }
+  useranswer = document.getElementById("answer").value;
+  if (answer == useranswer) 
+     document.getElementById("answer").style.background=theme.green;
+  else
+     document.getElementById("answer").style.background=theme.red;
+   }
+
+
+//dropdown() helps the user visualize the binary form of the ip address. It uses the input of the dropdown 
+//menu to repopulate the binary form of the IP address on the form. The calculations are identical to those
+//in showAnswers except they remain in binary form.
+ 
+function dropdown(){
+  if (octets == null) getipinfo();
+  var selected;
+  for(var a=0;a<32;a++){
+    switch (document.getElementById("drop").value){
+      case "ip":selected = dectobin(octets)[a]; break;
+      case "ni":if (a<netbits) selected = dectobin(octets)[a]; else selected = 0; break;
+      case "si":if (a<mask) selected = dectobin(octets)[a]; else selected = 0; break;
+      case "ns":if (a<mask) selected = increment(netbits,mask,dectobin(octets))[a]; else selected = 0; break;
+      case "ls":if (a<mask) selected = change(netbits,mask,1,dectobin(octets))[a]; else selected = 0; break;
+      case "bi":selected = change(mask,32,1,dectobin(octets))[a]; break;
+      case "fh":selected = change(31,32,1,change(mask,32,0,dectobin(octets)))[a]; break;
+      case "lh":selected = change(31,32,0,change(mask,32,1,dectobin(octets)))[a]; break;
+      }
+    document.getElementById("ip"+a).value = selected;
+    }
+  }
+   
+ 
+//autotab() is to help when entering in an IP address binary representation.
+function autotab(original,destination){
+  if (original.getAttribute&&original.value.length==original.getAttribute("maxlength"))
+  var v = original.value;
+  var bit = (v == undefined || v == " " || v == 0 || v == "")? 0:1;
+  original.value = bit;
+  if (showip) readBinary();
+  if (destination != undefined) destination.focus();
+  }
+ 
+function readBinary(){
+  var binary = [];
+  for(var i=0;i<32;i++){binary.push(document.getElementById("ip"+i).value);}
+  document.getElementById("showip").value = bintodec(32,binary);
+  }
+  
+function clickBit(box) {
+  if (box.value == 0) box.value = 1;
+  else box.value = 0;
+  if (showip) readBinary();
+  }
+ 
+//clearall() removes all the information from the form (since a refresh doesn't)
+function clearall(){
+  answersDisplayed=false;
+  document.getElementById("subsub").reset();
+  setStyle();
+  }
+  
+function toggleShowIP() {
+  var button = document.getElementById("showip")
+  if (button.value == "Show IP") {showip = true; readBinary();}
+  else {button.value = "Show IP"; showip = false;}
+  }
+
+function toggleDiv(box) {
+  box.style["display"] = (box.style["display"]=="block")? "none":"block";
+  if (box.id == "questions") ask();
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,52 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>Matrix</title>
+<meta charset="utf-8">
+<style>
+body {margin: 0px;padding: 0px;overflow: hidden;}
+</style>
+</head>
+<body onload="main()" bgcolor="#000000">
+<canvas id="canvas"></canvas>
+<script type="text/javascript">
+var canvas= document.getElementById('canvas');
+var ctx = canvas.getContext('2d');
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+var chs = Math.floor(ch/25)+2, c = [], count = 0;
+ctx.font = "20px Arial";
+
+for(var i=0, len = Math.floor(cw/25); i<len; i++) c.push(obj());
+
+function obj() {
+  r = {speed:rn(1,4),y:0-rn(1,100),len:rn(10,chs*3),str:[]};
+  for (var i=0; i<chs; i++) r.str.push(rn(0,25));
+  return r;
+  }
+
+function main() {
+  count++;
+  for (var i=0, len = c.length; i<len; i++) {
+    c[i].str[rn(0,chs)] = rn(0,25);
+    if (count%c[i].speed == 0) {
+      c[i].y++;
+      if (c[i].y < chs+c[i].len*2) print(i);
+      else c[i] = obj();
+      }
+    }
+  requestAnimationFrame(main);
+  }
+
+function print(x) {
+  for (var y=0; y<=c[x].y; y++) {
+    ctx.clearRect(x*25+5,y*25,25,25);
+    ctx.fillStyle = (y==c[x].y)? "white":"rgb(0,"+(255-(c[x].y-y)*3)+",0)";
+    ctx.fillText(String.fromCharCode(1488+c[x].str[y]),x*25+5,y*25);
+    }
+  }
+
+function rn(min,max) {return Math.floor( Math.random()*((max+1)-min)+min);}
+</script>
+</body>
+</html>

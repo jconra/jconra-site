@@ -1,0 +1,313 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+<title>HTML5 Canvas Game Tutorial</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>  
+<link rel="stylesheet" href="../styles/code.css">
+<link rel="stylesheet" href="../styles/atom-one-dark.css">
+<script src="../javascript/highlight.pack.js"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+</head>
+<body onload="init()">
+
+<div class="container">
+  <canvas id="canvas" style="position:absolute; top:0px; left:0px;"></canvas>
+  <a href="../index.html">
+    <img src="../duckcon.png" width="160px" height="160px" style="position:absolute; top:0px; left:0px;"></img>
+  </a>  
+  <div class="row" style="margin-top:150px;">
+    
+    <nav class="navbar navbar-inverse">
+      <div class="container-fluid">
+        <div class="navbar-header">
+          <a class="navbar-brand" href="#">DuckCon</a>
+        </div>
+        <ul class="nav navbar-nav">
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../basic/index.html">Getting Started</a></li>
+          <li class="active"><a href="../loops/index.html">Loops</a></li>
+          <li><a href="../animation/index.html">Animation</a></li>
+          <li><a href="../mouse/index.html">Mouse</a></li>
+          <li><a href="../keys/index.html">Keyboard</a></li>
+          <li><a href="../functions/index.html">Functions</a></li>
+          <li><a href="../examples/index.html">Examples</a></li>
+        </ul>
+      </div>
+    </nav>
+    <div class="col-xs-12">
+      <div class="well">
+        <ul class="pager">
+          <li class="previous"><a href="../basic/index.html">Getting Started</a></li>
+          <li class="next"><a href="../animation/index.html">Animation</a></li>
+        </ul>
+        <h3>Make it Interesting with Loops!</h3>
+        <p>
+        If you are new to programming then loops might seem confusing. Don't worry though, playing around
+        with a simple script and seeing the result on the canvas can make it seem like a piece of cake. We
+        are going to use a for loop which will go over some lines of code inside the curly brackets { }
+        until a condition is met. It is petty common to use 'i' as the variable that increases or decreases 
+        in a loop. The for loop has 3 parts that are seperated by semi-colons.<br><br>
+        <font size="6" face="monospace">
+          <span style="color:white; background-color:black; padding:8px; margin-left:40px;">
+          for (i=1; i&lt;6; i++) { }
+          </span>
+        </font>
+        <ul>
+          <li>The first part sets i (or any variable) to its starting value</li>
+          <li>The second part is the condition that must be true to keep looping</li>
+          <li>The last part is the change to the variables, usually i is incremented</li>
+        </ul>
+        <div class="well" style="width:900px; background-color:#444;">
+          <pre style="display:inline-block; width:600px"><code>&lt;!DOCTYPE HTML&gt;
+&lt;html&gt;
+&lt;head&gt;
+&lt;title&gt;Loops&lt;/title&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;canvas id="canvas" width="200" height="200"&gt;&lt;/canvas&gt;
+&lt;script&gt;
+
+var can = document.getElementById("canvas");
+var ctx = can.getContext('2d');
+
+ctx.fillStyle = "black";
+ctx.fillRect(0, 0, 200, 200);
+
+ctx.fillStyle = "white";
+for (var i=1; i&lt;6; i++) {
+  ctx.fillRect(i*30, 50, 15, 50);
+}
+
+&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+          <canvas id="example1" width="200px" height="200px" style="display:inline-block; float: right;"></canvas>
+        </div>
+        </p>
+        <p>
+        <br>
+        You might notice that we now have a head section with a title in our
+        HTML (lines 3-5). This puts the title of our page in the tab at the top.
+        Everything else is similar to before except we now have a loop in lines 17-19.<br>
+        <ul>
+        <li>Line 17 This is the loop that will run the following code as long as i is
+          less than 6. It starts with i=1 so it will loop 5 times, increasing by 1 each time</li>
+        <li>Line 18 Draws the rectangles, we multiply i * 30 for our x position so the rectangles
+          will move across the screen as i gets larger</li>
+        <li>Line 19 The curly brackets determine what is included in the loop. This closing curly 
+          bracket signals that the for loop should increment i and evaluate the condition i&lt;6 to
+          determine if it will loop again</li>
+        </ul>
+        </p>
+        <h3>So I made some boxes.. Now What?</h3>
+        <p>
+          Hopefully you copied that code into your text editor and ran it. Then if you changed the condition
+          to some other number to see what would happen then you are on the right track. Try these ideas to
+          experiment more with the for-loop.
+          <ul>
+            <li>What happens if you multiply the y-position by i?</li>
+            <li>What if you multiply the height and width by i?</li>
+            <li>Draw more rectangles or other shapes inside the loop.</li>
+            <li>Can you make the symbol for a full strength signal (rising bars)?</li>
+          </ul>
+        </p>
+        <h3>Nested Loops</h3>
+        <p>
+        You can do a lot with loops, but you can do twice as much with a loop inside a loop. For 2D graphics
+        it makes sense to use a nested loop (loop inside a loop). You might want to cover the screen in some
+        way and you need a loop to go across the screen and another loop to go down the screen. For example,
+        think about making a checker board.<br><br>
+        </p>
+        <div class="well" style="width:900px; background-color:#444;">
+          <pre style="display:inline-block; width:600px"><code>&lt;!DOCTYPE HTML&gt;
+&lt;html&gt;
+&lt;head&gt;
+&lt;title&gt;Loops&lt;/title&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;canvas id="canvas" width="200" height="200"&gt;&lt;/canvas&gt;
+&lt;script&gt;
+
+var can = document.getElementById("canvas");
+var ctx = can.getContext('2d');
+
+ctx.fillStyle = "black";
+ctx.fillRect(0, 0, 200, 200);
+
+ctx.fillStyle = "white";
+for (var i=1; i&lt;9; i++) {
+  for (var j=1; j&lt;9; j++) {
+    if ((i+j)%2 == 0) ctx.fillRect(j*20,i*20,20,20);
+  }
+}
+
+&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+          <canvas id="example2" width="200px" height="200px" style="display:inline-block; float: right;"></canvas>
+        </div>
+        </p>
+        <p>
+        <br>
+        You can see that we have a second loop that operates with the variable j. It is helpful
+        to indent code that is nested to keep it organized. Both of the for-loops go from 1 to 8.
+        This time we use an if statement that checks to see if a rectangle should be drawn or not.
+        The way it works is i and j are added, then we use %2 to check if the sum is even or odd. The %
+        symbol is the modulus operator, it performs a division and returns the remainer. In other words,
+        it divides the sum of i and j by 2. If there is a remainer it is odd. The end result is that
+        the boxes are displayed every other one and they are staggered each row to create checkers.<br>
+        </p>
+        <h2>Will this Crazy Command Work?</h2>
+        <p>
+        Hopefully you still have the <kbd>F12</kbd> Developer's Tools open. Many times it is helpful to
+        test out a command as you are considering it. The console will let you access the data from your
+        current page and also let you run any other JavaScript code you wish. If you have never used
+        the modulus operator before then try it out in the console. Type something like 7%2, or 8%3. It
+        can be difficult to remember all the syntax (correct spelling and usage) of commands. Try running
+        commands on the console to see if they work or not before incorporating them into your script.<br><br>
+        </p>
+        <ul class="pager">
+          <li class="previous"><a href="../basic/index.html">Getting started</a></li>
+          <li class="next"><a href="../animation/index.html">Animation</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+
+var exp1 = document.getElementById("example1");
+var e1tx = exp1.getContext("2d");
+e1tx.fillStyle="black";
+e1tx.fillRect(0,0,200,200);
+e1tx.fillStyle="white";
+for (var i=1; i<6; i++) {
+  e1tx.fillRect(i*30,50,15,50);
+}
+
+var exp2 = document.getElementById("example2");
+var e2tx = exp2.getContext("2d");
+e2tx.fillStyle="black";
+e2tx.fillRect(0,0,200,200);
+e2tx.fillStyle="white";
+for (var i=1; i<9; i++) {
+  for (var j=1; j<9; j++) {
+    if ((i+j)%2 == 0) e2tx.fillRect(j*20,i*20,20,20);
+  }
+}
+
+var can = document.getElementById("canvas");
+var ctx = can.getContext("2d");
+var cw = can.width = window.innerWidth-20;
+var ch = can.height = 150;
+var title = [
+[0,0,0,0,0,0,1,0,0,1,0,2,2,2,2,2,0,3,0,0,0,3,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+[0,0,0,0,0,0,1,0,0,1,0,0,0,2,0,0,0,3,3,0,3,3,0,4,0,0,0,0,0,5,0,0,0,6,6,0,0,7,0,0,0,0,0,0,8,8,0,0,9,9,9,0,0,0],
+[0,0,0,0,0,0,1,0,0,1,0,0,0,2,0,0,0,3,0,3,0,3,0,4,0,0,0,0,5,0,5,0,6,0,6,0,0,7,7,7,7,7,0,8,0,0,8,0,9,0,0,0,0,0],
+[0,0,0,0,0,0,1,1,1,1,0,0,0,2,0,0,0,3,0,0,0,3,0,4,0,0,0,0,5,0,5,0,6,0,6,0,0,7,0,7,0,7,0,8,8,8,0,0,0,9,9,0,0,0],
+[0,0,0,0,0,0,1,0,0,1,0,0,0,2,0,0,0,3,0,0,0,3,0,4,0,0,0,0,0,5,5,0,6,0,6,0,0,7,0,7,0,7,0,8,0,0,0,0,0,0,9,0,0,0],
+[0,0,0,0,0,0,1,0,0,1,0,0,0,2,0,0,0,3,0,0,0,3,0,4,0,0,0,0,0,0,5,0,0,6,0,6,0,7,0,7,0,7,0,0,8,8,0,0,9,9,9,0,0,0],
+[0,0,0,0,0,0,1,0,0,1,0,0,0,2,0,0,0,3,0,0,0,3,0,4,4,4,4,0,5,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]];
+
+var colors = ["#FF0000","#00FF00","#0000FF","#FFFF00", "#FF00FF", "#00FFFF"];
+var bullets = [];
+var mouse = {x:cw/2,y:0};
+
+function init() {
+  draw();
+  }
+
+function animate() {
+  window.requestAnimationFrame(animate);
+  draw();
+  if (bullets.length > 0) {
+    var rWidth=cw/title[0].length;
+    var rHeight=(ch-30)/title.length;
+    for (var i=0, len=bullets.length; i<len; i++) {
+      bullets[i].y -= 1;
+      var y = Math.floor(bullets[i].y/rHeight);
+      var x = Math.floor(bullets[i].x/rWidth);
+      if (y < 0) {bullets.splice(i,1); i -= 1;}
+      else if (title[y][x] != 0) {
+        title[y][x] = 0;
+        bullets.splice(i,1);
+        i -= 1;
+      }
+      ctx.beginPath();
+      ctx.fillStyle="white";
+      ctx.arc(bullets[i].x,bullets[i].y,4,0,Math.PI*2);
+      ctx.fill();
+    }
+  }
+}
+
+function draw() {
+  ctx.fillStyle = "black";
+  ctx.fillRect(0,0,cw,ch);
+  var rWidth=cw/title[0].length;
+  var rHeight=(ch-30)/title.length;
+  ctx.lineWidth="4";
+
+  for (var i=0, ilen=title[0].length; i<ilen; i++) {
+    for (var j=0, jlen=title.length; j<jlen; j++) {
+      if (title[j][i] == 0) continue;
+      ctx.fillStyle=colors[title[j][i]%6];
+      ctx.fillRect(i*rWidth, j*rHeight, rWidth-4, rHeight-4);
+      ctx.beginPath();
+      ctx.strokeStyle="rgba(255,255,255,.5)";
+      ctx.moveTo(i*rWidth+2, j*rHeight+rHeight-4);
+      ctx.lineTo(i*rWidth+2, j*rHeight+2);
+      ctx.lineTo(i*rWidth+rWidth-4, j*rHeight+2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.strokeStyle="rgba(0,0,0,.5)";
+      ctx.moveTo(i*rWidth+rWidth-6, j*rHeight+4);
+      ctx.lineTo(i*rWidth+rWidth-6, j*rHeight+rHeight-6);
+      ctx.lineTo(i*rWidth+4, j*rHeight+rHeight-6);
+      ctx.stroke();
+    }
+  }
+  drawShip();
+}
+
+function drawShip() {
+  ctx.strokeStyle="white";
+  ctx.lineWidth="2";
+  ctx.beginPath();
+  ctx.moveTo(mouse.x-30,ch);
+  ctx.lineTo(mouse.x+30,ch);
+  ctx.lineTo(mouse.x+25,ch-20);
+  ctx.lineTo(mouse.x+20,ch-5);
+  ctx.lineTo(mouse.x+10,ch-10);
+  ctx.lineTo(mouse.x,ch-30);
+  ctx.lineTo(mouse.x-10,ch-10);
+  ctx.lineTo(mouse.x-20,ch-5);
+  ctx.lineTo(mouse.x-25,ch-20);
+  ctx.lineTo(mouse.x-30,ch);
+  ctx.stroke();
+}
+
+function fire() {
+  bullets.push({x:mouse.x,y:ch-30});
+}
+
+(function() {
+  var pre = document.getElementsByTagName('pre'),
+  pl = pre.length;
+  for (var i = 0; i < pl; i++) {
+    pre[i].innerHTML = '<span class="line-number"></span>' + pre[i].innerHTML + '<span class="cl"></span>';
+    var num = pre[i].innerHTML.split(/\n/).length;
+      for (var j = 0; j < num; j++) {
+        var line_num = pre[i].getElementsByTagName('span')[0];
+        line_num.innerHTML += '<span>' + (j + 1) + '</span>';
+      }
+    }
+  })();
+
+</script>
+</body>
+</html>

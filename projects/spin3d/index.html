@@ -1,0 +1,139 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body { margin: 0px; padding: 0px; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="myCanvas" width="800" height="800"></canvas>
+
+<script>
+
+var canvas = document.getElementById('myCanvas');
+var ctx = canvas.getContext('2d');
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+
+var depth = 500;
+var camera = {x:0, y:0, z:-20};
+var points = [];
+var count = 0;
+var size = (ch<cw)? ch:cw;
+
+function rn(min,max){return Math.floor( Math.random()*((max+1)-min)+min);}
+
+for (var i = 0; i < 100; i++){
+  var img = document.createElement("img");
+  img.src = "landscape/pic"+i+".jpg";
+  var tempArray = [];
+  for (var j = 0; j < 500; j++){
+    var t = Math.PI*2*Math.random(), s = Math.PI*2*Math.random();
+    tempArray.push({x:Math.cos(s)*Math.sin(t)*size/3,y:Math.sin(s)*Math.sin(t)*size/3,z:Math.cos(t)*size/3});
+  }
+  var best = 0, max = 0, scoreArray = [];
+  for (var j = 0; j < tempArray.length; j++){
+    var t = tempArray[j];
+    var tempmin = 1000; 
+    for (var k = 0; k < points.length; k++){
+      var p = points[k];
+      var dist = Math.sqrt((p.x - t.x)*(p.x - t.x) + (p.y - t.y)*(p.y - t.y) + (p.z - t.z)*(p.z - t.z))
+      if (tempmin > dist){tempmin = dist;}
+    }
+    scoreArray.push({index:j,score:tempmin});
+  }
+  maxmin = 0;
+  for (var j = 0; j < scoreArray.length; j++){
+    if (scoreArray[j].score > maxmin){maxmin = scoreArray[j].score; best = scoreArray[j].index;} 
+  }
+  points.push({x:tempArray[best].x,y:tempArray[best].y,z:tempArray[best].z,img:img,n:i});
+}
+
+function draw(){
+	ctx.fillStyle = "black";
+	ctx.rect(0,0,cw,ch);
+	ctx.fill();
+  ctx.strokeStyle = "white";
+  sortArray();
+  
+  //Draw Background Rectangles
+  ctx.lineWidth = 5;
+	for(var i = 0; i < points.length/2; i++){drawPic(i);}
+    
+  //Draw Lines
+  ctx.lineWidth = 2;
+	for(var i = 0; i < points.length; i++){
+    var scale = depth/(depth+points[i].z+camera.z);
+    ctx.beginPath();
+    ctx.moveTo(cw/2,ch/2);
+    ctx.lineTo(cw/2+points[i].x*scale,ch/2+points[i].y*scale);
+    ctx.stroke();
+  }
+  
+  //Draw Forward rectangles
+  ctx.lineWidth = 5;
+	for(var i = points.length/2; i < points.length; i++){drawPic(i);}
+}
+
+function drawPic(n) {
+    var scale = depth/(depth+points[n].z+camera.z);
+    var x = cw/2 + (points[n].x+camera.x)*scale;
+    var y = ch/2 + (points[n].y+camera.y)*scale;
+  ctx.drawImage(points[n].img,x-size*.08*scale,y-size*.06*scale,size*.16*scale,size*.12*scale);
+}
+  
+function sortArray(){
+  newArray = [];
+  while (points.length > 0){
+    var max = -1000000, index = -1;
+    for(var i = 0; i < points.length; i++){
+      if (points[i].z > max) {max = points[i].z; index = i}
+    }
+  newArray.push(points.splice(index,1)[0]);
+  }
+  points = newArray;
+}
+
+function rotate(n,xang,yang){
+  var x = points[n].x;
+	var y = points[n].y;
+  var z = points[n].z;
+ 
+  var xdist = Math.sqrt(z*z + x*x);
+	var ax = Math.atan2(x,z);
+	ax += xang/180*Math.PI;
+  z=points[n].z=Math.cos(ax)*xdist;
+  points[n].x=Math.sin(ax)*xdist;
+ 
+  var ydist = Math.sqrt(z*z + y*y);
+  var ay = Math.atan2(y,z);
+  ay += yang/180*Math.PI;
+  points[n].z=Math.cos(ay)*ydist;
+  points[n].y=Math.sin(ay)*ydist;
+  return {x:ax,y:ay};
+}
+
+var myVar=setInterval(function(){draw();rotateTo();},30);
+
+function find(n){
+  for(var i=0; i < points.length; i++){
+    if (points[i].n == n) return i;
+  }
+}
+
+function rotateTo(){
+  a = rotate(find(count),0,0);
+  var xdiff = (3.14-Math.abs(a.x))*a.x/ Math.abs(a.x);
+  var ydiff = (3.14-Math.abs(a.y))*a.y/ Math.abs(a.y);
+  if (Math.PI-Math.abs(a.x) + Math.PI-Math.abs(a.y) < .005) count++;
+  for(var i = 0; i < points.length; i++){
+    rotate(i,xdiff*3,ydiff*3); 
+  }
+  if (count >= points.length) count = 0;
+}
+
+</script>
+</body>
+</html>

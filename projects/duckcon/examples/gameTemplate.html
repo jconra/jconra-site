@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Basic Game</title>
+</head>
+<body style="margin:0px; overflow:hidden;" onload="init()">
+<canvas id="canvas"></canvas>
+<script>
+var canvas = document.getElementById("canvas");
+var ctx = canvas.getContext('2d');
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+
+var x,y;
+
+function init() {
+  x=cw/2;
+  y=ch/2;
+  animate();
+}
+
+function animate() {
+  window.requestAnimationFrame(animate);
+  draw();
+}
+
+function draw() {
+  ctx.fillStyle="black";
+  ctx.fillRect(0,0,cw,ch);
+  circle(x,y,50,"white");
+}
+
+function circle(x,y,r,c) {
+  ctx.fillStyle=c;
+  ctx.beginPath();
+  ctx.arc(x,y,r,0,Math.PI*2);
+  ctx.fill();
+}
+
+canvas.addEventListener("click", function(event) {mouseClick(event);});
+
+function mouseClick(event) {
+  x=event.clientX;
+  y=event.clientY;
+}
+
+function rn(min,max) {
+  return Math.floor( Math.random()*((max+1)-min)+min);
+}
+
+</script>
+</body>
+</html>

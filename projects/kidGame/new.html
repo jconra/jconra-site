@@ -1,0 +1,236 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body {margin: 0px;padding: 0px; background-color:black; overflow: hidden;}
+table {margin:0 auto;}
+canvas {display: block; padding: 0; position: absolute; margin:auto; top:0; bottom:0; left:0; right:0;}
+.fixed {position:fixed; overflow:auto;}
+#header {height:60px; width:100%; background:#333;}
+#controls {left:0px; width:200px; top:60px; bottom:0px; background:#222;}
+.main {right:0px; left:200px; top:60px; bottom:0px; background:#444}
+.controlDiv {margin:0 auto; margin-top: 20px; width:80%; text-align:center; background-color:#DDD;}
+.title {font-size:25px;}
+.short {width:40px;}
+.med {width:100px;}
+.tab {position:fixed; top:0px; width:200px;}
+.bd {position:absolute; top:25%; height:50%; background:#DDD; padding:20px; user-select:none;}
+#bdRight {right:10px;}
+#bdLeft {left:10px;}
+</style>
+</head>
+<body onload="init()">
+<div id="header" class="fixed">
+  <img id="tab1" class="tab" style="left:200px" onclick='onlyShow("levelDesign")'>
+  <img id="tab2" class="tab" style="left:400px" onclick='onlyShow("brushDesign")'>
+</div>
+<div id="controls" class="fixed">
+  <div class="controlDiv" id="gameSize">
+    <label onclick='toggle("insideGameSize")' class="title">Game Size</label>
+    <div id="insideGameSize">
+      <hr>
+      <table><tr>
+        <td><label>Width</label></td>
+        <td><input type="text" id="gameWidth" class="short" value="30"></input></td>
+      </tr><tr>
+        <td><label>Height</label</td>
+        <td><input type="text" id="gameHeight" class="short" value="20"></input></td>
+      </tr></table>
+      <input type="button" value="Set Size" onclick="applySize()"></input><br><br>
+    </div>
+  </div>
+  <div class="controlDiv" id="options">
+    <label onclick='toggle("insideOptions")' class="title">Options</label>
+    <div id="insideOptions">
+      <hr>
+      <table><tr>
+        <td>Gravity On?</td>
+        <td><input type="checkbox" id="gravity"></input></td>  
+      </tr></table>
+    </div>
+  </div>
+  <div class="controlDiv" id="draw">
+    <label onclick='toggle("insideDraw")' class="title">Draw</label>
+    <div id="insideDraw">
+      <hr>
+      <table id="paints"></table>
+    </div>
+  </div>
+</div>
+<div id="levelDesign" class="fixed main">
+<canvas id="mainCanvas"></canvas>
+</div>
+<div id="brushDesign" class="fixed main">
+<div id="bdLeft" class="bd">
+  <table><tr>
+    <td colspan=2>Brush Settings</td>
+  </tr><tr>
+    <td>Brush Name</td>
+    <td><input id="brushName" class="med"></input></td> 
+  </tr><tr>
+    <td>Is Solid?</td>
+    <td><input type="checkbox" id="isSolid"></input></td>
+  </tr><tr>
+    <td colspan=2><input type="button" value="Create Brush" onclick="createBrush">
+    </input></td>
+  </tr></table>
+</div>
+  <canvas id="brushCanvas"></canvas>
+<div id="bdRight" class="bd">
+  <table><tr>
+    <td colspan=2>Paint Options</td>
+  </tr><tr>
+    <td>Pick a Color</td>
+    <td><input type="color" id="colorPick" onchange="newColor()"></input></td>
+  </tr><tr>
+    <td>Pick Brush Size</td>
+    <td><select id="brushSize">
+      <option value="1">1</option>
+      <option value="2">2</option>
+      <option value="3">3</option>
+      <option value="4">4</option>
+    </select></td>
+  </tr></table>
+</div>
+</div>
+<script>
+var bdc = document.getElementById("brushCanvas");
+var bdx = bdc.getContext("2d");
+var mouseDown = false;
+bdc.width=320;
+bdc.height=320;
+var can = document.getElementById("mainCanvas");
+var ctx = can.getContext("2d");
+var cw, ch, gameWidth, gameHeight;
+var brushArray = [];
+var colors = ["#FFFFFF","#CCCCCC","#000000"];
+var colorIndex = 2;
+
+function init() {
+  for (var i=0; i<32; i++) {
+    brushArray[i] = [];
+    for (var j=0; j<32; j++) brushArray[i].push((i+j)%2); 
+  }
+  makeTabs();
+  applySize(); 
+  drawLevel();
+  drawBrush();
+  onlyShow("levelDesign");
+}
+
+function drawLevel() {
+  ctx.fillStyle="#444499";
+  ctx.fillRect(0,0,cw,ch);
+  ctx.strokeStyle="black";
+  ctx.lineWidth=1;
+  for (var i=1; i<=gameWidth; i++) {
+    line(ctx,i*32,0,i*32,ch);
+    ctx.strokeText(i,i*32-20,9);
+  }
+  for (var i=1; i<=gameHeight; i++) {
+    line(ctx,0,i*32,cw,i*32); 
+    ctx.strokeText(i,2,i*32-15);
+  }
+}
+
+function line(context,x1,y1,x2,y2) {
+  context.beginPath();
+  context.moveTo(x1,y1);
+  context.lineTo(x2,y2);
+  context.stroke();
+}
+
+function applySize() {
+  gameWidth = document.getElementById("gameWidth").value;
+  gameHeight = document.getElementById("gameHeight").value;
+  if (gameWidth > 9 && gameWidth < 1000)
+    cw = can.width = gameWidth * 32;
+  if (gameHeight > 9 && gameHeight < 1000)
+    ch = can.height = gameHeight * 32;
+  drawLevel();
+}
+
+function drawBrush() {
+  for (var i=0; i<32; i++) {
+    for (var j=0; j<32; j++) {
+      bdx.fillStyle=colors[brushArray[j][i]];
+      bdx.fillRect(j*10,i*10,10,10); 
+    }
+  }
+}
+
+bdc.addEventListener("mouseout",function(e) { drawBrush()});
+
+bdc.addEventListener("mousedown",function(e) { mouseDown=true; });
+
+window.addEventListener("mouseup",function(e) { mouseDown=false; });
+
+bdc.addEventListener("mousemove",function(e) {
+  var rect = bdc.getBoundingClientRect();
+  var s = document.getElementById("brushSize").selectedIndex+1;
+  var x = Math.floor((e.clientX - rect.left - s*5 + 5)/10);
+  var y = Math.floor((e.clientY - rect.top - s*5 + 5)/10);
+  drawBrush(); 
+  bdx.fillStyle=colors[colorIndex];
+  bdx.fillRect(x*10,y*10,10*s,10*s);
+  if (mouseDown) {
+    for (var i=0; i<s; i++) {
+      for (var j=0; j<s; j++) {
+        if (brushArray[x+j] != undefined)
+          brushArray[x+j][y+i] = colorIndex; 
+      }
+    }
+  }
+});
+
+function createBrush() {
+
+}
+
+function newColor() {
+  var color = document.getElementById("colorPick").value; 
+  var i = colors.indexOf(color);
+  if (i >= 0) colorIndex = i;
+  else {
+    colorIndex = colors.length;
+    colors.push(color);
+  }
+}
+
+function onlyShow(id) {
+  var mainElements = document.getElementsByClassName("main");
+  for (var i=0; i<mainElements.length; i++) {
+    mainElements[i].style.display = "none";
+  }
+  document.getElementById(id).style.display = "Block";
+}
+
+function toggle(id) {
+  var element = document.getElementById(id);
+  if (element.style.display == "none") element.style.display = "Block";
+  else element.style.display = "none";
+}
+
+function makeTabs() {
+  var tabcan = document.createElement("canvas");
+  tabcan.width = 200;
+  tabcan.height = 60;
+  var tx = tabcan.getContext("2d");
+  tx.font="20px Arial";  
+  tx.fillStyle="#444444";
+  tx.fillRect(30,20,140,40);
+  tx.fillStyle="white";
+  tx.fillText("Level Design",40,45);
+  document.getElementById("tab1").src = tabcan.toDataURL();
+  tx.fillStyle="#444444";
+  tx.fillRect(30,20,140,40);
+  tx.fillStyle="white";
+  tx.fillText("Brush Design",40,45);
+  document.getElementById("tab2").src = tabcan.toDataURL();
+}
+window.addEventListener("resize", function() {resize()});
+
+</script>
+</body>
+</html>

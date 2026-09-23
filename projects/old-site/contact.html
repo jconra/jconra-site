@@ -1,0 +1,174 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+<title>jconra.com</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>  
+<link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+<canvas id="back"></canvas>
+<canvas id="fwd"></canvas>
+
+
+<div class="container">
+  <div class="col-xs-12">
+
+    <nav class="navbar transparent navbar-inverse">
+      <div class="container-fluid">
+        <ul class="nav navbar-nav">
+          <li><a href="about.html">Home</a></li>
+          <li><a href="projects.html">Projects</a></li>
+          <li><a href="#">Contact Info</a></li>
+          <li><a href="index.html">Go 3D!</a></li>
+        </ul>
+      </div>
+    </nav>
+    
+    <div class="well">
+      <div>
+        <h2> You can contact me at:</h2>
+        <h3>
+        Email : jacobtc23@gmail.com<br>
+        LinkedIn : <a href="https://www.linkedin.com/in/jacob-conrads">linkedin.com/in/jacob-conrads</a><br>
+        Resume : <a href="resume.pdf">resume.pdf</a><br>
+        </h3>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="text/javascript">
+var canvas = document.getElementById('canvas');
+var ctx = canvas.getContext('2d');
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+
+var back = document.getElementById('back');
+var btx = back.getContext('2d');
+resizer();
+
+var fwd = document.getElementById('fwd');
+var ftx = fwd.getContext('2d');
+var fw = fwd.width = 300;
+var fh = fwd.height = 100;
+
+var points=[];
+var lines=[];
+
+for (var i=0; i<20; i++) {
+    points.push({x:rn(-100,100),y:rn(-20,20),z:rn(-100,100)});
+}
+
+for (var i=0; i<20; i++) {
+  var p1 = points[i];
+  for (var j=i+1; j<20; j++) {
+    var p2 = points[j];
+    if (Math.sqrt(Math.pow(p2.x-p1.x,2) + Math.pow(p2.y-p1.y,2) + Math.pow(p2.z-p1.z,2)) < 65)
+    lines.push([i,j]);
+  }
+}
+
+function animate() {
+  window.requestAnimationFrame(animate);
+  draw();
+  var x,y,xdist,ax;
+  for (var i=0; i<20; i++) {
+    x = points[i].x;
+    z = points[i].z;
+    xdist = Math.sqrt(z*z + x*x);
+    ax = Math.atan2(x,z);
+    ax += .5/180*Math.PI;
+    points[i].z=Math.cos(ax)*xdist;
+    points[i].x=Math.sin(ax)*xdist;
+  }
+}
+
+function draw() {
+  var p, pn;
+  ftx.strokeStyle="rgba(255,255,255,.4)";
+  ftx.clearRect(0,0,fw,fh);
+  ftx.fillStyle="white";
+  for (var i=0; i<20; i++) {
+    p = getPt(i);
+    ftx.beginPath();
+    ftx.arc(p.x,p.y,p.z,0,Math.PI*2);
+    ftx.fill();
+  }
+  for (var i=0, len=lines.length; i<len; i++) {
+    var p1 = getPt(lines[i][0]);
+    var p2 = getPt(lines[i][1]);
+    line(p1.x,p1.y,p2.x,p2.y);
+  }
+}
+
+function getPt(n) {
+  return {z:(points[n].z+100)/100+1,
+             x:points[n].x+fw/2,
+             y:points[n].y*(points[n].z/50)+fh/2};
+}
+
+function line(x1,y1,x2,y2) {
+  ftx.beginPath();
+  ftx.moveTo(x1,y1);
+  ftx.lineTo(x2,y2);
+  ftx.stroke();
+}
+
+animate();
+function background() {
+  var bSize = 20;
+  ctx.strokeStyle="grey";
+  for (var y=0; y<ch/bSize+1; y++){
+    for (var x=0; x<cw/bSize+1; x++){
+      ctx.beginPath();
+      var g=rn(100,255);
+      ctx.fillStyle="rgb("+g+","+g+","+g+")";
+      ctx.rect(x*bSize,y*bSize,bSize,bSize);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+  btx.font="900 90px Lucida Console";
+  btx.fillStyle="white";
+  btx.fillText("jconra.com",100,80);
+  btx.globalCompositeOperation = "source-out";
+  btx.fillStyle="rgba(0,0,0,.95)";
+  btx.fillRect(0,0,cw,ch);
+  btx.globalCompositeOperation = "source-over";
+  btx.strokeStyle="#333333";
+  btx.lineWidth=3;
+  btx.strokeText("jconra.com",100,80);
+  var grd = btx.createLinearGradient(0,0,0,120);
+  grd.addColorStop(0,"rgba(0,0,0,1)");
+  grd.addColorStop(.5,"rgba(0,0,0,0)");
+  grd.addColorStop(1,"rgba(0,0,0,1)");
+  btx.fillStyle=grd;
+  btx.fillRect(0,0,cw,120);
+  var grd = btx.createLinearGradient(0,0,cw,0);
+  grd.addColorStop(0,"rgba(0,0,0,.1)");
+  grd.addColorStop(.2,"rgba(255,255,255,.2)");
+  grd.addColorStop(1,"rgba(0,0,0,.1)");
+  btx.fillStyle=grd;
+  btx.fillRect(0,120,cw,40);
+}
+
+function rn(min,max) {return Math.floor( Math.random()*((max+1)-min)+min);}
+
+window.addEventListener("resize", resizer, false);
+function resizer() {
+  canvas.width = cw = window.innerWidth;
+  canvas.height = ch = window.innerHeight;
+  back.width = cw;
+  back.height = ch;
+  background();
+  }
+
+</script>
+</body>
+</html>

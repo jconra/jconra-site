@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Lander</title>
+</head>
+<body style="margin:0px; overflow:hidden;" onload="init()">
+<canvas id="canvas"></canvas>
+<script>
+
+//Set up the canvas to be drawn to with the ctx context
+var canvas = document.getElementById("canvas");
+var ctx = canvas.getContext('2d');
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+
+//Section for global varibles, this includes loading the outside images
+var surfacePts, landingSpot, lander, orbiter, fuel, message;
+var landerPic = new Image();
+landerPic.src = "lander.png";
+var orbiterPic = new Image();
+orbiterPic.src = "orbiter.png";
+var key = {up:false,down:false,left:false,right:false}
+
+//Init is called one time at the very beginning when the body loads
+function init() {
+  reset();
+  message = ["Welcome to Lander","Use WASD or Arrow Keys to Control Lander",
+    "Press a Key to Start"];
+  draw();
+  animate();
+}
+
+//Reset is for code that changes variables back to original values
+function reset() {
+  landingSpot=rn(cw/3,cw*2/3);
+  lander = {x:-100,y:-100,vx:-1,vy:0,dock:true,land:false};
+  orbiter = {x:cw,y:0,vx:-1,vy:0};
+  surfacePts = [];
+  surfaceGen(); 
+  fuel = 6000;
+}
+
+//This function generates a rough looking surface and stores the info
+//into surfacePts.
+function surfaceGen() {
+  var y=ch-50;
+  for (var i=0; i<=cw; i++) {
+    var change = rn(-2,2);
+    if (Math.abs(landingSpot-i) < 50) change = 0;
+    if (y < ch-300) change = 1;
+    if (y > ch-50) change = -1;
+    y += change;
+    surfacePts.push(y);
+  }
+}
+
+//Animate contains code/functions that need to be updated each frame
+function animate() {
+  window.requestAnimationFrame(animate);
+  detectLanding();
+  detectDocking();
+  applyVelocity();
+  if (fuel > 0) applyKeys();
+  draw();
+}
+
+//This function moves the lander and orbiter
+//If the lander is docked then the lander's position
+//is just offset from the orbiter. The position is
+//changed by each objects velocity. Gravity is also
+//incorporated here. Finally, if the objects are too
+//far off-screen, they are moved to the other side.
+function applyVelocity() {
+  if (lander.dock) {
+    lander.x = orbiter.x-23;
+    lander.y = orbiter.y+140;
+  } else {
+    lander.vy += .005;
+    lander.x += lander.vx;
+    lander.y += lander.vy;
+  }
+  orbiter.x += orbiter.vx;
+  orbiter.y += orbiter.vy;
+  if (orbiter.x < -200) orbiter.x = cw+200;
+  if (lander.x < -200) lander.x = cw+200;
+  if (lander.x > cw+200) lander.x = -200;
+}
+
+//ApplyKeys will change the velocities and fuel usage
+//if the appropriate keys are being held down.
+function applyKeys() {
+  if (key.up) {
+    lander.vy-=.01;
+    fuel -= 5;
+  }
+  if (key.up || key.left || key.right) fuel -= 1;
+  if (key.left) lander.vx-=.01;
+  if (key.right) lander.vx+=.01;
+  if (key.down) {
+    if (lander.dock) {
+      lander.vx = orbiter.vx; 
+      lander.dock = false;
+    }
+  }
+}
+
+//This function detects any interaction with the surface.
+//If the lander's feet go below the surface then the lander
+//will be brought back above the surface. If the vertical
+//velocity is too great the lander will crash.
+//If the lander is close to the landing spot then landing is
+//successful. In order to settle the lander the velocity will
+//bounce with half the velocity, unless there is thrust.
+function detectLanding() {
+  var x = Math.floor(lander.x);
+  if (x < 0) x = 0;
+  if (x >= cw-90) x = cw-91;
+  var left = (lander.y+70)- surfacePts[x];
+  var right = (lander.y+70) - surfacePts[x+90]; 
+  if ( left > 0 || right > 0) {
+    if (left > right) lander.y -= left;
+    else              lander.y -= right;
+    if (lander.vy > .5) {reset(); message=["You Crashed!"];}
+    if (Math.abs(lander.x+50 - landingSpot) < 10) lander.land = true;
+    if (!key.up) lander.vy *= -.5;
+    lander.vx *=.5;
+  }
+}
+
+//This function will detect when the lander docks with the
+//orbiter. If the difference in velocity is too great there
+//will be a crash.
+function detectDocking() {
+  var d = dist({x:lander.x+23,y:lander.y-140}, orbiter);
+  if (d < 10 && (lander.land)) { 
+    if ((Math.abs(orbiter.vx - lander.vx) < .5) &&
+        (Math.abs(orbiter.vy - lander.vy) < .5)) {
+      if (lander.land) {
+        lander.dock = true;
+        message = ["Mission Accomplished!"];
+      } else {reset(); message=["You Crashed into the Orbiter!"];} 
+    }
+  }
+}
+
+//Draw contains drawing code/functions and is called each frame
+function draw() {
+  ctx.fillStyle="black";
+  ctx.fillRect(0,0,cw,ch);
+  if (key.up && fuel > 0) drawThrust();
+  drawSurface();
+  ctx.drawImage(landerPic,lander.x,lander.y,90,80);
+  ctx.drawImage(orbiterPic,orbiter.x,orbiter.y);
+  drawLights();
+  drawTelemetry();
+  if (message.length > 0) drawMessage();
+}
+
+//This function draws the surface by looping through surfacePts.
+//It draws a line at each point and there is a point for each pixel.
+//That means each line segment is only 1 pixel. This could be messed with.
+function drawSurface() {
+  ctx.fillStyle="#444444";
+  ctx.beginPath();
+  ctx.moveTo(0,cw-50);
+  for(var i=0; i<cw; i++) {
+    ctx.lineTo(i,surfacePts[i]);
+  }
+  ctx.lineTo(cw,ch);
+  ctx.lineTo(0,ch);
+  ctx.lineTo(0,50);
+  ctx.fill();
+}
+
+//Draws some pretty blue flames. Most of the code here is setting up the gradient
+function drawThrust() {
+  var grd = ctx.createLinearGradient(0,lander.y+60,0,lander.y+85);
+  grd.addColorStop(0,"white");
+  grd.addColorStop(.25,"blue");
+  grd.addColorStop(.5,"white");
+  grd.addColorStop(.75,"blue");
+  grd.addColorStop(1,"white");
+  ctx.fillStyle=grd;
+  drawCone(lander.x+30,lander.y+50);
+  drawCone(lander.x+60,lander.y+50);
+}
+
+//This is basically a helper function for drawThrust
+function drawCone(x,y) {
+  ctx.beginPath();
+  ctx.moveTo(x-5,y);
+  ctx.lineTo(x+5,y);
+  ctx.lineTo(x,y+40);
+  ctx.fill();
+}
+
+//Draws lights to indicate successful landing and docking
+function drawLights() {
+  var c;
+  if (lander.land) c = "lime";
+  else             c = "red";
+  circle(landingSpot-50,surfacePts[landingSpot],3,c);
+  circle(landingSpot+50,surfacePts[landingSpot],3,c);
+  
+  if (lander.dock) c = "lime";
+  else             c = "red";
+  circle(orbiter.x+24,orbiter.y+78,2,c);
+  circle(orbiter.x+24,orbiter.y+101,2,c);
+  circle(orbiter.x+24,orbiter.y+120,2,c);
+}
+
+//Draws fuel and VSI indicators. The color assignment is a special
+//conditional assignment that allows assignment with a built in
+//if statement. The colors are used to show danger.
+function drawTelemetry() {
+  ctx.font="30px Arial";
+  ctx.fillStyle=(fuel < 1000)? "yellow":"lime";
+  if (fuel < 100) ctx.fillStyle="red"; 
+  ctx.fillText("FUEL",cw-100,ch/2-20);
+  ctx.fillText(fuel, cw-100,ch/2+20);
+  var vsi=Math.floor(lander.vy*-10)
+  ctx.fillStyle=(Math.abs(vsi) > 3)? "yellow":"lime";
+  if (Math.abs(vsi) > 4) ctx.fillStyle = "red";
+  ctx.fillText("VSI",10,ch/2-20);
+  ctx.fillText(vsi,10,ch/2+20);
+}
+
+//Displays any messages for the user. Messages should be an array
+//This function will only get called if there is something in the
+//array. This function will display the messages centered in middle
+function drawMessage() {
+  ctx.font="50px Arial";
+  ctx.fillStyle="white";
+  for (var i=0, len=message.length; i<len; i++) {
+    var width = ctx.measureText(message[i]).width;
+    ctx.fillText(message[i], cw/2-width/2, ch/2-len*40+i*80);
+  }
+}
+
+//Function to draw a circle
+function circle(x,y,r,c) {
+  ctx.beginPath();
+  ctx.arc(x,y,r,0,Math.PI*2);
+  ctx.fillStyle=c;
+  ctx.fill();
+}
+
+
+//Mouse click event listener and function to get x and y position
+//This also clears out messages if there are any and resets after a
+//successful mission
+window.addEventListener("keydown", function(event) {keyDown(event);});
+function keyDown(event) {
+  keyAction(event.keyCode,true);
+  if (message.length > 0) {
+    if (lander.dock && lander.land) reset(); 
+    message = [];
+  }
+}
+
+//This listens for keyup and sends the event to keyAction
+window.addEventListener("keyup", function(event) {keyUp(event);});
+function keyUp(event) {
+  keyAction(event.keyCode,false);
+}
+
+//Keyaction takes the key up and down signals from the listeners
+//and applies them to the appropriate key boolean values
+function keyAction(k,action) {
+  if (k == 40 || k == 83) key.down = action;
+  if (k == 37 || k == 65) key.left = action;
+  if (k == 39 || k == 68) key.right = action;
+  if (k == 38 || k == 87) key.up = action; 
+}
+
+//Random function that returns values between and including min/max
+function rn(min,max) {
+  return Math.floor( Math.random()*((max+1)-min)+min);
+}
+
+//Distance function takes 2 points and returns the distance
+function dist(p1,p2) {
+	return Math.sqrt(Math.pow(p1.x-p2.x,2)+Math.pow(p1.y-p2.y,2));
+}
+
+</script>
+</body>
+</html>

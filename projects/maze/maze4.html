@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <title>House</title>
+  <meta charset="utf-8">
+</head>
+<body style="margin: 0;" onload="init()">
+ 
+<script src="lib/three.min.js"></script>
+ 
+<script>
+// Set up the scene, camera, and renderer as global variables.
+var scene, camera, renderer;
+var WIDTH = 16;
+var HEIGHT = 16;
+var maze = [];
+var path = [];
+var keys = [];
+var rotate = 0;
+var bored = (new Date()).getTime();
+var images = [];
+var imageCount = 0;
+
+for (var i=0; i<100; i++) {
+  images.push(document.createElement("img"));
+  images[images.length-1].src = "textures/landscape/pic"+i+".jpg";
+}
+
+// Sets up the scene.
+function init() {
+
+  // Create the scene and set the scene size.
+  scene = new THREE.Scene();
+
+  // Create a renderer and add it to the DOM.
+  renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  // Create a camera, zoom it out from the model a bit, and add it to the scene.
+  camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 200);
+
+  scene.add(camera);
+  camera.position.set(.5,0,.5);
+  camera.rotation.set(0,Math.PI*1.5,0);
+ 
+  // Create an event listener that resizes the renderer with the browser window.
+  window.addEventListener('resize', function() {
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+  });
+
+  // Set the background color of the scene.
+  //renderer.setClearColorHex(0x939FFF, 1);
+
+  // Create a light, set its position, and add it to the scene.
+  var light = new THREE.PointLight(0xAAAAAA);
+  light.position.set(0,0,0);
+  camera.add(light);
+  var ambientLight = new THREE.AmbientLight(0x0998877);
+  scene.add(ambientLight);
+
+  // skydome
+  var skyGeometry = new THREE.SphereGeometry(100, 60, 40);  
+  var skyTexture = new THREE.TextureLoader().load('textures/sky.jpg');
+  var skyMaterial = new THREE.MeshBasicMaterial( { map: skyTexture, side: THREE.BackSide} );
+  skydome = new THREE.Mesh(skyGeometry, skyMaterial);  
+  skydome.scale.set(-1, 1, 1);  
+  skydome.rotation.order = 'XZY';  
+  skydome.renderOrder = 1000.0;  
+  scene.add(skydome);
+
+  var floorGeometry = new THREE.PlaneGeometry(200, 200, 1, 1);
+  var grassTexture = new THREE.TextureLoader().load('textures/grass2.jpg');
+  grassTexture.wrapS = grassTexture.wrapT = THREE.RepeatWrapping;
+  grassTexture.repeat.set( 200, 200 );
+  var floorMaterial = new THREE.MeshBasicMaterial( { map: grassTexture} );
+  var floor = new THREE.Mesh(floorGeometry, floorMaterial);
+  floor.rotation.x = -Math.PI/2;
+  floor.position.y -= .3;
+  scene.add(floor);
+
+  createmaze();
+  
+  var geometry = new THREE.PlaneGeometry(1,.6);
+  var brickTexture = new THREE.TextureLoader().load('textures/bricks.jpg');
+  var material = new THREE.MeshLambertMaterial( {
+    map: brickTexture,
+    side: THREE.DoubleSide,
+  } );
+  var plane = new THREE.Mesh( geometry, material );
+  
+  for (var y=0; y<HEIGHT; y++) {
+    for (var x=0; x<WIDTH; x++) {
+      
+      if (maze[y][x].up) {
+        var c = plane.clone();
+        c.add(pic())
+        c.position.set(x+.5,0,y);
+        scene.add(c);
+      }
+      if (maze[y][x].left) {
+        var c = plane.clone();
+        c.add(pic())
+        c.position.set(x,0,y+.5);
+        c.rotation.y=Math.PI/2;
+        scene.add(c);
+      }
+      if (y == HEIGHT-1) {
+        var c = plane.clone();
+        c.add(pic())
+        c.position.set(x+.5,0,y+1);
+        scene.add(c);
+      }
+      if (x == WIDTH-1) {
+        var c = plane.clone();
+        c.add(pic())
+        c.position.set(x+1,0,y+.5);
+        c.rotation.y=Math.PI/2;
+        scene.add(c);
+      }
+    }
+  }
+  path = astar({x:0,y:0},{x:WIDTH-1,y:HEIGHT-1}).reverse();
+  animate();
+}
+
+function pic() {
+  imageCount += 1;
+  var geometry = new THREE.CubeGeometry(.6,.4,.01);
+  var picTexture = new THREE.TextureLoader().load(images[imageCount%images.length].src);
+  var material = new THREE.MeshLambertMaterial( {
+    map: picTexture,
+    side: THREE.DoubleSide,
+  } );
+  var plane = new THREE.Mesh( geometry, material );
+  return plane
+}
+
+// Renders the scene and updates the render as needed.
+function animate() {
+  if (rotate == 0 && camera.rotation.y % (Math.PI/2) != 0) {
+    camera.rotation.y = Math.floor(camera.rotation.y / (Math.PI/2) + Math.PI/4) * (Math.PI/2);
+  }
+  processKeys();
+  if (rotate != 0) {
+    camera.rotation.y += (rotate > 0)? -Math.PI/20:Math.PI/20
+    rotate += (rotate > 0)? -1:1
+    if (camera.rotation.y >= Math.PI*2) camera.rotation.y -= Math.PI*2;
+    if (camera.rotation.y < 0) camera.rotation.y += Math.PI*2;
+  }
+  else if (path.length > 0) {
+    bored = (new Date()).getTime();
+    var goal = new THREE.Vector3(path[0].x+.5,0,path[0].y+.5);
+    var diff = camera.position.clone().sub(goal).normalize().divideScalar(20);
+    if (camera.position.distanceTo(goal) < .1) {
+      if (path.length > 1) autoTurn();
+      path.splice(0,1);
+    }
+    camera.position.sub(diff);
+  } else if ((new Date()).getTime() - bored > 4000)
+    path = astar({x:Math.floor(camera.position.x),y:Math.floor(camera.position.z)},
+                 {x:rn(0,WIDTH-1),y:rn(0,HEIGHT-1)}).reverse();
+    
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+}
+
+function autoTurn() {
+  if (camera.rotation.y == Math.PI*1.5) {
+    if (path[0].y == path[1].y-1) rotate = 10;
+    else if (path[0].y == path[1].y+1) rotate = -10; 
+  }
+  if (camera.rotation.y == Math.PI) {
+    if (path[0].x == path[1].x-1) rotate = -10;
+    else if (path[0].x == path[1].x+1) rotate = 10; 
+  }
+  if (camera.rotation.y == Math.PI*.5) {
+    if (path[0].y == path[1].y+1) rotate = 10;
+    else if (path[0].y == path[1].y-1) rotate = -10; 
+  }
+  if (camera.rotation.y == 0) {
+    if (path[0].x == path[1].x+1) rotate = -10;
+    else if (path[0].x == path[1].x-1) rotate = 10; 
+  }
+}
+
+function processKeys() {
+  if (keys.length > 0 && rotate == 0) {
+    path = [];
+    bored = (new Date()).getTime();
+  }
+  if (keys.indexOf(87) >= 0) {
+    var pos={x:Math.floor(camera.position.x),y:Math.floor(camera.position.z)}
+    if (camera.rotation.y == Math.PI*1.5 && maze[pos.y][pos.x].right == false) 
+      path.push({x:pos.x+1,y:pos.y});
+    if (camera.rotation.y == Math.PI && maze[pos.y][pos.x].down == false) 
+      path.push({x:pos.x,y:pos.y+1});
+    if (camera.rotation.y == Math.PI*.5 && maze[pos.y][pos.x].left == false) 
+      path.push({x:pos.x-1,y:pos.y});
+    if (camera.rotation.y == 0 && maze[pos.y][pos.x].up == false) 
+      path.push({x:pos.x,y:pos.y-1});
+    keys.splice(keys.indexOf(87),1);  
+  }
+  if (keys.indexOf(68) >= 0) {
+    rotate = 10;
+    keys.splice(keys.indexOf(68),1);
+  }
+  if (keys.indexOf(65) >= 0) {
+    rotate = -10;
+    keys.splice(keys.indexOf(65),1);
+  }
+}
+
+window.addEventListener('keydown', function(e) {if (keys.indexOf(e.keyCode) == -1) keys.push(e.keyCode);});
+window.addEventListener('keyup', function(e) {keys.splice(keys.indexOf(e.keyCode),1);});
+
+function createmaze(){
+  for(var i=0; i<HEIGHT; i++){
+		maze[i] = [];
+    for(var j=0; j<WIDTH; j++){
+      maze[i].push({down:rn(1,10)>5,right:rn(1,10)>5,open:false,up:false,left:false});
+	    if (j == 0 || maze[i][j-1].right) maze[i][j].left = true;
+      if (i == 0 || maze[i-1][j].down) maze[i][j].up = true;
+      if (j == WIDTH-1) maze[i][j].right = true;
+      if (i == HEIGHT-1) maze[i][j].down = true;
+    }
+	}
+  for (var y=0; y<HEIGHT; y++) {
+    for (var x=0; x<WIDTH; x++) {
+      path = astar({x:x,y:y},{x:WIDTH-1,y:HEIGHT-1});
+      if (path[0].x != WIDTH-1 || path[0].y != HEIGHT-1) {
+        snipSnip();
+      }
+    }
+  }
+}
+
+
+function astar(start, end){
+
+  for (var y=0; y<HEIGHT; y++) {for (var x=0; x<WIDTH; x++) maze[y][x].open = false;}
+
+  addToOpen = function(x,y) {
+    if (maze[y][x].open == false) {
+      openList.push({x:x,y:y});
+      maze[y][x].open = true;
+      maze[y][x].parent = {x:coords.x,y:coords.y}
+      maze[y][x].from = p.from + 1
+      maze[y][x].to = dist({x:x,y:y},end)*10;
+      return false;
+    } 
+    return true;
+  }
+
+  findLowest = function(li) {
+    low = 0;
+    for (var i=0; i<openList.length; i++) {
+      var p1 = maze[li[i].y][li[i].x]
+      var p2 = maze[li[low].y][li[low].x]
+      if (p1.from + p1.to < low.from + low.to) low = i;
+    }
+    return low
+  }
+
+  isParent = function(sq, pr) {return (sq.parent.x == pr.x && sq.parent.y == pr.y)}
+
+	var low, coords, p, closedList = [];
+  var openList = [{x:start.x,y:start.y}];
+  maze[start.y][start.x].from = 0;
+  maze[start.y][start.x].to = dist(start, end)*10;
+  maze[start.y][start.x].open = true;
+  count = 0
+  while (openList.length > 0 && count < 1000000) {
+    low = findLowest(openList);
+    coords = {x:openList[low].x, y:openList[low].y};
+    if (coords.x == end.x && coords.y == end.y) break;
+    p = maze[coords.y][coords.x];
+    closedList.push(coords);
+    openList.splice(low,1);
+
+    if (p.left == false) {
+      if (addToOpen(coords.x-1,coords.y)) {
+        if (isParent(p, {x:coords.x-1,y:coords.y}) == false) {
+          maze[coords.y][coords.x-1].right = true;
+          p.left = true;
+        }
+      }
+    }
+    if (p.right == false) {
+      if (addToOpen(coords.x+1,coords.y)) {
+        if (isParent(p, {x:coords.x+1,y:coords.y}) == false) {
+          maze[coords.y][coords.x+1].left = true;
+          p.right = true;
+        }
+      }
+    }
+    if (p.up == false) {
+      if (addToOpen(coords.x,coords.y-1)) {
+        if (isParent(p, {x:coords.x,y:coords.y-1}) == false) {
+          maze[coords.y-1][coords.x].down = true;
+          p.up = true;
+        }
+      }
+    }
+    if (p.down == false) {
+      if (addToOpen(coords.x,coords.y+1)) {
+        if (isParent(p, {x:coords.x,y:coords.y+1}) == false) {
+          maze[coords.y+1][coords.x].up = true;
+          p.down = true;
+        }
+      }
+    }
+    count += 1
+  }
+  path = []
+  if (openList.length == 0) {
+    low = findLowest(closedList);
+    end = {x:closedList[low].x,y:closedList[low].y}
+  }
+  path.push(end)
+  while (path[path.length-1].x != start.x || path[path.length-1].y != start.y) {
+    end = maze[end.y][end.x].parent
+    path.push(end);
+  }
+  return path
+}
+
+function snipSnip() {
+  while (true) {
+    row = rn(0,HEIGHT-1);
+    for(var i=0; i<WIDTH-1; i++) {
+      if (maze[row][i].open && maze[row][i].right && maze[row][i+1].open == false) {
+        maze[row][i].right = false;
+        maze[row][i+1].left = false;
+        return true
+      }
+    }
+    col = rn(0,WIDTH-1);
+    for(var i=0; i<HEIGHT-1; i++) {
+      if (maze[i][col].open && maze[i][col].down && maze[i+1][col].open == false) {
+        maze[i][col].down = false;
+        maze[i+1][col].up = false;
+        return true;
+      }
+    }
+  }
+}
+
+function dist(p1, p2) {
+  return Math.sqrt(Math.pow(p1.x-p2.x,2)+Math.pow(p1.y-p2.y,2));
+}
+
+function rn(min,max){return Math.floor( Math.random()*((max+1)-min)+min);}
+
+</script>
+</body>
+</html>

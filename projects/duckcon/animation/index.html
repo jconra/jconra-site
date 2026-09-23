@@ -1,0 +1,387 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+<title>HTML5 Canvas Game Tutorial</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>  
+<link rel="stylesheet" href="../styles/code.css">
+<link rel="stylesheet" href="../styles/atom-one-dark.css">
+<script src="../javascript/highlight.pack.js"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+</head>
+<body onload="init()">
+
+<div class="container">
+  <canvas id="canvas" style="position:absolute; top:0px; left:0px;"></canvas>
+  <a href="../index.html">
+    <img src="../duckcon.png" width="160px" height="160px" style="position:absolute; top:0px; left:0px;"></img>
+  </a>  
+  <div class="row" style="margin-top:150px;">
+    
+    <nav class="navbar navbar-inverse">
+      <div class="container-fluid">
+        <div class="navbar-header">
+          <a class="navbar-brand" href="#">DuckCon</a>
+        </div>
+        <ul class="nav navbar-nav">
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../basic/index.html">Getting Started</a></li>
+          <li><a href="../loops/index.html">Loops</a></li>
+          <li class="active"><a href="../animation/index.html">Animation</a></li>
+          <li><a href="../mouse/index.html">Mouse</a></li>
+          <li><a href="../keys/index.html">Keyboard</a></li>
+          <li><a href="../functions/index.html">Functions</a></li>
+          <li><a href="../examples/index.html">Examples</a></li>
+        </ul>
+      </div>
+    </nav>
+    <div class="col-xs-12">
+      <div class="well">
+        <ul class="pager">
+          <li class="previous"><a href="../loops/index.html">Loops</a></li>
+          <li class="next"><a href="../mouse/index.html">Using The Mouse</a></li>
+        </ul>
+        <h3>Make it Move</h3>
+        <p>
+        One of the first goals you will have when making a game is to have some kind of animation.
+        Animation will be responsible for automatic movement and smooth visual effects. Animation
+        functions can also check for certain conditions and control decision making inside your game.
+        The way it works is you use:
+        <br><br>
+        <font size="5" face="monospace">
+          <span style="color:white; background-color:black; padding:8px; margin-left:40px;">
+          window.requestAnimationFrame(animate);
+          </span>
+        </font>
+        <br><br>This command tells the window (browser) to call the function you specify before the browser
+        refreshes again. Usually, you will have the window.requestAnimationFrame() command inside the
+        function that is specified. That way, the function will be called over and over indefinitely.
+        Lets take a look at a simple bouncing square.<br><br> 
+        <div class="well" style="width:900px; background-color:#444;">
+          <pre style="display:inline-block; width:600px"><code>&lt;!DOCTYPE HTML&gt;
+&lt;html&gt;
+&lt;head&gt;
+&lt;title&gt;Animation&lt;/title&gt;
+&lt;/head&gt;
+&lt;body onload="animate()"&gt;
+&lt;canvas id="canvas" width="200" height="200"&gt;&lt;/canvas&gt;
+&lt;script&gt;
+
+var can = document.getElementById("canvas");
+var ctx = can.getContext('2d');
+
+var x=100;
+var y=30;
+var xDirection = 1;
+var yDirection = 1;
+
+function animate() {
+  window.requestAnimationFrame(animate);
+  
+  ctx.fillStyle = "black";
+  ctx.fillRect(0, 0, 200, 200);
+  
+  ctx.fillStyle = "white";
+  ctx.fillRect(x-10, y-10, 20, 20);
+
+  x += xDirection;
+  y += yDirection;
+
+  if (x&lt;10 || x&gt; 190) xDirection *= -1;
+  if (y&lt;10 || y&gt; 190) yDirection *= -1;
+}
+
+&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+          <canvas id="example1" width="200px" height="200px" style="display:inline-block; float: right;"></canvas>
+        </div>
+        </p>
+        <p>
+        <br>
+        <ul>
+        <li class="comment">Line 6 We added onload="animate()" to the body tag, this tells the page to call the animate() function
+        once the body loads</li>
+        <li class="comment">Line 13 Our box will start with a x position of 100</li>
+        <li class="comment">Line 14 Our box will start with a y position of 30</li>
+        <li class="comment">Line 15 We use xDirection to keep track if x is increasing or not. You could increase this number to
+        speed up the animation</li>
+        <li class="comment">Line 16 Same as above, but this time for y</li>
+        <li class="comment">Line 18 This is our animate() function. A function is just a group of code. Everything inside the curly
+        brackets is included (and indented) in the function</li>
+        <li class="comment">Line 19 is our animation command that will cause the animate() function to get called over and over
+        <li class="comment">Line 25 We are drawing the square here, x and y are the coordinates for the center, so we start drawing at
+        x-10 and y-10 and use a width and height of 20</li> 
+        <li class="comment">Line 27 Adds the xDirection to the x coordinate, this creates the side to side movement</li>
+        <li class="comment">Line 28 Adds the yDirection to the y coordinate, this creates the up and down movement</li>
+        <li class="comment">Line 30 Checks if x is about to leave the canvas, if so the direction must be reversed by multiplying
+        xDirection by -1. If you change xDirection to a different number, like 2, this will still work fine</li>
+        <li class="comment">Line 31 Same as line 30 except for the yDirection. The if statement is checking both the minimum and maximum
+        allowed values using an or (the "||") statement.</li>
+        </ul>
+        </p>
+        <p>
+        In the example, the JavaScript runs through all the variable declarations in lines 10-16. After that, nothing
+        happens until the page is done loading and the body's onload will kick off the animate() function. 
+        The animate() function will then get called over and over until the page is closed.
+        </p>
+        <h3>JavaScript Objects</h3>
+        <p>
+        Objects are sort of like a variable that is a box that you can put all kinds of stuff into. There are a lot of great
+        <a href="https://www.w3schools.com/js/js_object_definition.asp" target="_blank">tutorials</a>
+        out there that explain objects. You can create an object that describes something, like our box. Then instead
+        of having 4 variables (x, y, xDirection, yDirection), we can have one. We can then access the inner variables,
+        or proprieties with the dot symbol. This makes it easy to manage lots of variables. Lets say I want to have a large
+        number of boxes, it would be a nightmare trying to manage all the variables. The solution is to put the box objects
+        into an <a href="https://www.w3schools.com/js/js_arrays.asp" target="_blank">array</a>. That way it is easy to loop
+        through them, or add and delete them. We will look at arrays in more detail in the Keyboard section.
+        Lets take a look at an object:<br><br>
+        <br>
+        <font size="4" face="monospace">
+          <span style="color:white; background-color:black; padding:8px; margin-left:40px;">
+          var car = {make:"Lexus", model:"RX 350", color:"blue", horsepower:295}
+          </span>
+        </font>
+        <br><br>Each propriety of the object is declared in key:value pairs inside curly brackets. Then you can access
+        the value using the key, such as car.make or car.color. You can also add or reassign proprieties using the dot.
+        </p><br><br>
+        <div class="well" style="width:900px; background-color:#444;">
+          <pre style="display:inline-block; width:600px"><code>&lt;!DOCTYPE HTML&gt;
+&lt;html&gt;
+&lt;head&gt;
+&lt;title&gt;Animation&lt;/title&gt;
+&lt;/head&gt;
+&lt;body onload="animate()"&gt;
+&lt;canvas id="canvas" width="200" height="200"&gt;&lt;/canvas&gt;
+&lt;script&gt;
+
+var can = document.getElementById("canvas");
+var ctx = can.getContext('2d');
+
+var boxes = []
+for (var i=0; i&lt;3; i++) {
+  boxes.push( {x:100, y:100, xD:1, yD:1, color:"red"} );
+}
+
+boxes[0].x = 10;
+boxes[1].y = 85;
+boxes[1].color = "blue";
+boxes[2].xD = -2;
+boxes[2].color = "lime";
+
+function animate() {
+  window.requestAnimationFrame(animate);
+  
+  ctx.fillStyle = "black";
+  ctx.fillRect(0, 0, 200, 200);
+ 
+  for (var i=0; i&lt;3; i++) { 
+    ctx.fillStyle = boxes[i].color;
+    ctx.fillRect(boxes[i].x-10, boxes[i].y-10, 20, 20);
+
+    boxes[i].x += boxes[i].xD;
+    boxes[i].y += boxes[i].yD;
+
+    if (boxes[i].x&lt;10 || boxes[i].x&gt; 190) boxes[i].xD *= -1;
+    if (boxes[i].y&lt;10 || boxes[i].y&gt; 190) boxes[i].yD *= -1;
+  }
+}
+
+
+&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+          <canvas id="example2" width="200px" height="200px" style="display:inline-block; float: right;"></canvas>
+        </div>
+        </p>
+        <p>
+        In this example we created an array called boxes. We used a for-loop to push 3 box objects into the array.
+        Each object has x and y coordinates, x and y directions, and a color. Then we change some of the properties
+        so that they each move and look different. If we built the box objects with Math.Random() it would be easy to
+        create any amount of boxes that have random properties. The animate loop is basically the same as it was
+        before except that we see "boxes[i]" to refer to the box object that is currently being processed.<br><br>
+        </p>
+        <ul class="pager">
+          <li class="previous"><a href="../loops/index.html">Loops</a></li>
+          <li class="next"><a href="../mouse/index.html">Using The Mouse</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+
+var exp1 = document.getElementById("example1");
+var e1tx = exp1.getContext("2d");
+var x=100;
+var y=30;
+var xDirection = 1;
+var yDirection = 1;
+animate2();
+function animate2() {
+  window.requestAnimationFrame(animate2);
+  
+  e1tx.fillStyle = "black";
+  e1tx.fillRect(0, 0, 200, 200);
+  
+  e1tx.fillStyle = "white";
+  e1tx.fillRect(x-10, y-10, 20, 20);
+
+  x += xDirection;
+  y += yDirection;
+
+  if (x<10 || x>190) xDirection *= -1;
+  if (y<10 || y>190) yDirection *= -1;
+}
+e1tx.fillStyle="black";
+e1tx.fillRect(0,0,200,200);
+e1tx.fillStyle="white";
+for (var i=1; i<6; i++) {
+  e1tx.fillRect(i*30,50,15,50);
+}
+
+var exp2 = document.getElementById("example2");
+var e2tx = exp2.getContext("2d");
+var boxes = []
+for (var i=0; i<3; i++) {
+  boxes.push( {x:100, y:100, xD:1, yD:1, color:"red"} );
+}
+
+boxes[0].x = 10;
+boxes[1].y = 85;
+boxes[1].color = "blue";
+boxes[2].xD = -2;
+boxes[2].color = "lime";
+animate3();
+function animate3() {
+  window.requestAnimationFrame(animate3);
+  
+  e2tx.fillStyle = "black";
+  e2tx.fillRect(0, 0, 200, 200);
+ 
+  for (var i=0; i<3; i++) { 
+    e2tx.fillStyle = boxes[i].color;
+    e2tx.fillRect(boxes[i].x-10, boxes[i].y-10, 20, 20);
+
+    boxes[i].x += boxes[i].xD;
+    boxes[i].y += boxes[i].yD;
+
+    if (boxes[i].x<10 || boxes[i].x> 190) boxes[i].xD *= -1;
+    if (boxes[i].y<10 || boxes[i].y> 190) boxes[i].yD *= -1;
+  }
+}
+
+var can = document.getElementById("canvas");
+var ctx = can.getContext("2d");
+var cw = can.width = window.innerWidth-20;
+var ch = can.height = 150;
+var title = [
+[0,0,0,0,0,0,1,0,0,1,0,2,2,2,2,2,0,3,0,0,0,3,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+[0,0,0,0,0,0,1,0,0,1,0,0,0,2,0,0,0,3,3,0,3,3,0,4,0,0,0,0,0,5,0,0,0,6,6,0,0,7,0,0,0,0,0,0,8,8,0,0,9,9,9,0,0,0],
+[0,0,0,0,0,0,1,0,0,1,0,0,0,2,0,0,0,3,0,3,0,3,0,4,0,0,0,0,5,0,5,0,6,0,6,0,0,7,7,7,7,7,0,8,0,0,8,0,9,0,0,0,0,0],
+[0,0,0,0,0,0,1,1,1,1,0,0,0,2,0,0,0,3,0,0,0,3,0,4,0,0,0,0,5,0,5,0,6,0,6,0,0,7,0,7,0,7,0,8,8,8,0,0,0,9,9,0,0,0],
+[0,0,0,0,0,0,1,0,0,1,0,0,0,2,0,0,0,3,0,0,0,3,0,4,0,0,0,0,0,5,5,0,6,0,6,0,0,7,0,7,0,7,0,8,0,0,0,0,0,0,9,0,0,0],
+[0,0,0,0,0,0,1,0,0,1,0,0,0,2,0,0,0,3,0,0,0,3,0,4,0,0,0,0,0,0,5,0,0,6,0,6,0,7,0,7,0,7,0,0,8,8,0,0,9,9,9,0,0,0],
+[0,0,0,0,0,0,1,0,0,1,0,0,0,2,0,0,0,3,0,0,0,3,0,4,4,4,4,0,5,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]];
+
+var colors = ["#FF0000","#00FF00","#0000FF","#FFFF00", "#FF00FF", "#00FFFF"];
+var bullets = [];
+var mouse = {x:cw/2,y:0};
+
+function init() {
+  draw();
+  }
+
+function animate() {
+  window.requestAnimationFrame(animate);
+  draw();
+  if (bullets.length > 0) {
+    var rWidth=cw/title[0].length;
+    var rHeight=(ch-30)/title.length;
+    for (var i=0, len=bullets.length; i<len; i++) {
+      bullets[i].y -= 1;
+      var y = Math.floor(bullets[i].y/rHeight);
+      var x = Math.floor(bullets[i].x/rWidth);
+      if (y < 0) {bullets.splice(i,1); i -= 1;}
+      else if (title[y][x] != 0) {
+        title[y][x] = 0;
+        bullets.splice(i,1);
+        i -= 1;
+      }
+      ctx.beginPath();
+      ctx.fillStyle="white";
+      ctx.arc(bullets[i].x,bullets[i].y,4,0,Math.PI*2);
+      ctx.fill();
+    }
+  }
+}
+
+function draw() {
+  ctx.fillStyle = "black";
+  ctx.fillRect(0,0,cw,ch);
+  var rWidth=cw/title[0].length;
+  var rHeight=(ch-30)/title.length;
+  ctx.lineWidth="4";
+
+  for (var i=0, ilen=title[0].length; i<ilen; i++) {
+    for (var j=0, jlen=title.length; j<jlen; j++) {
+      if (title[j][i] == 0) continue;
+      ctx.fillStyle=colors[title[j][i]%6];
+      ctx.fillRect(i*rWidth, j*rHeight, rWidth-4, rHeight-4);
+      ctx.beginPath();
+      ctx.strokeStyle="rgba(255,255,255,.5)";
+      ctx.moveTo(i*rWidth+2, j*rHeight+rHeight-4);
+      ctx.lineTo(i*rWidth+2, j*rHeight+2);
+      ctx.lineTo(i*rWidth+rWidth-4, j*rHeight+2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.strokeStyle="rgba(0,0,0,.5)";
+      ctx.moveTo(i*rWidth+rWidth-6, j*rHeight+4);
+      ctx.lineTo(i*rWidth+rWidth-6, j*rHeight+rHeight-6);
+      ctx.lineTo(i*rWidth+4, j*rHeight+rHeight-6);
+      ctx.stroke();
+    }
+  }
+  drawShip();
+}
+
+function drawShip() {
+  ctx.strokeStyle="white";
+  ctx.lineWidth="2";
+  ctx.beginPath();
+  ctx.moveTo(mouse.x-30,ch);
+  ctx.lineTo(mouse.x+30,ch);
+  ctx.lineTo(mouse.x+25,ch-20);
+  ctx.lineTo(mouse.x+20,ch-5);
+  ctx.lineTo(mouse.x+10,ch-10);
+  ctx.lineTo(mouse.x,ch-30);
+  ctx.lineTo(mouse.x-10,ch-10);
+  ctx.lineTo(mouse.x-20,ch-5);
+  ctx.lineTo(mouse.x-25,ch-20);
+  ctx.lineTo(mouse.x-30,ch);
+  ctx.stroke();
+}
+
+function fire() {
+  bullets.push({x:mouse.x,y:ch-30});
+}
+
+(function() {
+  var pre = document.getElementsByTagName('pre'),
+  pl = pre.length;
+  for (var i = 0; i < pl; i++) {
+    pre[i].innerHTML = '<span class="line-number"></span>' + pre[i].innerHTML + '<span class="cl"></span>';
+    var num = pre[i].innerHTML.split(/\n/).length;
+      for (var j = 0; j < num; j++) {
+        var line_num = pre[i].getElementsByTagName('span')[0];
+        line_num.innerHTML += '<span>' + (j + 1) + '</span>';
+      }
+    }
+  })();
+
+</script>
+</body>
+</html>

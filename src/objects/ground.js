@@ -84,7 +84,7 @@ function mossTexture(size = 512) {
 }
 // `layout`: { map: class texture (R road, G grass, B water), metres } from townLayout.js, laid over
 // the town's square; where it says road or grass the noise floor gives way to asphalt or lawn
-export function groundMaterial({ base = '../../textures/ground/', metresPerTile = 1.6, clearing = { x: 0, z: 0, radius: 260 }, light = false, layout = null } = {}) {
+export function groundMaterial({ base = '/textures/ground/', metresPerTile = 1.6, clearing = { x: 0, z: 0, radius: 260 }, light = false, layout = null } = {}) {
   // Jacob's set (2026-09-22): forest litter as the base, needle duff and leaf drifts by noise, fern
   // and moss patches, dirt on the paths, dark dirt in the clearing. Seven pictures; a machine
   // without WebGL2 has too few texture units for them all, so it drops the ferns and the dark dirt.

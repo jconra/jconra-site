@@ -126,7 +126,7 @@ const M = {
   rail: () => mat('rail', () => new THREE.MeshStandardMaterial({ color: 0xd8dde2, roughness: 0.4, metalness: 0.5 })),
   glassRail: (c = 0xbfd8e6, o = 0.35) => mat('rg' + c, () => new THREE.MeshStandardMaterial({ color: c, roughness: 0.1, metalness: 0.1, transparent: true, opacity: o, depthWrite: false })),
   water: () => mat('water', () => new THREE.MeshStandardMaterial({ color: 0x3fa7d6, roughness: 0.08, metalness: 0.2 })),
-  lawn: () => mat('lawn', () => { const t = new THREE.TextureLoader().load('../../textures/ground/grassMed.jpg'); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(6, 6); return new THREE.MeshStandardMaterial({ map: t, roughness: 1 }); }),
+  lawn: () => mat('lawn', () => { const t = new THREE.TextureLoader().load('/textures/ground/grassMed.jpg'); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(6, 6); return new THREE.MeshStandardMaterial({ map: t, roughness: 1 }); }),
   door: (i) => mat('door' + i, () => new THREE.MeshStandardMaterial({ color: [0x7a2a22, 0x2a3a5a, 0x3a2a1e, 0x2f4a3a][i], roughness: 0.5 })),
   garage: () => mat('garage', () => new THREE.MeshStandardMaterial({ roughness: 0.7, map: plainTex((g, w, h) => { g.fillStyle = '#ebe7df'; g.fillRect(0, 0, w, h); g.fillStyle = 'rgba(0,0,0,0.13)'; for (let y = 14; y < h; y += 22) g.fillRect(0, y, w, 3); }) })),
 };

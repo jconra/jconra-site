@@ -1,0 +1,88 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<style> 
+body {    
+margin: 0px;       
+padding: 0px;}
+</style>
+</head>
+ 
+<body bgcolor="#333333">
+<div style="position:absolute; width:100%; text-align:center;">
+<canvas id="myCanvas" width="1000" height="700"></canvas>
+<script>
+	 
+var canvas = document.getElementById('myCanvas');
+var context = canvas.getContext('2d');
+
+var cx = canvas.width/2;
+var cy = canvas.height/2;
+
+// translate context to center of canvas
+context.translate(cx , cy);
+
+function frame(degrees){
+ //degrees++;
+ //if (degrees>360) degrees=0;
+ // rotate 45 degrees clockwise
+
+  context.fillStyle="black"
+  context.fillRect(-cx, -cy, canvas.width, canvas.height);
+
+  context.rotate(degrees*Math.PI / 180);
+ 
+  context.beginPath();
+  context.moveTo(-50,0);
+  context.lineTo(-25,-25);
+  context.lineTo(-15,-15);
+  context.lineTo(0,-100);
+  context.lineTo(15,-15);
+  context.lineTo(25,-25);
+  context.lineTo(50,0);
+  context.lineTo(25,15);
+  context.lineTo(10,10);
+  context.lineTo(0,20);
+  context.lineTo(-15,10);
+  context.lineTo(-25,15);
+  context.lineTo(-50,0);
+  context.closePath();
+  // add linear gradient
+  var grd = context.createLinearGradient(50, 0, -50, 0);
+  grd.addColorStop(0, '#222222');   
+  grd.addColorStop(.5, '#AAAAAA');
+  grd.addColorStop(1, '#222222');
+  context.fillStyle = grd;
+  context.fill();
+  context.rotate(-degrees*Math.PI / 180);
+  }
+
+        function getMousePos(canvas, evt) {
+        
+  var rect = canvas.getBoundingClientRect();
+         return {
+          x: evt.clientX - rect.left,
+          y: evt.clientY - rect.top
+          };
+         }
+
+        canvas.addEventListener('mousemove', function(evt) {
+
+         var mousePos = getMousePos(canvas, evt);
+
+  var angle = Math.atan((cx-mousePos.x)/(cy-mousePos.y))*180/Math.PI;
+  angle = Math.abs(angle);
+  if ((mousePos.x<cx)&&(mousePos.y<cy)) angle=(90-angle)+270;
+  else if ((mousePos.x>(cx-1))&&(mousePos.y>(cy-1))) angle=(90-angle)+90;
+  else if ((mousePos.x<cx)&&(mousePos.y>(cy-1))) angle+=180;
+  var message = angle;
+
+  frame(angle);
+        }, false);
+
+
+</script>
+</div>
+</body>
+
+</html>

@@ -1,0 +1,164 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>Digidraw</title>
+<meta charset="utf-8">
+<style>
+body {margin: 0px;padding: 0px;overflow: hidden;}
+canvas {position:fixed; height:100%; width:100%;}
+</style>
+</head>
+<body onload="init()" bgcolor="#000000">
+<canvas id="back"></canvas>
+<canvas id="canvas"></canvas>
+<script type="text/javascript">
+var canvas= document.getElementById('canvas');
+var ctx = canvas.getContext('2d');
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+
+var back= document.getElementById('back');
+var btx = back.getContext('2d');
+var bw = back.width = window.innerWidth;
+var bh = back.height = window.innerHeight;
+
+var levels = [];
+var streams = [];
+var lines = [];
+var progress = 39; 
+
+function init() {
+  for (level = 2; level<8; level++) {
+    levels.push({blocks:[]});
+    var i=levels.length-1;
+    if (rn(1,10) > 7) continue;
+    levels[i].fill = (rn(1,2) == 1)? true:false;
+    levels[i].speed = rn(1,50)/25-1;
+    degree = 0;
+    mode = 1; 
+    while (degree < 360){
+      mode += 1;
+      if (mode == 1) degree += rn(10,30);
+      else if (mode == 2) {
+        var distance = rn(5,70);
+        if (degree + distance > 355) distance = 355 - degree;
+        levels[i].blocks.push({start:degree, length:distance, radius:level});
+        degree += distance + 5;
+      } else {
+        var repeat = rn(2,5);
+        for (var j=0; j<repeat; j++){
+          if (degree < 350){
+            levels[i].blocks.push({start:degree, length:5, radius:level});
+            degree += 10;
+          }
+        }
+        mode = 0;
+      }
+    }
+  }  
+  for (var i=0; i<5; i++){
+    streams.push([])
+    for (var j=0; j<(cw/40); j++) streams[i].push(rn(1,3));
+  } 
+  for (var i=0; i<6; i++){
+    lines.push({
+      start:rn(1,330), 
+      length:rn(10,30), 
+      radius:1, 
+      dist:rn(250,420),
+      startChange:rn(1,10)/100-.05,
+      lengthChange:rn(1,10)/100-.05});
+  }
+  background();
+  draw();
+}
+
+function background() {
+  var bSize = 20;
+  btx.strokeStyle="Black";
+  for (var y=0; y<ch/bSize+1; y++){
+    for (var x=0; x<cw/bSize+1; x++){
+      btx.beginPath();
+      var g=rn(0,5);
+      btx.fillStyle="rgb("+g+","+g+","+g+")";
+      btx.rect(x*bSize,y*bSize,bSize,bSize);
+      btx.fill();
+      btx.stroke();
+      }
+    }
+  var grd=btx.createRadialGradient(bw/2,bh/2,35,bw/2,bh/2,320);
+  grd.addColorStop(0,"transparent");
+  grd.addColorStop(.5,"rgba(150,150,255,.4)");
+  grd.addColorStop(.6,"rgba(180,150,255,.3)");
+  grd.addColorStop(1,"transparent");
+  btx.fillStyle=grd;
+  btx.beginPath();
+  btx.arc(bw/2,bh/2,320,0,Math.PI*2);
+  btx.fill();
+}
+
+function draw() {
+  window.requestAnimationFrame(draw);
+  ctx.clearRect(0,0,cw,ch);
+  ctx.lineWidth=2;
+  for (var i=0, len=streams.length; i<len; i++) {
+    var s = streams[i];
+    for (var j=0, jlen=streams[i].length; j<jlen; j++) {
+      var sub = Math.abs(cw/2-(j*40-progress));
+      if (sub < 150 && rn(1,100) > 95) s[j] = rn(1,3);
+      if (s[j] == 1) continue;
+      ctx.beginPath();
+      ctx.strokeStyle="rgb("+(150-sub)+","+(150-sub)+","+(255-sub),")";
+      ctx.fillStyle="rgb("+(sub-150)+","+(sub-150)+","+(sub),")";
+      ctx.rect(j*41-progress, ch/2-69+i*30, 25, 25);
+      ctx.stroke();
+      if (s[j] == 3) ctx.fill();
+    }
+  }
+  progress += 2;
+  if (progress >= 40) {
+    progress = 0;
+    for (var i=0, len=streams.length; i<len; i++) {
+      streams[i].splice(0,1)
+      streams[i].push(rn(1,3));
+    }
+  }
+  var grd=ctx.createRadialGradient(bw/2,bh/2,35,bw/2,bh/2,600);
+  grd.addColorStop(0,"transparent");
+  grd.addColorStop(1,"rgba(165,125,255,.7)");
+  for (var i=0, len=lines.length; i<len; i++) {
+    ctx.strokeStyle=grd;
+    ctx.lineWidth=5;
+    drawArc(lines[i], false, lines[i].dist);
+    lines[i].start += lines[i].startChange;
+    lines[i].length += lines[i].lengthChange;
+    if (lines[i].length < 3 || lines[i].length > 70) lines[i].lengthChange *= -1;
+    if (rn(1,100) > 75) {
+      startChange=rn(1,10)/100-.05;
+      lengthChange=rn(1,10)/100-.05;
+    }
+  } 
+  ctx.strokeStyle="#8888FF";
+  ctx.fillStyle="rgba(125,125,255,.5)";
+  for (var i=0, len=levels.length; i<len; i++) {
+    for (var j=0, jlen=levels[i].blocks.length; j<jlen; j++) {
+      drawArc(levels[i].blocks[j],levels[i].fill, 20);
+      levels[i].blocks[j].start += levels[i].speed;
+    }
+  }
+}
+
+function drawArc(b,fill,len) {
+  ctx.beginPath();
+  ctx.arc(cw/2,ch/2,b.radius*30, b.start/180*Math.PI, (b.start+b.length)/180*Math.PI, false);
+  ctx.arc(cw/2,ch/2,b.radius*30+len, (b.start+b.length)/180*Math.PI, b.start/180*Math.PI, true); 
+  ctx.closePath();
+  if (fill) ctx.fill();
+  ctx.stroke();
+}
+
+function rn(min,max) {return Math.floor( Math.random()*((max+1)-min)+min);}
+
+</script>
+</body>
+</html>

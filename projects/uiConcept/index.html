@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+body {overflow:hidden; margin:0px; padding:0px;}
+canvas {position:fixed;}
+</style>
+</head>
+<body>
+<canvas id="background"></canvas>
+<canvas id="myCanvas"></canvas>
+<script>
+
+var canvas = document.getElementById("myCanvas");
+var ctx = canvas.getContext("2d");
+var back = document.getElementById("background");
+var btx = back.getContext("2d");
+var cw = canvas.width = back.width = window.innerWidth;
+var ch = canvas.height = back.height = window.innerHeight;
+
+function draw(x,y){
+  var f = (x>cw/2)? -1:1;
+  if (x>cw/2) x = x-cw;
+  canvas.width = canvas.width;
+  drawShape("white",x,y)
+  s = 1;
+  for (var i=0; i<60; i++) {
+    x-=s*f;
+    y-=s;
+    s+=s/8;
+    drawShape("rgba(20,20,20,.2)",x,y);
+    }
+  }
+
+function background(){
+  var bSize = 20;
+  btx.strokeStyle="Black";
+  for (var y=0; y<ch/bSize+1; y++){
+    for (var x=0; x<cw/bSize+1; x++){
+      btx.beginPath();
+      btx.fillStyle="rgb("+rn(50,60)+","+rn(10,130)+","+rn(200,230)+")";
+      btx.rect(x*bSize,y*bSize,bSize,bSize);
+      btx.fill();
+      btx.stroke();
+      }
+    }
+    
+  var grd = btx.createLinearGradient(0,0,0,ch);
+  grd.addColorStop(0,"black");
+  grd.addColorStop(.5,"transparent");
+  grd.addColorStop(1,"black");
+  btx.fillStyle=grd;
+  btx.beginPath();
+  btx.fillRect(0,0,cw,ch);
+  
+  var grd = btx.createLinearGradient(0,0,cw,0);
+  grd.addColorStop(0,"black");
+  grd.addColorStop(.5,"transparent");
+  grd.addColorStop(1,"black");
+  btx.fillStyle=grd;
+  btx.beginPath();
+  btx.fillRect(0,0,cw,ch);
+  }
+  
+function drawShape(color,w,h){
+  var xfull = 60, xhalf = 20, start = 0;
+  if (w<0) {xfull *= -1; xhalf *= -1; start += cw;}
+  var yfull = 60, yhalf = 20;
+  if (w>0 && w<60 || w<0 && w>-60) {xfull = w, xhalf = w/3;}
+  if (h<60) {yfull = h, yhalf = h/3;}
+  ctx.beginPath();
+  ctx.moveTo(start,h+yfull);
+  ctx.bezierCurveTo(start,h+yhalf,start+xhalf,h+yhalf,start+w-xhalf,h+yhalf);
+  ctx.bezierCurveTo(start+w,h+yhalf,start+w+xhalf,h,start+w+xhalf,h-yhalf);
+  ctx.bezierCurveTo(start+w+xhalf,yhalf,start+w+xhalf,0,start+w+xfull,0);
+  ctx.lineTo(start,0);
+  ctx.lineTo(start,h+yfull);
+  ctx.fillStyle = color;
+  ctx.fill();
+  }
+
+function rn(min,max){return Math.floor( Math.random()*(max-min)+min);}
+  
+background();  
+  
+canvas.addEventListener('mousemove', function(e) {
+  draw(e.clientX,e.clientY);}, false);
+  
+</script>
+
+</body>
+</html>

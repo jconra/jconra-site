@@ -1,0 +1,24 @@
+function buildTower(spot) {
+  if (step > 0) step--;
+  else return -1; 
+  var p=coordToPos(spot.z, spot.x);
+  colors=["yellow","lime","blue","red","purple","silver","#222"];
+  var pick=rn(0,6);
+  var material = new THREE.MeshLambertMaterial( {color:colors[pick]} );
+  ondeck.push({x:spot.x,z:spot.z});
+  var mesh = new THREE.Mesh( scygeo, material );
+  towers[spot.z][spot.x]={type:pick, level:0, mesh:mesh};
+  mesh.position.set(p.x, 2*size, p.z);
+  scene.add( mesh );
+  updateGUI();
+}
+  
+function buildWall(spot) { 
+  var p=coordToPos(spot.z, spot.x)
+  var material = new THREE.MeshLambertMaterial( {map: wall} );
+  var mesh = new THREE.Mesh( cylgeo, material );
+  mesh.position.set(p.x, 2*size, p.z);
+  mesh.scale.set(.9,.9,.9);
+  scene.add( mesh );
+  towers[spot.z][spot.x]={type:99, level:1, mesh:mesh}
+}

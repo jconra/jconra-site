@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>Loader</title>
+<script src="lib/three.js" type="text/javascript"></script>
+<script src="lib/OrbitControls.js"></script>
+<style>
+body {margin:0px; overflow:hidden;}
+</style>
+</head>
+<body>
+<div id="container"> </div>
+<canvas id="canvas" style="width:256px; height:128px; display:none;"><canvas>
+<script>
+var canvas = document.getElementById('canvas');
+var ctx = canvas.getContext('2d');
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+
+var renderer = new THREE.WebGLRenderer({antialias: true});
+renderer.setSize(cw, ch);
+
+var container = document.getElementById("container");
+container.appendChild(renderer.domElement);
+var controls;
+
+var camera = new THREE.PerspectiveCamera(75, 800 / 600, 1, 10000);
+camera.position.z = 50;
+var scene = new THREE.Scene();
+
+controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+
+var mapTexture = new THREE.TextureLoader().load('fitusa.jpg');
+var img = new Image();
+img.src = 'usaheight.png';
+img.onload = function() {
+
+  ctx.drawImage(img, 0, 0);
+  img.style.display = 'none';
+
+  var mapMaterial = new THREE.MeshBasicMaterial( { map: mapTexture, side: THREE.DoubleSide} );
+  var geometry = new THREE.PlaneGeometry(128, 64, 127, 63);
+
+  for (var i = 0; i < 64; i++) {
+    for (var j = 0; j < 128; j++) {
+      var pixel = ctx.getImageData(j*2, i*2, 1, 1);
+      geometry.vertices[i*128+j].z = pixel.data[0]/30;
+    }
+  }
+    
+  geometry.computeFaceNormals();
+  geometry.computeVertexNormals();
+  var mesh = new THREE.Mesh(geometry, mapMaterial);
+  scene.add( mesh );
+};
+/*
+var color = document.getElementById('color');
+function pick(event) {
+  var x = event.layerX;
+  var y = event.layerY;
+  var pixel = ctx.getImageData(x, y, 1, 1);
+  var data = pixel.data;
+  var rgba = 'rgba(' + data[0] + ',' + data[1] +
+             ',' + data[2] + ',' + data[3] + ')';
+  color.style.background =  rgba;
+  console.log("x: " +x+ " y: " + y+" rgba: "+rgba);
+}
+canvas.addEventListener('mousemove', pick);
+*/
+
+// Let there be light
+var light1 = new THREE.AmbientLight( 0xffffff , 2.0); 
+scene.add( light1 );
+
+light2 = new THREE.DirectionalLight( 0xffffff, 1.5 );
+light2.position.set( 100, 150, 0 ).normalize();
+scene.add( light2 );
+
+
+function animate() {
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+
+animate();
+
+</script>
+</body>
+</html>

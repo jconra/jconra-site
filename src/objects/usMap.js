@@ -21,7 +21,7 @@ const PHOTO = { w: 833, h: 827 };
 // the states' longitude and latitude bounds [west, east, south, north], for placing pins on places
 export const STATE_BOUNDS = { CO: [-109.06, -102.04, 36.99, 41.0], NM: [-109.05, -103.0, 31.33, 37.0], MD: [-79.49, -75.05, 37.89, 39.72], MS: [-91.66, -88.1, 30.17, 35.0], WA: [-124.85, -116.92, 45.54, 49.0] };
 
-export async function loadUSMap(url = '../map/us.svg', { colour = 0x35e07d, line = 0xf2fff6, lift = 0.6, flagDir = '../../textures/flags/' } = {}) {
+export async function loadUSMap(url = '/labs/map/us.svg', { colour = 0x35e07d, line = 0xf2fff6, lift = 0.6, flagDir = '/textures/flags/' } = {}) {
   const data = await new SVGLoader().loadAsync(url);
   const group = new THREE.Group();
   const states = new Map(), pickable = [];

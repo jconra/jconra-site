@@ -139,7 +139,7 @@ export function boxProjectUVs(geometry, metresPerUnit, metresPerTile) {
 let sideShared = null;
 export function sideMaterial() {
   if (!sideShared) {
-    const map = new THREE.TextureLoader().load('../../textures/hull_side.jpg', (t) => { t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; });
+    const map = new THREE.TextureLoader().load('/textures/hull_side.jpg', (t) => { t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; });
     map.wrapS = map.wrapT = THREE.RepeatWrapping;
     sideShared = new THREE.MeshStandardMaterial({ map, metalness: 0.2, roughness: 0.75 });
   }

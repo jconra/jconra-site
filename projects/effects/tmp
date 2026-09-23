@@ -1,0 +1,57 @@
+var binary = (function() {
+  var dragon = document.createElement("img")
+  dragon.src = "dragon.jpg";
+  var res = 10;
+  var message = [dragon,"333 TRS","Cyber","Warfare","Operations"];
+  var time = (new Date()).getTime();
+  var HEIGHT = Math.floor(ch/res);
+  var WIDTH = Math.floor(cw/res);
+  var textCan = document.createElement("canvas");
+  var tctx = textCan.getContext('2d');
+  textCan.width = WIDTH;
+  textCan.height = HEIGHT;
+  tctx.textBaseline="top";
+  
+  update = function() {
+    res = 10;
+    size = HEIGHT;
+    do {
+      tctx.font = size+"px console";
+      size -= 1
+    } while (tctx.measureText(message[0]).width > WIDTH)
+    tctx.fillStyle = "black";
+    tctx.fillRect(0,0,WIDTH,HEIGHT);
+    tctx.fillStyle = "white";
+    if (typeof message[0] == "string")
+      tctx.fillText(message[0],0,rn(0,HEIGHT-size*1.5));
+    else tctx.drawImage(message[0],0,0,WIDTH,HEIGHT);
+    
+    mgData=tctx.getImageData(0,0,WIDTH,HEIGHT).data;
+    data = [];
+    for (var i=0; i<HEIGHT; i++) {
+      data.push([]);1
+      for (var j=0; j<WIDTH; j++)
+        data[i].push(mgData[i*(4*WIDTH)+j*4])
+    }
+  }
+  ctx.fillStyle = "black"
+  ctx.fillRect(0,0,cw,ch);
+  ctx.font=res +"px console";
+  return function(context) {
+    if ((new Date()).getTime() - time > 8000) {
+      time = (new Date()).getTime();
+      message.push(message.splice(0,1)[0]); 
+      update();
+      }
+    for (var i=0; i<100; i++) {
+      x = rn(0,WIDTH-1);
+      y = rn(0,HEIGHT-1);
+      ctx.fillStyle="black";
+      ctx.fillRect(x*(res-1)+Math.floor(x/8)*8-1,y*res-res,res-1,res);
+      v = (typeof data == 'undefined')? 100:data[y][x]*.6+100;
+      if (v < 200) v -= rn(1,100);
+      ctx.fillStyle="rgb(0,"+v+","+v+")";
+      ctx.fillText((Math.random() >.5)? "1":"0",x*(res-1)+Math.floor(x/8)*8,y*res);    
+    }
+  }
+})()

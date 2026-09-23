@@ -1,0 +1,845 @@
+<!DOCTYPE HTML>
+<!-- Please save this file as a .html and reopen!
+  In notepad you can click "File", "Save As", then add ".html" on the file name.
+  Also be sure that you allow your browser to run "Active" content when you open
+  the web page, it may produce a warning.-->
+
+<!-- Jeopardy program.
+  Developed by Jacob Conrads.
+  Contact me at Jacobtc23@gmail.com.-->
+
+<html>
+<head>
+
+<script>
+/*
+
+You can use the question property or use "lines":[] to specify lines
+which can help if you want a command to be on a line without getting split up.
+
+Example:   "lines":["Take a look at this file's permissions","-rwxr--r-- root root file.txt"]
+
+
+
+You can change the time from the default 10 seconds to another time specified in seconds
+
+Example:   "time":20
+
+
+
+You can specify left alignment so that code looks more like code
+
+Example:    "align":"left"
+
+
+
+Make sure if you add a field that you add a comma to the line above it so that each "key":"value" is
+seperated by a comma.
+
+*/
+
+var title = "Linux Jeopardy";
+
+var game =
+
+[
+{"name":"Virtualization", "data":[
+  {
+    "question":"This is the OS inside a virtual enviroment",
+    "answer":"Guest OS"
+  },{
+    "question":"What type of virtualization replaces guest OS drivers with modified drivers?",
+    "answer":"Paravirtualization"
+  },{
+    "question":"This separates the OS from the hardware; aka abstraction layer or Virtual Machine Monitor (VMM)",
+    "answer":"Hypervisor"
+  },{
+    "question":"This advantage to virtual machines allows the OS state to be saved",
+    "answer":"Snapshots"
+  },{
+    "question":"In this type of virtualization, the guest OS does not know it is virtualized",
+    "answer":"Full Virtualization (Emulation)"
+  }
+]},
+
+{"name":"Boot Process", "data":[
+  {
+    "question":"How many steps are in the *nix boot order?",
+    "answer":"Four"
+  },{
+    "question":"This is the final step in the *nix boot order which executes /sbin/init",
+    "answer":"Kernel"
+  },{
+    "question":"This step in the *nix boot order will perform Initial hardware setup and configuration",
+    "answer":"BIOS"
+  },{
+    "question":"What part of the boot process loads the kernel from disk into memory?",
+    "answer":"GRUB Stage 2"
+  },{
+    "question":"Loads initial RAM disk into memory",
+    "answer":"initrd"
+  }
+]},
+
+{"name":"Searching", "data":[
+  {
+    "question":"Command to show a long list of a directory with hidden files",
+    "answer":"ls -al"
+  },{
+    "question":"Searches for files using a database prepared by updatedb",
+    "answer":"locate"
+  },{
+    "question":"Command to search a file's contents or STDIN from a previous command",
+    "answer":"grep"
+  },{
+    "question":"This command and option will follow the last 10 lines of a file as it grows",
+    "answer":"tail -f"
+  },{
+    "lines":["What command will complete this search?","find /var/log | ______ grep backdoor"],
+    "answer":"xargs"
+  }
+]},
+
+{"name":"Shells", "data":[
+  {
+    "lines":["??Shell?Kernel?Hardware","What interacts with the Shell?"],
+    "answer":"User"
+  },{
+    "question":"What Shell is represented by sh?",
+   "answer":"The Bourne Shell"
+  },{
+    "question":"What command displays the names and values of shell variables?",
+    "answer":"set"
+  },{
+    "question":"What command can you type to temporarily change to the Bourne Again Shell?",
+    "answer":"bash"
+  },{
+    "question":"What is the command to permanently change your shell?",
+    "answer":"chsh [-s shell]"
+  }
+]},
+
+{"name":"Proc", "data":[
+  {
+    "question":"What directory contains information about all currently running processes?",
+    "answer":"/proc"
+  },{
+    "question":"If you want to find information about process 1234, what file path would you look in?",
+    "answer":"/proc/1234"
+  },{
+    "question":"What file inside /proc/PID will provide the command and arguments used to invoke the process?",
+    "answer":"cmdline"
+  },{
+    "question":"What directory within the /proc structure provides network information?",
+    "answer":"/proc/net"
+  },{
+    "question":"What file within the /proc structure has the options that were used to start the kernel?",
+    "answer":"/proc/cmdline"
+  }
+]},
+
+{"name":"Permissions", "data":[
+  {
+    "question":"What command is used to assign file permissions?",
+    "answer":"chmod"
+  },{
+    "question":"What command changes the user and/or group ownership of each given file?",
+    "answer":"chown"
+  },{
+    "lines":["What is the group owner of the file?","-rw-r----- 1 rico root 4 Jan  8  21:32  troopers"],
+    "answer":"root"
+  },{
+    "question":"What permission will a new file have if the umask is 022?",
+    "answer":"rw-r--r--    (644)"
+  },{
+    "lines":["A file has the following permissions:","rwxrw-r--","What will the permissions be if you:","chmod u+s,g+s file"],
+    "answer":"rwsrwSr--"
+  }
+]},
+
+
+{"name":"File Structure", "data":[
+  {
+    "question":"This symbol is the top of the directory structure",
+    "answer":"/"
+  },{
+    "question":"This is the symbol that represents the user's home directory",
+    "answer":"~"
+  },{
+    "lines":["This type of link points to the path of a target file"],
+    "answer":"Soft Link"
+  },{
+    "question":"Each folder in /home corresponds to what?",
+    "answer":"username"
+  },{
+    "question":"These contain metadata about a file and can be shared by multiple hard links",
+    "answer":"inodes"
+  }
+]},
+
+{"name":"Important Files", "data":[
+  {
+    "question":"This file stores user account information such as username, user ID, home folder and login shell",
+    "answer":"/etc/passwd"
+  },{
+    "question":"This symbol is used to separate the fields in /etc/passwd",
+    "answer":":"
+  },{
+    "question":"What is field 1 in the /etc/group file?",
+    "answer":"Group Name"
+  },{
+    "question":"Which file contains user account password information?",
+    "answer":"/etc/shadow"
+  },{
+    "question":"What symbol seperates subfields within the password field in /etc/shadow?",
+    "answer":"$"
+  }
+]},
+
+{"name":"Gathering Information", "data":[
+  {
+    "question":"This command will show or set the system's hostname",
+    "answer":"hostname"
+  },{
+    "question":"Using this command will provide system information such as kernel name and processor type",
+    "answer":"uname"
+  },{
+    "question":"Use this command to find the ip address of the system",
+    "answer":"ifconfig OR ip addr"
+  },{
+    "question":"This command and options will list ALL system processes with full format listing",
+    "answer":"ps -ef"
+  },{
+    "question":"Lists open files. Without arguments, will show open files belonging to all processes",
+    "answer":"lsof"
+  }
+]},
+
+{"name":"Text Streams", "data":[
+  {
+    "lines":["What escape sequence is being","used in the following command?","echo -e \"Darth Vader\\n1138 Sith Drive\\nDeath Star\""],
+    "answer":"newline"
+  },{
+    "lines":["What will echo to STDOUT?","vader=sith","echo \"$vader\""],
+    "answer":"sith",
+    "align":"left"
+  },{
+    "lines":["What technique is being used below:","ls /home/student/{Desktop,Downloads,Documents}"],
+    "answer":"brace expansion"
+  },{
+    "lines":["What will echo to STDOUT?","luke=jedi","echo '$luke'"],
+    "answer":"$luke",
+    "align":"left"
+  },{
+    "question":"What redirect can be added after a command to avoid seeing errors",
+    "answer":"2>/dev/null"
+  }
+]},
+
+{"name":"Logging", "data":[
+  {
+    "question":"This directory is the main location for system and audit logs",
+    "answer":"/var/log"
+  },{
+    "question":"This command displays a list of all users that have previously logged in",
+    "answer":"last"
+  },{
+    "question":"This command is used for searching through audit logs",
+    "answer":"ausearch"
+  },{
+    "question":"What file stores permanent audit rules?",
+    "answer":"/etc/audit/audit.rules"
+  },{
+    "lines":["When will this crontab run?","* */1 * * * rm -rf /tmp"],
+    "answer":"Every 1 hour"
+  }
+]},
+
+{"name":"Android and Endian", "data":[
+  {
+    "question":"Convert 0x03 0xA4 to Big Endian",
+    "answer":"03A4"
+  },{
+    "question":"What instruction set has larger instructions, ARM or Thumb?",
+    "answer":"ARM"
+  },{
+    "question":"Convert 0xEF 0xBE 0xAD 0xDE to Little Endian",
+    "answer":"DEADBEEF"
+  },{
+    "question":"This process is started by init, and spawns Dalvik VM instances",
+    "answer":"Zygote"
+  },{
+    "question":"____, Libraries, Android runtime, Application framework, and Applications.  Which of the five layers of Android is missing?",
+    "answer":"Linux kernel"
+  }
+]}
+]
+</script>
+<title></title>
+<meta charset="utf-8">
+<style>
+body{
+  margin:0px;
+  padding:0px;
+  overflow:hidden;
+}
+input[type="checkbox"]{
+  height:30px;
+  width:30px;
+}
+table{
+  margin-left:auto;
+  margin-right:auto;
+} 
+#warning{
+  height:100%;
+  width:100%;
+  position:fixed;
+  top:0px;
+  left:0px;
+  background:white;
+  margins:0px;
+}
+#setup{
+  position:fixed;
+  top:15%;
+  width:100%;
+  height:70%;
+  background:"rgba(0,0,0,1)";
+  color:white;
+  font-size:70px;
+  text-align:center;
+}
+.big{
+  height:40px;
+  font-size:40px;
+}
+.bigButton{
+  height:100px;
+  width:200px;
+  font-size:40px;
+  white-space:normal;
+  background:#AAFFAA;
+  margin:20px;
+}
+</style>
+</head>
+<body onload="init()" id="body">
+
+<div id="setup">
+Welcome to Jeopardy<br>
+<table><tr><td>
+<input type="checkbox" id="t1" checked>
+</td><td>
+<input type="text" value="HanShotFirst" id="t1name" class="big">
+</td></tr><tr><td>
+<input type="checkbox" id="t2" checked>
+</td><td>
+<input type="text" value="KillTac9" id="t2name" class="big">
+</td></tr><tr><td>
+<input type="checkbox" id="t3">
+</td><td>
+<input type="text" value="WiiNotFit" id="t3name" class="big">
+</td></tr><tr><td>
+<input type="checkbox" id="t4">
+</td><td>
+<input type="text" value="VeganZombies" id="t4name" class="big">
+</td></tr></table>
+<input type="button" value="Play" id="turns" class="bigButton" onclick="play()">
+</div>
+
+<div id="warning">
+  <h1 style="margin:200px;">Javascript is not able to run. You need to allow your browser to run scripts in order
+  for the this app to work. There should be a warning on the page with a button to press.
+  The reason for this warning is because you are running the file locally instead of from a web server.
+  The JavaScript is harmless and the source code is commented and easy to understand.</h1>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<input type="button" value="Round 2" onclick="nextRound()" id="nextRound">
+<input type="button" value="Style" onclick="changeStyle()" id="changeStyle">
+<div id="pointChangeDiv" style="position:fixed; top:-200px;">
+  <input type="text" id="pointChangeText" class="big" onkeyup="updatePoints()" 
+  style="width:200px;background:black;color:white;cursor:none;border:2px solid white;">
+</div>
+
+<script type="text/javascript">
+
+var canvas = document.getElementById("canvas");
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+var ctx = canvas.getContext("2d");
+var curQ = {x:-1};
+var counter;
+var teams = [];
+var round = 1;
+
+var nextStyle = (function () {
+  var styles = [{bg1:"#004D00",bg2:"#002000",mid1:"black",mid2:"#2B002B",line:"#DDDDDD",top:"lime",
+              trs1:"rgba(0,120,20,1)",trs2:"rgba(0,80,60,.9)",border:"black",box:"#002200", side:"#333333",
+              text1:"white",text2:"#99FF99",teamOn:"rgba(150,0,150,.65)",teamOff:"rgba(90,0,90,.65)"},
+
+             {bg1:"#00004D",bg2:"#000020",mid1:"black",mid2:"#002B2B",line:"#DDDDDD",top:"yellow",
+              trs1:"rgba(20,60,180,1)",trs2:"rgba(0,60,80,.9)",border:"black",box:"#000055", side:"#333333",
+              text1:"white",text2:"yellow",teamOn:"rgba(0,150,150,.75)",teamOff:"rgba(0,90,90,.65)"},
+
+             {bg1:"#333333",bg2:"black",mid1:"black",mid2:"#444444",line:"#DDDDDD",top:"#AAAAAA",
+              trs1:"rgba(110,110,110,1)",trs2:"rgba(50,50,50,.9)",border:"black",box:"#111111", side:"#333333",
+              text1:"white",text2:"#AAAAAA",teamOn:"rgba(150,150,150,.75)",teamOff:"rgba(90,90,90,.65)"},
+
+             {bg1:"#CCCCFF",bg2:"#DDDDFF",mid1:"#CCFFFF",mid2:"#FFFFFF",line:"#222222",top:"#8888FF",
+              trs1:"rgba(230,230,250,1)",trs2:"rgba(255,255,255,.9)",border:"white",box:"#CCCCEE", side:"#AAAAAA",
+              text1:"#111144",text2:"#000077",teamOn:"rgba(235,235,255,.75)",teamOff:"rgba(180,180,220,.65)"}]
+  var counter = -1;
+  return function () {counter += 1; return styles[counter%styles.length];}
+})();
+var colors = nextStyle();
+
+function init() { 
+  //Removes warning about not having javascript enabled
+  document.getElementById("warning").style.display = "none";
+  validateGameData();
+  if (document != "undefined") document.title = title;
+  
+  main();
+}
+
+function main() {
+  var buttonStyle ='position:fixed;top:20px;width:70px;height:30px;background:'+colors.trs2+';color:'+colors.text1+';border:2 '+colors.border+' solid;';
+  document.getElementById("changeStyle").style.cssText = "left:0px;" + buttonStyle;
+  checkRoundFinish();
+  drawbg();
+  drawSides(12);
+  if (document.getElementById("setup").style["display"] == "none") {
+    document.getElementById("nextRound").style.cssText = "right:0px;" + buttonStyle;
+    drawBoard();
+    drawTeams();
+  }
+}
+
+//This function will complete the game data with blank information to avoid indexing errors
+function validateGameData() {
+  while (game.length < 12) {game.push({})};
+  for (var i=0; i<12; i++) {
+    if (!("name" in game[i])) game[i].name = "";
+    if (!("data" in game[i])) game[i].data = [];
+    while (game[i].data.length < 5) {game[i].data.push({})}
+    for (var j=0; j<5; j++) {
+      if (!("question" in game[i].data[j]) && !("lines" in game[i].data[j])) game[i].data[j].question = "";
+      if (!("answer" in game[i].data[j])) game[i].data[j].answer = "";
+    }
+  }
+}
+
+//This function is to detect when all questions have been answered in round 1
+function checkRoundFinish() {
+  var count=0;
+  for (var i=0; i<6; i++) {
+    for (var j=0; j<5; j++) {
+      if (game[i].data[j].clicked) count += 1;
+    }
+  }
+  if (count == 30) nextRound();
+}
+
+//Function to change the Style
+function changeStyle() {colors=nextStyle(); main();}
+
+//Function to advance game to the next round
+function nextRound() {
+  if (round == 1) {
+    game.splice(0,6);
+    round += 1;
+    main();
+  }
+}
+
+//When play button is pushed, removes setup, counts teams, and starts game
+function play() {
+  document.getElementById("setup").style["display"] = "none"
+  for (var i=0; i<4; i++) {
+    if (document.getElementById("t"+(i+1)).checked)
+      teams.push({"name":document.getElementById("t"+(i+1)+"name").value,points:0});
+  }
+  if (teams.length > 0) teams[0].turn = true;
+  main();
+}
+
+//Draw the background
+function drawbg() {
+  //Draw Gradient Background
+  var grd=ctx.createLinearGradient(0,0,cw,ch);
+  grd.addColorStop(0,colors.bg1);
+  grd.addColorStop(1,colors.bg2);
+  ctx.fillStyle=grd;
+  ctx.fillRect(0,0,cw,ch);
+
+  //Draw Filled in Purple BezierCurve
+  grd=ctx.createLinearGradient(0,0,cw,0);
+  grd.addColorStop(0,colors.mid1);
+  grd.addColorStop(1,colors.mid2);
+  ctx.fillStyle=grd;
+  ctx.strokeStyle=colors.line;
+  ctx.lineWidth=4;
+  ctx.beginPath();
+  ctx.moveTo(cw/7,ch);
+  ctx.bezierCurveTo(cw/3,ch*2/3,cw/3*2,ch/2,cw+20,ch*4/9);
+  ctx.lineTo(cw+20,ch+20);
+  ctx.lineTo(cw/3,ch+20);
+  ctx.fill();
+  ctx.stroke();
+
+  //Draw some crazy Lines Across the screen
+  ctx.beginPath();
+  ctx.moveTo(0,ch/8);
+  ctx.bezierCurveTo(cw/3,ch/2,cw/3*2,ch/2,cw,ch/2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0,ch);
+  ctx.bezierCurveTo(cw/3,ch/3,cw/3*2,ch/8,cw,ch/4);
+  ctx.stroke();
+
+  //Thing On Top
+  for (var i=3; i>0; i--) {
+    grd=ctx.createLinearGradient(0,0,0,i*ch*.02);
+    grd.addColorStop(0,colors.border);
+    grd.addColorStop(1,colors.top);
+    ctx.fillStyle=grd;
+    ctx.beginPath();
+    ctx.moveTo(cw*.15,0);
+    ctx.lineTo(cw*.1,i*ch*.015);
+    ctx.lineTo(cw*.5,i*ch*.02);
+    ctx.lineTo(cw*.9,i*ch*.015);
+    ctx.lineTo(cw*.85,0);
+    ctx.fill();
+  }
+  ctx.beginPath();
+}
+
+function drawBoard() {
+  ctx.beginPath();
+  //Main Box in the middle
+  grd=ctx.createLinearGradient(0,0,0,ch);
+  grd.addColorStop(0,colors.trs1);
+  grd.addColorStop(.3,colors.trs2);
+  grd.addColorStop(.7,colors.trs1);
+  grd.addColorStop(1,colors.trs2);
+  ctx.fillStyle=grd;
+  ctx.fillRect(cw*.05,ch*.075,cw*.9,ch*.9);
+
+  //Catagories Boxes
+  ctx.strokeStyle=colors.border;
+  for (var i=0; i<6; i++) {
+    ctx.rect(cw*.057+i*cw*.15,ch*.09,cw*.135,ch*.13);
+    ctx.fillStyle=colors.box;
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    textBox(game[i].name,cw*.057+i*cw*.15,ch*.09,cw*.135,ch*.13,36,colors.text1,"center");
+  }
+
+  //All The Other Boxes
+  for (var i=0; i<5; i++) {
+    for (var j=0; j<6; j++) {
+      ctx.rect(cw*.057+j*cw*.15,ch*.26+i*ch*.14,cw*.135,ch*.13);
+      ctx.fillStyle=colors.box
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      if ("clicked" in game[j].data[i]) continue;
+      if (game[j].data[i].answer == "") continue;
+      textBox("$"+(i+1)*round+"00",cw*.057+j*cw*.15,ch*.26+i*ch*.14,cw*.135,ch*.13,36,colors.text2,"center");
+    }
+  }
+}
+
+function drawSides(t) {
+  //Draw Boxes along both sides
+  ctx.fillStyle=colors.side;
+  ctx.lineWidth=3;
+  ctx.beginPath();
+  for (var i=0; i<2; i++) {
+    var x=(i==0)? cw*.01:cw*.965;
+    for (var j=0; j<7; j++) {
+      ctx.rect(x,ch*.1+j*(ch*.1),cw*.025,ch*.1);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+  //Draw Smaller Boxes inside the previous ones
+  ctx.fillStyle=(t<6)? "yellow":"lime";
+  if (t<3) ctx.fillStyle="red";
+  ctx.strokeStyle="black"
+  ctx.lineWidth=3;
+  ctx.beginPath();
+  for (var i=0; i<2; i++) {
+    var x=(i==0)? cw*.0175:cw*.9725;
+    for (var j=0; j<t; j++) {
+      ctx.rect(x,ch*.15+(11-j)*(ch*.05),cw*.01,ch*.05);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+}
+
+//Function to draw team names and points at the top of the screen
+function drawTeams() {
+  ctx.font=ch*.05+"px Arial"
+  ctx.strokeStyle=colors.border;
+  ctx.lineWidth=4;
+  for(var i=0, len=teams.length; i<len; i++){
+    ctx.beginPath();
+    var text = teams[i].name+": "+teams[i].points;
+    var textw = ctx.measureText(text).width;
+    var x=cw*1.2/(len+1)*(i+1)-textw/2-cw*.1;
+    ctx.moveTo(x-cw*.03,-5);
+    ctx.lineTo(x,ch*.07);
+    ctx.lineTo(x+textw,ch*.07);
+    ctx.lineTo(x+textw+cw*.03,-5);
+    ctx.stroke();
+    if (teams[i].turn) ctx.fillStyle=colors.teamOn;
+    else ctx.fillStyle=colors.teamOff;
+    ctx.fill();
+    ctx.fillStyle=colors.text1;
+    ctx.fillText(text,x,ch*.05);
+  }
+  ctx.beginPath();
+}
+
+//Function to determine how a string must be broken up into lines to fit in box
+function textCheck(text,x,y,w,h,s) {
+  ctx.font=s+"px Arial"
+  var lines = text.split(" ");
+  var len = lines.length;
+  for (var i=0; i<len; i++) {
+    if (lines.length > i+1) {
+      var t = lines[i]+" "+lines[i+1]
+      if (ctx.measureText(t).width < w) {
+        lines[i] = t;
+        lines.splice(i+1,1);
+        i -= 1;
+        len -=1;
+      }
+    }
+    if (ctx.measureText(lines[i]).width > w) return [];
+  }
+  if (lines.length*s > h)
+    return [];
+  return lines;
+}
+
+//Function to write lines into a box that are vertical spaced evenly. The font
+//has already been sized so that the lines will stay inside the box. The align
+//variable is used to specify center or left alignment.
+function writeLines(lines,x,y,w,h,s,color,align) {
+  var len = lines.length;
+  var m = 0;
+  ctx.fillStyle = color;
+  if (align == "left") {
+    for (var i=0; i<len; i++) {
+      var t = ctx.measureText(lines[i]).width;
+      if (t > m) m = t;
+    }
+    m = (w/2-m/2);
+  }
+  for (var i=0; i<len; i++) {
+    if (align == "center") m = (w-ctx.measureText(lines[i]).width)/2;
+    var v = (h-(s*.8*len))/(len+1.5);
+    ctx.fillText(lines[i],x+m,y+(s*.8+v) *(i+1));
+  }
+}
+
+//Function to find the right font size and line spliting for a given string
+//Takes (array of strings, x pos, y pos, width, height, font-size max, color)
+function textBox(text,x,y,w,h,size,color,align) {
+  var result = [];
+  while (result.length == 0){
+    result = textCheck(text,x,y,w,h,size);
+    size -= 2;
+  }
+  writeLines(result,x,y,w,h,size,color,align);
+}
+
+//This function lets you specify the lines in the question and determines font size
+//Takes (array of strings, x pos, y pos, width, height, font-size max, color)
+function manualTextBox(lines,x,y,w,h,size,color,align) {
+  ctx.font=size+"px Arial";
+  for (var i=0, len=lines.length; i<len; i++) {
+    while (ctx.measureText(lines[i]).width > w) {
+      size -= 1;
+      ctx.font=size+"px Arial";
+    }
+  }
+  writeLines(lines,x,y,w,h,size,color,align);
+}
+
+//This is used to change the cursor to a hand when over a button
+canvas.addEventListener("mousemove", function(e) {
+  if (curQ.x >= 0) return;
+  var x=e.clientX, y=e.clientY;
+  if (mouseOnBox(x,y).x >= 0) canvas.style.cursor = "pointer";
+  else canvas.style.cursor = "auto";
+});
+
+//The click function moves the game along.
+canvas.addEventListener("click", function(e) {
+  var x=e.clientX, y=e.clientY;
+
+  //Need to remove the score editing box if it is there
+  if (document.getElementById("pointChangeDiv").style["top"]=="8px") {
+    document.getElementById("pointChangeDiv").style["top"]="-200px";
+    return 0;
+  }
+  
+  //Keep game from reacting to clicks during setup
+  if (document.getElementById("setup").style["display"] != "none") return;
+
+  if (y < ch*.075) adjustPoints(x);
+
+  //curQ (current Question) curQ.x will be -1 by default, then when a question is selected,
+  //it will be equal to the column of selected box. Being >= 0 means a question is selected.
+  if (curQ.x >= 0) {
+    //Clicked is set to true after the answer is shown. It keeps the $100-$500 link from showing.
+    if ("clicked" in game[curQ.x].data[curQ.y] && game[curQ.x].data[curQ.y].clicked) {
+      //PointsUsed is there to make sure the points don't get awarded over and over again
+      if (!("pointsUsed" in game[curQ.x].data[curQ.y])) grade(x);
+      game[curQ.x].data[curQ.y].pointsUsed = true;
+      curQ.x = -1;
+      main();
+    }
+    else displayAnswer();
+  }
+  //If a current question is not set, then we are on the game board and we check if a box was clicked
+  else {
+    var box = mouseOnBox(x,y);
+    if (box.x >= 0) displayQuestion(box);
+  }
+});
+
+function adjustPoints(mouseX) {
+  for(var i=0, len=teams.length; i<len; i++){
+    teams[i].pointUpdate = false;
+    var name = teams[i].name;
+    var text = name+": "+teams[i].points;
+    var textw = ctx.measureText(text).width;
+    var namew = ctx.measureText(name).width;
+    var x=cw*1.2/(len+1)*(i+1)-textw/2-cw*.1;
+    if (mouseX > x && mouseX < x+textw) {
+      if (mouseX < x+namew) changeTeamTo(i);
+      else {
+        var field = document.getElementById("pointChangeDiv");
+        field.style["left"] = (x+namew+15)+"px";
+        field.style["top"] = "8px"
+        var box = document.getElementById("pointChangeText");
+        box.focus();
+        box.value = teams[i].points;
+        teams[i].pointUpdate = true;
+      }
+    }
+  }
+  main();
+}
+
+function updatePoints() {
+  for(var i=0, len=teams.length; i<len; i++){
+    if (teams[i].pointUpdate) {
+      teams[i].points = parseInt(document.getElementById("pointChangeText").value);
+      main();
+    }
+  }
+}
+
+function changeTeamTo(teamIndex) {
+  for(var i=0, len=teams.length; i<len; i++){ teams[i].turn = false; }
+  teams[teamIndex].turn = true;
+}
+
+//This function handles the point award and changes turns. x is used to determine 
+//what side of the screen was clicked. This determines wether it was correct or not.
+function grade(x) {
+  for (var i=0, len=teams.length; i<len; i++) {
+    var money = (curQ.y+1)*100*round;
+    if (x < cw/2) money*=-1;
+    if (teams[i].turn) {
+      teams[i].points += money;
+      teams[i].turn = false;
+      teams[(i+1)%len].turn = true;
+      return;
+    }
+  }
+}
+
+
+//Function to determine what box the user clicked on. If mouse clicked on a box the box's location (in game data) is returned
+function mouseOnBox(x,y) {
+  for (var i=0; i<5; i++) {
+    for (var j=0; j<6; j++) {
+      if (x > cw*.057+j*cw*.15 && x < cw*.057+j*cw*.15+cw*.135 && y > ch*.26+i*ch*.14 && y < ch*.26+i*ch*.14 + ch*.13)
+          return {x:j,y:i};
+    }
+  }
+  return {x:-1};
+}
+
+//This function is responsible for displaying the question to the screen after a box is picked.
+//box is just a set of coordinates where x is the catagory and y is the index of the question.
+function displayQuestion(box) {
+  curQ = box;
+  game[curQ.x].data[curQ.y].clicked = false;
+  ctx.rect(cw*.05,ch*.075,cw*.9,ch*.9);
+  ctx.fillStyle=colors.bg2
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  textBox(game[box.x].name+" for $"+((box.y+1)*round)+"00",cw*.05,ch*.075,cw*.9,ch*.15,cw*.03,colors.text1,"center");
+  ctx.strokeStyle=colors.text1;
+  line(cw*.07,ch*.19,cw*.93,ch*.19)
+  var myBox = game[box.x].data[box.y];
+  var align = "center";
+  if ("align" in myBox && myBox.align == "left") align = "left";
+  if ("question" in myBox)
+    textBox(myBox.question,cw*.05,ch*.2,cw*.9,ch*.5,ch*.06,colors.text1,align);
+  else if ("lines" in myBox)
+    manualTextBox(myBox.lines,cw*.05,ch*.2,cw*.9,ch*.5,ch*.06,colors.text1,align);
+  if ("time" in myBox) curQ.totalTime = myBox.time*10;
+  else curQ.totalTime = 100;
+  curQ.timer = curQ.totalTime;
+  counter = setInterval(timer, 100);
+}
+
+//This function displays the answer and the correct/incorrect buttons.
+function displayAnswer() {
+  textBox(game[curQ.x].data[curQ.y].answer,cw*.05,ch*.675,cw*.9,ch*.3,cw*.04,colors.text2,"center");
+    game[curQ.x].data[curQ.y].clicked = true;
+    ctx.fillStyle="red";
+    ctx.fillRect(cw*.01,ch*.9,cw*.19,ch*.09);
+    textBox("Incorrect",cw*.01,ch*.9,cw*.19,ch*.09,cw*.03,colors.text1,"center");
+    ctx.fillStyle="green";
+    ctx.fillRect(cw*.8,ch*.9,cw*.19,ch*.09);
+    textBox("Correct",cw*.8,ch*.9,cw*.19,ch*.09,cw*.03,colors.text1,"center");
+    clearInterval(counter);
+}
+
+function line(x1,y1,x2,y2) {
+  ctx.beginPath();
+  ctx.moveTo(x1,y1);
+  ctx.lineTo(x2,y2);
+  ctx.stroke();
+}
+
+function timer() {
+  curQ.timer = curQ.timer-1;
+  if (curQ.timer <= 0) clearInterval(counter);
+  drawSides(11*(curQ.timer/curQ.totalTime))
+}
+
+window.addEventListener("resize", function() {
+  cw = canvas.width = window.innerWidth;
+  ch = canvas.height = window.innerHeight;
+  main();
+});
+
+</script>
+</body>
+</html>

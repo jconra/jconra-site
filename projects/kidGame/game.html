@@ -1,0 +1,209 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body {margin:0px;padding:0px;background-color:black; overflow:hidden;}
+canvas {display:block; position:absolute padding:0px; margin:auto; left:0px; right:0px; top:0px; bottom:0px;}
+</style>
+</head>
+<body">
+<canvas id="canvas"></canvas>
+<script>
+var can = document.getElementById("canvas");
+var ctx = can.getContext("2d");
+var cw = can.width = 800;
+var ch = can.height = 600;
+var currentLevel = 0;
+var keys = [];
+var repeat = 0;
+var flip = false;
+var counter = 0;
+var levels = [{"name":0,"gravity":true,"data":[[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,7,0,0,0,0,0,0,0,1,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,2,2,2,2,2,2,2,0,0,0,0,1,0,0,2,0,0,1,0,0,0,0,0,2,2,2,2,2,2,2,0,0,9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5,0,0,0,0,0,0],[0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,1,0,0,1,0,0,1,0,0,2,0,0,1,1,1,1,1,1,1,2,2,2,2,2,2,2,0,0,9,0,0,0,0,0,2,2,2,2,2,2,2,2,0,0,0],[0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0,0,0,1,0,0,1,0,0,1,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,2,2,2,2,2,0,0,0,0,0,0,0,0,1,1,1,2,0,0],[0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,0,0,0,9,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,2,2,2,1,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,9,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2,2,2,2,2],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,8,8,8,8,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,8,3,3,3,3,8,0,0,0,0,0,0,0,0,0,0,0,2,1,1,1,1,1,1,1],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4,4,4,4,4,4,4,4,4,4,4,4,0,0,8,3,3,3,3,3,3,8,0,0,8,8,8,8,8,0,0,2,1,1,1,1,1,1,1,1],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,9,0,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,0,0,0,0,1,1,2,2,2,0,0,0,2,2,2,1,1,1,1,1,1,1,1,1],[0,0,0,0,0,0,0,0,0,0,0,5,0,0,0,0,2,2,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1],[2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1]],"xScroll":0,"yScroll":0,"img":{},"bgColor1":"#4444cc","bgColor2":"#8888ff"}];
+
+objects = [{"name":"9","health":"100","cSeq":0,"cFrame":2,"cLevel":0,"speed":5,"acc":0.1,"vx":0,"vy":0,"gravity":0.1,"friction":0.97,"jump":2,"jumpPower":0,"keys":[{"code":68,"field":"vx","op":"+","amount":"acc"},{"code":65,"field":"vx","op":"-","amount":"acc"},{"code":32,"field":"vy","op":"-","amount":"jump"}],"sequences":[{"name":10,"frames":[{},{},{}],"src":["data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABmklEQVRYR+2WO04DMRCGbYoVjzJ3CJcJp6CHLkIIUSAKFCpW4iTkMtk7pOShFBj9a81iBj/Ga6/SxJUVOf6/+eex1mrPS+9ZXx0ADg5Uc+DFrAwv6Gu9TN6fPCDpEhJ/UHfD8Xv1OOxjIMUAPvGt3vXixhjVqud/MQB0q3e9dhGATxyXEgD2M9P8AfhYW7inxUrBmWIA13ZJuviZ0QCh6HMhRgGExL86ay9fl69X3t/bts1Pwcw0BhXOrSfx707uweeFygfg0btRkzgulmKID9KFAKDoueUAyBHPbkM3ep84LpwMYApxsQOxvFNqYD+GC62b9XLYx1wR1UAs7y7A6aJRNOmk6cgCCPU5bz1EfPKm+q9jqiaSABR9SBwiY9qPnCsGKBFPFqE0+pTNsaEUdEAiTvZXBXCfVrfdbytB7P3cjtizjS2wyQAwavnHxY0SHySI48yY8eumZEgBn3THc9vTPnsJgHq+Sgr4sCG7fQVEZ6sBuAUnaauqALnicIQDYAS7i168kjeBRj7dgpPkkwMczf1SsTTSP34ACY0pXhI/Zk8AAAAASUVORK5CYII=","data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABfklEQVRYR+2WPY7CMBCF7SYSUOYQe5lwCvqli1Zoq60QVCBxkuUy5A6U+6MUeDWxXhiF2BnbQUgrXEH+3jdvnifR6sFLP1hfPQGeDvxfB3ZmY7DDlrp0Fjq6A7nJWuGzrhsGY4zaq2274z/UuzrrutEeDYALQwkA9D83WXP4+2ih1sVGkTOjAPSJSwdcMkCKeFILKGTUS75+K2tvdy0Or05DohzwiV8qqfn2umAAbC9Uz6uG+M9c/twogD5xqoYAQsSDHeDVd/sdU30QwD3ExQC+viNy5AANF6y3Y9n+9rVFlAGeetdWI4BpkbWTjtQleQgC8InzzUfCk0/VvBOGIAYBUL1LHOmXiPVNiGSA2PQDxgsgrX7IZt9sdAJIxGOHDwe6AeBfMqvqupXopq8XO2JnJxuwUQEgDFFfb/EKpmDGjN8bB0LE6WYA4OsmKQNcXJpo5AMANIBo4TvPF7ruOY1+xliJYQOA7sMlQOKJ5aoKEH3nJa0ZHEQhdsZc+wcCYe5TFTkpOQAAAABJRU5ErkJggg==","data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABh0lEQVRYR+1WO04DMRR8plgElOEM4TLhFPTQRShKlSJC6Sg4CbkMe4eUfJQCo+cwzotlrz/rVZrdZi1l5fm88cSKzvyoM+PTSGB0YHRgUAcmutF8zHdqr171xqyf1PwEcxACAtjUjNaabunSrL+2e/P+vj9UQHUCAP9Xbntuohtv51UjIIFz2rUXARf0pz3Y6z4Pb49BTkUEOFArWp5sCvDfNkd/QQaQZhCQqnPBOYjZDkj1ruVMAOlO9SGLgFTvA5fHqzqBIcCTe6Br7lDK9r/MNlb483Zu111jSRpB19wlgetZY5sudRxZBELn3E0/K756J9P9sVBGCUB9CJxBQCAG5gtmkADmvmiPs/Rt0AfcG0IA848xcKgvUQ4x1oFcYBm+3gR8dsPaiynR5x2pmw/S/GZgXlcjwODSapnokDL8C3IwS+pXZskok0lOOTogwLcblI971UquYpzXFGBsiqOJ65VsQP4mh0y0B7qUSPKcFX7W02MdpxDpRcAlV+JmVQKpc5ff/QGhuNlTcS2OFgAAAABJRU5ErkJggg=="]}],"x":224,"y":512}]
+brushes = [{"name":"Soil","solid":true,"img":newImg("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAA2UlEQVRYR2PcX6r9nwEHkDdwgMs8vHAAlzIU8bdffmNVJ8zDilWcEZ8DiLKRQkWjDhj4ELi3NBucCGGJDFciAqnBlZBITXggs2AJnHHAHTCaC5BDALngQU4XFGZ1vNpRcsGAO4CWPsVl9sCXA8MmF5CbfqgWBWQ7YE2mGrw9gKuopXbiRC66GQfcAcMmEZIbTUQnQnzVNL6qmpDDiC6KB9wBhHxCrjzRUUCOBcSUDcPbAcSEGk1DgGQH0Cql43MISggMuAOICTJqqxlcaQDdd8TkY2whQkpPCQBAoJS3X6w0/wAAAABJRU5ErkJggg==")},
+{"name":"Topsoil","solid":true,"img":newImg("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABJklEQVRYR2M0OGv+n2EAAeOoA4ZNCHw59wVrSuIx4sGbwhhVZmvDEyEhxdhMQrd49i2IqlQ1VNW4zEZxALIWdA24fAjS03HuN4MwDytWn6I7BKQI2WzGe0uzwSHg9u0ASZkR5lNSNGFzDOP+UkQUkGIYpWphjqGaA+QNHHC66eEF3KE7fBxAbpRQLQQodgC+OAQZji8eybUcpA8eAvR0wNsvv+FuZlyTqYZSHeMqUCjxJbreAXcAsoMGTyIkNoiRg48a0YUzBJAtwuU4bA7AlpjJKgnxOYBYi2EOJ8sBxEYJTB2yz0kpM4ZeIiQ1ZAipRwkBUhMQIcOJkR9cDiDGxdRSAwtteJuQ2JRLTPkAcyS+gmrAHQBz5Gg2xBsC6NmS2HRCSkIFAA56l6C2mUZAAAAAAElFTkSuQmCC")},
+{"name":"Brick","solid":false,"img":newImg("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAA80lEQVRYR2P82Fv3n2EAAeNLVz2cDnj84jlBp+kt2sLwfd9WhtsLphNUi00BzRwgKyFJlIMG3gFndEUpSgO4ooDoEBi2DiAqAQAVMdIqBIh2AHI2RM92hOIRpJ6q2ZAaDkB3NKGyBG8UkBMCA+4AYuMepm7gE+GA5wJ6OQBXesJbF4DiiVAqJjYb4nTAr/MnKaoLSE106OoZB7xBAnLAjx0bcHqEUBRQEgKg6AOHALmtGUosB+mlmgMIlZi4EvPwcQC5UUG1EKC5A0it4Yh1EDwE8GVDbIYRkzVxJUxkvaMOGDwhMORLQmJTPbo6cBQMdHUMAJFbJTxGFYj3AAAAAElFTkSuQmCC")},
+{"name":"Fence","solid":false,"img":newImg("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAiElEQVRYR+2W4QrAIAiEu/d/aEcDY4yhRjbHuP525vWhFlrxQnH+RgMkQAL1BEREAJhGuqbPC0+nM2VGj0oDZ27Pre7r7TwKUf3ISwMk8CsC9w6wZseWLqCBzxGwpuYrNbBswEP6tD/7yx6P0Wxglp4G0ghowaX+B6KHXeshGhNqw+hhNLBC4ACliD/YErx5LwAAAABJRU5ErkJggg==")},
+{"name":"5","solid":false,"img":newImg("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABEUlEQVRYR92WvRHCMAyF44YFUoYmO7D/BNkhDSlZgCY5F84ZIVlP/sFAOi5Y+vT0JMcNnR/XOf9QBLDe5z0UMF/XrFhZh3zSOLn//V8AiLRNFaDBOYlRAK0Y0QMcBDIxwQtIET5e0oS5EByoZFJ1CmpApCZEBeBGDmkFuh+aAaB74bsBSvuPqMAqUJqYesRkwtrJYxgO5E2BlgDcRoVMWDqKKRUgAKsqiPkC1O8C3KbtVHbZphfjV1VAutXG/XJ+jj3c06HXMx1RtQVS4I8BSBcPBaCTgrZBVcACEEM0BYir90m9ByxXdPxf8SBNkkrQHQCpXoKsokATgBDU0oqcNmWbh46hBmpugSYrtwe0M9z7AxhOpyHcGMk6AAAAAElFTkSuQmCC")},
+{"name":"6","solid":true,"img":newImg("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAALUlEQVRYR+3QQREAAAABQfqXFsNnFTizzXk99+MAAQIECBAgQIAAAQIECBAgMBo/ACHo7lH9AAAAAElFTkSuQmCC")},
+{"name":"Chest","solid":false,"img":newImg("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABzUlEQVRYR+1Wr0vFUBTekjzMr4hFBP8EkwomWRBUMIgWg00WNBlMBpOGYTNYFIOggmGYBDX5JwhiEcvL8jA9+a6cy9nZubvbc/BEt7Kx7X7nu993ftwwGPAVDjh+0BBoFGgU+L0KxHHcox6RJEnfRH04Fvj5bsMGROCjq1awudi1d7ybmD0uJCIxXDgcywDSwpfHa9sY086KfQYReREZLagLJ2qfG5jxqQULF2rB8ZUI0CJOgAPwYK62DiwXjiGggXAFtMVlZ4hvI4UEENjFvgoBFw6U9Crwk91zK/EssbwEihRoTV9kROg+LKuiFFlpCZwcprnFH2NL9t3w62Xm+9z2qRrs9mBNxcF64Emc9a3o2wKXn+gFdPFSfA9XnSkw0jvLfHNh0E+5HIAsVBWUgDIRpfw8omaF7CmEr1oAWWDJzOSnqQBNvioWgBy3E0qS5dYC3gfAihOg3ckMLpuEshJAIKdAPwTK9gEiQBVVmUBdzYgn8/9UAErePw0FSLxKCvwZC2RDgwrqLKBZj1JE/dalAOGgr5ANzmFEvaBoHlQpQ4njJRDtdsxRzXegLEsCODjY0j3da5v545yG+zdv9vBJJOo8Ge/MjxoCUOIL6QCz8RBgZg8AAAAASUVORK5CYII=")},
+{"name":"8","solid":true,"img":newImg("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABxUlEQVRYR8WXPXaDMAzH7b1ncB5rLgETuVOukpswmUOUlWfWrt3dJ6fmGWN9uNCEEWTp578ky2jvvVfIsywL9qn43hgjto++NQXAeRvHUTVNo2oC5z61tRZVgAOA7wAwz7PEtGjzfgCv1EaBqWIvX9YGBb4vl4pVW1P9mQHUeMoBrn1PLp+GYff9MEDbtmrSOjh+GUAMNN7vKgWoUS/aat/3aw2UJKJ2djoABMMgInEq8/J4PM+A241dh6mj8y5IDbmO+HBuBZDAl9Rci/BKJBAD4QC4ooSQ4i4oOeNSQAHEVK9FWJP7KBYHIOmKTRdIFqQ2KUDt2rUN4zCCfsYeGJ2lgUMNIsofxIFJGmoAAMCYmv35uKVsqckIwPnzBOi68B6r9poOoWzz4Itzvwp0HRr8r7lFT9BkIP07QIAgdvB2gNFapZ1z3iAXCu4olqSHUoAGEF4uago0B4YLzU6BuGvuHOdOTok6K8CRO50kEGbzMoA0TWldoQCc/HFHeRrYdcOwOW8CQHoSBsdM8aVyng5wRttRNQGpSGPAhUY0C44UWrqWBdjIWxlVOoR2CoST0JgwjvOxG2d2ziK5O+Sjt/QHDf5/ABSCJm4Oh5kOAAAAAElFTkSuQmCC")},
+{"name":"Mushroom","solid":false,"img":newImg("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABTklEQVRYR2NkGGDAOMD2M4w6YDQERkNgNAQGbwjcf6L4n5qlpKLMfayexRCktsXInsDmCBQHIFu+SToTrtfv6XScgfH7tgtYjlV1D1EBhu4IrA5AthxmKjZHwCwnxQEgtciOgDsAl+/RvQVzCLLlMAdgczhIDpvjYY5AcQAuA5Ad4XngNtag3u6gijcKcDmCJAfgshxk85BwACja7h7ZAA6pQ6fYGdo3P2HEmgZgYYkeJeSGALI+kANgloPsgTtge7MouODRSORBiUtiHIGeBdETKMhAdJ/DLIE7oNJX5r+d2U+CeRnmQHz5/8b8L1jNQfY5hgNAAiBHEHJB2nRWQkoYZmX+xqoGFOfoEiRXRsQU1bjKfWyuIssBhIpfmjrg1v5UlGjCVgfQ1QGgAgi9lKObA2Cl34A7AL3CoWkIgHIBLBEil//IoTDqAFJCAAAwYcAhCw2V5gAAAABJRU5ErkJggg==")}];
+images = []
+
+function newImg(src) {
+    var img = document.createElement("img");
+    img.src = src;
+    return img;
+  }
+
+function init() {
+  if (levels[currentLevel].data.length < ch)
+    can.height = ch = levels[currentLevel].data.length*32;
+  fixObjImgs();
+  animate();
+}
+
+function fixObjImgs() {
+  for (var i=0, len=objects.length; i<len; i++) {
+    for (var j=0, jlen=objects[i].sequences.length; j<jlen; j++) {
+      var seq = objects[i].sequences[j];
+      for (var k=0, klen=seq.frames.length; k<klen; k++) {
+        seq.frames[k] = document.createElement("img");
+        seq.frames[k].src = seq.src[k];
+      }
+    }
+  }
+}
+
+function animate() {
+  var key, obj;
+  window.requestAnimationFrame(animate);
+  for (var i=0, len=objects.length; i<len; i++) {
+    obj = objects[i];
+    if (keys.length > 0 && counter == 0)
+      obj.cFrame = (obj.cFrame +1)%obj.sequences[obj.cSeq].frames.length;
+    for (var j=0, jlen=obj.keys.length; j<jlen; j++) {
+      key = obj.keys[j];
+      if (keys.indexOf(key.code) > -1) {
+        if (key.field === "vx") {
+          if (key.op === "+") flip = false;
+          else flip = true;
+        }
+      }
+      if (keys.indexOf(key.code) > -1) {
+        if (key.amount == "jump") {
+          if (repeat == key.code) continue;
+          repeat = key.code;
+          if ((solid(obj, 0, 1, 1, 20)) || (solid(obj, 1, 1, -1, 20)))
+            obj.jumpPower = obj.jump*2;
+          else continue;
+        } 
+        switch (key.op) {
+          case ("+"): obj[key.field] += obj[key.amount]; break;
+          case ("-"): obj[key.field] -= obj[key.amount]; break;
+        }
+      }
+      processMovement(obj,key);
+    }
+  }
+  draw();
+}
+
+function processMovement(obj,key) {
+  obj.x += obj.vx;
+  obj.y += obj.vy;
+  if (obj.jumpPower > 0) {
+    obj.vy -= obj.jumpPower;
+    obj.jumpPower -= 5;
+    console.log(obj.jumpPower);
+  }
+  if (levels[currentLevel].gravity) obj.vy += obj.gravity
+  obj.vx *= obj.friction;
+  if (Math.abs(obj.vx) > obj.speed) obj.vx = Math.abs(obj.vx)/obj.vx*obj.speed;
+  if (Math.abs(obj.vy) > obj.speed) obj.vy = Math.abs(obj.vy)/obj.vy*obj.speed;
+  try {
+    if (obj.vy > 0 && (solid(obj, 0, 1, 4, 0) || solid(obj, 1, 1, -4, 0))) {
+      obj.y -= obj.vy;
+      obj.vy = 0;
+    }
+    if (obj.vy < 0 && (solid(obj, 0, 0, 4, 0) || solid(obj, 1, 0, -4, 0))) {
+      obj.y -= obj.vy;
+      obj.vy = 0;
+    }
+    if (obj.vx < 0 && (solid(obj, 0, 0, 0, 4) || solid(obj, 0, 1, 0, -4)) || obj.x < 2) {
+      obj.x -= obj.vx;
+      obj.vx = 0;
+    }
+    if (obj.vx > 0 && (solid(obj, 1, 0, 0, 4) || solid(obj, 1, 1, 0, -4) || 
+                      obj.x > levels[currentLevel].data[0].length*32 -32)) {
+      obj.x -= obj.vx;
+      obj.vx = 0;
+    }
+  } catch(err) {}
+  var lvl = levels[currentLevel];
+  var xpos = obj.x - lvl.xScroll;
+  if (xpos > cw*3/4 && lvl.xScroll < (lvl.data[0].length*32 - cw)) lvl.xScroll += xpos - cw*3/4;
+  else if (xpos < cw/4 && lvl.xScroll > 0) lvl.xScroll -= cw/4 - xpos;
+}
+
+function solid(obj,x,y,mx,my) {
+  try {
+  var g = {"x":Math.floor((obj.x+mx)/32),"y":Math.floor((obj.y+my)/32)};
+  var brushIndex = levels[currentLevel].data[g.y+y][g.x+x]-1;
+  if (brushIndex < 0) return false;
+  if (brushes[brushIndex].solid) return true;
+  return false;
+  } catch(e) {}
+}
+
+function draw() {
+  var lvl = levels[currentLevel];
+  var gridHeight = lvl.data.length;
+  var gridWidth = lvl.data[0].length;
+  var heightDiff = ch-gridHeight*32;
+  var grd = ctx.createLinearGradient(0,heightDiff,0,ch);
+  grd.addColorStop(0,lvl.bgColor1);
+  grd.addColorStop(1,lvl.bgColor2);
+  ctx.fillStyle = grd;
+  ctx.fillRect(0,0,cw,ch);
+  for (var i=0; i<gridHeight; i++) {
+    for (var j=0; j<gridWidth; j++) {
+      brushIndex = lvl.data[i][j];
+      if (brushIndex > 0)
+      ctx.drawImage(brushes[brushIndex-1].img,j*32-lvl.xScroll,i*32+heightDiff);
+    }
+  }
+  var o;
+  for (var i=0, len=objects.length; i<len; i++) {
+    o = objects[i];
+    drawImage(o.sequences[o.cSeq].frames[o.cFrame],o.x-lvl.xScroll,o.y+heightDiff,32,32,0,flip);
+  }
+}
+
+function drawImage(img, x, y, width, height, deg, flip, flop, center) {
+  ctx.save();
+
+  if(typeof width === "undefined") width = img.width;
+  if(typeof height === "undefined") height = img.height;
+  if(typeof center === "undefined") center = false;
+
+  // Set rotation point to center of image, instead of top/left
+  if(center) {
+    x -= width/2;
+    y -= height/2;
+  }
+
+  // Set the origin to the center of the image
+  ctx.translate(x + width/2, y + height/2);
+
+  // Rotate the canvas around the origin
+  var rad = 2 * Math.PI - deg * Math.PI / 180;   
+  ctx.rotate(rad);
+
+  // Flip/flop the canvas
+  if(flip) flipScale = -1; else flipScale = 1;
+  if(flop) flopScale = -1; else flopScale = 1;
+  ctx.scale(flipScale, flopScale);
+
+  // Draw the image    
+  ctx.drawImage(img, -width/2, -height/2, width, height);
+  ctx.restore();
+}
+
+init();
+
+window.addEventListener( "keydown", function(e){
+  if (keys.indexOf(e.keyCode) == -1) keys.push(e.keyCode);
+  }, false );
+
+window.addEventListener( "keyup", function(e){
+  if (repeat == e.keyCode) repeat = 0;
+  keys.splice(keys.indexOf(e.keyCode),1);
+  }, false );
+
+</script>
+</body>
+</html>

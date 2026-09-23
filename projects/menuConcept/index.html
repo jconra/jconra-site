@@ -1,0 +1,279 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>
+Just beyond my reasoning
+</title>
+<style>
+body {
+margin: 0px;
+padding: 0px; }
+canvas { display: block; }
+</style>
+</head>
+<body bgcolor="black">
+<canvas id="myCanvas" width="600" height="600"></canvas>
+
+<script>
+var canvas = document.getElementById('myCanvas');
+var ctx = canvas.getContext('2d');
+
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+var reset = false;
+var noeffects = false;
+var radius = 100;
+var movement = 0;
+var superactive = 0;
+var mosx = null;
+var mosy = null;
+var x = canvas.width/2;
+var y = canvas.height/2;
+
+var orbs = new Array();
+orbs[0] = new orb("Home",[1,2,3,4],0);
+orbs[1] = new orb("Pics",[5,6,7],0);
+orbs[2] = new orb("News",[8,9,10],0);
+orbs[3] = new orb("Jake",[11,12,13],0);
+orbs[4] = new orb("Games",[14,15,16,17],0);
+orbs[5] = new orb("Slidshows",[18,19,20],1);
+orbs[6] = new orb("Search",[21,22,23],1);
+orbs[7] = new orb("Manual",[],1);
+orbs[8] = new orb("Recent",[],2);
+orbs[9] = new orb("Archives",[],2);
+orbs[10] = new orb("Stuff",[],2);
+orbs[11] = new orb("Notes",[],3);
+orbs[12] = new orb("Lists",[],3);
+orbs[13] = new orb("Projects",[],3);
+orbs[14] = new orb("Space",[],4);
+orbs[15] = new orb("Farm",[],4);
+orbs[16] = new orb("Experimental",[],4);
+orbs[17] = new orb("Cards",[],4);
+orbs[18] = new orb("Cortez",[],5);
+orbs[19] = new orb("Teresa's Wedding",[],5);
+orbs[20] = new orb("Columbia",[],5);
+orbs[21] = new orb("Date Search",[],6);
+orbs[22] = new orb("People Search",[],6);
+orbs[23] = new orb("Keywords",[],6);
+orbs[24] = new orb("Stuff I want",[],12);
+orbs[25] = new orb("To Do",[],12);
+orbs[26] = new orb("Movies",[],12);
+
+
+
+function rn(min,max){return Math.floor( Math.random()*(max-min)+min);}
+
+function orb(title,kids,parent){
+	this.title = title;
+	this.active = false;
+	this.parent = parent;
+	this.kids = kids;
+	this.froozen = 0;
+	this.arc1 = rn(10,50);
+	this.arc2 = rn(10,50);
+	this.arc3 = rn(10,50);
+	this.arc4 = rn(10,50);
+}
+
+
+function ring(cx,cy,n){
+	if (noeffects) 	scircle(cx,cy,radius);
+	else{
+		circle(cx,cy,radius+100,-200,-10,'#333355');
+		circle(cx,cy,radius,-20,0,'white');
+		arc(cx,cy,n,1);
+		arc(cx,cy,n,2);
+		arc(cx,cy,n,3);
+		arc(cx,cy,n,4);
+	}
+}
+
+
+function circle(cx,cy,r,inner,outer,clr){
+	ctx.beginPath();
+	ctx.arc(cx,cy,r,0,Math.PI*2);
+	var grd = ctx.createRadialGradient(cx,cy,r+inner,cx,cy,r+outer);
+	grd.addColorStop(0,'transparent');
+	grd.addColorStop(.5,clr);
+	grd.addColorStop(1,'transparent');
+	ctx.fillStyle=grd;
+	ctx.fill();
+}
+
+
+function scircle(cx,cy,r){
+	ctx.beginPath();
+	ctx.lineWidth = 3;
+	ctx.arc(cx,cy,r,0,Math.PI*2);
+	ctx.strokeStyle='white';
+	ctx.stroke();
+}
+
+
+function arc(cx,cy,n,round){
+	switch(round){
+        	case 1:var r=0;var s=orbs[n].arc1;var d=1;break;
+                case 2:var r=5;var s=orbs[n].arc2;var d=-1;break;
+                case 3:var r=10;var s=orbs[n].arc3;var d=-2;break;
+                default:var r=15;var s=orbs[n].arc4;var d=2;break;
+        }
+	var a=s/50;
+	m=(movement%360)/180*Math.PI*d;
+	ctx.beginPath();
+	ctx.arc(cx,cy,radius+r,s+m,s+Math.PI*a+m);
+	ctx.strokeStyle='white';
+	ctx.lineWidth = 3;
+	ctx.stroke();
+}
+
+
+function line(x1,y1,x2,y2){
+	ctx.beginPath();
+	ctx.lineWidth = 20;
+	var dx = x1-x2;
+	var dy = y1-y2;
+	var dist = Math.sqrt(dx*dx + dy*dy);
+	dx /= dist;
+	dy /= dist;
+	var x3 = x1 + 10 * dy;
+	var y3 = y1 - 10 * dx;
+	var x4 = x1 - 10 * dy;
+	var y4 = y1 + 10 * dx;
+	var grd = ctx.createLinearGradient(x3,y3,x4,y4);
+	grd.addColorStop(0,"transparent");
+	grd.addColorStop(.5,"white");
+	grd.addColorStop(1,"transparent");
+	ctx.strokeStyle = grd;
+	ctx.moveTo(x1,y1);
+	ctx.lineTo(x2,y2);
+	ctx.stroke();
+}
+
+
+function sline(x1,y1,x2,y2){
+	ctx.beginPath();
+	ctx.lineWidth = 3;
+	ctx.strokeStyle = 'white';
+	ctx.moveTo(x1,y1);
+	ctx.lineTo(x2,y2);
+	ctx.stroke();
+}
+
+
+function write(cx,cy,message){
+	ctx.beginPath();
+	ctx.font='20px Arial';
+	ctx.fillStyle = 'white';
+	ctx.fillText(message,cx,cy);
+	ctx.fill();
+}
+
+
+function effects(){
+	if (noeffects) write(10,30,"Enable Effects");
+	else           write(10,30,"Disable Effects");
+	if (((mosx>10)&&(mosx<150))&&((mosy>10)&&(mosy<40))&&(reset)) {
+		if (noeffects) noeffects=false;
+		else           noeffects=true;
+		reset=false;
+	}
+}
+
+
+function draw(){
+	ctx.beginPath();
+	ctx.fillStyle='black';
+	ctx.rect(0,0,canvas.width,canvas.height);
+	ctx.fill();
+	write(x-25,y,orbs[0].title);
+	ring(x,y,0);
+	recursive(x,y,0);
+}
+
+
+function recursive(cx,cy,n){
+	effects();
+	if (n==superactive) move(cx,cy);
+	if (reset) check(cx,cy,n);
+	if (!orbs[n].active) return false;
+	var kids = orbs[n].kids.length;
+	var s=1, e=kids;
+	for(var i=s;i<=kids;i++) if (orbs[orbs[n].kids[i-1]].active) {s=i;e=i;darken()}
+	for(var i=s;i<=e;i++){
+		var m = ( n==superactive ? movement : orbs[n].froozen);
+		var angle = (((360/kids)*i)+m/3)/180*Math.PI;
+
+		var xray = Math.cos(angle)*radius;
+		var yray = Math.sin(angle)*radius;
+		xray2 = cx + xray * 3;
+		yray2 = cy + yray * 3;
+		write(xray2-25,yray2,orbs[orbs[n].kids[i-1]].title);
+		ring(xray2,yray2,orbs[n].kids[i-1]);
+		if (noeffects) sline(cx+xray,cy+yray,cx+xray*2,cy+yray*2);
+		else line(cx+xray/1.1,cy+yray/1.1,cx+xray*2.1,cy+yray*2.1);
+		recursive(xray2, yray2,orbs[n].kids[i-1]);
+	}
+}
+
+
+function move(cx,cy){
+	if (cx<canvas.width/2+10)x+=5;
+	if (cx>canvas.width/2-10)x-=5;
+	if (cy<canvas.height/2+10)y+=5;
+	if (cy>canvas.height/2-10)y-=5;
+}
+
+
+function check(cx,cy,n){
+	var kids = orbs[n].kids.length;
+	for(var i=0;i<kids;i++) if (orbs[orbs[n].kids[i]].active) return;
+	var xd = cx-mosx;
+	var yd = cy-mosy;
+	if (Math.sqrt(xd*xd + yd*yd) < 150){
+		if (orbs[n].active){
+                        orbs[n].active = false;
+			superactive = orbs[n].parent;
+			movement=orbs[superactive].froozen;
+			reset=false;
+		}
+		else if (orbs[n].parent == superactive) {
+                        orbs[n].active = true;
+			orbs[orbs[n].parent].froozen = movement;
+			superactive = n;
+			reset=false;
+			
+		}
+	}
+}
+
+
+function darken(){
+	ctx.beginPath();
+	ctx.globalAlpha=0.5;
+	ctx.fillStyle='black';
+	ctx.rect(0,0,canvas.width,canvas.height);
+	ctx.fill();
+	ctx.globalAlpha=1;
+}
+
+
+
+
+var myVar=setInterval(function(){movement+=.3;draw();},10);
+
+
+function getMousePos(canvas, evt) {
+var rect = canvas.getBoundingClientRect();
+return {x: evt.clientX - rect.left, y: evt.clientY - rect.top};}
+	
+	
+canvas.addEventListener('click', function(evt) {
+var mousePos = getMousePos(canvas, evt);
+mosx=mousePos.x;mosy=mousePos.y;reset=true;}, false);
+	
+</script>
+</canvas>
+</body>
+</html>

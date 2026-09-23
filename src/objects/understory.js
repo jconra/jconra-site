@@ -25,7 +25,7 @@ function drawPlant(kind) {
 }
 
 export class Understory {
-  constructor(scene, { base = '../../textures/ground/', tile = 420, tiles = 5, perTile = 260, reach = 220, clear = null, kinds = null } = {}) {
+  constructor(scene, { base = '/textures/ground/', tile = 420, tiles = 5, perTile = 260, reach = 220, clear = null, kinds = null } = {}) {
     Object.assign(this, { scene, base, tile, tiles, perTile, reach, clear });
     this.group = new THREE.Group(); scene.add(this.group);
     this.kinds = kinds || [{ name: 'fern', file: 'fern', height: 1.1, weight: 1.4 }, { name: 'salal', file: 'salal', height: 1.4, weight: 1 }];

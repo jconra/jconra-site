@@ -1,0 +1,138 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body {margin:0px; padding:0px; overflow:hidden;}
+</style>
+</head>
+<body>
+<canvas id="myCanvas"></canvas>
+
+<script>
+var can, ctx, canX = 0, canY = 0, mouseIsDown = false, xDown = 0, yDown = 0, timer = 0, white = 0;
+var mc = [-1,-1,-1], mt = [1,1,1];
+
+can = document.getElementById("myCanvas");
+ctx = can.getContext("2d");
+var cw = can.width = window.innerWidth;
+var ch = can.height = window.innerHeight;
+var sm = (cw < ch)? cw:ch;
+
+can.addEventListener("mousedown", function(e){mouseXY(e);down()}, false);
+can.addEventListener("mousemove", function(e){mouseXY(e); if (mouseIsDown) moving();}, true);
+can.addEventListener("mouseup", function(e){mouseXY(e);up()}, false);
+
+can.addEventListener("touchstart", function(e){touchXY(e);down();}, false);
+can.addEventListener("touchmove", function(e){touchXY(e);moving()}, true);
+can.addEventListener("touchend", up, false);
+document.body.addEventListener("touchcancel", up, false);
+
+function down(){
+  xDown=canX, yDown=canY;
+  timer = 10;
+  mouseIsDown = true;
+}
+
+function moving(){
+  var color = colorXY(xDown,yDown);
+  if (color.length < 3) return false;
+  if (timer < sm/4) timer+=.2;
+  draw();
+  var t = Math.floor(timer/10)*10;
+circle(canX,canY,t,"rgb("+color[0]+","+color[1]+","+color[2]+")",true,true);
+}
+
+function up(){
+  var t = Math.floor(timer/10)*10;
+  mouseIsDown = false;
+  if (dist(canX,canY,cw/2,ch/2-30)  < cw/4){
+  var c = colorXY(xDown,yDown);
+  if (c.length < 3) return false;
+  if (c[0]==255 && c[1]==255 && c[2]==255) {white += 255*t;}
+  mt[0]+= (255-c[0])*t;
+  mt[1]+= (255-c[1])*t;
+  mt[2]+= (255-c[2])*t;
+  var max = (mt[0] > mt[1])? mt[0]:mt[1];
+  if (mt[2] > max) max = mt[2];
+  max += white;
+  mc[0] = 255-Math.floor(mt[0]/max*255);
+  mc[1] = 255-Math.floor(mt[1]/max*255);
+  mc[2] = 255-Math.floor(mt[2]/max*255);
+  }
+  else console.log("didn't drag to middle");
+  console.log("mc: "+mc);
+  draw();
+}
+
+function touchXY(e) {
+  e.preventDefault();
+  canX = e.targetTouches[0].pageX - can.offsetLeft;
+  canY = e.targetTouches[0].pageY - can.offsetTop
+}
+
+function mouseXY(e) {
+  canX = e.clientX;
+  canY = e.clientY;
+}
+
+function draw(){
+  ctx.fillStyle = "white"
+  ctx.fillRect(0,ch/2,cw,ch/2);
+  ctx.fillStyle = "black"
+  ctx.fillRect(0,0,cw,ch/2);
+
+  circle(cw/2,ch/2,sm/2,"#ffdd99",true,true)
+  if (mc[0] != -1) {
+  circle(cw/2,ch/2,sm/5,"rgb("+mc[0]+","+mc[1]+","+mc[2]+")",true,true);}
+  else
+  circle(cw/2,ch/2,sm/5,"red",false,true);
+
+  circle(cw/2-sm/3.3,ch/2-sm/5.7,sm/8,"rgb(255,0,255)",true,true);
+  circle(cw/2+sm/3.3,ch/2-sm/5.7,sm/8,"rgb(255,255,0)",true,true);
+  circle(cw/2,ch/2+sm/2.9,sm/8,"rgb(0,255,255)",true,true)
+  circle(cw/2,ch/2-sm/2.9,sm/10,"rgb(255,0,0)",true,true);
+  circle(cw/2+sm/3.3,ch/2+sm/5.7,sm/10,"rgb(0,255,0)",true,true);
+  circle(cw/2-sm/3.3,ch/2+sm/5.7,sm/10,"rgb(0,0,255)",true,true);
+  }
+
+function circle(x,y,r,c,f,s){
+  ctx.beginPath();
+  if (c == "rgb(0,0,0)") ctx.strokeStyle = "white";
+  else ctx.strokeStyle = "black";
+  ctx.fillStyle = c;
+  ctx.arc(x,y,r,0,Math.PI*2);
+  ctx.lineWidth = 2;
+  if (s) ctx.stroke();
+  if (f) ctx.fill();
+}
+
+function colorXY(x,y){
+
+  if (dist(x,y,cw/2,ch/2) > sm*3/5){
+    if (y<ch/2)
+    return [0,0,0];
+    return [255,255,255];
+  }
+  //if (dist(x,y,cw/2,ch/2-30)  < cw/4) return {x:cw/2,y:ch/2-30,r:cw/4,c:[255,0,0]};
+  if (dist(x,y,cw/2-sm/3.3,ch/2-sm/5.7) < sm/8)  return [255,0,255];
+  if (dist(x,y,cw/2+sm/3.3,ch/2-sm/5.7) < sm/8)  return [255,255,0];
+  if (dist(x,y,cw/2,ch/2+sm/2.9) < sm/8)  return [0,255,255];
+  if (dist(x,y,cw/2,ch/2-sm/2.9) < sm/10) return [255,0,0];
+  if (dist(x,y,cw/2+sm/3.3,ch/2+sm/5.7) < sm/10) return [0,255,0];
+  if (dist(x,y,cw/2-sm/3.3,ch/2+sm/5.7) < sm/10) return [0,0,255];
+
+  return [];
+}
+
+function dist(x1,y1,x2,y2){
+  return Math.sqrt(Math.pow(x1-x2,2)+Math.pow(y1-y2,2));
+}
+
+draw();
+
+function rn(min,max){return Math.floor( Math.random()*(max-min)+min);}
+
+</script>
+</body>
+</html>

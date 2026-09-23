@@ -1,0 +1,27 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" type="text/css" href="css/style.css">
+<title>Game Designer</title>
+</head>
+<body>
+<div id="mainDiv" class="fatborders">
+  <canvas  id="myCanvas"></canvas>
+  <div id="HScroll" class="fatborders" onmousedown="return false">
+    <div class="slider" style="top:-10px; left:0px;"></div>
+  </div>
+  <div id="VScroll" class="fatborders" onmousedown="return false">
+    <div class="slider" style="left:-10px; bottom:0px;"></div>
+  </div>
+</div>
+<div id="options">
+  <input type="button" value="Block Editor" onclick="blockEditor()" id="playerData"></input>
+  <canvas id="sqpicker"></canvas>
+</div>
+<input type="button" value="Play" onclick="toggleEdit()" id="edit"></input>
+<div id="debug">Debug info</div>
+<script src="js/game.js"></script>
+<img id="textures" src="textures.png" style="display:none;" onload="sqpick({clientX:0,clientY:0})">
+</body>
+</html>

@@ -1,0 +1,287 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body {
+margin: 0px;
+padding: 0px; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="myCanvas" width="800" height="800"></canvas>
+
+<script>
+
+var canvas = document.getElementById('myCanvas');
+var ctx = canvas.getContext('2d');
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+var depth = 1000;
+var camera = {x:0, y:0, z:0};
+var maze = new Array();
+var fix = new Array();
+const offset = 100;
+const squares = 30;
+const slen = 400/squares;
+const offmore = offset + slen;
+var track = 0;
+var points = new Array();
+
+function rn(min,max){return Math.floor( Math.random()*((max+1)-min)+min);}
+
+function write(cx,cy,message){
+	ctx.beginPath();
+	ctx.font='30px Arial';
+	ctx.fillStyle = 'black';
+	ctx.fillText(message,cx,cy);
+	ctx.fill();
+	}
+	
+function point(x,y,z){
+	this.x=x;
+	this.y=y;
+	this.z=z;
+	}
+	
+function line(x1,y1,x2,y2){
+	ctx.beginPath();
+	ctx.lineWidth = 3;
+	ctx.strokeStyle = 'black';
+	ctx.moveTo(x1,y1);
+	ctx.lineTo(x2,y2);
+	ctx.stroke();
+}
+	
+function square(up,down,left,right){
+	this.up=up;
+	this.down=down;
+	this.left=left;
+	this.right=right;
+	}
+
+//function up(x,y)   {line(x*slen+offset,y*slen+offset,x*slen+offmore,y*slen+offset);}
+
+function up(x,y){
+		points[track++] = new point(x*slen+offset-300,-15,y*slen+offset-300);
+		points[track++] = new point(x*slen+offmore-300,-15,y*slen+offset-300);
+		points[track++] = new point(x*slen+offmore-300,15,y*slen+offset-300);
+		points[track++] = new point(x*slen+offset-300,15,y*slen+offset-300);
+	}
+function right(x,y){//line(x*slen+offmore,y*slen+offset,x*slen+offmore,y*slen+offmore);}
+		points[track++] = new point(x*slen+offmore-300,-15,y*slen+offset-300);
+		points[track++] = new point(x*slen+offmore-300,-15,y*slen+offmore-300);
+		points[track++] = new point(x*slen+offmore-300,15,y*slen+offmore-300);
+		points[track++] = new point(x*slen+offmore-300,15,y*slen+offset-300);
+	}
+function left(x,y) {//line(x*slen+offset,y*slen+offset,x*slen+offset,y*slen+offmore);}
+		points[track++] = new point(x*slen+offset-300,-15,y*slen+offset-300);
+		points[track++] = new point(x*slen+offset-300,-15,y*slen+offmore-300);
+		points[track++] = new point(x*slen+offset-300,15,y*slen+offmore-300);
+		points[track++] = new point(x*slen+offset-300,15,y*slen+offset-300);
+	}
+function down(x,y) {//line(x*slen+offset,y*slen+offmore,x*slen+offmore,y*slen+offmore
+		points[track++] = new point(x*slen+offset-300,-15,y*slen+offmore-300);
+		points[track++] = new point(x*slen+offmore-300,-15,y*slen+offmore-300);
+		points[track++] = new point(x*slen+offmore-300,15,y*slen+offmore-300);
+		points[track++] = new point(x*slen+offset-300,15,y*slen+offmore-300);
+	}
+
+function createmaze(){
+	for(var i=0;i<squares;i++){
+		maze[i] = new Array();
+		for(var j=0;j<squares;j++){
+
+			maze[i][j]=new square(false,false,false,false);
+
+			if (i==0) maze[i][j].left=true;
+			if (j==0) maze[i][j].up=true;
+			if (i==(squares-1)) maze[i][j].right=true;
+			if (j==(squares-1)) maze[i][j].down=true;
+			if (rn(1,10)>5) maze[i][j].right=true;
+			if (rn(1,10)>5) maze[i][j].down=true;
+			}
+		}
+	}
+
+function breakout(x,y){
+	var highnum=0;
+	var lowx=0;
+	var lowy=0;
+	var lowd=0;
+	while (fix[x][y]<5){
+		fix[x][y]++;
+		var a = fix[x][y];
+		var xm=0, ym=0;
+		if (!maze[x][y].right && fix[x+1][y]<a){a=fix[x+1][y];xm= 1;ym=0;}   //Go Right
+		if (!maze[x][y].down && fix[x][y+1]<a) {a=fix[x][y+1];xm=0;ym= 1;}   //Go Down
+		if (x!=0){if (!maze[x-1][y].right && fix[x-1][y]<a) {a=fix[x-1][y];xm=-1;ym=0;}}   //Go Left
+		if (y!=0){if (!maze[x][y-1].down && fix[x][y-1]<a)   {a=fix[x][y-1];xm=0;ym=-1;}}   //Go Up
+		x+=xm;
+		y+=ym;
+		if (x==(squares-1) && y==(squares-1)) break;
+		if ((x+y)>lowd){lowd=(x+y);lowx=x;lowy=y;}
+		}
+		
+	if (lowx!=(squares-1)){
+		maze[lowx][lowy].right=false;
+		maze[lowx+1][lowy].left=false;
+		}
+	else if (lowy!=(squares-1)){
+		maze[lowx][lowy].down=false;
+		maze[lowx][lowy+1].up=false;
+		}
+	}
+
+function fixmaze(){
+	for(var i=0;i<squares;i++){
+		fix[i] = new Array();
+		for(var j=0;j<squares;j++){
+			fix[i][j]=0;	
+			}
+		}
+	for(var i=0;i<squares;i++){
+		for(var j=0;j<squares;j++){
+			if (fix[i][j]==0) breakout(i,j);
+			//write(i*slen+offset+40,j*slen+offset+50,fix[i][j]);
+			}
+		}
+	}
+
+function drawmaze(){
+	for(var i=0;i<squares;i++){
+		for(var j=0;j<squares;j++){
+			if (maze[i][j].down) down(i,j);
+			if (maze[i][j].right)right(i,j);
+			if (maze[i][j].up)   up(i,j);
+			if (maze[i][j].left) left(i,j);
+			}
+		}
+	}
+	
+function rotatezx(r){
+	for(var i=0;i<track;i++){
+		var thez = points[i].z;
+		var thex = points[i].x;
+		var d=Math.sqrt(thez*thez + thex*thex);
+		var c=Math.atan2(thex,thez);
+		c+=r/180*Math.PI;
+		points[i].z=Math.cos(c)*d;
+		points[i].x=Math.sin(c)*d;
+		}
+	}
+	
+function rotatezy(r){
+	for(var i=0;i<track;i++){
+		var thez = points[i].z;
+		var they = points[i].y;
+		var d=Math.sqrt(thez*thez + they*they);
+		var c=Math.atan2(they,thez);
+		c+=r/180*Math.PI;
+		points[i].z=Math.cos(c)*d;
+		points[i].y=Math.sin(c)*d;
+		}
+	}
+	
+function mousemovement(){
+	var cx=canvas.width;
+	var cy=canvas.height;
+	ctx.beginPath();
+	ctx.rect(cx/3-100,0,200,100);
+	ctx.rect(cx/5-100,cy-100,200,200);
+	ctx.rect(0,cy/3-100,100,200);
+	ctx.rect(cx-100,cy/3-100,100,200);
+	ctx.rect(2*cx/3-100,0,200,100);
+	ctx.rect(2*cx/5-100,cy-100,200,200);
+	ctx.rect(0,2*cy/3-100,100,200);
+	ctx.rect(cx-100,2*cy/3-100,100,200);
+	ctx.rect(3*cx/5-100,cy-100,200,200);
+	ctx.rect(4*cx/5-100,cy-100,200,200);
+	ctx.fill();
+	write(10,cy/3,"Spin+");
+	write(10,cy*2/3,"Spin-");
+	write(cx/3-40,60,"Left");
+	write(cx*2/3-40,60,"Right");
+	write(cx/5-70,cy-50,"Clockwise");
+	write(cx*2/5-95,cy-50,"Counter-Clock");
+	write(cx*3/5-50,cy-50,"Away");
+	write(cx*4/5-55,cy-50,"Closer");
+	write(cx-70,cy/3,"Up");
+	write(cx-90,cy*2/3,"Down");
+	ctx.fill();
+	if (mosy<100){
+		if (mosx>cx/3-100 && mosx<cx/3+100) camera.x-=5;
+		if (mosx>(cx*2/3-100) && mosx<(cx*2/3+100)) camera.x+=5}
+		
+	if (mosy>(cy/3-100) && mosy<(cy/3+100)){
+		if (mosx<100) rotatezy(3);
+		if (mosx>(cx-100)) camera.y-=5;
+		}
+	if (mosy>(cy-100)){
+		if (mosx>cx/5-100 && mosx<cx/5+100) rotatezx(-3);
+		if (mosx>(cx*2/5-100) && mosx<(cx*2/5+100)) rotatezx(3);
+		if (mosx>(cx*3/5-100) && mosx<(cx*3/5+100)) camera.z+=5;
+		if (mosx>(cx*4/5-100) && mosx<(cx*4/5+100)) camera.z-=5;
+		}
+		
+	if (mosy>(2*cy/3-100) && mosy<(2*cy/3+100)){
+		if (mosx<100) rotatezy(-3);
+		if (mosx>(cx-100)) camera.y+=5;
+		}
+	}
+	
+function draw(){
+	ctx.globalAlpha=1;
+	ctx.fillStyle="white";
+	ctx.rect(0,0,canvas.width,canvas.height);
+	ctx.fill();
+	ctx.globalAlpha=.5;
+	ctx.fillStyle="black";
+	
+	for(var i=0;i<track;i++){
+		if (points[i].z<-500) continue
+		if (i%4==0) ctx.beginPath();
+		if ((depth+(points[i].z+camera.z))!=0)
+			var scale = depth/(depth+(points[i].z+camera.z));
+		var x=(canvas.width/2)+(points[i].x+camera.x)*scale;
+		var y=(canvas.height/2)+(points[i].y+camera.y)*scale;
+		if(i%4==0) ctx.moveTo(x,y);
+		else       ctx.lineTo(x,y);
+		if(i%4==3) ctx.fill();
+		}
+	}
+	
+	
+createmaze();
+fixmaze();
+drawmaze();
+rotatezy(90);
+
+function writestuff(){
+	write(30,30,"Camera.x = " + camera.x);
+	write(30,60,"Camera.y = " + camera.y);
+	write(30,90,"Camera.z = " + camera.z);
+	write(30,120,"Points[0].x = " + points[0].x);
+	write(30,150,"Points[0].y = " + points[0].y);
+	write(30,180,"Points[0].z = " + points[0].z);
+	}
+
+
+var myVar=setInterval(function(){draw();mousemovement();},30);
+
+function getMousePos(canvas, evt) {
+var rect = canvas.getBoundingClientRect();
+return {x: evt.clientX - rect.left, y: evt.clientY - rect.top};}
+	
+	
+var mosx, mosy;   // undefined until the mouse first moves, so no zone matches before then
+canvas.addEventListener('mousemove', function(evt) {
+var mousePos = getMousePos(canvas, evt);
+mosx=mousePos.x;mosy=mousePos.y;}, false);
+
+</script>
+</body>
+</html>

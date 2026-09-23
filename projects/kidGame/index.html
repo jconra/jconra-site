@@ -1,0 +1,1034 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body {margin: 0px;padding: 0px; background-color:black; overflow: hidden;}
+table {margin:0 auto;}
+.brushes {margin:10px;}
+.fixed {position:fixed; overflow:auto;}
+#header {height:30px; width:100%; background:#333;}
+#controls {left:0px; width:200px; top:30px; bottom:0px; background:#222;}
+#levelCanvas {display: block; padding: 0; position: absolute; margin:auto; top:0; bottom:0; left:0; right:0;}
+.brushCanvas {position:absolute; top:30px; margin:auto; left:0; right:0; border: 2px solid black; z-index:2;}
+.transPImg {position:absolute; top:30px; margin:auto; left:0; right:0; border: 2px solid black; z-index:1;}
+#framesDiv {position:absolute; top:360px; margin:auto; left:0; right:0;}
+#framesDiv div {border: 1px solid black; height:38px; width:400px;}
+#levels { overflow:hidden;}
+.wideTable {width:100%; background-color:#DDD;}
+.borders {margin:2px; border: 1px solid black; cursor:pointer;}
+.topLeft {top:10px; left:10px;}
+.topRight {top:10px; right:10px; width:210px;}
+.bigDiv {padding:20px; margin:20px; width:800px; height:450px;}
+.main {right:0px; left:200px; top:30px; bottom:0px; background:#444}
+.controlDiv {margin:0 auto; margin-top: 20px; width:80%; text-align:center; background-color:#DDD;}
+.title {font-size:22px;}
+.short {width:60px;}
+.med {width:100px;}
+.tab {position:fixed; top:0px; width:200px; cursor:pointer;}
+.bd {position:absolute; background:#DDD; user-select:none;}
+.imgBox {border: 1px solid black; width:32px; height:32px; float:left; margin:2px; cursor:pointer;}
+</style>
+</head>
+<body onload="init()">
+
+<!--============================ HEADER =================================== -->
+
+<div id="header" class="fixed">
+  <img id="tab1" class="tab" style="left:200px" onclick='onlyShow("levelDesign")'>
+  <img id="tab2" class="tab" style="left:400px" onclick='onlyShow("brushDesign")'>
+  <img id="tab3" class="tab" style="left:600px" onclick='onlyShow("objectDesign")'>
+  <img id="tab4" class="tab" style="left:800px" onclick='exportGame()'>
+</div>
+
+<!--=========================== SIDE CONTROLS ============================= -->
+
+<div id="controls" class="fixed">
+  <div class="controlDiv" id="devSettings">
+    <label onclick='toggle("innerDevSettings")' class="title">Dev Settings</label>
+    <div id="innerDevSettings" style="display:none;">
+      <hr>
+      <table><tr>
+        <td>Show Grid</td>
+        <td><input type="checkbox" id="showGrid" checked onclick="drawLevel()"></input></td>
+      </tr></table>
+    </div>
+  </div>
+  <div class="controlDiv" id="levelSettings">
+    <label onclick='toggle("innerLevelSettings")' class="title">Level Settings</label>
+    <div id="innerLevelSettings" style="display:none;">
+      <hr>
+      <table><tr>
+        <td><label>Width</label></td>
+        <td><input type="text" id="gameWidth" class="short" value="30"></input></td>
+      </tr><tr>
+        <td><label>Height</label</td>
+        <td><input type="text" id="gameHeight" class="short" value="20"></input></td>
+      </tr></table>
+      <input type="button" value="Set Size" onclick="changeSize()"></input><br>
+      <hr>
+      <table><tr>
+        <td>Gravity On?</td>
+        <td><input type="checkbox" id="gravity" onclick="toggleGravity() checked"></input></td>  
+      </tr></table>
+      <hr>
+      <table><tr>
+        <td colspan=2>Background Colors</td>
+      </tr><tr>
+        <td><input type="color" id="bgColor1" value="#4444CC" onchange="drawLevel()"></input></td>
+        <td><input type="color" id="bgColor2" value="#8888FF" onchange="drawLevel()"></input></td> 
+      </tr></table>
+    </div>
+  </div>
+  <div class="controlDiv" id="levelsMenu">
+    <label onclick='toggle("innerLevelsMenu")' class="title">Levels</label>
+    <div id="innerLevelsMenu">
+      <hr>
+      <div id="levels"></div>
+    </div>
+  </div>
+  <div class="controlDiv" id="brushsMenu">
+    <label onclick='toggle("innerBrushesMenu")' class="title">Brushes</label>
+    <div id="innerBrushesMenu">
+      <hr>
+      <div id="brushes"></div>
+    </div>
+  </div>
+  <div class="controlDiv" id="objectsMenu">
+    <label onclick='toggle("innerObjectsMenu")' class="title">Objects</label>
+    <div id="innerObjectsMenu">
+      <hr>
+      <div id="objects"></div>
+    </div>
+  </div>
+</div>
+
+<!--=========================== LEVEL DESIGN ============================== -->
+
+<div id="levelDesign" class="fixed main">
+  <canvas id="levelCanvas"></canvas>
+</div>
+
+<!--=========================== BRUSH DESIGN ============================== -->
+
+<div id="brushDesign" class="fixed main">
+  <div id="brushTools" class="bd bigDiv">
+    <div id="brushSettings" class="bd topLeft">
+      <table><tr>
+        <td colspan=2><h1>Brush Settings</h1></td>
+      </tr><tr>
+        <td>Brush Name</td>
+        <td><input id="brushName" class="med"></input></td> 
+      </tr><tr>
+        <td>Is Solid?</td>
+        <td><input type="checkbox" id="isSolid"></input></td>
+      </tr><tr>
+        <td colspan=2><input type="button" value="Save Brush" onclick="saveBrush()">
+        </input></td>
+      </tr></table>
+    </div>
+      <canvas id="brushCanvas" class="brushCanvas"></canvas>
+      <img id="transP1" class="transPImg">
+    <div id="paintTools" class="bd topRight">
+      <table><tr>
+        <td colspan=2><h1>Paint Options</h1></td>
+      </tr><tr>
+        <td>Add a Color</td>
+        <td><input type="color" id="colorPick1" onchange="newColor(this)"></input></td>
+      </tr><tr>
+        <td colspan=2><div class="colorList"></div></td>
+      </tr><tr>
+        <td>Pick Brush Size</td>
+        <td><select id="brushSize1">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4" selected>4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+        </select></td>
+      </tr><tr>
+        <td>Eraser</td>
+        <td><input type="checkbox" id="eraser1"></input></td>
+      </tr></table>
+    </div>
+  </div>
+</div>
+
+<!--=========================== OBJECT DESIGN ============================= -->
+
+<div id="objectDesign" class="fixed main">
+  <div class="bd bigDiv">
+    <div class="bd topLeft">
+      <table><tr>
+        <td colspan=2><h1>Object Creator</h1></td>
+      </tr><tr>
+        <td>Name</td>
+        <td><input id="objectName" class="med"></input></td> 
+      </tr><tr>
+        <td>Health</td>
+        <td><input id="objectHealth" class="med"></input></td> 
+      </tr><tr>
+        <td>Keyboard?</td>
+        <td><input type="checkbox" id="keybaord" onchange="toggleKeyInput()" checked></input></td>
+      </tr><tr>
+        <td colspan=2><div class="hKey">
+          <table><tr>
+            <td><input type="button" value="Up"></td>
+            <td><input id="upKey" class="med" value="W"></input></td> 
+          </tr><tr>
+            <td><input type="button" value="Left"></td>
+            <td><input id="leftKey" class="med" value="A"></input></td> 
+          </tr><tr>
+            <td><input type="button" value="Down"></td>
+            <td><input id="downKey" class="med" value="S"></input></td> 
+          </tr><tr>
+            <td><input type="button" value="Right"></td>
+            <td><input id="rightKey" class="med" value="D"></input></td> 
+          </tr><tr>
+            <td><input type="button" value="Jump"></td>
+            <td><input id="upKey" class="med" value="W"></input></td> 
+          </tr></table>
+        </div></td>
+        </tr><tr>
+        <td colspan=2><input type="button" value="Save Object" onclick="saveObject()">
+        </input></td>
+      </tr></table>
+    </div>
+    <div id="seqCanvas">
+      <canvas id="sequenceCanvas" class="brushCanvas"></canvas>
+      <img id="transP2" class="transPImg">
+    </div>
+    <div id="framesDiv">
+      <table class="wideTable"><tr>
+        <td>Sequence Name</td>
+        <td><input type="text" class="med"></input></td>
+        <td><div class="frameHolder">
+          <img id="f1" className="imgBox" onclick="loadFrame(this)"></img>
+        </div></td>
+        <td>
+          <input type="button" value="New Frame" onclick="newFrame()"></input>
+        </td>
+      </tr><tr>
+        <td colspan=1>
+          <input type="button" value="New Sequence" onclick="newSequence()"></input>
+        </td>
+      </tr></table>
+    </div>
+    <div id="paintTools" class="bd topRight">
+      <table><tr>
+        <td colspan=2><h1>Paint Options</h1></td>
+      </tr><tr>
+        <td>Add a Color</td>
+        <td><input type="color" id="colorPick2" onchange="newColor(this)"></input></td>
+      </tr><tr>
+        <td colspan=2><div class="colorList"></div></td>
+      </tr><tr>
+        <td>Pick Brush Size</td>
+        <td><select id="brushSize2">
+          <option value="1">1</option>
+          <option value="2" selected>2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+        </select></td>
+      </tr><tr>
+        <td>Eraser</td>
+        <td><input type="checkbox" id="eraser2"></input></td>
+      </tr></table>
+    </div>
+  </div>
+</div>
+<script>
+var bdc = document.getElementById("brushCanvas");
+var bdx = bdc.getContext("2d");
+bdc.height = bdc.width = 320;
+var sqc = document.getElementById("sequenceCanvas");
+var sqx = sqc.getContext("2d");
+sqc.height = sqc.width = 320;
+var can = document.getElementById("levelCanvas");
+var ctx = can.getContext("2d");
+can.oncontextmenu = function (e) {e.preventDefault()};
+var cw, ch, gameWidth, gameHeight;
+var mouse = {down:false,x:-1,y:-1};
+var colors = ["#EDEFED","#CDCBCD"];
+var colorIndex = 2;
+var currentTool;
+var currentBrush = 0;
+var currentLevel = 0;
+var currentObject = 0;
+var brushes = [];
+var levels = [];
+var objects = [];
+var images = [];
+var deployedObjects = [];
+
+function init() {
+  bdx.imageSmoothingEnabled = false;
+  sqx.imageSmoothingEnabled = false;
+  levels.push(newLevel());
+  objects.push(newObject());
+  newFrame();
+  brushes.push(newBrush());
+  loadAssets();
+  brushes.push(newBrush());
+  drawBrushTools();
+  newColor({"value":"#000000"});
+  makeTabs();
+  transparencyImgs();
+  drawLevel();
+  onlyShow("levelDesign");
+}
+
+//  L     EEEEEE  V     V  EEEEEE  L 
+//  L     E       V     V  E       L
+//  L     EEEE     V   V   EEEE    L
+//  L     E         V V    E       L
+//  LLLLL EEEEEE     V     EEEEEE  LLLLLL
+
+function newLevel() {
+   var lvl = {"name":uniqueID(),
+              "gravity":true,
+              "data":[],
+              "xScroll":0,
+              "yScroll":0};
+  var image = document.createElement("img");
+  image.style.width = 'auto';
+  image.style.height = '32px';
+  image.onclick = function () {loadLevel(event)};
+  image.id = levels.length;
+  lvl.img = image;
+  readSize();
+  for (var i=0; i<gameHeight; i++) {
+    lvl.data[i] = [];
+    for (var j=0; j<gameWidth; j++) lvl.data[i].push(0);
+  }
+  return lvl;
+}
+
+function drawLevel() {
+  var level = levels[currentLevel];
+  var height = level.data.length;
+  var width = level.data[0].length;
+  var brushIndex, o;
+  var grd = ctx.createLinearGradient(0,0,0,can.height);
+  grd.addColorStop(0,document.getElementById("bgColor1").value);
+  grd.addColorStop(1,document.getElementById("bgColor2").value);
+  ctx.fillStyle=grd;
+  ctx.fillRect(0,0,cw,ch);
+  ctx.strokeStyle="black";
+  ctx.lineWidth=1;
+  for (var i=0, len=height; i<len; i++) {
+    for (var j=0, jlen=width; j<jlen; j++) {
+      brushIndex = levels[currentLevel].data[i][j];
+      if (brushIndex > -1) ctx.drawImage(brushes[brushIndex].img,j*32,i*32);
+    }
+  }
+  for (var i=0, len=deployedObjects.length; i<len; i++) {
+    o = deployedObjects[i];
+    if (o.cLevel == currentLevel)
+      ctx.drawImage(o.sequences[0].frames[0],o.x,o.y);
+  }
+  levels[currentLevel].img.src = can.toDataURL();
+  levels[currentLevel].img.className = "borders";
+  updateLevels();
+  var showGrid = document.getElementById("showGrid").checked;
+  if (showGrid) {
+    for (var i=1; i<=width; i++) {
+      line(ctx,i*32,0,i*32,ch);
+      ctx.strokeText(i,i*32-30,9);
+    }
+    for (var i=1; i<=height; i++) {
+      line(ctx,0,i*32,cw,i*32); 
+      ctx.strokeText(i,2,i*32-23);
+    }
+  }
+}
+
+function updateLevels() {
+  var levelsDiv = document.getElementById("levels")
+  while(levelsDiv.firstChild) levelsDiv.removeChild(levelsDiv.firstChild);
+  for (var i=0, len=levels.length; i<len; i++) {
+    levelsDiv.appendChild(levels[currentLevel].img);
+  }
+}
+
+function loadLevel(e) {
+  var currentLevel = e.target.id;
+  onlyShow("levelDesign");
+}
+
+can.addEventListener("mousedown",function(e) {
+  mouse.down = true; 
+  var m = getMousePos(e);
+  mouse.x = m.x;
+  mouse.y = m.y;
+  });
+
+can.addEventListener("mousemove",function(e) {
+  drawLevel();
+  if (!mouse.down) return;
+  var m = getMousePos(e);
+  drawBox(mouse.x,mouse.y,m.x,m.y);
+});
+
+can.addEventListener("mouseup",function(e) {
+  if (currentTool == undefined) return;
+  var mode = (currentTool.substr(0,1) == 'b');
+  var value = parseInt(currentTool.substr(1));
+  var m = getMousePos(e);
+  var sx, ex, sy, ey;
+  if (m.x < mouse.x) {sx=m.x; ex=mouse.x;}
+  else               {sx=mouse.x; ex=m.x;}
+  if (m.y < mouse.y) {sy=m.y; ey=mouse.y;}
+  else               {sy=mouse.y; ey=m.y;}
+  var sxBox = Math.floor(sx/32);
+  var syBox = Math.floor(sy/32);
+  var exBox = Math.floor(ex/32);
+  var eyBox = Math.floor(ey/32);
+  for (var i=0, len=eyBox-syBox; i<=len; i++) {
+    for (var j=0, jlen=exBox-sxBox; j<=jlen; j++) {
+      if (e.button == 0) {
+        if (mode) levels[currentLevel].data[syBox+i][sxBox+j] = value;
+        else newDeployedObject(value,sxBox+j,syBox+i);
+      } else {
+        levels[currentLevel].data[syBox+i][sxBox+j] = 0;
+        removeDeployedObject(sxBox+j,syBox+i);
+      }
+    }
+  }
+  drawLevel();
+});
+
+function newDeployedObject(objIndex,x,y){
+  obj = JSON.parse(JSON.stringify(objects[objIndex]));
+  obj.x = x*32;
+  obj.y = y*32;
+  var seq = objects[objIndex].sequences
+  for (var i=0, len=seq.length; i<len; i++) {
+    obj.sequences[i].frames = [];
+    for (var j=0, jlen=seq[i].frames.length; j<jlen; j++) {
+      obj.sequences[i].frames.push(seq[i].frames[j]);
+    }
+  }
+  deployedObjects.push(obj);
+}
+
+function removeDeployedObject(x,y){
+  for (var i=0, len=deployedObjects.length; i<len; i++) {
+    if (Math.floor(deployedObjects[i].x/32) == x && 
+               Math.floor(deployedObjects[i].y/32) == y) {
+    deployedObjects.splice(i,1);
+    len -= 1;
+    i -= 1;
+    }
+  }
+}
+
+function toggleGravity() { levels[currentLevel].gravity = document.getElementById("gravity").checked;}
+
+//  BBB    RRRR   U     U   SSSSS   S    S  
+//  B  B   R   R  U     U  S        S    S
+//  BBBB   RRRR   U     U   SSSS    SSSSSS
+//  B   B  R R    U     U       S   S    S
+//  BBBB   R  R    UUUUU   SSSSS    S    S
+
+function newBrush(name,src,solid) {
+  var newImg = document.createElement("img");
+  newImg.height = 32;
+  newImg.width = 32;
+  newImg.className = "borders";
+  newImg.id = "b"+brushes.length;
+  newImg.onclick = function () {pickTool(this)};
+  if (name === undefined) name = uniqueID();
+  if (src === undefined) canvasToImage(bdc, newImg);
+  else newImg.src = src;
+  if (solid === undefined) solid = false;
+  return {"name":name,"img":newImg,"solid":solid};
+}
+
+function loadBrush(index) {
+  currentBrush = index;
+  document.getElementById("brushName").value = brushes[index].name;
+  document.getElementById("isSolid").checked = brushes[index].solid;
+  bdx.clearRect(0,0,bdc.width,bdc.height);
+
+  bdx.drawImage(brushes[index].img,0,0,32,32,0,0,bdc.width,bdc.height);
+}
+
+bdc.addEventListener("mouseout",function(e) { 
+  canvasToImage(bdc,brushes[currentBrush].img);
+});
+
+bdc.addEventListener("mousedown",function(e) { mouse.down=true; });
+
+bdc.addEventListener("mouseup",function(e) { 
+  canvasToImage(bdc,brushes[currentBrush].img)
+});
+
+bdc.addEventListener("mousemove",function(e) {
+  if (mouse.down) {
+    var eraser = document.getElementById("eraser1").checked
+    var rect = bdc.getBoundingClientRect();
+    var s = document.getElementById("brushSize1").selectedIndex+1;
+    var x = Math.floor((e.clientX - rect.left - s*5 + 5)/10);
+    var y = Math.floor((e.clientY - rect.top - s*5 + 5)/10);
+    bdx.fillStyle=colors[colorIndex];
+    if (eraser) bdx.clearRect(x*10,y*10,10*s,10*s);
+    else bdx.fillRect(x*10,y*10,10*s,10*s);
+  }
+});
+
+function saveBrush() {
+  var brushName = document.getElementById("brushName").value;
+  if (brushName.length > 0) brushes[currentBrush].name = brushName;
+  brushes[currentBrush].solid = document.getElementById("isSolid").checked;
+  canvasToImage(bdc,brushes[currentBrush].img);
+  bdx.clearRect(0,0,bdc.width,bdc.height);
+  brushes[currentBrush].img.id = "b" + currentBrush;
+  brushes[currentBrush].img.className = "borders";
+  brushes[currentBrush].img.onclick = function() {pickTool(this);};
+  drawBrushTools();
+  if (currentBrush == brushes.length -1) {
+    brushes.push(newBrush());
+    currentBrush += 1;
+  } else currentBrush = brushes.length -1;
+  loadBrush(currentBrush);
+}
+
+function drawBrushTools() {
+  var brushDiv = document.getElementById("brushes");
+  while(brushDiv.firstChild) brushDiv.removeChild(brushDiv.firstChild);
+  var a = (currentBrush == brushes.length -1)? 0:1;
+  for (var i=1, len=brushes.length-a; i<len; i++) {
+    brushDiv.appendChild(brushes[i].img);
+  }
+}
+
+//   OOO    BBBB    JJJJJJJ  EEEEE    CCC  TTTTTTT
+//  O   O   B   B      J     E       C        T
+//  O   O   BBBB       J     EEE     C        T
+//  O   O   B   B   J  J     E       C        T
+//   OOO    RBBBB   JJJJ     EEEEE    CCC     T
+
+function newObject() {
+  return {"name":uniqueID(),
+          "health":100,"cSeq":0,"cFrame":-1,"cLevel":0,"speed":5,
+          "acc":.1,"vx":0,"vy":0,"gravity":.1,"friction":.97,"jump":2,
+          "jumpPower":0,
+          "keys":[{"code":68,"field":"vx","op":"+","amount":"acc"},
+                  {"code":65,"field":"vx","op":"-","amount":"acc"},
+                  {"code":32,"field":"vy","op":"-","amount":"jump"}],
+          "sequences":[{"name":uniqueID(),
+                        "frames":[]}]};
+}
+
+function loadObject(index) {
+  document.getElementById("objectName").value = objects[index].name;
+  document.getElementById("objectHealth").value = objects[index].health;
+  sqx.drawImage(objects[index].sequences[0].frames[0],0,0,32,32,0,0,sqc.width,sqc.height);
+}
+
+sqc.addEventListener("mouseout",function(e) {
+  var o=objects[currentObject];
+  canvasToImage(sqc,o.sequences[o.cSeq].frames[o.cFrame]);
+});
+
+sqc.addEventListener("mousedown",function(e) { mouse.down=true; });
+
+sqc.addEventListener("mouseup",function(e) { 
+  var o=objects[currentObject];
+  canvasToImage(sqc,o.sequences[o.cSeq].frames[o.cFrame]);
+});
+
+sqc.addEventListener("mousemove",function(e) {
+  if (mouse.down) {
+    var o = objects[currentObject];
+    var eraser = document.getElementById("eraser2").checked
+    var frame = o.sequences[o.cSeq].frames[o.cFrame];
+    var rect = sqc.getBoundingClientRect();
+    var s = document.getElementById("brushSize2").selectedIndex+1;
+    var x = Math.floor((e.clientX - rect.left - s*2 + 2)/10);
+    var y = Math.floor((e.clientY - rect.top - s*2 + 2)/10);
+    sqx.fillStyle=colors[colorIndex];
+    sqx.fillRect(x*10,y*10,10*s,10*s);
+    if (eraser) sqx.clearRect(x*10,y*10,10*s,10*s);
+    else sqx.fillRect(x*10,y*10,10*s,10*s);
+  }
+});
+
+function saveObject() {
+  sqx.clearRect(0,0,sqc.width,sqc.height);
+  var objName = document.getElementById("objectName").value;
+  var objHealth = document.getElementById("objectHealth").value;
+  if (objName.length > 0) objects[currentObject].name = objName;
+  if (objHealth.length > 0) objects[currentObject].health = objHealth;
+  var frameDivs = document.getElementsByClassName("frameHolder");
+  objects[currentObject].sequences[0].frames[0].onclick = function () {pickTool(this)};
+  objects[currentObject].sequences[0].frames[0].id = "o"+currentObject;
+  objects[currentObject].sequences[0].frames[0].className = "borders";
+  for (var i=0, len=frameDivs.length; i<len; i++) {
+    while(frameDivs[i].firstChild) frameDivs[i].removeChild(frameDivs[i].firstChild);
+  }
+  drawObjectTools();
+  if (currentObject == objects.length -1) {
+    objects.push(newObject());
+    currentObject += 1;
+    newFrame();
+  } else currentObject == objects.length -1;
+  loadObject(currentObject);
+}
+
+function drawObjectTools() {
+  var objectDiv = document.getElementById("objects");
+  while(objectDiv.firstChild) objectDiv.removeChild(objectDiv.firstChild);
+  var a = (currentObject == objects.length -1)? 0:1;
+  for (var i=0, len=objects.length-a; i<len; i++) {
+    objectDiv.appendChild(objects[i].sequences[0].frames[0]);
+  }
+}
+
+function newFrame() {
+  var nf = document.createElement("img");
+  nf.width = 32;
+  nf.height = 32;
+  canvasToImage(sqc, nf);
+  nf.className = "imgBox";
+  var seq = objects[currentObject].sequences[objects[currentObject].cSeq];
+  seq.frames.push(nf);
+  var frameDivs = document.getElementsByClassName("frameHolder");
+  frameDivs[objects[currentObject].cSeq].appendChild(nf);
+  objects[currentObject].cFrame += 1;
+}
+
+function toggleKeyInput() {
+  var state = (document.getElementById("keybaord").checked)? "block":"none";
+  var rows = document.getElementsByClassName("hKey");
+  for (var i=0, len=rows.length; i<len; i++) {
+    rows[i].style["display"] = state;
+  }  
+}
+
+//  H   H   EEEEE  L     PPPP   EEEEE   RRRR
+//  H   H   E      L     P   P  E       R   R
+//  HHHHH   EEE    L     PPPP   EEE     RRRR 
+//  H   H   E      L     P      E       R  R 
+//  H   H   EEEEE  LLLLL P      EEEEE   R   R
+
+function line(context,x1,y1,x2,y2) {
+  context.beginPath();
+  context.moveTo(x1,y1);
+  context.lineTo(x2,y2);
+  context.stroke();
+}
+
+function changeSize() {
+  readSize();
+  var data = levels[currentLevel].data;
+  while (data.length < gameHeight) data.push([]);
+  while (data.length > gameHeight) data.pop();
+  for (var i=0; i<gameHeight; i++) {
+    while (data[i].length < gameWidth) data[i].push(0);
+    while (data[i].length > gameWidth) data[i].pop();
+  }
+  drawLevel();
+}
+
+function readSize() {
+  gameWidth = document.getElementById("gameWidth").value;
+  gameHeight = document.getElementById("gameHeight").value;
+  if (gameWidth > 9 && gameWidth < 1000)
+    cw = can.width = gameWidth * 32;
+  if (gameHeight > 9 && gameHeight < 1000)
+    ch = can.height = gameHeight * 32;
+}
+
+function canvasToImage(srcCan,dstImg) {
+  var tempcan = document.createElement("canvas");
+  var tempctx = tempcan.getContext("2d");
+  tempcan.width = dstImg.width;
+  tempcan.height = dstImg.height;
+  tempctx.drawImage(srcCan,0,0,srcCan.width,srcCan.height,0,0,dstImg.width,dstImg.height);
+  dstImg.src = tempcan.toDataURL();
+}
+
+function pickTool(e) {
+  currentTool = e.id;
+  var mode = (currentTool.substr(0,1) == 'b');
+  var value = parseInt(currentTool.substr(1));
+  if (document.getElementById("levelDesign").style["display"] == "none") {
+    if (mode) onlyShow("brushDesign");
+    else onlyShow("objectDesign");
+  }
+  if (mode) loadBrush(value);
+  else loadObject(value);
+  var toolImgs = document.getElementsByClassName("borders");
+  for (var i=0, len=toolImgs.length; i<len; i++) {
+    toolImgs[i].style["border"] = "1px solid black";
+  }
+  e.style["border"] = "3px solid red";
+}
+
+function onlyShow(id) {
+  currentBrush = brushes.length -1;
+  loadBrush(currentBrush);
+  currentObject = objects.length -1;
+  loadObject(currentObject);
+  var mainElements = document.getElementsByClassName("main");
+  for (var i=0; i<mainElements.length; i++) {
+    mainElements[i].style.display = "none";
+  }
+  document.getElementById(id).style.display = "Block";
+}
+
+function toggle(id) {
+  var element = document.getElementById(id);
+  if (element.style.display == "none") element.style.display = "Block";
+  else element.style.display = "none";
+}
+
+function getMousePos(e) {
+  var rect = can.getBoundingClientRect();
+  var x = e.clientX - rect.left;
+  var y = e.clientY - rect.top;
+  return {x:x,y:y};
+}
+
+function drawBox(x1,y1,x2,y2) {
+  ctx.strokeStyle="red";
+  line(ctx,x1,y1,x1,y2);
+  line(ctx,x1,y1,x2,y1);
+  line(ctx,x1,y2,x2,y2);
+  line(ctx,x2,y1,x2,y2);
+}
+
+function newColor(n) {
+  var color = n.value;
+  var colorI;
+  var i = colors.indexOf(color);
+  if (i >= 0) colorI = i;
+  else {
+    colorI = colors.length;
+    colors.push(color);
+    var divs = document.getElementsByClassName("colorList");
+    for (var i=0, len=divs.length; i<len; i++) {
+      var div = document.createElement("div");
+      div.style["background"] = color;
+      div.value = color;
+      div.onclick = function() {newColor(this)};
+      div.className = "imgBox"
+      divs[i].appendChild(div);
+    }
+  }
+  colorIndex = colorI;
+  document.getElementById("colorPick1").value = color;
+  document.getElementById("colorPick2").value = color;
+}
+
+function makeTabs() {
+  var tabcan = document.createElement("canvas");
+  tabcan.width = 200;
+  tabcan.height = 30;
+  var tx = tabcan.getContext("2d");
+  tx.font="20px Arial";  
+  makeTabHelper("Level Design","tab1");
+  makeTabHelper("Brush Design","tab2");
+  makeTabHelper("Object Design","tab3");
+  makeTabHelper("       Play","tab4");
+  function makeTabHelper(text,id) {
+    tx.clearRect(0,0,200,30);
+    tx.fillStyle="#444";
+    ctx.beginPath();
+    tx.moveTo(30, 30);
+    tx.bezierCurveTo(30, 0, 35, 0, 100, 0);
+    tx.bezierCurveTo(165, 0, 170, 0, 170, 30);
+    tx.fill();
+    tx.fillStyle="white";
+    tx.fillText(text,40,25);
+    document.getElementById(id).src = tabcan.toDataURL();
+  }
+}
+
+function transparencyImgs() {
+  for (var i=0; i<32; i++) {
+    for (var j=0; j<32; j++) {
+      bdx.fillStyle = ((i+j)%2 == 1)? "#FFF":"#CCC";
+      bdx.fillRect(i*10,j*10,10,10);
+    }
+  }
+  document.getElementById("transP1").src = bdc.toDataURL();
+  document.getElementById("transP2").src = bdc.toDataURL();
+  bdx.clearRect(0,0,320,320);
+}  
+
+window.addEventListener("mouseup",function(e) { mouse.down=false;});
+
+//  EEEEE  X     X  PPPP    OOO    RRRR   TTTTTTT
+//  E       X   X   P   P  O   O   R   R     T
+//  EEE       X     PPPP   O   O   RRRR      T
+//  E       X   X   P      O   O   R  R      T
+//  EEEEE  X     X  P       OOO    R   R     T
+
+function exportGame() {
+  var str = "";
+  str += '<!DOCTYPE HTML>\n';
+  str += '<html>\n';
+  str += '<head>\n';
+  str += '<meta charset="UTF-8">\n';
+  str += '<style>\n';
+  str += 'body {margin:0px;padding:0px;background-color:black; overflow:hidden;}\n';
+  str += 'canvas {display:block; position:absolute padding:0px; margin:auto; ';
+  str += 'left:0px; right:0px; top:0px; bottom:0px;}\n';
+  str += '</style>\n';
+  str += '</head>\n';
+  str += '<body">\n';
+  str += '<canvas id="canvas"></canvas>\n';
+  str += '<script>\n';
+  str += 'var can = document.getElementById("canvas");\n';
+  str += 'var ctx = can.getContext("2d");\n';
+  str += 'var cw = can.width = 800;\n';
+  str += 'var ch = can.height = 600;\n';
+  str += 'var currentLevel = 0;\n';
+  str += 'var keys = [];\n';
+  str += 'var repeat = 0;\n';
+  str += 'var flip = false;\n';
+  str += 'var counter = 0;\n';
+
+  //Export Levels--------------------------------------------------------------
+
+  levels[currentLevel].bgColor1 = document.getElementById("bgColor1").value;
+  levels[currentLevel].bgColor2 = document.getElementById("bgColor2").value;
+  str += 'var levels = ' + JSON.stringify(levels) + ';\n\n';
+
+  //Export Objects-------------------------------------------------------------
+  for (var i=0, len=deployedObjects.length; i<len; i++) {
+    for (var j=0, jlen=deployedObjects[i].sequences.length; j<jlen; j++) {
+      var seq = deployedObjects[i].sequences[j];
+      seq.src = [];
+      for (var k=0, klen=seq.frames.length; k<klen; k++) {
+        seq.src[k] = seq.frames[k].src;
+      }
+    }
+  }
+  str += 'objects = ' + JSON.stringify(deployedObjects);
+
+  //Export Brushes-------------------------------------------------------------
+  var brhstr = '\nbrushes = [';
+  for (var i=1, ilen=brushes.length-1; i<ilen; i++) {
+    brhstr += '{"name":"'+brushes[i].name+'","solid":'+brushes[i].solid;
+    brhstr += ',"img":newImg("';
+    brhstr += brushes[i].img.src;
+    brhstr += '")}';
+    if (i < ilen-1) brhstr += ',\n';
+  }
+  brhstr += '];\n';
+  str += brhstr;
+
+  //Export Images-------------------------------------------------------------
+
+  str += 'images = []\n';
+  for (var i=0, len=images.length; i<len; i++) {
+    str += 'images.push(newImg("'+images[i].src+'"));\n';
+  }
+  str += '\nfunction newImg(src) {\n';
+  str += '    var img = document.createElement("img");\n';
+  str += '    img.src = src;\n';
+  str += '    return img;\n';
+  str += '  }\n\n';
+
+  str += 'function init() {\n';
+  str += '  if (levels[currentLevel].data.length < ch)\n';
+  str += '    can.height = ch = levels[currentLevel].data.length*32;\n';
+  str += '  fixObjImgs();\n';
+  str += '  animate();\n';
+  str += '}\n\n';
+
+  str += 'function fixObjImgs() {\n';
+  str += '  for (var i=0, len=objects.length; i<len; i++) {\n';
+  str += '    for (var j=0, jlen=objects[i].sequences.length; j<jlen; j++) {\n';
+  str += '      var seq = objects[i].sequences[j];\n';
+  str += '      for (var k=0, klen=seq.frames.length; k<klen; k++) {\n';
+  str += '        seq.frames[k] = document.createElement("img");\n';
+  str += '        seq.frames[k].src = seq.src[k];\n';
+  str += '      }\n';
+  str += '    }\n';
+  str += '  }\n';
+  str += '}\n\n';
+
+  str += 'function animate() {\n';
+  str += '  var key, obj;\n';
+  str += '  window.requestAnimationFrame(animate);\n';
+  str += '  for (var i=0, len=objects.length; i<len; i++) {\n';
+  str += '    obj = objects[i];\n';
+  str += '    if (keys.length > 0 && counter == 0)\n';
+  str += '      obj.cFrame = (obj.cFrame +1)%obj.sequences[obj.cSeq].frames.length;\n';
+  str += '    for (var j=0, jlen=obj.keys.length; j<jlen; j++) {\n';
+  str += '      key = obj.keys[j];\n';
+  str += '      if (keys.indexOf(key.code) > -1) {\n';
+  str += '        if (key.field === "vx") {\n';
+  str += '          if (key.op === "+") flip = false;\n';
+  str += '          else flip = true;\n';
+  str += '        }\n';
+  str += '      }\n';
+  str += '      if (keys.indexOf(key.code) > -1) {\n';
+  str += '        if (key.amount == "jump") {\n';
+  str += '          if (repeat == key.code) continue;\n';
+  str += '          repeat = key.code;\n';
+  str += '          if ((solid(obj, 0, 1, 1, 20)) || (solid(obj, 1, 1, -1, 20)))\n';
+  str += '            obj.jumpPower = obj.jump*2;\n';
+  str += '          else continue;\n';
+  str += '        } \n';
+  str += '        switch (key.op) {\n';
+  str += '          case ("+"): obj[key.field] += obj[key.amount]; break;\n';
+  str += '          case ("-"): obj[key.field] -= obj[key.amount]; break;\n';
+  str += '        }\n';
+  str += '      }\n';
+  str += '      processMovement(obj,key);\n';
+  str += '    }\n';
+  str += '  }\n';
+  str += '  draw();\n';
+  str += '}\n\n';
+
+  str += 'function processMovement(obj,key) {\n';
+  str += '  obj.x += obj.vx;\n';
+  str += '  obj.y += obj.vy;\n';
+  str += '  if (obj.jumpPower > 0) {\n';
+  str += '    obj.vy -= obj.jumpPower;\n';
+  str += '    obj.jumpPower -= 5;\n';
+  str += '    console.log(obj.jumpPower);\n';
+  str += '  }\n';
+  str += '  if (levels[currentLevel].gravity) obj.vy += obj.gravity\n';
+  str += '  obj.vx *= obj.friction;\n';
+  str += '  if (Math.abs(obj.vx) > obj.speed) obj.vx = Math.abs(obj.vx)/obj.vx*obj.speed;\n';
+  str += '  if (Math.abs(obj.vy) > obj.speed) obj.vy = Math.abs(obj.vy)/obj.vy*obj.speed;\n';
+  str += '  try {\n';
+  str += '    if (obj.vy > 0 && (solid(obj, 0, 1, 4, 0) || solid(obj, 1, 1, -4, 0))) {\n';
+  str += '      obj.y -= obj.vy;\n';
+  str += '      obj.vy = 0;\n';
+  str += '    }\n';
+  str += '    if (obj.vy < 0 && (solid(obj, 0, 0, 4, 0) || solid(obj, 1, 0, -4, 0))) {\n';
+  str += '      obj.y -= obj.vy;\n';
+  str += '      obj.vy = 0;\n';
+  str += '    }\n';
+  str += '    if (obj.vx < 0 && (solid(obj, 0, 0, 0, 4) || solid(obj, 0, 1, 0, -4)) || obj.x < 2) {\n';
+  str += '      obj.x -= obj.vx;\n';
+  str += '      obj.vx = 0;\n';
+  str += '    }\n';
+  str += '    if (obj.vx > 0 && (solid(obj, 1, 0, 0, 4) || solid(obj, 1, 1, 0, -4) || \n';
+  str += '                      obj.x > levels[currentLevel].data[0].length*32 -32)) {\n';
+  str += '      obj.x -= obj.vx;\n';
+  str += '      obj.vx = 0;\n';
+  str += '    }\n';
+  str += '  } catch(err) {}\n';
+  str += '  var lvl = levels[currentLevel];\n';
+  str += '  var xpos = obj.x - lvl.xScroll;\n';
+  str += '  if (xpos > cw*3/4 && lvl.xScroll < (lvl.data[0].length*32 - cw)) lvl.xScroll += xpos - cw*3/4;\n';
+  str += '  else if (xpos < cw/4 && lvl.xScroll > 0) lvl.xScroll -= cw/4 - xpos;\n';
+  str += '}\n\n';
+
+  str += 'function solid(obj,x,y,mx,my) {\n';
+  str += '  try {\n';
+  str += '  var g = {"x":Math.floor((obj.x+mx)/32),"y":Math.floor((obj.y+my)/32)};\n';
+  str += '  var brushIndex = levels[currentLevel].data[g.y+y][g.x+x]-1;\n';
+  str += '  if (brushIndex < 0) return false;\n';
+  str += '  if (brushes[brushIndex].solid) return true;\n';
+  str += '  return false;\n';
+  str += '  } catch(e) {}\n';
+  str += '}\n\n';
+
+  str += 'function draw() {\n';
+  str += '  var lvl = levels[currentLevel];\n';
+  str += '  var gridHeight = lvl.data.length;\n';
+  str += '  var gridWidth = lvl.data[0].length;\n';
+  str += '  var heightDiff = ch-gridHeight*32;\n';
+  str += '  var grd = ctx.createLinearGradient(0,heightDiff,0,ch);\n';
+  str += '  grd.addColorStop(0,lvl.bgColor1);\n';
+  str += '  grd.addColorStop(1,lvl.bgColor2);\n';
+  str += '  ctx.fillStyle = grd;\n';
+  str += '  ctx.fillRect(0,0,cw,ch);\n';
+  str += '  for (var i=0; i<gridHeight; i++) {\n';
+  str += '    for (var j=0; j<gridWidth; j++) {\n';
+  str += '      brushIndex = lvl.data[i][j];\n';
+  str += '      if (brushIndex > 0)\n';
+  str += '      ctx.drawImage(brushes[brushIndex-1].img,j*32-lvl.xScroll,i*32+heightDiff);\n';
+  str += '    }\n';
+  str += '  }\n';
+  str += '  var o;\n';
+  str += '  for (var i=0, len=objects.length; i<len; i++) {\n';
+  str += '    o = objects[i];\n';
+  str += '    drawImage(o.sequences[o.cSeq].frames[o.cFrame],o.x-lvl.xScroll,o.y+heightDiff,32,32,0,flip);\n';
+  str += '  }\n';
+  str += '}\n\n';
+
+  str += 'function drawImage(img, x, y, width, height, deg, flip, flop, center) {\n';
+  str += '  ctx.save();\n\n';
+  str += '  if(typeof width === "undefined") width = img.width;\n';
+  str += '  if(typeof height === "undefined") height = img.height;\n';
+  str += '  if(typeof center === "undefined") center = false;\n\n';
+  str += '  // Set rotation point to center of image, instead of top/left\n';
+  str += '  if(center) {\n';
+  str += '    x -= width/2;\n';
+  str += '    y -= height/2;\n';
+  str += '  }\n\n';
+  str += '  // Set the origin to the center of the image\n';
+  str += '  ctx.translate(x + width/2, y + height/2);\n\n';
+  str += '  // Rotate the canvas around the origin\n';
+  str += '  var rad = 2 * Math.PI - deg * Math.PI / 180;   \n'; 
+  str += '  ctx.rotate(rad);\n\n';
+  str += '  // Flip/flop the canvas\n';
+  str += '  if(flip) flipScale = -1; else flipScale = 1;\n';
+  str += '  if(flop) flopScale = -1; else flopScale = 1;\n';
+  str += '  ctx.scale(flipScale, flopScale);\n\n';
+  str += '  // Draw the image    \n';
+  str += '  ctx.drawImage(img, -width/2, -height/2, width, height);\n';
+  str += '  ctx.restore();\n';
+  str += '}\n\n';
+
+  str += 'init();\n\n';
+
+  str += 'window.addEventListener( "keydown", function(e){\n';
+  str += '  if (keys.indexOf(e.keyCode) == -1) keys.push(e.keyCode);\n';
+  str += '  }, false );\n\n';
+
+  str += 'window.addEventListener( "keyup", function(e){\n';
+  str += '  if (repeat == e.keyCode) repeat = 0;\n';
+  str += '  keys.splice(keys.indexOf(e.keyCode),1);\n';
+  str += '  }, false );\n\n';
+
+  str += '<\/script>\n';
+  str += '</body>\n';
+  str += '</html>\n';
+  var gameWindow = window.open("", "Game", "height=640,width=800");
+  gameWindow.document.write(str);
+  //download("game.txt",str);
+}
+
+function download(filename, text) {
+  var element = document.createElement('a');
+  element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+  element.setAttribute('download', filename);
+
+  element.style.display = 'none';
+  document.body.appendChild(element);
+
+  element.click();
+
+  document.body.removeChild(element);
+}
+
+var uniqueID = (function() {var id = 0;return function() { return id++; };})();
+
+function loadAssets() {
+  var assets = [
+  {"name":"Soil","solid":true,"src":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAA2UlEQVRYR2PcX6r9nwEHkDdwgMs8vHAAlzIU8bdffmNVJ8zDilWcEZ8DiLKRQkWjDhj4ELi3NBucCGGJDFciAqnBlZBITXggs2AJnHHAHTCaC5BDALngQU4XFGZ1vNpRcsGAO4CWPsVl9sCXA8MmF5CbfqgWBWQ7YE2mGrw9gKuopXbiRC66GQfcAcMmEZIbTUQnQnzVNL6qmpDDiC6KB9wBhHxCrjzRUUCOBcSUDcPbAcSEGk1DgGQH0Cql43MISggMuAOICTJqqxlcaQDdd8TkY2whQkpPCQBAoJS3X6w0/wAAAABJRU5ErkJggg=="},
+  {"name":"Topsoil","solid":true,"src":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABJklEQVRYR2M0OGv+n2EAAeOoA4ZNCHw59wVrSuIx4sGbwhhVZmvDEyEhxdhMQrd49i2IqlQ1VNW4zEZxALIWdA24fAjS03HuN4MwDytWn6I7BKQI2WzGe0uzwSHg9u0ASZkR5lNSNGFzDOP+UkQUkGIYpWphjqGaA+QNHHC66eEF3KE7fBxAbpRQLQQodgC+OAQZji8eybUcpA8eAvR0wNsvv+FuZlyTqYZSHeMqUCjxJbreAXcAsoMGTyIkNoiRg48a0YUzBJAtwuU4bA7AlpjJKgnxOYBYi2EOJ8sBxEYJTB2yz0kpM4ZeIiQ1ZAipRwkBUhMQIcOJkR9cDiDGxdRSAwtteJuQ2JRLTPkAcyS+gmrAHQBz5Gg2xBsC6NmS2HRCSkIFAA56l6C2mUZAAAAAAElFTkSuQmCC"},
+  {"name":"Brick","solid":false,"src":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAA80lEQVRYR2P82Fv3n2EAAeNLVz2cDnj84jlBp+kt2sLwfd9WhtsLphNUi00BzRwgKyFJlIMG3gFndEUpSgO4ooDoEBi2DiAqAQAVMdIqBIh2AHI2RM92hOIRpJ6q2ZAaDkB3NKGyBG8UkBMCA+4AYuMepm7gE+GA5wJ6OQBXesJbF4DiiVAqJjYb4nTAr/MnKaoLSE106OoZB7xBAnLAjx0bcHqEUBRQEgKg6AOHALmtGUosB+mlmgMIlZi4EvPwcQC5UUG1EKC5A0it4Yh1EDwE8GVDbIYRkzVxJUxkvaMOGDwhMORLQmJTPbo6cBQMdHUMAJFbJTxGFYj3AAAAAElFTkSuQmCC"}];
+
+  for (var i=0, len=assets.length; i<len; i++){
+    brushes.push(newBrush(assets[i].name, assets[i].src, assets[i].solid));
+  }
+}
+</script>
+</body>
+</html>

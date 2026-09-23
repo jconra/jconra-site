@@ -1,0 +1,142 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body {margin: 0px;padding: 0px; background-color:black;}
+div {
+  magin:auto; 
+  display:inline-block; 
+  top:40px; 
+  position:absolute; 
+  left:50%; 
+  width:800px; 
+  height:600px;
+  margin-left:-400px; 
+  border-radius:20px; 
+  padding:20px;
+  background-color:rgb(50,50,50);
+  }
+</style>
+<title>Land Builder</title>
+</head>
+<body>
+<div  id="myCanvas" width="800" height="600"></div>
+<script src="js/three.min.js"></script>
+<script>
+
+var canvas = document.getElementById('myCanvas');
+
+var angle = 0, size = 100;
+
+function animate(){
+
+  angle += .005;
+  camera.position.x = 100*Math.cos(angle);
+  camera.position.z = 100*Math.sin(angle);
+  camera.lookAt(new THREE.Vector3(0,0,0));
+  
+  renderer.render(scene, camera);
+  requestAnimationFrame(function(){animate();});
+  }
+
+// renderer
+var renderer = new THREE.WebGLRenderer({antialias: true});
+renderer.setSize(800, 600);
+canvas.appendChild(renderer.domElement);
+
+// camera
+var camera = new THREE.PerspectiveCamera(75, 800 / 600, 1, 10000);
+camera.position.z = 100;
+camera.position.y = 20;
+
+// scene
+var scene = new THREE.Scene();
+
+var landGeometry = new THREE.PlaneGeometry(100, 100, 99, 99);
+var landMaterial = new THREE.MeshLambertMaterial({color: 0x22ff66, vertexColors: THREE.FaceColors});
+
+/*
+for(var j = 0, k = geo.faces.length; j < k; j++){
+
+  var r = Math.random()/10,
+      g = Math.random(),
+      b = Math.random()/5;
+
+  geo.faces[j].color.setRGB(r,g,b);
+}
+*/
+
+var heightmap = mapgen();
+for (var i = 0; i < size; i++) {
+  for (var j = 0; j < size; j++) {
+    landGeometry.vertices[i*size+j].z = heightmap[i][j]*30;
+    }
+  }
+  
+landGeometry.computeFaceNormals();
+landGeometry.computeVertexNormals();
+var land = new THREE.Mesh( landGeometry, landMaterial);
+land.position.y = 0;
+land.rotation.x = -Math.PI / 2;
+land.rotation.z = -Math.PI / 2;
+
+scene.add(land);
+
+// Let there be light
+var light1 = new THREE.AmbientLight( 0x777777 ); 
+scene.add( light1 );
+
+light2 = new THREE.DirectionalLight( 0xffffff, 1.0 );
+light2.position.set( 2000, 50, 0 ).normalize();
+scene.add( light2 );
+
+
+function mapgen() {
+  var heightmap = [];
+  for (var i=0; i<100; i++){
+    heightmap.push([]);
+    for (var j=0; j<100; j++){
+      heightmap[i].push(0);
+      }
+    }
+    
+  for (var i=0; i<100; i++){
+    var x = rn(0,79)+10;
+    var y = rn(0,79)+10;
+    var r = rn(2,20);
+    for (var a=0; a<100; a++){
+      for (var b=0; b<100; b++){
+        var h = Math.pow(r,2) - (Math.pow((a-x),2)+Math.pow((b-y),2));
+        if (h>0) heightmap[a][b] += h;
+        }
+      }
+    }
+    
+  var max = 0, min = heightmap[0][0];
+  for (var a=0; a<100; a++){
+    for (var b=0; b<100; b++){
+      var h = heightmap[a][b]
+      if (h>max) max = h;
+      if (h<min) min = h;
+      }
+    }
+  
+  max -= min;
+  for (var a=0; a<100; a++){
+    for (var b=0; b<100; b++){
+      heightmap[a][b] = Math.pow(((heightmap[a][b]-min)/max),2);
+      }
+    }
+    
+  return heightmap;
+  }
+
+// start animation
+animate();
+
+function rn(min,max){return Math.floor( Math.random()*((max+1)-min)+min);}
+
+</script>
+</body>
+</html>

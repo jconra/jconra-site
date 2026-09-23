@@ -1,0 +1,103 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>Digidraw</title>
+<meta charset="utf-8">
+<style>
+body {margin: 0px;padding: 0px;overflow: hidden;}
+canvas {position:fixed; height:100%; width:100%;}
+</style>
+</head>
+<body onload="init()" bgcolor="#000000">
+<canvas id="back"></canvas>
+<canvas id="canvas"></canvas>
+<script type="text/javascript">
+var canvas= document.getElementById('canvas');
+var ctx = canvas.getContext('2d');
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+
+var back= document.getElementById('back');
+var btx = back.getContext('2d');
+var bw = back.width = window.innerWidth;
+var bh = back.height = window.innerHeight;
+
+var levels = [];
+var offset = .3;
+
+function init() {
+  for (level = 2; level<8; level++) {
+    levels.push({blocks:[]});
+    var i=levels.length-1;
+    if (rn(1,10) > 7) continue;
+    levels[i].fill = (rn(1,2) == 1)? true:false;
+    degree = 0;
+    mode = 1; 
+    while (degree < 360){
+      mode += 1;
+      if (mode == 1) degree += rn(10,30);
+      else if (mode == 2) {
+        var distance = rn(5,70);
+        if (degree + distance > 355) distance = 355 - degree;
+        levels[i].blocks.push({start:degree, length:distance, radius:level});
+        degree += distance + 5;
+      } else {
+        var repeat = rn(2,5);
+        for (var j=0; j<repeat; j++){
+          if (degree < 350){
+            levels[i].blocks.push({start:degree, length:5, radius:level});
+            degree += 10;
+          }
+        }
+        mode = 0;
+      }
+    }
+  }  
+  background();
+  draw();
+}
+
+function background() {
+  btx.fillStyle="black";
+  btx.fillRect(0,0,bw,bh);
+  var grd=btx.createRadialGradient(bw/2,bh/2,35,bw/2,bh/2,355);
+  grd.addColorStop(0,"transparent");
+  grd.addColorStop(.5,"rgba(150,150,255,.4)");
+  grd.addColorStop(1,"transparent");
+  btx.fillStyle=grd;
+  btx.beginPath();
+  btx.arc(bw/2,bh/2,360,0,Math.PI*2);
+  btx.fill();
+}
+
+function draw() {
+  window.requestAnimationFrame(draw);
+  ctx.clearRect(0,0,cw,ch);
+  ctx.lineWidth=2;
+  ctx.fillStyle="rgba(125,125,255,.5)";
+  ctx.strokeStyle="#8888FF";
+  ctx.translate(cw/2,ch/2);
+  ctx.rotate(.1*Math.PI/180)
+  for (var i=0, len=levels.length; i<len; i++) {
+    for (var j=0, jlen=levels[i].blocks.length; j<jlen; j++) {
+      drawArc(levels[i].blocks[j],levels[i].fill);
+    }
+  }
+  ctx.translate(-cw/2,-ch/2);
+}
+
+function drawArc(b,fill) {
+  ctx.beginPath();
+  ctx.arc(0,0,b.radius*30, b.start/180*Math.PI, (b.start+b.length)/180*Math.PI, false);
+  ctx.arc(0,0,b.radius*30+20, (b.start+b.length)/180*Math.PI, b.start/180*Math.PI, true); 
+  ctx.closePath();
+  if (fill) ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+}
+
+function rn(min,max) {return Math.floor( Math.random()*((max+1)-min)+min);}
+
+</script>
+</body>
+</html>

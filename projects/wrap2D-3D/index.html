@@ -1,0 +1,188 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+html {overflow-x: hidden; overflow-y: hidden;}
+body {margin:0px;padding:0px;}
+</style>
+</head>
+<body>
+<canvas id="myCanvas" width="800" height="800"></canvas>
+
+<script>
+
+var canvas = document.getElementById('myCanvas');
+var ctx = canvas.getContext('2d');
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+var cx = canvas.width;
+var cy = canvas.height;
+
+var depth = 2000;
+var camera = {x:0, y:0, z:0};
+var track = 0;
+var matrix = new Array();
+var stars = new Array();
+var cities = new Array();
+var res = 1;
+var mosx = cx/2;
+var mosy = cy/2;
+var xspot = 1;
+var yspot = 1;
+
+function rn(min,max){return Math.floor( Math.random()*((max+1)-min)+min);}
+
+function write(x,y,message){
+	ctx.beginPath();
+	ctx.font='20px Arial';
+	ctx.fillStyle = 'white';
+	ctx.fillText(message,x,y);
+	ctx.fill();
+	}
+	
+function square(){
+	this.color="rgb(" + rn(10,20)+","+rn(80,90)+","+rn(220,240)+")";
+	this.type=0;
+	}
+
+function makestars(){
+	for (i=0;i<50;i++){stars[i]=[rn(1,cx),rn(1,300),rn(1,10)];}
+	}
+
+function map(){
+	for(x=0;x<=(140/res);x++){matrix[x]= new Array();
+		for(y=0;y<=(80/res);y++){matrix[x][y] = new square();}
+		}
+	for(i=0;i<(20/res);i++){
+		var x=rn(1,139/res);
+		var y=rn(1,79/res);
+		for(j=0;j<80;j++){
+			for(k=-1;k<2;k++){
+				for(l=-1;l<2;l++){
+					matrix[x+k][y+l].type=1;
+					matrix[x+k][y+l].color="rgb(" + rn(110,120)+","+rn(230,255)+","+rn(40,50)+")";
+					}
+				}
+			x+=rn(-3,3);
+			if(x<1) x=(139/res);
+			if(x>(139/res)) x=1;
+			y+=rn(-3,3);
+			if(y<1) y=(79/res);
+			if(y>(79/res)) y=1;
+			}
+		}
+	for(i=0;i<10;i++){
+		x=rn(0,matrix.length)
+		y=rn(0,matrix[0].length)
+		if (matrix[x][y].type==1){
+			matrix[x][y].type=2;
+			matrix[x][y].color="#666666";
+			}
+		else i--;
+		}
+	}
+	
+function mousemov(){
+	ctx.beginPath();
+	ctx.fillStyle="#333333";
+	x=cx-200;
+	ctx.rect(x,100,50,50);
+	ctx.rect(x+50,50,50,50);
+	ctx.rect(x+50,150,50,50);
+	ctx.rect(x+100,100,50,50);
+	ctx.fill();
+	write(x+7,130,"Left");
+	write(x+62,80,"Up");
+	write(x+50,180,"Down");
+	write(x+103,130,"Right");
+	if(mosx>x && mosy<200){
+		if (mosx>x && mosx<(x+50)){
+			xspot--;
+			if (xspot<0) xspot=matrix.length;
+			}
+		if (mosy<100 && mosy>50){
+			yspot--;
+			if (yspot<0) yspot=matrix[0].length;
+			}
+		if (mosy<200 && mosy>150) yspot++;
+		if (mosx>x+100 && mosx<x+150) xspot++;
+		}
+	}
+
+function cal(x,y,e,k){
+	e+=(cy/1.6);
+	x=x*res+20
+	if (k>1) x+=res+.03;
+	y=y*res-160;
+	if  (k==1 || k==2) y+=res+.03;
+	x=x/180*Math.PI;
+	y=y/180*Math.PI;
+	var z=Math.sin(x)*Math.sin(y)*e;
+	var scale=depth/(depth+z-350);
+	this.x=(cx/2)+Math.cos(x)*Math.sin(y)*e*scale;
+	this.y=cy-100+Math.cos(y)*e*scale;
+	}
+
+function draw(){
+	ctx.fillStyle="black";
+	ctx.rect(0,0,cx,cy);
+	ctx.fill();
+
+	for(var i=0;i<stars.length;i++){
+	ctx.beginPath();
+	ctx.fillStyle="white";
+		ctx.arc(stars[i][0],stars[i][1],stars[i][2]/4,0,2*Math.PI);
+	ctx.fill();
+		}
+	track=0;
+	for(var x=0;x<(140/res);x++){
+		for(var y=0;y<(80/res);y++){
+			var c = matrix[(x+xspot)%(matrix.length)][(y+yspot)%(matrix[0].length)];
+			ctx.beginPath();
+			ctx.fillStyle=c.color;
+			if (c.type==2)cities[track++]=[x,y];
+			for(var k=0;k<4;k++){
+				var n = new cal(x,y,0,k)
+				if (k%4==0) ctx.moveTo(n.x,n.y);
+				else        ctx.lineTo(n.x,n.y);
+				}
+			ctx.fill();
+			}
+		}
+
+	xoff=(cx/2-mosx)/50;
+	yoff=(cy*2/3-mosy)/50;
+	ctx.fill();
+	ctx.save();
+	ctx.shadowBlur=30;
+	ctx.shadowColor="black";
+	ctx.shadowOffsetX = xoff;
+	ctx.shadowOffsetY = yoff;
+	ctx.beginPath();
+	var grd = ctx.createRadialGradient(cx/2-xoff,cy*2/3-yoff,0,cx/2,cy*2/3,30);
+	grd.addColorStop(0,"#888888");
+	grd.addColorStop(1,"#222222");
+	ctx.fillStyle=grd;
+	ctx.arc(cx/2,cy*2/3,30,0,2*Math.PI);
+	ctx.fill();
+	ctx.restore();
+	}
+makestars();
+map();
+
+var myVar=setInterval(function(){draw();mousemov();},30);
+
+function getMousePos(canvas, evt) {
+var rect = canvas.getBoundingClientRect();
+return {x: evt.clientX - rect.left, y: evt.clientY - rect.top};}
+	
+	
+canvas.addEventListener('mousemove', function(evt) {
+var mousePos = getMousePos(canvas, evt);
+mosx=mousePos.x;mosy=mousePos.y;}, false);
+
+</script>
+</body>
+</html>

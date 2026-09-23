@@ -1,0 +1,342 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body {margin: 0px;padding: 0px; background-color:black; overflow: hidden;}
+div {position:absolute;}
+.fatborders {
+  border-radius:20px; 
+  padding:20px;
+  background-color:rgb(50,50,50);
+  }
+#mainDiv {
+  magin:auto; 
+  display:inline-block; 
+  width:800px; 
+  height:600px;
+  margin-left:-400px;
+  top:40px; 
+  left:50%;
+  }
+#options {
+  text-align:center;
+  width:96px; 
+  height:210px;
+  top:240px;
+  left:10px; 
+  }
+#HScroll {
+  top: 660px;
+  width: 760px;
+  height: 0px;
+  }
+#VScroll {
+  top: 20px;
+  left: 860px;
+  width: 0px;
+  height: 560px;
+  }
+.slider {
+  background-color:rgb(150,150,150);
+  border-radius: 50%;
+  width:60px;
+  height:60px;
+  }
+#debug {
+  height:200px;
+  width:200px;
+  top:0px;
+  right:0px;
+  color:white;
+  }
+</style>
+<title>Game Designer</title>
+</head>
+<body>
+<img id="textures" src="textures.png" style="display:none;">
+<img id="pup" src="Pup.png" style="display:none;">
+<div id="mainDiv" class="fatborders">
+  <canvas  id="myCanvas"></canvas>
+  <div id="HScroll" class="fatborders">
+    <div class="slider" style="top:-10px; left:0px;"></div>
+  </div>
+  <div id="VScroll" class="fatborders">
+    <div class="slider" style="left:-10px; bottom:0px;"></div>
+  </div>
+</div>
+<div id="options" class="fatborders">
+<input type="button" value="Play" onclick="toggleEdit()" id="edit"></input>
+<br><br>
+<canvas id="sqpicker"></canvas>
+</div>
+<div id="debug">Debug info</div>
+<script>
+var canvas = document.getElementById("myCanvas");
+var ctx = canvas.getContext("2d");
+var cw = canvas.width = 800;
+var ch = canvas.height = 600;
+ctx.font = "10px Arial";
+var img=document.getElementById("textures");
+var puppy=document.getElementById("pup");
+var k = {up:false,down:false,left:false,right:false,jump:false};
+
+var LEVELWIDTH = 200;
+var LEVELHEIGHT = 50;
+var pos = {xF:0, yF:0, xG:0, yG:0};
+var grid = [];
+var edit = true;
+var mouse = {x:0,y:0,down:false,xd:0,yd:0};
+var paintTool = {x:0,y:0};
+var pup = {x:cw/2-20,y:0,f:0};
+var count = 0;
+var keys = [];
+
+for(var i=0, ilen = LEVELWIDTH; i<ilen; i++) {
+  grid.push([]);
+  for(var j=0, jlen = LEVELHEIGHT; j<jlen; j++) {
+    grid[i].push(obj());
+    }
+  };
+
+//And objects x and y are the coordinates on the png where the block is
+function obj() {return {x:0,y:0,on:false};}
+
+function main() {
+  requestAnimationFrame(main);
+  //document.getElementById("debug").innerHTML = text;
+  if (keys.length > 0) processKeys();
+  ctx.clearRect(0,0,cw,ch);
+  drawBackground();
+  drawSquares();
+  if (edit) {
+    drawGrid();
+    sqpctx.drawImage(img,0,0,96,90);
+    if (mouse.down) drawSBox();
+    }
+  else {
+    count++;
+    drawPup();
+    movePup();
+    }
+  }
+  
+function drawPup(){
+  var frame = (pup.f%2 == 0)? 0:40;
+  ctx.drawImage(puppy,0,0+frame,40,40,pup.x,ch-pup.y,40,40);
+  }
+  
+function movePup(){
+  
+  }
+  
+function drawSquares() {
+  for (var i=0, leni=Math.floor(cw/32); i<=leni; i++) {
+    for (var j=0, lenj=Math.floor(ch/30); j<=lenj; j++) {
+      try{
+      if (grid[i+pos.xG][j+pos.yG].on)
+        drawImage(grid[i+pos.xG][j+pos.yG],i*32-pos.xF,ch-j*30-30+pos.yF);
+        }catch(e){console.log(i+pos.xG + "    " + j+pos.yG);}
+      }
+    }
+  }
+  
+function drawImage(obj,x,y) {
+    ctx.drawImage(img,obj.x*32,obj.y*30,32,30,x,y,32,30);
+  }
+
+function drawBackground() {
+  var grd=ctx.createLinearGradient(0,0,0,ch);
+  grd.addColorStop(0,"rgb(50,50,200)");
+  grd.addColorStop(1,"rgb(150,150,255)");
+  ctx.fillStyle=grd;
+  ctx.fillRect(0,0,cw,ch);
+  }
+  
+function drawGrid() {
+  ctx.lineWidth=1;
+  ctx.strokeStyle = "black";
+  ctx.fillStyle = "black";
+  var x = 0, y = 0;
+  while (x < cw+32) {
+    line(x-pos.xF,0,x-pos.xF,ch);
+    ctx.fillText(x/32+pos.xG+1,x-pos.xF+10,10);
+    x+=32;
+    }
+  while (y < ch+30) {
+    line(0,y+pos.yF,cw,y+pos.yF);
+    y+=30;
+    }
+  }
+  
+function line(x1,y1,x2,y2) {
+  ctx.beginPath();
+  ctx.moveTo(x1,y1);
+  ctx.lineTo(x2,y2);
+  ctx.stroke();
+  }
+  
+canvas.addEventListener('mousedown',onMouseDown);
+function onMouseDown(e) {
+  mouse.down = true;
+  var rect = canvas.getBoundingClientRect();
+  mouse.x = mouse.xd = e.clientX - rect.left;
+  mouse.y = mouse.yd = e.clientY - rect.top;
+  }
+  
+canvas.addEventListener('mousemove',onMouseMove);
+function onMouseMove(e) {
+  if (mouse.down == false) return;
+  var rect = canvas.getBoundingClientRect();
+  mouse.x = e.clientX - rect.left;
+  mouse.y = e.clientY - rect.top;
+  }
+  
+function getGridPos(x,y){
+  var x = Math.floor((x+pos.xF)/32)+pos.xG;
+  var y = Math.floor((y+pos.yF)/30)+pos.yG;
+  return {x:x, y:y};
+  }
+  
+canvas.addEventListener('mouseup',onMouseUp);
+function onMouseUp(e) {
+  mouse.down = false;
+  if (!edit) return;
+  var rect = canvas.getBoundingClientRect();
+  var s = getGridPos(mouse.xd, mouse.yd);
+  var e = getGridPos(e.clientX - rect.left, e.clientY - rect.top);
+  var p = minMaxSort(s.x,s.y,e.x,e.y);
+  for(var i=p.y1; i<=p.y2; i++) {
+    for(var j=p.x1; j<=p.x2; j++) {
+      var obj = grid[j][(Math.floor(ch/30))-i-1];
+      obj.x = paintTool.x;
+      obj.y = paintTool.y;
+      obj.on = true;
+      if (paintTool.x == 2 && paintTool.y == 0) obj.on = false;
+      }
+    }
+  }
+  
+function minMaxSort(x1,y1,x2,y2) {
+  var sx,ex,sy,ey;
+  if (x1 < x2){sx = x1; ex = x2;}
+  else        {ex = x1; sx = x2;}
+  if (y1 < y2){sy = y1; ey = y2;}
+  else        {ey = y1; sy = y2;}
+  return {x1:sx,y1:sy,x2:ex,y2:ey};
+  }
+  
+function drawSBox() {
+  var p = minMaxSort(mouse.x,mouse.y,mouse.xd,mouse.yd);
+  ctx.strokeStyle="White";
+  ctx.lineWidth=3;
+  ctx.beginPath();
+  ctx.rect(p.x1,p.y1,p.x2-p.x1,p.y2-p.y1);
+  ctx.stroke();
+  }
+  
+function rn(min,max){return Math.floor( Math.random()*((max+1)-min)+min);}
+
+var sqpcan = document.getElementById("sqpicker");
+var sqpctx = sqpcan.getContext("2d");
+var sqpWidth = sqpcan.width = 96;
+var sqpHeight = sqpcan.height = 210;
+sqpcan.addEventListener('mousedown',sqpick);
+function sqpick(e) {
+  var rect = sqpcan.getBoundingClientRect();
+  var x = Math.floor((e.clientX - rect.left)/32);
+  var y = Math.floor((e.clientY - rect.top)/30);
+  paintTool = {x:x,y:y};
+  sqpctx.clearRect(0,0,96,210);
+  sqpctx.drawImage(img,0,0,96,90);
+  sqpctx.strokeStyle="White";
+  sqpctx.lineWidth=3;
+  sqpctx.beginPath();
+  sqpctx.rect(x*32+1,y*30+1,30,28);
+  sqpctx.stroke();
+  }
+  
+  
+function toggleEdit() {
+  var button = document.getElementById("edit");
+  var canh = document.getElementById("sqpicker");
+  edit = !edit;
+  if (edit) {
+    button.value = "Play";
+    canh.style["display"] = "block";
+    }
+  else {
+    button.value = "Edit";
+    canh.style["display"] = "none";
+    placePup();
+    }
+  }
+  
+  
+function placePup() {
+    var s = getGridPos(pup.x-20,pup.y-40);
+    if (s.y < 0) s.y = 0;
+    if(grid[s.x][s.y].on) {pup.y += 5; placePup();}
+    var e = getGridPos(pup.x+20,pup.y-40);
+    if (e.y < 0) e.y = 0;
+    if(grid[e.x][e.y].on) {pup.y += 5; placePup();}
+  }
+  
+  
+document.getElementById("HScroll").onmousemove = function(e){Xscroll(e);};
+document.getElementById("VScroll").onmousemove = function(e){Xscroll(e);};
+  
+function Xscroll(e) {
+  if (e.buttons == 0) return;
+  var thisDiv = e.currentTarget;
+  var slider = thisDiv.childNodes[1];
+  var rect = thisDiv.getBoundingClientRect();
+  var x = e.clientX - rect.left-30;
+  var y = e.clientY - rect.top-30;
+  if (thisDiv.id == "HScroll") {
+    if (x > -20 && x < 760) {
+      slider.style["left"] = x + "px";
+      var lvlLen = LEVELWIDTH - Math.floor(cw/32);
+      var percentage = x/750;
+      var xG = Math.floor(lvlLen*percentage);
+      if (xG < 0) {pos.xG = 0; pos.xF = 0;}
+      else if (xG > lvlLen) {pos.xG = lvlLen; pos.xF = 0;}
+      else {pos.xG = xG; pos.xF = (lvlLen*percentage-pos.xG)*32;}
+      }
+    }
+  else if (y > -20 && y < 560) {
+    slider.style["top"] = y + "px";
+      var lvlHgt = LEVELHEIGHT - Math.floor(ch/30);
+      var percentage = 1-(y/520);
+      var yG = Math.floor(lvlHgt*percentage);
+      if (yG < 0) {pos.yG = 0; pos.yF = 0;}
+      else if (yG > lvlHgt) {pos.yG = lvlHgt; pos.yF = 0;}
+      else {pos.yG = yG; pos.yF = (lvlHgt*percentage-pos.yG)*30;}
+    }
+  }
+
+window.addEventListener('keydown',function(e){if (keys.indexOf(e.keyCode) == -1) keys.push(e.keyCode);console.log(e.keyCode)});
+window.addEventListener('keyup',function(e){keys.splice(keys.indexOf(e.keyCode),1)});
+
+function processKeys(){
+  //left 65, 37
+  if (keys.indexOf(65) > -1 || keys.indexOf(37) > -1) {
+    pos.xF -= 5;
+    if (pos.xF < 0) {pos.xF += 32; pos.xG--; if (pos.xG < 0) {pos.xG = 0; pos.xF = 0;}}
+    }
+  //down 83, 40
+  //right 68, 39
+  if (keys.indexOf(68) > -1 || keys.indexOf(39) > -1) {
+    pos.xF += 5;
+    var lvlLen = LEVELWIDTH - Math.floor(cw/32);
+    if (pos.xF > 31) {pos.xF -= 32; pos.xG++; if (pos.xG > lvlLen) {pos.xG = lvlLen; pos.xF = 0;}}
+    }
+  //up 87, 38
+  //space 32
+  }
+  
+main();
+  
+</script>
+</body>
+</html>

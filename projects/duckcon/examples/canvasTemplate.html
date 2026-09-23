@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Basic Canvas</title>
+</head>
+<body style="margin:0px; overflow:hidden;">
+<canvas id="canvas"></canvas>
+<script>
+var can = document.getElementById("canvas");
+var ctx = can.getContext('2d');
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+
+ctx.fillStyle="black";
+ctx.fillRect(0,0,cw,ch);
+
+</script>
+</body>
+</html>

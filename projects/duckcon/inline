@@ -1,0 +1,5 @@
+        <font size="4" face="monospace">
+          <span style="color:white; background-color:black; padding:8px; margin-left:40px;">
+          can.addEventListener("click", function(e) { drawRectangle(e); } );
+          </span>
+        </font><br><br>

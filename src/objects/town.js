@@ -35,7 +35,7 @@ function spiral(n) {
 const upright = (t) => { t.center.set(0.5, 0.5); t.rotation = Math.PI; return t; };
 function roofTexture(project, loader) {
   if (project.img) {
-    const t = loader.load(`../../textures/projects/${project.img}.jpg`); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    const t = loader.load(`/textures/projects/${project.img}.jpg`); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
     return upright(t);
   }
   const cv = document.createElement('canvas'); cv.width = 512; cv.height = 384; const g = cv.getContext('2d');
@@ -87,7 +87,7 @@ export function buildTown(parts, projects, { shipLength = 7, renderer, origin = 
   });
 
   // FOREST: the imposter forest, laid out on tiles around the fighter; the town's circle kept clear
-  const forest = new Forest(renderer, floor, { base: '../../models/trees/', light, tile: 420, tiles: 7, perTile: light ? 120 : 220, imposterAt: light ? 0 : 140, band: 40, grid: light ? 8 : 12, cell: 192, detail: 'coarse', shadows: false,
+  const forest = new Forest(renderer, floor, { base: '/models/trees/', light, tile: 420, tiles: 7, perTile: light ? 120 : 220, imposterAt: light ? 0 : 140, band: 40, grid: light ? 8 : 12, cell: 192, detail: 'coarse', shadows: false,
     clear: (x, z) => Math.hypot(x, z) < TOWN_R, sunDir: new THREE.Vector3(0.5, 1, 0.3) });
   const relay = () => {};
   // THE FENCE: the force field round the town, an octagon of emitter posts just inside the tree line

@@ -1,0 +1,310 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body {
+margin: 0px;
+padding: 0px; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="myCanvas" width="800" height="800"></canvas>
+
+<script>
+
+var canvas = document.getElementById('myCanvas');
+var ctx = canvas.getContext('2d');
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+var depth = 1000;
+var maze = new Array();
+var fix = new Array();
+var points = new Array();
+const squares = 10;
+const slen = 400/squares;
+var track = 0;
+var mosx = 300;
+var mosy = 300;
+var turnright = 0;
+var turnleft = 0;
+var forward = 0;
+var cx=canvas.width;
+var cy=canvas.height;
+var matrix = {x:0, y:0};
+var mm = {x:1, y:0};
+
+function rn(min,max){return Math.floor( Math.random()*((max+1)-min)+min);}
+
+function write(cx,cy,message){
+	ctx.beginPath();
+	ctx.font='30px Arial';
+	ctx.fillStyle = 'red';
+	ctx.fillText(message,cx,cy);
+	ctx.fill();
+	}
+	
+function point(x,y,z){
+	this.x=x-slen/2;
+	this.y=y;
+	this.z=z-1000-slen/2;
+	}
+	
+function square(down,right){
+	this.down=down;
+	this.right=right;
+	}
+
+function line(x1,y1,x2,y2){
+	var offset=10+(squares/2*10);
+	x1-=offset;
+	y1-=offset;
+	x2-=offset;
+	y2-=offset;
+	var r=0;
+	if(mm.y==1) r=270;
+	if(mm.x==-1) r=180;
+	if(mm.y==-1) r=90;
+	var d=Math.sqrt(x1*x1 + y1*y1);
+	var c=Math.atan2(x1,y1);
+	c+=r/180*Math.PI;
+	y1=Math.cos(c)*d;
+	x1=Math.sin(c)*d;
+	var d=Math.sqrt(x2*x2 + y2*y2);
+	var c=Math.atan2(x2,y2);
+	c+=r/180*Math.PI;
+	y2=Math.cos(c)*d;
+	x2=Math.sin(c)*d;
+	ctx.beginPath();
+	ctx.lineWidth = 2;
+	ctx.strokeStyle = 'red';
+	ctx.moveTo(x1+offset,y1+cy/2+offset-40);
+	ctx.lineTo(x2+offset,y2+cy/2+offset-40);
+	ctx.stroke();
+	}
+
+function right(x,y){
+		points[track++] = new point(x*slen+slen,-15,y*slen);
+		points[track++] = new point(x*slen+slen,-15,y*slen+slen);
+		points[track++] = new point(x*slen+slen,15,y*slen+slen);
+		points[track++] = new point(x*slen+slen,15,y*slen);
+	}
+function down(x,y) {
+		points[track++] = new point(x*slen,-15,y*slen+slen);
+		points[track++] = new point(x*slen+slen,-15,y*slen+slen);
+		points[track++] = new point(x*slen+slen,15,y*slen+slen);
+		points[track++] = new point(x*slen,15,y*slen+slen);
+	}
+
+function createmaze(){
+	for(var i=0;i<squares;i++){
+		maze[i] = new Array();
+		fix[i] = new Array();
+		for(var j=0;j<squares;j++){
+			fix[i][j]=0;
+			maze[i][j]=new square(false,false);
+
+			if (i==(squares-1)) maze[i][j].right=true;
+			if (j==(squares-1)) maze[i][j].down=true;
+			if (rn(1,10)>5) maze[i][j].right=true;
+			if (rn(1,10)>5) maze[i][j].down=true;
+			}
+		}
+	}
+
+function breakout(x,y){
+	var lowx=0;
+	var lowy=0;
+	var lowd=0;
+	while (fix[x][y]<5){
+		fix[x][y]++;
+		var a = fix[x][y];
+		var xm=0, ym=0;
+		if (!maze[x][y].right && fix[x+1][y]<a){a=fix[x+1][y];xm= 1;ym=0;}   //Go Right
+		if (!maze[x][y].down && fix[x][y+1]<a) {a=fix[x][y+1];xm=0;ym= 1;}   //Go Down
+		if (x!=0){if (!maze[x-1][y].right && fix[x-1][y]<a) {a=fix[x-1][y];xm=-1;ym=0;}}   //Go Left
+		if (y!=0){if (!maze[x][y-1].down && fix[x][y-1]<a)   {a=fix[x][y-1];xm=0;ym=-1;}}   //Go Up
+		x+=xm;
+		y+=ym;
+		if (x==(squares-1) && y==(squares-1)) break;
+		if ((x+y)>lowd){lowd=(x+y);lowx=x;lowy=y;}
+		}
+		
+	if      (lowx!=(squares-1)){maze[lowx][lowy].right=false;}
+	else if (lowy!=(squares-1)){maze[lowx][lowy].down=false;}
+	}
+
+function fixmaze(){
+	for(var i=0;i<squares;i++){
+		for(var j=0;j<squares;j++){
+			if (fix[i][j]==0) breakout(i,j);
+			}
+		}
+	}
+
+function drawmaze(){
+	for(var i=0;i<squares;i++){
+		for(var j=0;j<squares;j++){
+			if (i==0) right(i-1,j);
+			if (j==0) down(i,j-1);
+			if (maze[i][j].down) down(i,j);
+			if (maze[i][j].right)right(i,j);
+			}
+		}
+	}
+	
+function rotatezx(r){
+	for(var i=0;i<track;i++){
+		var thez = points[i].z+depth;
+		var thex = points[i].x;
+		var d=Math.sqrt(thez*thez + thex*thex);
+		var c=Math.atan2(thex,thez);
+		c+=r/180*Math.PI;
+		points[i].z=Math.cos(c)*d-depth;
+		points[i].x=Math.sin(c)*d;
+		}
+	}
+
+	
+function action(){
+	ctx.beginPath();
+	ctx.fill();
+	write(cx/4-50,cy-50,"Left");
+	write(cx*2/4-55,cy-50,"Forward");
+	write(cx*3/4-50,cy-50,"Right");
+	ctx.fill();
+	if (forward>0) {forward-=slen/10;for(i=0;i<track;i++)points[i].z-=slen/10;}
+	else if (turnright>0){turnright-=5; rotatezx(5);}
+	else if (turnleft>0){turnleft-=5; rotatezx(-5);}
+	}
+	
+function cheese(){
+	ctx.beginPath();
+	var d = (depth+(points[track-1].z+15-slen/2));
+	if (d!=0) var scale = depth/d;
+	ctx.fillStyle="yellow";
+	if (scale>0){
+		var x=(cx/2)+(points[track-1].x-(slen/2))*scale;
+		var y=(cy/2)+(points[track-1].y+7-(slen/2))*scale;
+		ctx.lineTo(x-4*scale,y-1*scale);
+		ctx.lineTo(x+4*scale,y-1*scale);
+		ctx.lineTo(x+4*scale,y-4*scale);
+		ctx.fill();
+		ctx.fillStyle="#999900";
+		ctx.lineTo(x+3*scale,y-5*scale);
+		ctx.lineTo(x-5*scale,y-1.8*scale);
+		ctx.fill();
+		ctx.beginPath();
+		ctx.arc(x+2*scale,y-2*scale,.75*scale,0,2*Math.PI);
+		}
+
+	ctx.fill();
+	}
+
+
+function draw(){
+	ctx.globalAlpha=1;
+	ctx.fillStyle="white";
+	ctx.rect(0,0,canvas.width,canvas.height);
+	ctx.fill();
+	ctx.globalAlpha=.9;
+	ctx.fillStyle="black";
+	
+	for(var i=0;i<track;i++){
+		//if (points[i].z<-1000) continue;
+		if (i%4==0) ctx.beginPath();
+		var d = (depth+(points[i].z+19));
+		if (d!=0) var scale = depth/d;
+		if (scale<0) continue;
+		var x=(cx/2)+(points[i].x)*scale;
+		var y=(cy/2)+(points[i].y)*scale;
+		if(i%4==0) ctx.moveTo(x,y);
+		else       ctx.lineTo(x,y);
+		if(i%4==3) ctx.fill();
+		}
+	cheese();
+/*
+		var d = (depth+(points[track-1].z+15-slen/2));
+		if (d!=0) var scale = depth/d;
+		ctx.beginPath();
+		ctx.fillStyle="yellow";
+		if (scale>0){
+			var x=(cx/2)+(points[track-1].x-(slen/2))*scale;
+			var y=(cy/2)+(points[track-1].y+5-(slen/2))*scale;
+			ctx.moveTo(x-4*scale,y-1*scale);
+			ctx.lineTo(x+4*scale,y-1*scale);
+			ctx.lineTo(x+4*scale,y-4*scale);
+			}
+		ctx.fill();*/
+	}
+	
+	
+createmaze();
+fixmaze();
+drawmaze();
+
+function writestuff(){
+	for(var i=0;i<squares;i++){
+		for(var j=0;j<squares;j++){
+			if (i==0) line((i-1)*10+20,(squares-j)*10+10,(i-1)*10+20,(squares-j)*10);
+			if (j==0) line(i*10+10,((squares-j)-1)*10+20,i*10+20,((squares-j)-1)*10+20);
+			if (maze[i][j].right)line(i*10+20,(squares-j)*10+10,i*10+20,(squares-j)*10);
+			if (maze[i][j].down)line(i*10+10,(squares-j)*10,i*10+20,(squares-j)*10);
+			}
+		}
+	ctx.fillStyle="red";
+	ctx.beginPath();
+	if(mm.x==1){tempx=matrix.y; tempy=squares-matrix.x;}
+	if(mm.y==-1){tempx=squares-matrix.x-1; tempy=squares-matrix.y;}
+	if(mm.y==1){tempx=matrix.x; tempy=matrix.y+1;}
+	if(mm.x==-1){tempx=squares-matrix.y-1; tempy=matrix.x+1;}
+	ctx.rect(12+tempx*10,cy/2-38+tempy*10,6,6);
+	ctx.fill();
+	}
+	
+var myVar=setInterval(function(){draw();action();writestuff();},30);
+
+function getMousePos(canvas, evt) {
+var rect = canvas.getBoundingClientRect();
+return {x: evt.clientX - rect.left, y: evt.clientY - rect.top};}
+	
+	
+canvas.addEventListener('click', function(evt) {
+var mousePos = getMousePos(canvas, evt);
+mosx=mousePos.x;mosy=mousePos.y;
+	if (mosy>(cy-100)){
+		if (mosx>cx/4-100 && mosx<cx/4+100){
+			turnright+=90;
+			if      (mm.x==1) {mm.x=0; mm.y=1; }
+			else if (mm.y==1) {mm.x=-1;mm.y=0; }
+			else if (mm.x==-1){mm.x=0; mm.y=-1;}
+			else if (mm.y==-1){mm.x=1; mm.y=0; }
+			}
+
+		if (mosx>(cx*2/4-100) && mosx<(cx*2/4+100)){
+			var wall=false;
+			if (mm.x==1 && maze[matrix.y][matrix.x].down==true) wall=true;
+			if (mm.y==-1 && maze[matrix.y][matrix.x].right) wall=true;
+			if (mm.x==-1 && maze[matrix.y][matrix.x-1].down) wall=true;
+			if (mm.y==1  && maze[matrix.y-1][matrix.x].right) wall=true;
+			if (wall==false){
+				forward+=slen;
+				matrix.x+=mm.x;
+				matrix.y-=mm.y;
+				}
+			}
+
+		if (mosx>(cx*3/4-100) && mosx<(cx*3/4+100)){
+			turnleft+=90;
+			if      (mm.x==1) {mm.x=0; mm.y=-1;}
+			else if (mm.y==1) {mm.x=1; mm.y=0; }
+			else if (mm.x==-1){mm.x=0; mm.y=1; }
+			else if (mm.y==-1){mm.x=-1;mm.y=0; }
+			}
+		}}, false);
+</script>
+</body>
+</html>

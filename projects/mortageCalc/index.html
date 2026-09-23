@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>
+Mortgage Calculator
+</title>
+</head>
+
+<body bgcolor="#222222">
+
+<div style="background-color:#DDDDDD; width:400px; height:260px; padding:15px; margin:10px; float:left; position:relative;">
+<table><tr>
+<td>Loan Amount</td><td>$<input type="text" id="loan" value="275000" onChange="calculate(0);" size=8></td>
+<td align="center" width="50">Monthly</td><td align="center" width="50">Annual</td></tr><tr>
+<td>How many Years?</td><td>&nbsp;&nbsp;<input type="text" id="years" value="30" onChange="calculate(0);" size=8></td><td></td><td></td></tr><tr>
+<td>APR</td><td>&nbsp;&nbsp;<input type="text" id="apr" value="3.25" onChange="calculate(0);" size=8></td><td></td><td></td></tr><tr>
+<td>Taxes</td><td>$<input type="text" id="tax" value="4167" onChange="calculate(0);" size=8></td>
+<td align="center"><input type="radio" name="tax"></td><td align="center"><input type="radio" name="tax" id="taxy" checked></td></tr><tr>
+<td>Insurance</td><td>$<input type="text" id="insurance" value="75" onChange="calculate(0);" size=8></td>
+<td align="center"><input type="radio" name="ins" checked></td><td align="center"><input type="radio" id="insy" name="ins"></td></tr><tr>
+<td>Homeowners Association</td><td>$<input type="text" id="HOA" value="663" onChange="calculate(0);" size=8></td>
+<td align="center"><input type="radio" name="hoa"></td><td align="center"><input type="radio" id="hoay" name="hoa" checked></td></tr><tr>
+<td>Extra to Payment</td><td>$<input type="text" id="extra" value="0" onChange="calculate(0);" size=8></td>
+<td align="center"><input type="radio" name="etp" checked></td><td align="center"><input type="radio" id="etpy" name="etp"></td></tr></table><br>
+<button onclick="calculate(0)">Calculate</button><br>
+</div>
+
+<div style="background-color:#DDDDDD; width:800px; height:260px; padding:15px; margin:10px; display:none; float:left; position:relative;" id="infotable">
+<table><tr>
+<td width = "250">Monthly Payment</td><td align="right" width = "100"><p id="mp"></p></td><td width = "100"></td>
+<td width = "100">Total Interest</td><td align="right" width = "100"><p id="ti"></p></td></tr><tr>
+<td>Monthly Payment With Tax</td><td align="right"><p id="mpwt"></p></td><td></td>
+<td>Total Principle</td><td align="right"><p id="tp"></p></td></tr><tr>
+<td>Monthly Payment (Tax and Insurance)</td><td align="right"><p id="mpta"></p></td><td></td>
+<td>Total Tax</td><td align="right"><p id="tt"></p></td></tr><tr>
+<td>Monthly Payment (Tax, Ins and HOA)</td><td align="right"><p id="mpev"></p></td>
+<td></td><td></td><td></td></tr></table>
+</div>
+
+<div style="background-color:#000000; float:left; height:500px; margin:10px; display:none; position:relative;" id="graphdiv">
+<canvas id="graph1" width="600" height="500" onclick="coord();"></canvas>
+</div>
+
+<div style="background-color:#DDDDDD; float:left; width:400px; padding:15px; margin:10px; display:none; position:relative;" id="graphinfo">
+<p>Click on the graph to calculate a shorter length of time.<br>Example: You want to know how much principle you will pay off in 5 years.
+You may have to click a few times to get it where you want it.</p>
+<table style="display:none;" id="short"><tr>
+<td>Years</td><td align="right"><p id="gyears"></p></td><td width="50"></td>
+<td>Months</td><td align="right"><p id="months"></p></td></tr></table>
+</div>
+
+<script>
+function calculate(given){
+	var loan = parseInt(document.getElementById("loan").value);
+	var years = parseInt(document.getElementById("years").value);
+	var apr = parseFloat(document.getElementById("apr").value);
+	var tax = parseInt(document.getElementById("tax").value);
+	var insurance = parseInt(document.getElementById("insurance").value);
+	var hoa = parseInt(document.getElementById("HOA").value);
+	var extra = parseInt(document.getElementById("extra").value);
+
+	if (document.getElementById("taxy").checked) tax=tax/12;
+	if (document.getElementById("insy").checked) insurance=insurance/12;
+	if (document.getElementById("hoay").checked) hoa=hoa/12;
+	if (document.getElementById("etpy").checked) extra=extra/12;
+	
+	var totalprinciple=0;
+	var totalinterest=0;
+	var totalloan=loan;
+	var term = Math.pow((1+(apr/1200)),(years*12));
+	var payment = (loan*(((apr/100)*term)/(term-1)))/12;
+	//var payment = loan*(apr/1200)/(1-(Math.pow((1+(apr/1200)),(years*-12))))
+	var paymentwtax = payment+tax;
+	payment += extra;
+
+	var g1=document.getElementById("graph1");
+	g1.width = years*24;
+	var ctx=g1.getContext("2d");
+
+	if (given==0) {
+		given=(years*12);
+		document.getElementById("short").style.display="none";
+		}
+
+	for (var i=0;i<given;i++){
+	
+		var interest = loan*(apr/1200);
+		var principle = payment-interest;
+		totalprinciple += principle;
+		totalinterest += interest;
+		loan -= principle;
+		var height = interest/paymentwtax*500;
+		var height2 = principle/paymentwtax*500;
+		ctx.fillStyle = "red";
+		ctx.fillRect(i*2,0,2,height);
+		ctx.fillStyle = "green";
+		ctx.fillRect(i*2,height,2,height2);
+		ctx.fillStyle = "blue";
+		ctx.fillRect(i*2,height+height2,2,500);
+		}
+
+	document.getElementById('infotable').style.display="block";
+	document.getElementById('graphdiv').style.display="block";
+	document.getElementById('graphinfo').style.display="block";
+	document.getElementById('mp').innerHTML = formatCurrency(payment);
+	document.getElementById('ti').innerHTML = formatCurrency(totalinterest);
+	document.getElementById('tp').innerHTML = formatCurrency(totalprinciple);
+	document.getElementById('tt').innerHTML = formatCurrency(tax*given);
+	document.getElementById('mpwt').innerHTML = formatCurrency(payment+tax);
+	document.getElementById('mpta').innerHTML = formatCurrency(payment+tax+insurance);
+	document.getElementById('mpev').innerHTML = formatCurrency(payment+tax+insurance+hoa);
+
+	var interest = totalloan*(apr/1200);
+	var principle = payment-interest;
+	var height = interest/paymentwtax*500;
+	var height2 = principle/paymentwtax*500;
+	ctx.font="30px Arial";
+	ctx.fillStyle = "black";
+	ctx.fillText("Interest",10,height/2+15);
+	ctx.fillText("Principle",10,height2/2+height+15);
+	ctx.fillText("Tax",10,(500-(height2+height))/2+height+height2+15);
+	ctx.stroke();
+	}
+
+function formatCurrency(num) {
+	num = num.toString().replace(/\$|\,/g, '');
+	if (isNaN(num)) num = "0";
+	sign = (num == (num = Math.abs(num)));
+	num = Math.floor(num * 100 + 0.50000000001);
+	cents = num % 100;
+	num = Math.floor(num / 100).toString();
+	if (cents < 10) cents = "0" + cents;
+	for (var i = 0; i < Math.floor((num.length - (1 + i)) / 3); i++)
+	num = num.substring(0, num.length - (4 * i + 3)) + ',' + num.substring(num.length - (4 * i + 3));
+	return (((sign) ? '' : '-') + '$' + num + '.' + cents);
+	}
+
+function coord(){
+	document.getElementById("short").style.display="block";
+	var x = event.x;
+	x -= (document.getElementById("graph1").offsetLeft+17);
+	x = Math.round(x/2);
+	document.getElementById('gyears').innerHTML = Math.floor(x/12);
+	document.getElementById('months').innerHTML = x-Math.floor(x/12)*12;
+	calculate(x);
+	}
+
+</script>
+
+</body>
+</html>

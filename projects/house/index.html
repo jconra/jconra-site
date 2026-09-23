@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <title>House</title>
+  <meta charset="utf-8">
+</head>
+<body style="margin: 0;">
+ 
+  <script src="lib/three.min.js"></script>
+  <script src="lib/OrbitControls.js"></script>
+ 
+ 
+    <script>
+      var canvas = document.createElement('canvas');
+      canvas.width = 1000;
+      canvas.height = 1000;
+      var context = canvas.getContext('2d');
+     
+      var grd=context.createRadialGradient(500,500,100,500,500,500);
+      grd.addColorStop(0,"#55FF55");
+      grd.addColorStop(1,"#008800");
+      context.fillStyle=grd;
+      context.fillRect(0,0,1000,1000);
+      /*
+      context.fillStyle="black";
+      for (var i=0; i<10; i++){for(var j=0; j<10; j++){
+        context.fillRect(i*100,j*100,50,50);
+        context.fillRect(i*100+50,j*100+50,50,50);
+        }}
+        */
+      // save canvas image as data url (png format by default)
+      var checkers = canvas.toDataURL();
+ 
+ 
+  
+    // Set up the scene, camera, and renderer as global variables.
+    var scene, camera, renderer;
+    var buildings = [];
+ 
+    init();
+    animate();
+   
+ 
+    // Sets up the scene.
+    function init() {
+ 
+      // Create the scene and set the scene size.
+      scene = new THREE.Scene();
+      var WIDTH = window.innerWidth,
+          HEIGHT = window.innerHeight;
+ 
+      // Create a renderer and add it to the DOM.
+      renderer = new THREE.WebGLRenderer({antialias:true});
+      renderer.setSize(WIDTH, HEIGHT);
+      document.body.appendChild(renderer.domElement);
+ 
+      // Create a camera, zoom it out from the model a bit, and add it to the scene.
+      camera = new THREE.PerspectiveCamera(45, WIDTH / HEIGHT, 0.1, 20000);
+ 
+      scene.add(camera);
+      camera.position.set(0,120,150);
+      camera.lookAt(scene.position);
+     
+      // Create an event listener that resizes the renderer with the browser window.
+      window.addEventListener('resize', function() {
+        var WIDTH = window.innerWidth,
+            HEIGHT = window.innerHeight;
+        renderer.setSize(WIDTH, HEIGHT);
+        camera.aspect = WIDTH / HEIGHT;
+        camera.updateProjectionMatrix();
+      });
+ 
+      // Set the background color of the scene.
+      //renderer.setClearColorHex(0x939FFF, 1);
+ 
+      // Create a light, set its position, and add it to the scene.
+      var light = new THREE.PointLight(0xAAAAAA);
+      light.position.set(-200,600,300);
+      scene.add(light);
+      var ambientLight = new THREE.AmbientLight(0x0998877);
+      scene.add(ambientLight);
+ 
+      // FLOOR
+      var floorTexture = new THREE.ImageUtils.loadTexture(checkers);
+      var floorMaterial = new THREE.MeshBasicMaterial( { map: floorTexture, side: THREE.DoubleSide } );
+      var floorGeometry = new THREE.PlaneGeometry(300, 150);
+      var floor = new THREE.Mesh(floorGeometry, floorMaterial);
+      floor.position.y = 0;
+      floor.rotation.x = Math.PI / 2;
+      scene.add(floor);
+     
+ 
+      var loader = new THREE.JSONLoader();
+      loader.load( "house.js", function(geometry, materials){
+        var material = new THREE.MeshFaceMaterial(materials);
+        var mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+        });
+ 
+      // Add OrbitControls so that we can pan around with the mouse.
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+    }
+ 
+function render() {
+    renderer.render(scene, camera);
+}
+ 
+    // Renders the scene and updates the render as needed.
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+      controls.update();
+    }
+ 
+  </script>
+ 
+</body>
+</html>

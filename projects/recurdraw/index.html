@@ -1,0 +1,117 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>RecursiveDrawing</title>
+<meta charset="utf-8">
+<style>
+body{margin:0px; overflow:hidden;}
+input{width:40px; background:#444444; color:white;}
+</style>
+</head>
+<body onload="redraw()" id="body">
+<canvas id="canvas" style="position:fixed; z-index:-5"></canvas>
+<div id="controls" style="position:fixed; top:0px; left:0px; height:460px; width:170px; background:rgba(100,100,100,.5); color:white">
+<table>
+<tr><td>Sides</td><td><input type="text" value="4" id="sides"></td></tr>
+<tr><td>Distance</td><td><input type="text" value="200" id="distance"></td></tr>
+<tr><td>Distance Divide</td><td><input type="text" value="2" id="distfade"></td></tr>
+<tr><td>Radius</td><td><input type="text" value="100" id="radius"></td></tr>
+<tr><td>Radius Divide</td><td><input type="text" value="2" id="radifade"></td></tr>
+<tr><td>Depth</td><td><input type="text" value="3" id="depth"></td></tr>
+<tr><td>Rad Angle</td><td><input type="text" value="2" id="radangle"></td></tr>
+<tr><td>Color</td><td><input type="checkbox" id="color" checked></td></tr>
+<tr><td>Fill</td><td><input type="checkbox" id="fill"></td></tr>
+<tr><td colspan=2><input type="submit" value="Go" onclick="redraw()" style="width:100px;"></td></tr>
+<tr><td colspan=2><input type="submit" value="Random" onclick="random()" style="width:100px;"></td></tr>
+<tr><td colspan=2><br>Press Space to Hide/Show Controls. The CTRL key will activate the random function. Drawing with lots of sides and a high depth can freeze your browser for a time, if you wait it should finish.</td></tr>
+</table>
+</div>
+<script type="text/javascript"> 
+var canvas = document.getElementById("canvas");
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+var ctx = canvas.getContext("2d");
+
+var sides, distance, distfade, radius, radifade, depth, radangle, fill;
+var colors=["red","orange","yellow","lime","green","blue","purple","magenta","white"];
+
+//Recursive drawing function that draws the shapes. It will run recursively many times. Each time
+//One depth of recursion will draw, the lowest level draws first (red), then the next, until the parent
+//draws last
+function draw(x, y, radius, depth, distance, active) {
+  if (depth==0) return;
+
+  if (depth == active) {
+    ctx.beginPath();
+    for (var i=1; i<=sides+1; i++) {
+      var angle = i * (2*Math.PI/sides)
+      var newx = x+radius*Math.cos(angle);
+      var newy = y+radius*Math.sin(angle);
+      if (i == 1) ctx.moveTo(newx, newy)
+      else ctx.lineTo(newx, newy);
+    }
+    ctx.stroke();
+    if (fill) ctx.fill();
+  }
+  for (var i=0; i<sides; i++) {
+    var angle = i * (2*Math.PI/sides) + (2*Math.PI/sides)/radangle
+    draw(x+distance*Math.cos(angle), y+distance*Math.sin(angle), radius/radifade, depth-1, distance/distfade, active)
+  }
+}
+
+//This function reads in the latest form values and clears the screen for a fresh drawing
+//The for loop calls the recursive drawing function and uses i to control which depth level will draw trst
+function redraw() {
+  sides = document.getElementById("sides").value;
+  distance = document.getElementById("distance").value;
+  distfade = document.getElementById("distfade").value;
+  radius = document.getElementById("radius").value;
+  radifade = document.getElementById("radifade").value;
+  depth = document.getElementById("depth").value;
+  radangle = document.getElementById("radangle").value;
+  color = document.getElementById("color").checked;
+  fill = document.getElementById("fill").checked;
+  ctx.fillStyle="black";
+  ctx.fillRect(0,0,cw,ch);
+  ctx.strokeStyle="white";
+  for (var i=0; i<=depth; i++) {
+    if (color) {
+      ctx.strokeStyle=colors[(i-1)%9];
+      ctx.fillStyle=colors[i%9];
+    }
+    draw(cw/2, ch/2, radius, depth, distance, i);
+  }
+}
+
+//Helper function to simplify random numbers
+function rn(min,max){return Math.floor(Math.random()*(max-min+1)+min)}
+
+//Fill the form in with reasonable random values to be used for random drawings
+function random() {
+  sides = rn(3,8);
+  document.getElementById("sides").value = sides;
+  document.getElementById("distance").value = rn(50,300);
+  document.getElementById("distfade").value = rn(501,1000)/500;
+  document.getElementById("radius").value = rn(50,300);
+  document.getElementById("radifade").value = rn(501,1000)/500;
+  document.getElementById("radangle").value = rn(1,5);
+  var max = (sides > 5)? 6:7; 
+  document.getElementById("depth").value = rn(4,max);
+  redraw();
+}
+
+//Functionality to remove controls by pressing the spacebar
+window.addEventListener("keyup", function (e) {keypress(e.keyCode); e.preventDefault}, false);
+function keypress(key) {
+  console.log(key);
+  if (key == 32) {
+    if (document.getElementById("controls").style["display"] == "none")
+      document.getElementById("controls").style["display"] = "block";
+    else document.getElementById("controls").style["display"] = "none"; 
+  }
+  else if (key == 17) {random();}
+}
+
+</script>
+</body>
+</html>

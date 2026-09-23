@@ -1,0 +1,243 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+<title>HTML5 Canvas Game Tutorial</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>  
+<link rel="stylesheet" href="../styles/code.css">
+<link rel="stylesheet" href="../styles/atom-one-dark.css">
+<script src="../javascript/highlight.pack.js"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+</head>
+<body onload="init()">
+
+<div class="container">
+  <canvas id="canvas" style="position:absolute; top:0px; left:0px;"></canvas>
+  <a href="../index.html">
+    <img src="../duckcon.png" width="160px" height="160px" style="position:absolute; top:0px; left:0px;"></img>
+  </a>  
+  
+  <div class="row" style="margin-top:150px;"> 
+    <nav class="navbar navbar-inverse">
+      <div class="container-fluid">
+        <div class="navbar-header">
+          <a class="navbar-brand" href="#">DuckCon</a>
+        </div>
+        <ul class="nav navbar-nav">
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../basic/index.html">Getting Started</a></li>
+          <li><a href="../loops/index.html">Loops</a></li>
+          <li><a href="../animation/index.html">Animation</a></li>
+          <li><a href="../mouse/index.html">Mouse</a></li>
+          <li><a href="../keys/index.html">Keyboard</a></li>
+          <li class="active"><a href="../functions/index.html">Functions</a></li>
+          <li><a href="../examples/index.html">Examples</a></li>
+        </ul>
+      </div>
+    </nav>
+    <div class="col-xs-12">
+      <div class="well">
+        <ul class="pager">
+          <li class="previous"><a href="../keys/index.html">Keyboard</a></li>
+          <li class="next"><a href="../examples/index.html">Examples</a></li>
+        </ul>
+        <h3>Functions</h3>
+        <p>
+          Functions are the key to building complex programs. Any time that you repeat some
+          code it is probably better to put the code in a function and call it repeatedly.
+          You should use functions as building blocks, make very basic functions such as
+          a circle function. Then you can use circle() to make tires for 
+          a truck function. Try not to let your functions get to large, they should do one
+          specific thing.<br><br>
+        </p>
+        <p> 
+        <div class="well" style="width:900px; background-color:#444;">
+          <pre style="display:inline-block; width:600px"><code>&lt;!DOCTYPE HTML&gt;
+&lt;html&gt;
+&lt;head&gt;
+&lt;title&gt;Functions&lt;/title&gt;
+&lt;/head&gt;
+&lt;body style="margin:0px; overflow:hidden;"&gt;
+&lt;canvas id="canvas"&gt;&lt;/canvas&gt;
+&lt;script&gt;
+
+var can = document.getElementById("canvas");
+var ctx = can.getContext('2d');
+var cw = can.width = window.innerWidth;
+var ch = can.height = window.innerHeight;
+
+function circle(x, y, radius, color) {
+  ctx.beginPath();
+  ctx.fillStyle = color;
+  ctx.arc(x, y, radius, 0, Math.PI*2);
+  ctx.fill();
+}
+
+function truck(x, y, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x+20, y-20, 30, 20)
+  ctx.fillRect(x, y, 100, 30);
+  circle(x+20, y+20, 15, "black");
+  circle(x+80, y+20, 15, "black");
+}
+
+truck(cw/2-50, ch/2-40, "red");
+truck(cw/2-50, ch/2+40, "blue");
+
+&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+          <canvas id="example1" width="200px" height="200px" style="display:inline-block; float: right;"></canvas>
+        </div>
+        </p><br>
+        <p>
+        Now you should have the main tools you need to create your own games and become a programming master!
+        In the example section there will be a few simple games that you can take a look at. The code is commented
+        pretty well, so it should help you understand what is happening in each function.
+        </p>
+        <ul class="pager">
+          <li class="previous"><a href="../keys/index.html">Keyboard</a></li>
+          <li class="next"><a href="../examples/index.html">Examples</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+
+var exp1 = document.getElementById("example1");
+var e1tx = exp1.getContext("2d");
+
+function circle(x, y, radius, color) {
+  e1tx.beginPath();
+  e1tx.fillStyle = color;
+  e1tx.arc(x, y, radius, 0, Math.PI*2);
+  e1tx.fill();
+}
+
+function truck(x, y, color) {
+  e1tx.fillStyle = color;
+  e1tx.fillRect(x+20, y-20, 30, 20)
+  e1tx.fillRect(x, y, 100, 30);
+  circle(x+20, y+20, 15, "black");
+  circle(x+80, y+20, 15, "black");
+}
+e1tx.fillStyle="white";
+e1tx.fillRect(0,0,200,200);
+truck(50, 60, "red");
+truck(50, 140, "blue");
+
+var can = document.getElementById("canvas");
+var ctx = can.getContext("2d");
+var cw = can.width = window.innerWidth-20;
+var ch = can.height = 150;
+var title = [
+[0,0,0,0,0,0,1,0,0,1,0,2,2,2,2,2,0,3,0,0,0,3,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+[0,0,0,0,0,0,1,0,0,1,0,0,0,2,0,0,0,3,3,0,3,3,0,4,0,0,0,0,0,5,0,0,0,6,6,0,0,7,0,0,0,0,0,0,8,8,0,0,9,9,9,0,0,0],
+[0,0,0,0,0,0,1,0,0,1,0,0,0,2,0,0,0,3,0,3,0,3,0,4,0,0,0,0,5,0,5,0,6,0,6,0,0,7,7,7,7,7,0,8,0,0,8,0,9,0,0,0,0,0],
+[0,0,0,0,0,0,1,1,1,1,0,0,0,2,0,0,0,3,0,0,0,3,0,4,0,0,0,0,5,0,5,0,6,0,6,0,0,7,0,7,0,7,0,8,8,8,0,0,0,9,9,0,0,0],
+[0,0,0,0,0,0,1,0,0,1,0,0,0,2,0,0,0,3,0,0,0,3,0,4,0,0,0,0,0,5,5,0,6,0,6,0,0,7,0,7,0,7,0,8,0,0,0,0,0,0,9,0,0,0],
+[0,0,0,0,0,0,1,0,0,1,0,0,0,2,0,0,0,3,0,0,0,3,0,4,0,0,0,0,0,0,5,0,0,6,0,6,0,7,0,7,0,7,0,0,8,8,0,0,9,9,9,0,0,0],
+[0,0,0,0,0,0,1,0,0,1,0,0,0,2,0,0,0,3,0,0,0,3,0,4,4,4,4,0,5,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]];
+
+var colors = ["#FF0000","#00FF00","#0000FF","#FFFF00", "#FF00FF", "#00FFFF"];
+var bullets = [];
+var mouse = {x:cw/2,y:0};
+
+function init() {
+  draw();
+  }
+
+function animate() {
+  window.requestAnimationFrame(animate);
+  draw();
+  if (bullets.length > 0) {
+    var rWidth=cw/title[0].length;
+    var rHeight=(ch-30)/title.length;
+    for (var i=0, len=bullets.length; i<len; i++) {
+      bullets[i].y -= 1;
+      var y = Math.floor(bullets[i].y/rHeight);
+      var x = Math.floor(bullets[i].x/rWidth);
+      if (y < 0) {bullets.splice(i,1); i -= 1;}
+      else if (title[y][x] != 0) {
+        title[y][x] = 0;
+        bullets.splice(i,1);
+        i -= 1;
+      }
+      ctx.beginPath();
+      ctx.fillStyle="white";
+      ctx.arc(bullets[i].x,bullets[i].y,4,0,Math.PI*2);
+      ctx.fill();
+    }
+  }
+}
+
+function draw() {
+  ctx.fillStyle = "black";
+  ctx.fillRect(0,0,cw,ch);
+  var rWidth=cw/title[0].length;
+  var rHeight=(ch-30)/title.length;
+  ctx.lineWidth="4";
+
+  for (var i=0, ilen=title[0].length; i<ilen; i++) {
+    for (var j=0, jlen=title.length; j<jlen; j++) {
+      if (title[j][i] == 0) continue;
+      ctx.fillStyle=colors[title[j][i]%6];
+      ctx.fillRect(i*rWidth, j*rHeight, rWidth-4, rHeight-4);
+      ctx.beginPath();
+      ctx.strokeStyle="rgba(255,255,255,.5)";
+      ctx.moveTo(i*rWidth+2, j*rHeight+rHeight-4);
+      ctx.lineTo(i*rWidth+2, j*rHeight+2);
+      ctx.lineTo(i*rWidth+rWidth-4, j*rHeight+2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.strokeStyle="rgba(0,0,0,.5)";
+      ctx.moveTo(i*rWidth+rWidth-6, j*rHeight+4);
+      ctx.lineTo(i*rWidth+rWidth-6, j*rHeight+rHeight-6);
+      ctx.lineTo(i*rWidth+4, j*rHeight+rHeight-6);
+      ctx.stroke();
+    }
+  }
+  drawShip();
+}
+
+function drawShip() {
+  ctx.strokeStyle="white";
+  ctx.lineWidth="2";
+  ctx.beginPath();
+  ctx.moveTo(mouse.x-30,ch);
+  ctx.lineTo(mouse.x+30,ch);
+  ctx.lineTo(mouse.x+25,ch-20);
+  ctx.lineTo(mouse.x+20,ch-5);
+  ctx.lineTo(mouse.x+10,ch-10);
+  ctx.lineTo(mouse.x,ch-30);
+  ctx.lineTo(mouse.x-10,ch-10);
+  ctx.lineTo(mouse.x-20,ch-5);
+  ctx.lineTo(mouse.x-25,ch-20);
+  ctx.lineTo(mouse.x-30,ch);
+  ctx.stroke();
+}
+
+function fire() {
+  bullets.push({x:mouse.x,y:ch-30});
+}
+
+(function() {
+  var pre = document.getElementsByTagName('pre'),
+  pl = pre.length;
+  for (var i = 0; i < pl; i++) {
+    pre[i].innerHTML = '<span class="line-number"></span>' + pre[i].innerHTML + '<span class="cl"></span>';
+    var num = pre[i].innerHTML.split(/\n/).length;
+      for (var j = 0; j < num; j++) {
+        var line_num = pre[i].getElementsByTagName('span')[0];
+        line_num.innerHTML += '<span>' + (j + 1) + '</span>';
+      }
+    }
+  })();
+
+</script>
+</body>
+</html>

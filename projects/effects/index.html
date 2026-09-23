@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style type="text/css">
+  body{background-color:black; margin:0px; overflow:hidden;}
+  div{position:fixed; bottom:40px; height:30px; width:300px;}
+  button{cursor:pointer; font-size:60px; color:white; background-color:Transparent; border:0px; outline:0;}
+  label{color:white; font-size:30px; display:block;}
+@font-face { font-family: Console; src: url("../../fonts/console.ttf");}
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="nav">
+  <table><tr><td style="width:50px;">
+  <button onclick="rotate(-1)">&#8678;</button></td><td style="width:200px; text-align:center;">
+  <label id="title">Encryption</label></td><td style="width:50px;">
+  <button onclick="rotate(1)">&#8680;</button></td></tr></table>
+</div>
+<script>
+var can = document.getElementById("canvas");
+var ctx = can.getContext('2d');
+resize();
+mouse = {x:cw/2,y:ch/2}
+
+//---Webs is a bunch of bouncing dots that 
+var webs = (function() {
+  var points=[];
+  var NUM_OF_POINTS = cw*ch/10000;
+  for (var i=0; i<NUM_OF_POINTS; i++) {
+    points.push({x:rn(0,cw),y:rn(0,ch),vx:rn(1,5),vy:rn(1,5)});}
+  return function(context) {
+    context.fillStyle="rgb(20,20,20)";
+    context.strokeStyle="rgba(200,200,200,.1)";
+    context.fillRect(0,0,cw,ch);
+    for (var i=0; i<NUM_OF_POINTS; i++) {
+      m = (Math.abs(mouse.x-points[i].x)+Math.abs(mouse.y-points[i].y))/(ch+cw)/10
+      c = 255-m*5000;
+      context.strokeStyle="rgba("+c+","+c+","+c+",.05)";
+      context.beginPath();
+      context.arc(points[i].x,points[i].y,2,0,Math.PI*2);
+      for (var j=0; j<points.length; j++) {
+        if (Math.abs(points[i].x - points[j].x)+Math.abs(points[i].y - points[j].y) < 200) {
+          ctx.moveTo(points[i].x, points[i].y);
+          ctx.lineTo(points[j].x, points[j].y);
+          ctx.stroke();
+        }
+      }
+      points[i].x += points[i].vx/300/m;
+      points[i].y += points[i].vy/300/m;
+      if (points[i].x < 0) points[i].vx = rn(1,5);
+      else if (points[i].x > cw) points[i].vx = rn(-5,-1);
+      if (points[i].y < 0) points[i].vy = rn(1,5);
+      else if (points[i].y > ch) points[i].vy = rn(-5,-1);
+    }
+  }
+})()
+
+
+var binary = (function() {
+  var dragon = document.createElement("img")
+  dragon.src = "dragon.jpg";
+  var res = 10;
+  var message = [dragon,"333 TRS","Cyber","Warfare","Operations"];
+  var time = (new Date()).getTime()-9000;
+  var HEIGHT = Math.floor(ch/res);
+  var WIDTH = Math.floor(cw/res);
+  var textCan = document.createElement("canvas");
+  var tctx = textCan.getContext('2d');
+  textCan.width = WIDTH;
+  textCan.height = HEIGHT;
+  tctx.textBaseline="top";
+  
+  update = function() {
+    size = HEIGHT;
+    do {
+      tctx.font = size+"px console";
+      size -= 1
+    } while (tctx.measureText(message[0]).width > WIDTH)
+    tctx.fillStyle = "black";
+    tctx.fillRect(0,0,WIDTH,HEIGHT);
+    tctx.fillStyle = "white";
+    if (typeof message[0] == "string")
+      tctx.fillText(message[0],0,rn(0,HEIGHT-size*1.5));
+    else tctx.drawImage(message[0],0,0,WIDTH,HEIGHT);
+    
+    mgData=tctx.getImageData(0,0,WIDTH,HEIGHT).data;
+    data = [];
+    for (var i=0; i<HEIGHT; i++) {
+      data.push([]);1
+      for (var j=0; j<WIDTH; j++)
+        data[i].push(mgData[i*(4*WIDTH)+j*4])
+    }
+  }
+  ctx.fillStyle = "black"
+  ctx.fillRect(0,0,cw,ch);
+  return function(context) {
+    ctx.font=res +"px console";
+    if ((new Date()).getTime() - time > 8000) {
+      time = (new Date()).getTime();
+      message.push(message.splice(0,1)[0]); 
+      update();
+      }
+    for (var i=0; i<100; i++) {
+      x = rn(0,WIDTH-1);
+      y = rn(0,HEIGHT-1);
+      ctx.fillStyle="black";
+      ctx.fillRect(x*(res-1)+Math.floor(x/8)*8-1,y*res-res,res-1,res);
+      v = (typeof data == 'undefined')? 100:data[y][x]*.6+100;
+      if (v < 200) v -= rn(1,100);
+      ctx.fillStyle="rgb(0,"+v+","+v+")";
+      ctx.fillText((Math.random() >.5)? "1":"0",x*(res-1)+Math.floor(x/8)*8,y*res);    
+    }
+  }
+})()
+
+
+var dots = (function() {
+  var points=[], lines=[];
+  for (var i=0; i<30; i++) {
+    points.push({x:Math.random()*400-200,y:Math.random()*40-20,z:Math.random()*400-200});
+  }
+  for (var i=0; i<20; i++) {
+    var p1 = points[i];
+    for (var j=i+1; j<20; j++) {
+      var p2 = points[j];
+      if (Math.sqrt(Math.pow(p2.x-p1.x,2) + Math.pow(p2.y-p1.y,2) + Math.pow(p2.z-p1.z,2)) < 130)
+        lines.push([i,j]);
+    }
+  }
+  return function(context) {
+    var c = context.canvas;
+    context.fillStyle="black";
+    context.strokeStyle="rgba(255,255,255,.4)";
+    context.fillRect(0,0,c.width,c.height);
+    context.fillStyle="white";
+    for (var i=0; i<20; i++) {
+      var p = points[i];
+      var xd = Math.sqrt(p.z*p.z + p.x*p.x);
+      var ax = Math.atan2(p.x,p.z) + .5/180*Math.PI;
+      p.z=Math.cos(ax)*xd;
+      p.x=Math.sin(ax)*xd;
+      context.beginPath();
+      var e = (mouse.y-ch/2)/ch*6;
+      context.arc(p.x*e+c.width/2,p.y*p.z/50*e+c.height/2,(p.z+200)/200+1,0,Math.PI*2);
+      context.fill();
+    }
+    for (var i=0, len=lines.length; i<len; i++) {
+      var p1 = points[lines[i][0]];
+      var p2 = points[lines[i][1]];
+      context.beginPath();
+      context.moveTo(p1.x*e+c.width/2,p1.y*p1.z/50*e+c.height/2);
+      context.lineTo(p2.x*e+c.width/2,p2.y*p2.z/50*e+c.height/2);
+      context.stroke();
+    }
+  }
+})()
+
+var wave = (function() {
+  var flux = [], count=0;
+  return function(context) {
+    var c = context.canvas;
+    flux.push({x:rn(-400,400), w:rn(10,40), t:rn(5,40)});
+    count+=5;
+    context.fillStyle="black";
+    context.strokeStyle="rgba(255,255,255,.4)";
+    context.fillRect(0,0,c.width,c.height);
+    context.fillStyle="white";
+    ctx.beginPath();
+    ctx.lineWidth=4;
+    for (var i=-400; i<400;i+=2) {
+      var d=0;
+      for (var j=0, len=flux.length; j<len; j++) {
+        if (Math.abs(i-flux[j].x)<flux[j].w) d += flux[j].w-Math.abs(i-flux[j].x);
+      }
+      ctx.lineTo(c.width/2+i,c.height/2+Math.sin((i+count)/(mouse.y/c.height*20+2))*(10+d));
+    }
+    ctx.stroke();
+    for (var i=0, len=flux.length; i<len; i++) {
+      flux[i].t -= 1;
+      if (flux[i].t < 1) {
+        flux.splice(i,1);
+        i -= 1;
+        len -= 1;
+      }
+    }
+  }
+})()
+
+
+var matrix = (function() {
+  var chs = Math.floor(can.height/25)+2, c = [], count = 0;
+  for (var i=0, len=Math.floor(can.width/25); i<len; i++) {
+    c.push({speed:rn(1,4),y:rn(-100,0),len:(10,chs*3),str:[]});
+    for (var j=0; j<c[c.length-1].len; j++) c[c.length-1].str.push(rn(0,25)); 
+  }
+  return function(context) {
+    context.font = "20px Arial";
+    count +=1;
+    for (var i=0, len=c.length; i<len; i++) {
+      c[i].str[rn(0,c[i].len)] = rn(0,25);
+      if (count%c[i].speed == 0) {
+        c[i].y++;
+        if (c[i].y < chs+c[i].len*2) {
+          for (var y=0; y<=c[i].y; y++) {
+            ctx.clearRect(i*25+5,y*25,25,25);
+            ctx.fillStyle = (y==c[i].y)? "white":"rgb(0,"+(255-(c[i].y-y)*3)+",0)";
+            ctx.fillText(String.fromCharCode(1488+c[i].str[y]),i*25+5,y*25);
+          }
+        } else {c[i].speed = rn(1,4); c[i].y = rn(-10,0);} 
+      }
+    }
+  }
+})()
+
+var encrypt = (function() {
+  var levels = [];
+  var streams = [];
+  var lines = [];
+  var progress = 39; 
+  var drawArc = function(context,b,fill,len) {
+    context.beginPath();
+    context.arc(cw/2,ch/2,b.radius*30, b.start/180*Math.PI, (b.start+b.length)/180*Math.PI, false);
+    context.arc(cw/2,ch/2,b.radius*30+len, (b.start+b.length)/180*Math.PI, b.start/180*Math.PI, true); 
+    context.closePath();
+    if (fill) context.fill();
+    context.stroke();
+  }
+  for (level = 2; level<8; level++) {
+    levels.push({blocks:[]});
+    var i=levels.length-1;
+    if (rn(1,10) > 7) continue;
+    levels[i].fill = (rn(1,2) == 1)? true:false;
+    levels[i].speed = rn(1,50)/25-1;
+    degree = 0;
+    mode = 1; 
+    while (degree < 360){
+      mode += 1;
+      if (mode == 1) degree += rn(10,30);
+      else if (mode == 2) {
+        var distance = rn(5,70);
+        if (degree + distance > 355) distance = 355 - degree;
+        levels[i].blocks.push({start:degree, length:distance, radius:level});
+        degree += distance + 5;
+      } else {
+        var repeat = rn(2,5);
+        for (var j=0; j<repeat; j++){
+          if (degree < 350){
+            levels[i].blocks.push({start:degree, length:5, radius:level});
+            degree += 10;
+          }
+        }
+        mode = 0;
+      }
+    }
+  }  
+  for (var i=0; i<5; i++){
+    streams.push([])
+    for (var j=0; j<(cw/40); j++) streams[i].push(rn(1,3));
+  } 
+  for (var i=0; i<6; i++){
+    lines.push({
+      start:rn(1,330), 
+      length:rn(10,30), 
+      radius:1, 
+      dist:rn(250,420),
+      startChange:rn(1,10)/100-.05,
+      lengthChange:rn(1,10)/100-.05});
+  }
+  return function(context) {
+    var bSize = 20;
+    context.clearRect(0,0,cw,ch);
+
+    var grd=context.createRadialGradient(cw/2,ch/2,35,cw/2,ch/2,320);
+    grd.addColorStop(0,"transparent");
+    grd.addColorStop(.5,"rgba(150,150,255,.4)");
+    grd.addColorStop(.6,"rgba(180,150,255,.3)");
+    grd.addColorStop(1,"transparent");
+    context.fillStyle=grd;
+    context.beginPath();
+    context.arc(cw/2,ch/2,320,0,Math.PI*2);
+    context.fill();
+
+    context.lineWidth=2;
+    for (var i=0, len=streams.length; i<len; i++) {
+      var s = streams[i];
+      for (var j=0, jlen=streams[i].length; j<jlen; j++) {
+        var sub = Math.abs(cw/2-(j*40-progress));
+        if (sub < 150 && rn(1,100) > 95) s[j] = rn(1,3);
+        if (s[j] == 1) continue;
+        context.beginPath();
+        context.strokeStyle="rgb("+(150-sub)+","+(150-sub)+","+(255-sub),")";
+        context.fillStyle="rgb("+(sub-150)+","+(sub-150)+","+(sub),")";
+        context.rect(j*41-progress, ch/2-69+i*30, 25, 25);
+        context.stroke();
+        if (s[j] == 3) context.fill();
+      }
+    }
+    progress += mouse.y/(ch/9);
+    if (progress >= 40) {
+      progress = 0;
+      for (var i=0, len=streams.length; i<len; i++) {
+        streams[i].splice(0,1)
+        streams[i].push(rn(1,3));
+      }
+    }
+    var grd=context.createRadialGradient(cw/2,ch/2,35,cw/2,ch/2,600);
+    grd.addColorStop(0,"transparent");
+    grd.addColorStop(1,"rgba(165,125,255,.7)");
+    for (var i=0, len=lines.length; i<len; i++) {
+      context.strokeStyle=grd;
+      context.lineWidth=5;
+      drawArc(context,lines[i], false, lines[i].dist);
+      lines[i].start += lines[i].startChange;
+      lines[i].length += lines[i].lengthChange;
+      if (lines[i].length < 3 || lines[i].length > 70) lines[i].lengthChange *= -1;
+      if (rn(1,100) > 75) {
+        startChange=rn(1,10)/100-.05;
+        lengthChange=rn(1,10)/100-.05;
+      }
+    } 
+    context.strokeStyle="#8888FF";
+    context.fillStyle="rgba(125,125,255,.5)";
+    for (var i=0, len=levels.length; i<len; i++) {
+      for (var j=0, jlen=levels[i].blocks.length; j<jlen; j++) {
+        drawArc(context,levels[i].blocks[j],levels[i].fill, 20);
+        levels[i].blocks[j].start += levels[i].speed;
+      }
+    }
+  }
+})()
+
+
+function rn(min,max) {return Math.floor( Math.random()*((max+1)-min)+min);}
+
+function rotate(n) {
+  ctx.clearRect(0,0,can.width,can.height);
+  ctx.lineWidth = 1;
+  selected = (selected + n + effects.length) % effects.length;
+  document.getElementById("title").innerHTML = effects[selected].title;
+}
+
+function animate() {
+  window.requestAnimationFrame(animate);
+  effects[selected].f(ctx);
+}
+
+window.addEventListener("mousemove", function(e) {mouse = {x:event.clientX, y:event.clientY};});
+window.addEventListener("keydown", function(e) {
+  if (e.key == "ArrowLeft") rotate(-1);
+  else rotate(-1); 
+});
+window.addEventListener("resize", function(e) {resize()});
+
+function resize() {
+  document.getElementById("nav").style["left"] = (window.innerWidth/2 - 150)+"px"
+  ch = canvas.height = window.innerHeight;
+  cw = canvas.width = window.innerWidth;
+}
+
+selected = 0;
+effects = [{f:encrypt,title:"Encryption"},{f:dots,title:"Dots"}, {f:wave,title:"Wave"}, {f:matrix,title:"Matrix"},{f:webs,title:"Light Webs"},{f:binary,title:"Binary"}];
+
+animate();
+</script>
+</body>
+</html>
+

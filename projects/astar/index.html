@@ -1,0 +1,314 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>
+Astar Demo
+</title>
+<style>
+body {    
+margin: 0px;
+padding: 0px;
+}
+input { width:60px; }
+canvas { display: block; }
+</style>
+</head>
+<body onload="init()">
+<canvas id="myCanvas" width="1000" height="1000"></canvas>
+<div id="controls" style="position:fixed; top:0px; left:0px; height:260px; width:160px; background:rgba(100,100,100,.5); color:white; border: 1px solid black;">
+<table>
+<tr><td>Width</td><td><input type="text" value="20" id="width"></td></tr>
+<tr><td>Height</td><td><input type="text" value="20" id="height"></td></tr>
+<tr><td>Speed</td><td><input type="text" value="10" id="distanceWeight"></td></tr>
+<tr><td colspan=2>
+  <table style="border: 1px solid black;">
+  <tr><td colspan=2 style="text-align:center">Click Action</td></tr><tr><td>
+  <input type="radio" name="mode" value="Add" id="add">
+  </td><td>Add</td></tr><tr><td>
+  <input type="radio" name="mode" value="Sub" id="sub">
+  </td><td>Subtract</td></tr><tr><td>
+  <input type="radio" name="mode" value="Path" id="path" checked>
+  </td><td>Path</td></tr></table>
+</td></tr>
+<tr><td>Details</td><td><input type="checkbox" id="details"></td></tr>
+<tr><td>Wait Mode</td><td><input type="checkbox" id="wait"></td></tr>
+<tr><td colspan=2><input type="submit" value="New Map" onclick="init()" style="width:100px;"></td></tr>
+</table>
+</div>
+<script>
+var ctx, cw, ch, start, end, height, width, path, data, map, mouse, mode, xsp, ysp, scale;
+var clr = ["blue","tan","#00AA00","#00BB00","#00CC00","#22DD11","#33BB00","#119900","#448800","#557700","#666633","#888888","#EEEEEE"];
+var canvas = document.getElementById("myCanvas");
+
+function init() {
+  ctx = canvas.getContext("2d");
+  cw = canvas.width = window.innerWidth;
+  ch = canvas.height = window.innerHeight;
+
+  width = document.getElementById("width").value;
+  height = document.getElementById("height").value;
+  xsp = cw/width;
+  ysp = ch/height;
+  scale = (xsp < ysp)? xsp:ysp;
+  map = [];
+  mouse = {x:0,y:0};
+  for(var i = 0; i < height; i++){
+    map[i] = [];
+    for(var j = 0; j < width; j++) map[i].push(0);
+  }
+  makeLand();
+  tuneLand();
+  draw();
+  mode = 0;
+}
+
+function makeLand(){
+  var land = (width*height)/40; 
+  while (land > 0) {
+    var x = rn(1, width-1)
+    var y = rn(1, height-1)
+    for(var i = 0; i < 20; i++){
+      x += rn(-1,2);
+      y += rn(-1,2);
+      if (x<1) x=1;
+      if (y<1) y=1;
+      if (x>width-2) x = width-2;
+      if (y>height-2) y = height-2;
+      for(var ix =-1; ix<2; ix++){
+        for(var iy =-1; iy<2; iy++){
+          if (rn(1,10) > 5) map[y+iy][x+ix] = 1;
+        }
+      }
+    }
+  land--;
+  }
+}
+
+function tuneLand() {
+  for(var h=0; h<11; h++){
+    for(var i=1; i < height-1; i++){
+      for(var j=1; j < width-1; j++){
+        var total = 0;
+        for(var k=-1; k < 2; k++){
+          for(var l=-1; l < 2; l++){
+            if (map[i+k][j+l] > h) total++;
+          }
+        }
+        if (total == 9) map[i][j]++;
+      }
+    }
+  }
+}
+
+canvas.addEventListener("touchstart", touchDown, false);
+function touchDown(e) {
+  if (!e) var e = event;
+  e.preventDefault();
+  mouse.x = e.targetTouches[0].pageX - canvas.offsetLeft;
+  mouse.y = e.targetTouches[0].pageY - canvas.offsetTop;
+  click();
+}
+
+canvas.addEventListener("mousedown", mouseDown, false);
+function mouseDown(e) {
+  mouse.x = e.pageX;
+  mouse.y = e.pageY;
+  click();
+}
+
+function click() {
+  var x = Math.floor(mouse.x/xsp);
+  var y = Math.floor(mouse.y/ysp);
+  if (document.getElementById("path").checked) {
+    if (mode == 0) { 
+      start = {x:x,y:y}; 
+      mode++; 
+      fill(x*xsp,y*ysp, "yellow")
+    }
+    else if (mode == 1) { 
+      end = {x:x, y:y}; 
+      fill(x*xsp,y*ysp,"red"); 
+      openlist = [{x:start.x,y:start.y}];
+      data =[];
+      for (var i=0, ilen=map.length; i<ilen; i++) { data.push([]);
+        for (var j=0, jlen=map[0].length; j<jlen; j++) data[i].push({status:0, weight:0, parent:{x:start.x,y:start.y}});
+      }
+      pathFind(); 
+      drawData();
+      if (!(document.getElementById("wait").checked)) drawPath();
+      mode++;
+    }
+    else if (mode == 2) {
+      pathFind();
+      drawData();
+      if (mode == 3) drawPath();
+    }
+    else if (mode == 3) {
+      draw();
+      mode=0;
+    }
+  }
+  else { 
+    if (document.getElementById("add").checked)  map[y][x]=1;
+    else map[y][x]=0;
+    for(var i=1; i < height-1; i++) {
+      for(var j=1; j < width-1; j++) {
+        if (map[i][j] > 0) map[i][j] = 1;
+      }
+    }
+    tuneLand();
+    draw();
+  }
+}
+
+
+function rn(min,max){return Math.floor( Math.random()*(max-min)+min);}
+function dist(p1,p2) {return Math.sqrt(Math.pow(p1.x-p2.x,2)+Math.pow(p1.y-p2.y,2));}
+
+		
+function draw(){
+  ctx.fillStyle = "black"
+  ctx.fillRect(0,0,cw,ch);
+  for(var y = 0; y <map.length; y++){
+    for(var x = 0; x <map[0].length; x++){
+      fill(x*xsp, y*ysp, clr[map[y][x]]);
+    }
+  }
+}
+
+function fill(x,y,color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, xsp+1, ysp+1)
+}
+
+
+function drawPath(){
+  if (path.length > 0) {
+    ctx.fillStyle = "black";
+    for(var i=1; i<path.length; i++){
+      ctx.beginPath();
+      ctx.arc(path[i].x*xsp+xsp/2, path[i].y*ysp+ysp/2, ysp/3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.fillStyle="yellow";
+  ctx.beginPath();
+  ctx.arc(start.x*xsp+xsp/2, start.y*ysp+ysp/2, ysp/3, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle="red";
+  ctx.beginPath();
+  ctx.arc(end.x*xsp+xsp/2, end.y*ysp+ysp/2, ysp/3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function pathFind(){
+  var x, y, cost, pcost;
+  var pts = {x:-1,y:-2};
+  var wait = (document.getElementById("wait").checked);
+  while (openlist.length>0){
+    var lowestWeight=Infinity;
+    var index=-1;
+    var distanceWeight = document.getElementById("distanceWeight").value;
+    for (var i=0, ilen=openlist.length; i<ilen; i++){
+      var n = data[openlist[i].y][openlist[i].x];
+      var lw = n.weight+dist(openlist[i],end)*distanceWeight;
+      if (lw < lowestWeight){
+        lowestWeight = lw;
+        index = i;
+      }
+    }
+    pts = openlist[index];
+    data[pts.y][pts.x].status = 2;
+    var parent = data[pts.y][pts.x].parent
+    openlist.splice(index,1);
+    pcost = ((parent.x-pts.x == 0)||(parent.y-pts.y == 0))? 10:16;
+    for (var y=-1;y<2;y++){
+      for (var x=-1;x<2;x++){
+        if (x==0 && y==0) continue;
+        cost = ((x==0)||(y==0))? 10:16;                     
+        if (pts.y+y < 0 || pts.y+y > map.length-1 || pts.x+x < 0 || pts.x+x > map[0].length-1) continue;
+        if (map[pts.y+y][pts.x+x]>0){
+          if (data[pts.y+y][pts.x+x].status == 0) {
+            openlist.push({y:pts.y+y,x:pts.x+x});
+            data[pts.y+y][pts.x+x] = {status:1, 
+                                      weight:data[pts.y][pts.x].weight+cost, 
+                                      parent:{y:pts.y,x:pts.x}}
+          }
+          else if (data[pts.y+y][pts.x+x].weight+cost < data[parent.y][parent.x].weight+pcost) {  
+            data[pts.y][pts.x].parent = {y:pts.y+y,x:pts.x+x};
+            data[pts.y][pts.x].weight = data[pts.y+y][pts.x+x].weight+cost;
+          }
+        }
+      }
+    }
+    if (wait) break;
+    if ((pts.y == end.y)&&(pts.x == end.x)) break; 
+  }
+
+  path = [];
+  if ((pts.y == end.y)&&(pts.x == end.x)){
+    while ((pts.y != start.y)||(pts.x != start.x)){
+      path.push({y:pts.y,x:pts.x});
+      pts = data[pts.y][pts.x].parent;
+    }
+    mode++; 
+  }
+  else if (openlist.length == 0) {
+    mode++;
+    alert("No Path");
+  }
+}
+
+function drawData() {
+  if (!( document.getElementById("details").checked)) return;
+  var distanceWeight = document.getElementById("distanceWeight").value;
+  ctx.lineWidth="3";
+  for(var y=0, ylen=data.length; y<ylen; y++){
+    for(var x=0, xlen=data[0].length; x<xlen;  x++){
+      if (data[y][x].status == 1) {
+        ctx.fillStyle="white";
+        ctx.fillRect(x*xsp+3, y*ysp+3, xsp-6, ysp-6);
+      }
+      else if (data[y][x].status == 2) {
+        ctx.fillStyle="#AAAAAA";
+        ctx.fillRect(x*xsp+3, y*ysp+3, xsp-6, ysp-6);
+        ctx.strokeStyle="#9999FF";
+      }  
+      if (data[y][x].status > 0) { 
+        ctx.strokeStyle="#222222";
+        var parent = data[y][x].parent;
+        var c = {x:parent.x*xsp-x*xsp,y:parent.y*ysp-y*ysp};
+        ctx.beginPath();
+        ctx.moveTo(x*xsp+xsp/2, y*ysp+ysp/2);
+        ctx.lineTo(x*xsp+xsp/2+c.x/2, y*ysp+ysp/2+c.y/2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x*xsp+xsp/2, y*ysp+ysp/2, scale/3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.font=(scale/4)+" Arial"
+        ctx.fillStyle="black";
+        var w1 = data[y][x].weight;
+        var w2 = Math.floor(dist({x:x,y:y},end)*distanceWeight);
+        ctx.fillText(w1,x*xsp+5,y*ysp+scale/3.5);
+        ctx.fillText(w2,x*xsp+xsp-5-scale*2/5,y*ysp+scale/3.5);
+        ctx.fillText(w1+w2,x*xsp+xsp/2-scale/7,y*ysp+ysp/2+scale/14);
+      }
+    }
+  } 
+}
+
+window.addEventListener( 'keydown', function(e){onKey(e.keyCode)}, false );
+
+var onKey = function (x) {
+  if (x == 32 && mode == 2) {
+    pathFind();
+    drawData();
+    if (mode == 3) drawPath();
+  }
+}
+
+</script>
+</body>
+</html>

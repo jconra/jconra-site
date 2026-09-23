@@ -1,0 +1,156 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+<title>Code Sample</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>  
+<link rel="stylesheet" href="../../styles/codeFullscreen.css">
+<link rel="stylesheet" href="../../styles/atom-one-dark.css">
+<script src="../../javascript/highlight.pack.js"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+</head>
+<body>
+
+<div class="container">
+  <div class="col-xs-12">
+    <div class="well" style="background-color:#444;">
+      <h2>Flappy Dot Source Code</h2>
+      <pre><code>&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+&lt;title&gt;FlappyDot&lt;/title&gt;
+&lt;/head&gt;
+&lt;body style="margin:0px; overflow:hidden;" onload="init()"&gt;
+&lt;canvas id="canvas"&gt;&lt;/canvas&gt;
+&lt;script&gt;
+//This script is an example of a simple game where holding the mouse button
+//controls the elevation of a circle. Rectangles which represent obstacles
+//move across the screen. The user must adjust the circle to clear them.
+
+//Prepare the canvas element to be drawn upon
+var canvas = document.getElementById("canvas");
+var ctx = canvas.getContext('2d');
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+
+//Declare Global variables
+var elev, distance, walls, keydown;
+
+//Function to prepare the game
+function init() {
+  elev = ch/2;
+  distance = 0;
+  walls = [newWall()];
+  keydown = false;
+  ctx.font="30px Arial";
+  alert("Hold the mouse button down to fly!");
+  animate();
+}
+
+//Fuction to animate the sceen, repeats forever. Walls are moved, then they are
+//checked to see if they need to be removed or if new walls need to be created.
+//Finally, the circle's elevation is moved up or down.
+function animate() {
+  window.requestAnimationFrame(animate);
+  draw();
+  distance += 1;
+  for (var i=0; i&lt;walls.length; i++) {
+    walls[i].x -= 5;
+  }
+  if (walls[0].x &lt; 0 - walls[0].width) walls.splice(0,1);
+  if (walls[walls.length-1].x &lt; cw/2) walls.push(newWall());
+  if (keydown) elev -= 4;
+  else elev += 4;
+  detectCollusion();
+}
+
+//This function checkes to see if the circle has entered into a rectangle
+function detectCollusion() {
+  if (elev &lt; 100 || elev &gt; ch-100) crash();
+  for (var i=0; i&lt;walls.length; i++) {
+    if (walls[i].x &lt; cw/2+10 && walls[i].x+walls[i].width &gt; cw/2-10) {
+      if (walls[i].side == 1 && elev &lt; 110+walls[i].height) crash();
+      if (walls[i].side == 0 && elev &gt; ch-110-walls[i].height) crash();
+    }
+  }
+}
+
+//If a collusion is detected then the game is reset
+function crash() {
+  alert("Crash!");
+  elev = ch/2;
+  keydown = false;
+  walls = [newWall()];
+  distance = 0;
+}
+
+//Function to create a new wall with some random attributes.
+function newWall() {
+  var width = rn(100,400);
+  return {
+    "x":cw,
+    "height":rn(200,ch*2/3),
+    "side":rn(0,1),
+    "width":width
+  };
+}
+
+//Function to draw everything each frame. First the scene is erased by drawing
+//the background. Then the walls are draw in a for loop. Next, the circle is drawn.
+//Finally some text is drawn to show the distance traveled.
+function draw() {
+  ctx.fillStyle="#444444";
+  ctx.fillRect(0,0,cw,ch);
+  ctx.fillStyle="black";
+  ctx.fillRect(0,100,cw,ch-200);
+  ctx.fillStyle="#444444";
+  for (var i=0; i&lt;walls.length; i++) {
+    if (walls[i].side == 0)
+      ctx.fillRect(walls[i].x,ch-100-walls[i].height,walls[i].width,walls[i].height);
+    else 
+      ctx.fillRect(walls[i].x,100,walls[i].width,walls[i].height);
+  }
+  circle(cw/2, elev, 30, "yellow");
+  ctx.fillText("Distance: "+distance,10,40);
+}
+
+//Function that accepts x, y, radius, and color and draws a circle
+function circle(x,y,r,c) {
+  ctx.fillStyle=c;
+  ctx.beginPath();
+  ctx.arc(x,y,r,0,Math.PI*2);
+  ctx.fill();
+}
+
+//Event listener that calls mouseclick() any time a click is detected
+canvas.addEventListener("mousedown", function(event) {keydown = true;});
+canvas.addEventListener("mouseup", function(event) {keydown = false;});
+
+//Function to return a random number between min and max
+function rn(min,max) {
+  return Math.floor( Math.random()*((max+1)-min)+min);
+}
+
+&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+<script>
+(function() {
+  var pre = document.getElementsByTagName('pre'),
+  pl = pre.length;
+  for (var i = 0; i < pl; i++) {
+    pre[i].innerHTML = '<span class="line-number"></span>' + pre[i].innerHTML + '<span class="cl"></span>';
+    var num = pre[i].innerHTML.split(/\n/).length;
+      for (var j = 0; j < num; j++) {
+        var line_num = pre[i].getElementsByTagName('span')[0];
+        line_num.innerHTML += '<span>' + (j + 1) + '</span>';
+      }
+    }
+  })();
+
+</script>
+</body>
+</html>

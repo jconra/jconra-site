@@ -1,0 +1,72 @@
+body {
+  margin: 0px;
+  padding: 0px; 
+  background-color:black; 
+  overflow: hidden;
+  }
+div {
+  position:absolute;
+  }
+.fatborders {
+  border-radius:20px;
+  padding:20px;
+  background-color:rgb(50,50,50);
+  }
+#mainDiv {
+  magin:auto;
+  display:inline-block;
+  width:800px;
+  height:600px;
+  margin-left:-400px;
+  top:40px;
+  left:50%;
+  }
+#options {
+  background-color:rgb(30,30,30);
+  text-align:center;
+  width:200px;
+  height:100%;
+  top:0px;
+  left:0px;
+  border: 5px solid rgb(50,50,50);
+  }
+#HScroll {
+  top: 660px;
+  width: 760px;
+  height: 0px;
+  }
+#VScroll {
+  top: 20px;
+  left: 860px;
+  width: 0px;
+  height: 560px;
+  }
+.slider {
+  background-color:rgb(150,150,150);
+  border-radius: 50%;
+  width:60px;
+  height:60px;
+  }
+#debug {
+  height:200px;
+  width:200px;
+  top:0px;
+  right:0px;
+  color:white;
+  }
+#edit {
+  top:5px;
+  left:5px;
+  position:fixed;
+  width:200px;
+  height:100px;
+  font-size: 35px;
+  }
+#playerData {
+  position: relative;
+  top:120px;
+  }
+#sqpicker {
+  position: relative;
+  top: 220px;
+  }

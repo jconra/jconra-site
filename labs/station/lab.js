@@ -1,6 +1,4 @@
 // STATION LAB. The real station module with sliders around it: nothing here is copied from src/.
-// Shared by two pages: labs/station (three 0.158, WebGL1) and labs/station-next (three 0.186, WebGL2).
-// Each page's import map decides which three.js this module and src/ get.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Station, RING_RADIUS_UNITS } from '../../src/objects/station.js';

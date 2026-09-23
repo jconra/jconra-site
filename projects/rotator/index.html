@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Rotator</title>
+<style>
+canvas {cursor: none;}
+</style>
+</head>
+<body style="margin:0px; overflow:hidden;" onload="init()" oncontextmenu="return false;">
+<canvas id="canvas"></canvas>
+<script>
+
+//Global Variables
+var canvas = document.getElementById("canvas");
+var ctx = canvas.getContext('2d');
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+
+var jet = new Image();
+jet.src = "jet.png";
+var walls, counter, score, speedi, message;
+var colors = ["rgba(255,0,0,.5)","rgba(0,255,0,.5)","rgba(0,0,255,.5)","rgba(255,255,0,.5)","rgba(255,0,255,.5)","rgba(0,255,255,.5)"];
+var mouse = {x:0,y:0, left:false, right:false};
+
+//Initialization Function
+function init() {
+  reset();
+  message = ["Welcome to Rotator","Use the Left and Right Mouse","Buttons to Angle the Ship.","The Game will get faster!"];
+  animate();
+}
+
+//Function to reset game variables
+function reset() {
+  score = 0;
+  message = [];
+  rotation = 0;
+  speed = .3;
+  counter = 100;
+  walls = [];
+
+  for (var i=0; i<6; i++) {
+    walls.push(new wall(i));
+  }
+}
+
+//Wall producing function, It randomly determines the position, if it is
+//tall or wide, and it uses n to take the color of the wall the just died
+function wall(n) {
+  return {x:rn(30, cw-170), y:rn(30, ch-200), vert:rn(0,1), color:n}
+}
+
+//All things that need to get updated are here. First the mouse rotation is
+//applied if a mouse key is being held down. Then draw is called. Then, if
+//no messages are being displayed then the counter (which makes walls come
+//forward) and the score are incremented.
+function animate() {
+  window.requestAnimationFrame(animate);
+  
+  if (mouse.left) rotation -= .07;
+  else if (mouse.right) rotation += .07;
+  
+  draw();
+  
+  if (message.length == 0) {
+    counter -= speed;
+    if (counter <=0) didCrash();
+    score += 1;
+    if (score%100 == 0) speed+=.02;
+  }
+}
+
+//DidCrash is called when the counter gets to zero (which means a wall just
+//hit the ship if it didn't get in the hole). We need to detect if the ship
+//is in the hole, so we find the distance between the mouse (ship) and the
+//center of the hole. Then we need to make sure the ship was rotated at an
+//angle so the wings won't smack the wall. If no crashes are detected then
+//the counter is updated and the wall is remade.
+function didCrash(){
+  var w = (walls[0].vert)? 35:75;
+  var h = (walls[0].vert)? 75:35;
+  var d = dist(mouse,{x:walls[0].x+w,y:walls[0].y+h});
+  if (d > 25) message = ["You Crashed!","Not centered"];
+  var a = Math.floor(rotation*180/Math.PI)%180;
+  if (a<0) a+=180;
+  if (walls[0].vert) {
+    if (!(a>65 && a<115)) message = ["You Crashed!","Not Vertical Enough"];
+  }
+  else if (!(a<25 || a>155)) message = ["You Crashed!","Not Horizontal Enough"];
+  counter = 100;
+  walls.push(new wall(walls[0].color))
+  walls.splice(0,1);
+}
+
+//Draw will clear the screen, set up a for loop to call drawWall. Notice that
+//drawWall draws the walls in reverse so that the ones in back draw first.
+//In order to draw the jet we have to translate the img to the orgin (0,0) and
+//rotate it to the right angle. Then we rotate the canvas back and translate it
+//back to normal. If the counter is past 40 we draw the red box to help line up
+//Finally, the score and possible message are drawn.
+function draw() {
+  ctx.fillStyle="black";
+  ctx.fillRect(0,0,cw,ch);
+  for (var i=4; i>=0; i--) {
+    drawWall(i);
+  }
+  ctx.translate(mouse.x, mouse.y);
+  ctx.rotate(rotation);
+  ctx.drawImage(jet, -70, -70, 140, 140);
+  ctx.rotate(-rotation);
+  ctx.translate(-mouse.x, -mouse.y);
+  if (counter < 40) drawBox();
+  drawScore();
+  if (message.length > 0) drawMessage();
+}
+
+//This simply draws the score in the top left
+function drawScore() {
+  ctx.fillStyle="yellow";
+  ctx.font="20px Arial";
+  ctx.fillText("Score: "+score,50,50);
+  ctx.fillText("Speed: "+Math.floor(speed*100),50,110);
+}
+
+//This draws the red box to help get the ship in the hole
+function drawBox() {
+  var w = (walls[0].vert)? 70:150;
+  var h = (walls[0].vert)? 150:70;
+  ctx.rect(walls[0].x, walls[0].y, w, h);
+  ctx.strokeStyle="red";
+  ctx.stroke(); 
+}
+
+//This function is a bit tricky, That is because the walls
+//all need to be scaled to a smaller size. It is kind of a
+//pain to calculate where the hole in the wall needs to be
+//positioned at. We start by calculating p which is our
+//scale. n will be between 0 and 4 so multiplying it by
+//20 gives us 0-80, then we add counter/5 which is going to
+//be between 0-20. If we divide everything by p then it
+//should scale correctly. Instead of using fillRect we draw
+//with lines so that we can draw the negative space in the
+//rectangle. If you draw something with a clockwise path you
+//you can draw counter-cw inside it to make a hole.
+function drawWall(n) {
+  var p = 20*n+counter/5;
+  if (p<1.2) return;
+  var x = cw/2-(cw/2)/p;
+  var y = (ch/2)-(ch/2)/p;
+  var w = (walls[n].vert)? 70/p:150/p;
+  var h = (walls[n].vert)? 150/p:70/p;
+  ctx.beginPath();
+  //Outer Rectangle, Clockwise
+  ctx.moveTo(x, y);
+  ctx.lineTo(x+cw/p, y);
+  ctx.lineTo(x+cw/p, y+(ch-50)/p);
+  ctx.lineTo(x, y+(ch-50)/p);
+  ctx.lineTo(x, y);
+  //Inner Rectangle, Counter-Clockwise
+  ctx.moveTo(x+walls[n].x/p, y+walls[n].y/p+h);
+  ctx.lineTo(x+walls[n].x/p+w, y+walls[n].y/p+h);
+  ctx.lineTo(x+walls[n].x/p+w, y+walls[n].y/p);
+  ctx.lineTo(x+walls[n].x/p, y+walls[n].y/p);
+  ctx.lineTo(x+walls[n].x/p, y+walls[n].y/p+h);
+  ctx.fillStyle=colors[walls[n].color];
+  ctx.fill();
+  ctx.strokeStyle="white";
+  ctx.stroke();
+}
+
+//Displays any messages for the user. Messages should be an array
+//This function will only get called if there is something in the
+//array. This function will display the messages centered in middle
+function drawMessage() {
+  ctx.font="50px Arial";
+  ctx.fillStyle="white";
+  for (var i=0, len=message.length; i<len; i++) {
+    var width = ctx.measureText(message[i]).width;
+    ctx.fillText(message[i], cw/2-width/2, ch/2-len*40+i*80);
+  }
+}
+
+//Our mouse listeners, They each call a function to do the work.
+canvas.addEventListener("mousedown", function(e) {mouseClick(e,true);});
+canvas.addEventListener("mouseup", function(e) {mouseClick(e,false);});
+canvas.addEventListener("mousemove", function(e) {mouseMove(e);});
+
+//When a mouse button is clicked or unclicked we need to adjust the
+//mouse.left and mouse.right variables accordingly.
+function mouseClick(event, state) {
+if (message.length > 0) reset();
+if (event.button == 0) mouse.left = state;
+else if (event.button == 2) mouse.right = state;
+}
+
+//Any time the mouse is moved this keeps the mouse object updated
+function mouseMove(event) {
+  mouse.x = event.clientX;
+  mouse.y = event.clientY;
+}
+
+//helper function to return a number between/including the min and max
+function rn(min,max) {
+  return Math.floor( Math.random()*((max+1)-min)+min);
+}
+
+//helper function to return the distance between two points
+function dist(p1,p2) {
+    return Math.sqrt(Math.pow(p1.x-p2.x,2)+Math.pow(p1.y-p2.y,2));
+}
+
+</script>
+</body>
+</html>

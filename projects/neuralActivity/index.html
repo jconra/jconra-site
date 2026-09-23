@@ -1,0 +1,123 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>Neural Activity</title>
+<meta charset="utf-8">
+<style>
+body {margin: 0px;padding: 0px;overflow: hidden;}
+</style>
+</head>
+<body onload="main()" bgcolor="#000000">
+<canvas id="canvas"></canvas>
+<script type="text/javascript">
+var canvas= document.getElementById('canvas');
+var ctx = canvas.getContext('2d');
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+var neuron = [];
+var signal = [];
+ctx.fillStyle="rgba(255,255,255,.3)";
+ctx.font = "10px Arial";
+
+//Variables which determine how the effect will look.
+//neurons are the nodes on the graph, more of them will make it look busier.
+//synapses are the amount of connections between the nodes.
+//signals are the dots that travel along the lines
+
+var neurons = Math.floor(cw/3);
+var synapse = 5;
+var signals = 100;
+
+//Build all the neurons
+for(var i=0, len = neurons; i<len; i++) neuron.push(obj());
+function obj() {return {x:rn(0,cw),y:rn(0,ch),n:[],on:false,count:0};}
+
+//findNeighbors is used to connect all the closest nodes to each other
+//The amount of connections is determined by the number of synapses
+function findNeighbors(){
+  connections = synapse;
+  for(var i=0, len = neuron.length; i<len; i++) {
+    var iAr = [], dAr = [];
+    for (var k=0; k < connections; k++) {iAr.push(-1); dAr.push(4096);}
+    for(var j=0; j<len; j++) {
+      if (i == j) continue;
+      var d = dist(neuron[i].x,neuron[j].x,neuron[i].y,neuron[j].y);
+
+      for (var c = connections; c > 0; c--) {
+        if (d < dAr[c-1]){
+          if (c < connections) {dAr[c] = dAr[c-1]; iAr[c] = iAr[c-1]}
+          dAr[c-1] = d; iAr[c-1] = j;
+          }
+        }
+      }
+    for (var k=0; k < connections; k++) neuron[i].n.push(iAr[k]);
+    }
+  }
+findNeighbors();
+
+//Build all the signals, they are the objects that travel around the graph
+for (var i=0; i<signals; i++) signal.push({start:i,end:neuron[i].n[0],progress:0,speed:rn(5,9)});
+
+//main is where all the animation takes place. Every neuron is processed and will advance along
+//it's edge between its start and end neuron. All the information about each signal is tracked
+//within the signal object. Each Neuron will count up as they are used so that signals will choose
+//their next neuron with the smallest count.
+function main() {
+  ctx.clearRect(0,0,cw,ch);
+  for (var i=0, len = neuron.length; i<len; i++) {
+    for (var j=0, nlen = neuron[i].n.length; j < nlen; j++) {
+        halfLine(neuron[i],neuron[neuron[i].n[j]]);
+      }
+    }
+  for (var i=0, len = signal.length; i<len; i++) {
+    var s = signal[i].speed;
+    var n1 = neuron[signal[i].start];
+    var n2 = neuron[signal[i].end];
+    var sub = {x:n2.x-n1.x,y:n2.y-n1.y};
+    drawCircle({x:n1.x+sub.x*signal[i].progress/s,y:n1.y+sub.y*signal[i].progress/s});
+    signal[i].progress++;
+    if (signal[i].progress == s-1) {
+      neuron[signal[i].start].on = false;
+      signal[i].start = signal[i].end;
+      signal[i].progress = 0;
+      mN = neuron[signal[i].end].n;
+      var minI = 0, min = neuron[mN[0]].count;
+      for (var j=1, nlen = neuron[signal[i].end].n.length; j<nlen; j++) {
+        if (neuron[mN[j]].count < min){min=neuron[mN[j]].count; minI=j;}
+        }
+      signal[i].end = mN[minI];
+      neuron[signal[i].end].on = true;
+      neuron[signal[i].end].count++;
+      }
+    }
+
+  requestAnimationFrame(main);
+  }
+
+//Function to draw the edges. Each line is drawn half way so they don't overlap
+function halfLine(n1,n2) {
+  ctx.strokeStyle = (n1.on)? "rgba(255,255,255,.3)":"rgba(255,255,255,.1)";
+  ctx.beginPath();
+  var hx = (n1.x+n2.x)/2;
+  var hy = (n1.y+n2.y)/2;
+  ctx.moveTo(n1.x,n1.y);
+  ctx.lineTo(n2.x,n2.y);
+  ctx.stroke();
+  }
+
+//Function to draw the signals
+function drawCircle(n) {
+  ctx.beginPath();
+  ctx.fillStyle = "rgba(255,255,255,.6)";
+  ctx.arc(n.x,n.y,3,0,Math.PI*2);
+  ctx.fill();
+  }
+
+//Utility functions (Random and Distance)
+function rn(min,max) {return Math.floor( Math.random()*((max+1)-min)+min);}
+function dist(x1,x2,y1,y2) {
+  var d = Math.sqrt(Math.pow(x2-x1,2)+Math.pow(y2-y1,2));
+  return d;}
+</script>
+</body>
+</html>

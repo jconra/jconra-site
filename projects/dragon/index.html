@@ -1,0 +1,345 @@
+<html>
+    <head>
+        <title>Week 7 Discussion - by Jacob Conrads</title>
+        <script type="text/javascript">
+            /* A minimal implementation of affine transformations in 2D, supporting rotation,
+               scaling, and translation.  An affine transform is represented as an object
+               of type AffineTransform2D.  No error checking of parameter vaues is done! */
+
+            /**
+             *  Create a 2D affine transform object representing the transform from (x,y)
+             *  to ( a*x + c*y + e, b*x + d*y + e ).  If exaclty one parameter is passed
+             *  and it is of type AffineTransform2D, then a copy is made of the paramter.
+             *  Otherwise, parameters should be numeric.  Missing parameter values are
+             *  taken from the identity transform.  If no parameters are passed, the
+             *  result is the identity transform.
+             */
+            function AffineTransform2D(a, b, c, d, e, f) {
+                if (arguments.length == 1 && (a instanceof AffineTransform2D)){
+                    this.a = a.a;
+                    this.b = a.b;
+                    this.c = a.c;
+                    this.d = a.d;
+                    this.e = a.e;
+                    this.f = a.f;
+                }
+                else {
+                    this.a = (a === undefined)? 1 : a;
+                    this.b = (b === undefined)? 0 : b;
+                    this.c = (c === undefined)? 0 : c;
+                    this.d = (d === undefined)? 1 : d;
+                    this.e = (e === undefined)? 0 : e;
+                    this.f = (f === undefined)? 0 : f;
+                }
+                this.scaleX = 1;
+                this.scaleY = 1;
+            }
+
+            /**
+             *  Returns an array of 9 numbers representing this transform as a 3-by-3 matrix,
+             *  in column-major order.
+             */
+            AffineTransform2D.prototype.getMat3 = function() {
+                return [
+                    this.a, this.b, 0,
+                    this.c, this.d, 0,
+                    this.e, this.f, 1
+                ];
+            }
+
+            /**
+             * Multiply this transform on the right by a rotation transform.  Angle is given in radians.
+             * Replaces this transform with the modified transform, and returns the modified transform.
+             */
+            AffineTransform2D.prototype.rotate = function(radians) {
+                var sin = Math.sin(radians);
+                var cos = Math.cos(radians);
+                var temp = this.a*cos + this.c*sin;
+                this.c = this.a*(-sin) + this.c*cos;
+                this.a = temp;
+                temp = this.b*cos + this.d*sin;
+                this.d = this.b*(-sin) + this.d*cos;
+                this.b = temp;
+                return this;
+            }
+
+            /**
+             * Multiply this transform on the right by a translation transform.
+             * Replaces this transform with the modified transform, and returns the modified transform.
+             */
+            AffineTransform2D.prototype.translate = function(dx, dy) {
+                this.e += this.a*dx + this.c*dy;
+                this.f += this.b*dx + this.d*dy;
+                return this;
+            }
+
+            /**
+             * Multiply this transform on the right by a scaling transform. If only one parameter is
+             * passed, does a uniform scaling.
+             * Replaces this transform with the modified transform, and returns the modified transform.
+             */
+            AffineTransform2D.prototype.scale = function(sx,sy) {
+                if (sy === undefined) {
+                    sy = sx;
+                }
+                this.scaleX *= sx;
+                this.scaleY *= sy;
+
+                this.a *= sx;
+                this.b *= sx;
+                this.c *= sy;
+                this.d *= sy;
+                return this;
+            }
+
+            /**
+             *  Returns the current scale values for this transform
+             */
+            AffineTransform2D.prototype.getScale = function () {
+                return [this.scaleX, this.scaleY];
+            }
+        </script>
+
+        <script type="text/javascript">
+            "use strict";
+
+            var vertexShaderSource =
+                   "attribute vec2 a_coords;\n" +
+                   "attribute vec3 a_color;\n" +
+                   "varying vec3 v_color;\n" +
+                   "uniform mat3 u_transform;\n" +
+                   "void main() {\n" +
+                   "    vec3 transformedCoords = u_transform * vec3(a_coords, 1.0);\n" +
+                   "    gl_Position = vec4(transformedCoords.xy, 0.0, 1.0);\n" +
+                   "    v_color = a_color;\n" +
+                   "}\n";
+
+            var fragmentShaderSource =
+                   "precision mediump float;\n" +
+                   "varying vec3 v_color;\n" +
+                   "void main() {\n" +
+                   "   gl_FragColor = vec4(v_color, 1.0);\n" +
+                   "}\n";
+
+            var gl; // The WebGL graphics context
+
+            var a_coords_loc;       // Location for "a_coords" attribute
+            var u_transform_loc;    // Location for "u_transform" uniform
+            var u_color_loc;        // Location for "u_color" uniform
+
+            var bufferCoords;     // A vertex buffer object to hold the values for coords.
+
+            var attributeColor;   // Location of the attribute named "a_color".
+            var bufferColor;     // A vertex buffer object to hold the values for color.
+            var coords;           //vertex coordinates
+            var color;            //vertex colors
+            
+            var animating = true;   // Is animation running?
+            var framenumber = 0;    // Current frame number in animation
+
+            var transform = new AffineTransform2D();    // Current AffineTransform2D
+
+            var transformStack = [];    // An array to serve as the transform stack
+            
+            var dragons = [];     // An array of dragon info
+            for (var i=0; i<3; i++) dragons.push(new mkdragon);
+
+            function mkdragon() {
+              var size = Math.random()/3+.3;
+              var dragon = {
+              tx: Math.random()*1.4-.7,
+              ty: Math.random()*1.4-.7,
+              sx: size,
+              sy: size,
+              vx: Math.random()/100,
+              vy: Math.random()/100,
+              }
+              return dragon;
+            }
+            
+            
+            /**
+             *  Push a copy of the current transform onto the transform stack.
+             */
+            function pushTransform() {
+                transformStack.push( new AffineTransform2D(transform) );
+            }
+
+            /**
+             *  Remove top item from stack and set it to current transform
+             */
+            function popTransform() {
+                if (transformStack.length > 0) {
+                    transform = transformStack.pop();
+                }
+            }
+
+            /**
+             *  Draw a dragon using current transform
+             */
+            function dragon() {
+                gl.uniformMatrix3fv(u_transform_loc, false, transform.getMat3());
+                
+               
+                gl.bindBuffer(gl.ARRAY_BUFFER, bufferCoords);
+                gl.bufferData(gl.ARRAY_BUFFER, coords, gl.STREAM_DRAW);
+                gl.vertexAttribPointer(a_coords_loc, 2, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(a_coords_loc); 
+               
+                /* Set up values for the "color" attribute */
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, bufferColor);
+                gl.bufferData(gl.ARRAY_BUFFER, color, gl.STREAM_DRAW);
+                gl.vertexAttribPointer(attributeColor, 3, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(attributeColor); 
+                
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, coords.length/2);
+            }
+
+            /**
+             *  Draw the nested/animated circles
+             */
+            function drawDragon() {
+                for (var i=0,len=dragons.length; i<len; i++) {
+                  
+                  //Change the dragons translate values and check to see if it is still in the window, reverse its velocity if it is leaving
+                  dragons[i].tx += dragons[i].vx;
+                  dragons[i].ty += dragons[i].vy;
+                  if (dragons[i].tx*dragons[i].sx < -.6 || dragons[i].tx*dragons[i].sx > .6) dragons[i].vx *=-1;
+                  if (dragons[i].ty*dragons[i].sy < -.6 || dragons[i].ty*dragons[i].sy > .6) dragons[i].vy *=-1;
+                  
+                  pushTransform();
+                  transform.scale(dragons[i].sx,dragons[i].sy);
+                  transform.translate(dragons[i].ty, dragons[i].tx);
+                  dragon();
+                  popTransform();
+                }
+                
+                //Change the colors for funzies
+                for (var i=0, len=coords.length/2*3; i<len; i++) {
+                  if (Math.random() > .5) color[i] += Math.random()/10;
+                  else color[i] -= Math.random()/10;
+                  if (color[i] < 0) color[i] += .5;
+                  else if (color[i] > 1) color[i] -= .5;
+                }
+            }
+
+            function createProgram(gl, vertexShaderSource, fragmentShaderSource) {
+                var vsh = gl.createShader( gl.VERTEX_SHADER );
+                gl.shaderSource( vsh, vertexShaderSource );
+                gl.compileShader( vsh );
+                if ( ! gl.getShaderParameter(vsh, gl.COMPILE_STATUS) ) {
+                    throw "Error in vertex shader:  " + gl.getShaderInfoLog(vsh);
+                }
+
+                var fsh = gl.createShader( gl.FRAGMENT_SHADER );
+                gl.shaderSource( fsh, fragmentShaderSource );
+                gl.compileShader( fsh );
+                if ( ! gl.getShaderParameter(fsh, gl.COMPILE_STATUS) ) {
+                    throw "Error in fragment shader:  " + gl.getShaderInfoLog(fsh);
+                }
+
+                var prog = gl.createProgram();
+                gl.attachShader( prog, vsh );
+                gl.attachShader( prog, fsh );
+                gl.linkProgram( prog );
+                if ( ! gl.getProgramParameter( prog, gl.LINK_STATUS) ) {
+                    throw "Link error in program:  " + gl.getProgramInfoLog(prog);
+                }
+
+                return prog;
+            }
+
+            /**
+             * This is run when the page first loads to initialize WebGL.
+             */
+            function init() {
+                try {
+                    var canvas = document.getElementById("webglcanvas");
+                    gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+
+                    if (!gl) {
+                        throw "Browser does not support WebGL";
+                    }
+                }
+                catch (e) {
+                    alert("This page requires WebGL support. Please use a different browser.");
+                    return;
+                }
+
+                initGL();
+
+                document.getElementById("animationCheckbox").checked = true;
+                document.getElementById("animationCheckbox").onchange = doAnimationCheckbox;
+
+                draw();
+                doFrame();
+            }
+
+            function initGL() {
+                var prog = createProgram(gl, vertexShaderSource, fragmentShaderSource);
+                gl.useProgram(prog);
+
+                a_coords_loc = gl.getAttribLocation(prog, "a_coords");
+                bufferCoords = gl.createBuffer();
+                attributeColor = gl.getAttribLocation(prog, "a_color");
+                bufferColor = gl.createBuffer();
+                u_transform_loc = gl.getUniformLocation(prog, "u_transform");
+                
+                coords = new Float32Array( 
+                [ 0.66,0.3, 0.8,0.4, 0.6,0.42,0.64,0.6,0.45,0.45,0.6,0.68,0.28,0.56,0.41,0.65,0.01,0.63,0.05,0.78,-0.35,0.6,-0.31,0.75,-0.4,0.7,-0.35,0.88,-0.5,0.92,-0.44,1.04,-1.45,1,-0.4,0.9,-0.4,0.85,-1.5,0.8,-0.4,0.8,-0.42,0.78,-1.4,0.58,-0.35,0.68,-0.4,0.68,-0.3,0.6,-0.7,0.3,-0.55, 0.2,-0.7,0,-0.55,-.1,-0.6,-.2,-0.4,-.3,-0.4,-.4,0,-.5,0.3,-.6,0,-0.55,-0.4,-.4,0.2,-.7] );
+                
+                color = new Float32Array( coords.length/2*3 );
+                
+                for (var i=0, len=coords.length/2*3; i<len; i++) {
+                  color[i] = Math.random();
+                }
+                gl.lineWidth(2);
+            }
+
+            function draw() {
+                gl.clearColor(0,0,0,1);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+                drawDragon();
+            }
+
+            function doFrame() {
+                if (animating) {
+                    framenumber++;
+                    draw();
+
+                    setTimeout(function() {
+                        requestAnimationFrame(doFrame);
+                    }, 17);
+                }
+            }
+
+            function startAnimation() {
+                if (!animating) {
+                    animating = true;
+                    requestAnimationFrame(doFrame);
+                }
+            }
+
+            function pauseAnimation() {
+                animating = false;
+            }
+
+            function doAnimationCheckbox() {
+                if (document.getElementById("animationCheckbox").checked) {
+                    startAnimation();
+                } else {
+                    pauseAnimation();
+                }
+
+            }
+            
+            function rn(min,max) {return Math.floor( Math.random()*((max+1)-min)+min);}
+        </script>
+    </head>
+    <body onload="init();">
+        <label><input type="checkbox" id="animationCheckbox" checked>Animate</label>
+        <br><br>
+        <canvas width="600" height="600" id="webglcanvas"></canvas>
+    </body>
+</html>

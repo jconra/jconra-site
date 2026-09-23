@@ -1,0 +1,53 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>Subnetting</title>
+<meta charset="utf-8">
+<style>
+body{margin:0px; overflow:hidden;}
+</style>
+</head>
+<body onload="drawDots()" id="body">
+<canvas id="canvas" style="position:fixed; z-index:-5"></canvas>
+<script type="text/javascript"> 
+var canvas = document.getElementById("canvas");
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+var ctx = canvas.getContext("2d");
+
+var dots = [];
+for (var i=0; i<100; i++) dots.push({x:rn(0,cw),y:rn(0,ch),s:rn(1,4),xv:rn(-5,5),yv:rn(-5,5)})
+
+function drawDots(){
+  window.requestAnimationFrame(drawDots);
+  ctx.fillStyle="#222"
+  ctx.fillRect(0,0,cw,ch);
+  ctx.strokeStyle="rgba(255,255,255,.1)";
+  ctx.fillStyle="white";
+  for (var i=0, len=dots.length; i<len; i++) {
+    ctx.beginPath();
+    ctx.arc(dots[i].x,dots[i].y,dots[i].s/2,0,Math.PI*2);
+    ctx.fill();
+    dots[i].x += dots[i].xv/15;
+    dots[i].y += dots[i].yv/15;
+    if (dots[i].x < 0 || dots[i].x > cw) {dots[i].xv *= -1}
+    if (dots[i].y < 0 || dots[i].y > ch) {dots[i].yv *= -1}
+    for (var j=i; j<len; j++) {
+      var xd = Math.abs(dots[i].x - dots[j].x);
+      var yd = Math.abs(dots[i].y - dots[j].y);
+      if (xd+yd < 150) {
+        ctx.beginPath()
+        ctx.moveTo(dots[i].x,dots[i].y);
+        ctx.lineTo(dots[j].x,dots[j].y);
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+function rn(min,max){return Math.floor(Math.random()*(max-min+1)+min)}
+
+</script>
+
+</body>
+</html>

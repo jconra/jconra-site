@@ -20,7 +20,7 @@ function invert(image) {
 }
 
 export class Earth extends THREE.Group {
-  constructor({ radius = 6371000, segments = 96, textures = '../../textures/' } = {}) {
+  constructor({ radius = 6371000, segments = 96, textures = '/textures/' } = {}) {
     super();
     this.radius = radius;
     const loader = new THREE.TextureLoader();

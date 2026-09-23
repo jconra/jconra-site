@@ -1,0 +1,22 @@
+        <div class="well" style="width:900px; background-color:#444;">
+          <pre style="display:inline-block; width:600px"><code>&lt;!DOCTYPE HTML&gt;
+&lt;html&gt;
+&lt;body&gt;
+&lt;canvas id="canvas" width="200" height="200"&gt;&lt;/canvas&gt;
+&lt;script&gt;
+
+var can = document.getElementById("canvas");
+var ctx = can.getContext('2d');
+
+ctx.fillStyle = "black";
+ctx.fillRect(0, 0, 200, 200);
+
+ctx.fillStyle = "yellow";
+ctx.fillRect(50, 50, 100, 50);
+
+&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+          <canvas id="example" width="200px" height="200px" style="display:inline-block; float: right;"></canvas>
+        </div>

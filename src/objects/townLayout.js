@@ -7,7 +7,7 @@ import * as THREE from 'three';
 
 export const LAYOUT_COLOURS = { floor: [0x5a, 0x3f, 0x2a], road: [0x5b, 0x61, 0x69], grass: [0x4c, 0x8a, 0x34], water: [0x2c, 0x6f, 0xa8], concrete: [0xb8, 0xb8, 0xb0], dry: [0xb9, 0xa0, 0x5a], dark: [0x2e, 0x5a, 0x24] };
 
-export async function loadTownLayout(base = '../../textures/town/') {
+export async function loadTownLayout(base = '/textures/town/') {
   try {
     const j = await fetch(`${base}layout.json`).then(r => r.ok ? r.json() : null);
     if (!j) return null;

@@ -1,0 +1,137 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+<title>Code Sample</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>  
+<link rel="stylesheet" href="../../styles/codeFullscreen.css">
+<link rel="stylesheet" href="../../styles/atom-one-dark.css">
+<script src="../../javascript/highlight.pack.js"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+</head>
+<body>
+
+<div class="container">
+  <div class="col-xs-12">
+    <div class="well" style="background-color:#444;">
+      <h2>Click Dot Source Code</h2>
+      <pre><code>&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+&lt;title&gt;ClickDot</title>
+&lt;/head&gt;
+&lt;body style="margin:0px; overflow:hidden;" onload="init()"&gt;
+&lt;canvas id="canvas"&gt;</canvas>
+&lt;script&gt;
+//This script is an example of a simple game that draws a circle and detects
+//mouse clicks. When the mouse is clicked, the distance between the mouse and
+//the circle will be calculated. If the click is less than the circle's radius
+//then the radius is added to the total so the reaction time can be averaged.
+//When the circle is clicked then it will be redrawn again in a new random spot
+
+//Prepare the canvas element to be drawn upon
+var canvas = document.getElementById("canvas");
+var ctx = canvas.getContext('2d');
+var cw = canvas.width = window.innerWidth;
+var ch = canvas.height = window.innerHeight;
+
+//Declare Global variables
+var dot, total, sum;
+
+//Function to prepare the game, can be called again to restart the game.
+function init() {
+  dot = newDot();
+  total = 0;
+  sum = 0;
+  ctx.font="30px Arial";
+  animate();
+}
+
+//Fuction to animate the sceen, repeats forever. The radius is increased here
+//To make the circle grow.
+function animate() {
+  window.requestAnimationFrame(animate);
+  draw();
+  if (dot.r &lt; 100) dot.r += .5;
+}
+
+//Function to return a new dot object with random color and position
+function newDot() {
+  return {
+    "x":rn(100,cw-100),
+    "y":rn(100,ch-100),
+    "r":0,
+    "color":"rgb("+rn(1,255)+","+rn(1,255)+","+rn(1,255)+")"
+  };
+}
+
+//Function to draw everything each frame. First the scene is erased by drawing
+//a rectangle. Then the circle function is called. Finaly the score is drawn.
+function draw() {
+  ctx.fillStyle="black";
+  ctx.fillRect(0,0,cw,ch);
+
+  circle(dot.x, dot.y, dot.r, dot.color);
+  
+  ctx.fillStyle="yellow";
+  if (sum &gt; 0) ctx.fillText("Reaction Average: "+Math.floor(total/sum),10,40);
+  else ctx.fillText("Click on the circle as fast as you can!",10,40);
+}
+
+//Function that accepts x, y, radius, and color and draws a circle
+function circle(x,y,r,c) {
+  ctx.fillStyle=c;
+  ctx.beginPath();
+  ctx.arc(x,y,r,0,Math.PI*2);
+  ctx.fill();
+}
+
+//Event listener that calls mouseclick() any time a click is detected
+canvas.addEventListener("click", function(event) {mouseClick(event);});
+
+//Function to determine if the mouse clicked a circle. If the distance is
+//smaller than the radius than the circle was clicked and the sum and total
+//variables will be updated to track the score. Then the dot is replaced.
+function mouseClick(event) {
+  var x=event.clientX;
+  var y=event.clientY;
+  if (dist(x,y,dot.x,dot.y) &lt; dot.r) {
+    sum += 1;
+    total += dot.r;
+    dot = newDot();
+  }
+}
+
+//Function to calculate the distance between x1,y1 and x2,y2
+function dist(x1,y1,x2,y2) {
+  return Math.sqrt(Math.pow(x2-x1,2)+Math.pow(y2-y1,2));
+}
+
+//Function to return a random number between min and max
+function rn(min,max) {
+  return Math.floor( Math.random()*((max+1)-min)+min);
+}
+
+&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+<script>
+(function() {
+  var pre = document.getElementsByTagName('pre'),
+  pl = pre.length;
+  for (var i = 0; i < pl; i++) {
+    pre[i].innerHTML = '<span class="line-number"></span>' + pre[i].innerHTML + '<span class="cl"></span>';
+    var num = pre[i].innerHTML.split(/\n/).length;
+      for (var j = 0; j < num; j++) {
+        var line_num = pre[i].getElementsByTagName('span')[0];
+        line_num.innerHTML += '<span>' + (j + 1) + '</span>';
+      }
+    }
+  })();
+
+</script>
+</body>
+</html>

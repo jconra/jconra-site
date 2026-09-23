@@ -1,0 +1,110 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body {
+margin: 0px;
+padding: 0px; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="myCanvas" width="600" height="600"></canvas>
+
+<script>
+
+var canvas = document.getElementById('myCanvas');
+var ctx = canvas.getContext('2d');
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+cw=Math.floor(canvas.width/10-2);
+ch=Math.floor(canvas.height/10-2);
+
+var maze = new Array();
+var fix = new Array();
+
+function rn(min,max){return Math.floor( Math.random()*((max+1)-min)+min);}
+
+function square(down,right){
+	this.down=down;
+	this.right=right;
+	}
+
+function right(x,y){line(x*10+20,y*10+10,x*10+20,y*10+20);}
+function down(x,y) {line(x*10+10,y*10+20,x*10+20,y*10+20);}
+
+function line(x1,y1,x2,y2){
+	ctx.beginPath();
+	ctx.lineWidth = 2;
+	ctx.strokeStyle = 'black';
+	ctx.moveTo(x1,y1);
+	ctx.lineTo(x2,y2);
+	ctx.stroke();
+	}
+
+function createmaze(){
+	for(var i=0;i<cw;i++){
+		maze[i] = new Array();
+		fix[i] = new Array();
+		for(var j=0;j<ch;j++){
+			fix[i][j]=0;
+			maze[i][j]=new square(false,false,false,false);
+
+			if (i==(cw-1)) maze[i][j].right=true;
+			if (j==(ch-1)) maze[i][j].down=true;
+			if (rn(1,10)>5) maze[i][j].right=true;
+			if (rn(1,10)>5) maze[i][j].down=true;
+			}
+		}
+	}
+
+function breakout(x,y){
+	var highnum=0;
+	var lowx=0;
+	var lowy=0;
+	var lowd=0;
+	while (fix[x][y]<5){
+		fix[x][y]++;
+		var a = fix[x][y];
+		var xm=0, ym=0;
+		if (!maze[x][y].right && fix[x+1][y]<a){a=fix[x+1][y];xm= 1;ym=0;}   //Go Right
+		if (!maze[x][y].down && fix[x][y+1]<a) {a=fix[x][y+1];xm=0;ym= 1;}   //Go Down
+		if (x!=0){if (!maze[x-1][y].right && fix[x-1][y]<a) {a=fix[x-1][y];xm=-1;ym=0;}}   //Go Left
+		if (y!=0){if (!maze[x][y-1].down && fix[x][y-1]<a)   {a=fix[x][y-1];xm=0;ym=-1;}}   //Go Up
+		x+=xm;
+		y+=ym;
+		if (x==(cw-1) && y==(ch-1)) break;
+		if ((x+y)>lowd){lowd=(x+y);lowx=x;lowy=y;}
+		}
+	if      (lowx!=(cw-1)){maze[lowx][lowy].right=false;}
+	else if (lowy!=(ch-1)){maze[lowx][lowy].down=false;}
+	}
+
+function fixmaze(){
+	for(var i=0;i<cw;i++){
+		for(var j=0;j<ch;j++){
+			if (fix[i][j]==0) breakout(i,j);
+			}
+		}
+	}
+
+function drawmaze(){
+	for(var i=0;i<cw;i++){
+		for(var j=0;j<ch;j++){
+			if (i==0) right(i-1,j);
+			if (j==0) down(i,j-1);
+			if (maze[i][j].down) down(i,j);
+			if (maze[i][j].right)right(i,j);
+			}
+		}
+	}
+
+createmaze();
+fixmaze();
+drawmaze();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Jacob Conrads</title>
+<style>
+body{margin: 0;padding: 0; overflow:hidden; background-color:black;}
+canvas{position:fixed;}
+@font-face { font-family: Console; src: url("../../fonts/console.ttf");}
+</style>
+</head>
+<body onload="init()">
+<script src="js/three.min.js"></script>
+<script src="js/textData.js"></script>
+<script>
+var startTime = (new Date()).getTime();
+console.log(((new Date()).getTime()-startTime)+"   Starting.. ");
+
+var renderer = new THREE.WebGLRenderer({ antialias: true});
+var raycaster = new THREE.Raycaster();
+var width, height, scene, ch, cw, gh, gw;
+var mouse={x:0,y:0,down:{x:-1,y:-1},scroll:false};
+var cube, light, tripod, camera;
+var canvas, ctx, size, grid, screens=[], objects=[];
+var currentSide=0, counter=0;
+var traces = [];
+var side = [{scroll:0},{scroll:0},{scroll:0},{scroll:0}];
+var time, frameTime = 1000, worker;
+var welcome = {finished:false,count:0,time:(new Date()).getTime()};
+var binaryImg = {};
+window.touchScreen = false;
+
+var spritesheet = document.createElement('img');
+spritesheet.src="images/spritesheet.png";
+
+for (var i=0, len=projects.length; i<len; i++) {
+  projects[i].img = document.createElement('img');
+  projects[i].img.src="images/buttons/"+projects[i].src;
+}
+
+function init() {
+  console.log(((new Date()).getTime()-startTime)+"   Init");
+
+  var loader = new THREE.JSONLoader();
+  width  = window.innerWidth;
+  height = window.innerHeight;
+  scene  = new THREE.Scene();
+  
+  grid = [];
+  size = 20;
+  gw = (width*4)/size, gh = height/size;
+  for (var y=0; y<gh; y++){
+    grid.push([]);
+    for (var x=0; x<gw; x++)
+      grid[y].push(0);
+  }
+
+  tripod = new THREE.Object3D();
+  tripod.rotation.order = 'YXZ';
+  camera = new THREE.PerspectiveCamera( 45, width / height, 1, 9000 );
+  //This crazyness is to figure out a multiplier that gets the box to fit the screen
+  var m = (width/height < 1)? (Math.log(5.5*(width/height)+1)/Math.log(10)+.6):
+                             (-Math.log(0.35*(width/height)-.2)/Math.log(10)+.6);
+  var maxD = (width > height)? width:height;
+  cameraD = (maxD/2)/Math.tan((camera.fov/2)*(Math.PI/180))*m;
+  camera.position.set( 0, 0, cameraD );
+  camera.target = 0;
+  tripod.add(camera);
+  scene.add(tripod);
+
+  light = new THREE.PointLight( 0xffffff, 2.5, 2000 );
+  light.position.set( 0, 0, cameraD);
+  scene.add( light );
+
+  scene.add( new THREE.AmbientLight( 0xffffff, .3 ));
+
+  renderer.setSize( width, height );
+  document.body.appendChild( renderer.domElement );
+  
+  panels = [
+    {side:0,x:.125,y:.06,width:.15,height:.1},
+    {side:0,x:.325,y:.06,width:.15,height:.1},
+    {side:0,x:.525,y:.06,width:.15,height:.1},
+    {side:0,x:.725,y:.06,width:.15,height:.1},
+    {side:0,x:.05,y:.35,width:.5,height:.4},
+    {side:1,x:.2,y:.2,width:.6,height:.6},
+    {side:2,x:.2,y:.2,width:.6,height:.6},
+    {side:3,x:.2,y:.2,width:.6,height:.6},
+    {side:3,x:.4,y:.86,width:.2,height:.1}
+  ]
+ 
+  side0 = new THREE.Object3D();
+  side1 = new THREE.Object3D();
+  side2 = new THREE.Object3D();
+  side3 = new THREE.Object3D();
+
+  console.log(((new Date()).getTime()-startTime)+"   Start Panels");
+  
+  for( var n=0, len=panels.length; n<len; n++) {
+    var p = panels[n];
+    var x = Math.floor(gw*p.side/4+gw*p.x/4+1);
+    var w = Math.floor(gw*p.width/4+.5);
+    var y = Math.floor(gh*p.y+1);
+    var h = Math.floor(gh*p.height+.5);
+    
+
+    //Integrated Circuit (dark grey box)
+    var material = new THREE.MeshPhongMaterial({color: 0x222222});
+    var geometry = new THREE.BoxGeometry(w*size,h*size,width*.02);
+    var ic = new THREE.Mesh( geometry, material);
+    ic.position.set(Math.floor(gw*p.x/4+1)*size+(w-1)*size/2-width/2,
+                    (height-(y*size+(h-1)*size/2)-height/2),
+                    width/2+width/95);
+    ic.name = n;
+    if (p.side == 0) side0.add(ic);
+    else if (p.side == 1) side1.add(ic);
+    else if (p.side == 2) side2.add(ic);
+    else if (p.side == 3) side3.add(ic);
+  
+    //Screen for IC
+    var material = new THREE.MeshBasicMaterial();
+    var geometry = new THREE.PlaneGeometry(w*size*.96,h*size*.96);
+    screens.push(new THREE.Mesh( geometry, material));
+    screens[n].position.z += width/95;
+    ic.add(screens[n]);
+    setupScreen(screens[n],p);
+    displays(n);
+  
+    if (n<4) {
+      side1.add(ic.clone());
+      side2.add(ic.clone());
+      side3.add(ic.clone());
+      objects.push(ic, side1.children[n], side2.children[n], side3.children[n]);
+    }
+    if (n==8) objects.push(ic);
+  }
+  console.log(((new Date()).getTime()-startTime)+"   Finished Panels");
+ 
+  //--------------------Project Pictures----------------
+  //----------------------------------------------------
+  
+  for (var i=0, len=projects.length; i<len; i++) {
+    var material = new THREE.MeshBasicMaterial( { side: THREE.DoubleSide });
+    var geometry = new THREE.PlaneGeometry(400,200);
+    projects[i].mesh = new THREE.Mesh( geometry, material);
+    projects[i].mesh.position.z += width*.55;
+    setupScreen(projects[i].mesh,{width:400/width,height:200/height});
+    projects[i].mesh.ctx.drawImage(projects[i].img,0,0);
+    drawBorder(projects[i].mesh.ctx);
+    projects[i].mesh.material.map.needsUpdate = true;
+    projects[i].mesh.link = projects[i].link;
+    objects.push(projects[i].mesh);
+    side0.add(projects[i].mesh);
+  }
+  positionProjects();
+  
+  side0.rotation.y += Math.PI/2;
+  side1.rotation.y += Math.PI;
+  side2.rotation.y -= Math.PI/2;
+
+  scene.add(side0);
+  scene.add(side1);
+  scene.add(side2);
+  scene.add(side3);
+
+  //--------------------Cube----------------------------
+  //----------------------------------------------------
+
+  var geometry = new THREE.BoxGeometry(width,height,width);
+  geometry.faces.splice(4,4);
+  var material = new THREE.MeshPhongMaterial(
+    {color: 0x287582, 
+    side: THREE.DoubleSide, 
+    transparent: true, 
+    opacity: 0.5
+  });
+  cube = new THREE.Mesh( geometry, material );
+  scene.add(cube); 
+
+  console.log(((new Date()).getTime()-startTime)+"   Added Cube");
+  
+  loader.load( 'room.json', function( geometry, materials ) {
+    var material = new THREE.MeshPhongMaterial({side: THREE.FrontSide} );
+    material.map = squareBlockTexture();
+    material.map.wrapS = material.map.wrapT = THREE.RepeatWrapping;
+    material.map.repeat.set(2,2);
+    room = new THREE.Mesh(geometry,material);
+    room.scale.set(width*2,height*2,width*2);
+    room.position.set(0,-height*1.1,0);
+    scene.add(room);
+  } );
+  console.log(((new Date()).getTime()-startTime)+"   Added Room");
+  
+  animate();
+  console.log(((new Date()).getTime()-startTime)+"   Animate Called");
+  
+  //-------------------Worker to Make Traces------------------
+  //----------------------------------------------------------
+  worker = new Worker('js/makeTraces.js');
+  worker.addEventListener('message', function(e) {
+    traces.push(makeLine(e.data));
+    traces[traces.length-1].fadeSpeed=Math.random()/10;
+    scene.add(traces[traces.length-1]);
+  },false);
+  worker.postMessage({data:grid,num:200});
+  
+  console.log(((new Date()).getTime()-startTime)+"   Webworker Started");
+}
+
+//This function takes a path (array of grid points) and creates a mesh for it
+function makeLine(path) {    
+  var material = new THREE.MeshPhongMaterial({ color: 0x222222, side: THREE.DoubleSide, transparent:true, opacity:0 });
+  var geometry = new THREE.Geometry();
+  var s = angleOff(path[0],path[1]);
+  
+  addRing(geometry,path[0],path[1]);
+  
+  var d = {x:(path[1].x-path[0].x)*size*.19,y:(path[1].y-path[0].y)*size*.19};
+  addVertices(geometry,path[0],{x:s.x+d.x,y:s.y+d.y},{x:-s.x+d.x,y:-s.y+d.y});
+
+  for (var i=1, len=path.length; i<len; i++) {
+    s = angleOff(path[i-1],path[i],path[i+1]);
+    if (i == len-1) {
+      d = {x:(path[i-1].x-path[i].x)*size*.2,y:(path[i-1].y-path[i].y)*size*.2};
+      addVertices(geometry,path[i],{x:s.x+d.x,y:s.y+d.y},{x:-s.x+d.x,y:-s.y+d.y});
+    } else  
+      addVertices(geometry,path[i],s,{x:-s.x,y:-s.y});
+    var c = geometry.vertices.length;
+    geometry.faces.push( new THREE.Face3( c-4, c-3, c-2 ));
+    geometry.faces.push( new THREE.Face3( c-3, c-2, c-1 ));
+  }
+  
+  addRing(geometry,path[path.length-1],path[path.length-2]);
+
+  geometry.computeFaceNormals();
+  var line = new THREE.Mesh( geometry, material );
+  return line;
+}
+
+function drawBorder(ctx) {
+  ctx.rect(1,1,397,197);
+  ctx.lineWidth=1;
+  ctx.strokeStyle="white";
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.rect(2,2,397,197);
+  ctx.strokeStyle="black";
+  ctx.stroke();
+}
+
+
+//This function takes 2 or 3 points and returns a point that represents the average
+//angle that the point (2nd parameter) should use to make the line joint look right.
+//It was quite difficult to get this right. Each segement of the line is made with 2
+//more points (one for each side of line). The point that is returned by this function
+//is the offset from the center point and is subtracted and added to it for line points.
+function angleOff(p1,p2,p3) {
+  var angle = (Math.atan2(p2.x-p1.x,p2.y-p1.y)+Math.PI*2)%(Math.PI*2);
+  if (!(p3 == undefined)) {
+    var angle2 = (Math.atan2(p3.x-p2.x,p3.y-p2.y)+Math.PI*2)%(Math.PI*2);
+    angle = Math.atan2(Math.sin(angle)+Math.sin(angle2)/2,Math.cos(angle)+Math.cos(angle2)/2);
+  }
+  return {x:Math.sin(angle+Math.PI/2)*4,y:Math.cos(angle+Math.PI/2)*4};
+}
+
+//This function takes the line geometry, the grid point, and the angle offset and adds
+//the new line segment to the geometry. The point needs to be rotated to the correct side
+function addVertices(geometry, p, o1, o2) {
+  var nX = p.x%(gw/4);
+  var side = Math.floor(p.x/(gw/4)+1);
+  var s1 = new THREE.Vector2(nX*size+o1.x-width/2,-width/1.97);
+  var s2 = new THREE.Vector2(nX*size+o2.x-width/2,-width/1.97);
+  s1.rotateAround({x:0,y:0},Math.PI/2*side);
+  s2.rotateAround({x:0,y:0},Math.PI/2*side);
+  geometry.vertices.push(
+    new THREE.Vector3(s1.x,height-(p.y*size+o1.y)-height/2,s1.y),
+    new THREE.Vector3(s2.x,height-(p.y*size+o2.y)-height/2,s2.y) 
+  );
+}
+
+//This function makes the circles at each end of the lines
+function addRing(geometry,p1,p2) {
+  var s1,s2;
+  for (var i=0; i<13; i++) {
+    s1 = {x:Math.sin(Math.PI/6*i)*6,y:Math.cos(Math.PI/6*i)*6};
+    s2 = {x:Math.sin(Math.PI/6*i)*2,y:Math.cos(Math.PI/6*i)*2}; 
+    addVertices(geometry,p1,s1,s2);
+    if (i > 0) {
+      var c = geometry.vertices.length;
+      geometry.faces.push( new THREE.Face3( c-4, c-3, c-2 ));
+      geometry.faces.push( new THREE.Face3( c-3, c-2, c-1 ));
+    }
+  }
+}
+
+//This function creates a geometry with it's own canvas to texture it
+function setupScreen(screen,p) {
+    var w,h;
+    w = screen.cw = p.width*width;
+    h = screen.ch = p.height*height;
+    var canvasW = autoSet(w);
+    var canvasH = autoSet(h);
+    screen.canvas = document.createElement("canvas");
+    screen.ctx = screen.canvas.getContext('2d');
+    screen.canvas.width=canvasW;
+    screen.canvas.height=canvasH;
+    screen.texture = new THREE.CanvasTexture(screen.canvas);
+    screen.material.map = screen.texture;
+    screen.geometry.faceVertexUvs[0][0][0] = new THREE.Vector2(0,1);
+    screen.geometry.faceVertexUvs[0][0][1] = new THREE.Vector2(0,1-h/canvasH);
+    screen.geometry.faceVertexUvs[0][0][2] = new THREE.Vector2(w/canvasW,1);
+
+    screen.geometry.faceVertexUvs[0][1][0] = new THREE.Vector2(0,1-h/canvasH);
+    screen.geometry.faceVertexUvs[0][1][1] = new THREE.Vector2(w/canvasW,1-h/canvasH);
+    screen.geometry.faceVertexUvs[0][1][2] = new THREE.Vector2(w/canvasW,1);
+}
+
+function displays(n) {
+  var ctx = screens[n].ctx;
+  var cw = screens[n].cw;
+  var ch = screens[n].ch;
+  ctx.fillStyle="black";
+  ctx.fillRect(0,0,cw,ch);
+  ctx.textAlign="center";
+  switch (n) {
+    case 0: buttonText("Home",ctx,cw,ch,n); break;
+    case 1: buttonText("Portfolio",ctx,cw,ch,n); break;
+    case 2: buttonText("About",ctx,cw,ch,n); break;
+    case 3: buttonText("Contact",ctx,cw,ch,n); break;
+    case 4: portfolio(ctx,cw,ch); break;
+    case 5: about(ctx,cw,ch); break;
+    case 6: contact(ctx,cw,ch); break;
+    case 7: welcomeMessage(ctx,cw,ch); break;
+    case 8: regPageButton(ctx,cw,ch); break; 
+    default: textBox("Hello",30,ctx,cw,0,ch/2); break;
+  }
+  screens[n].material.map.needsUpdate = true;
+}
+
+function regPageButton(ctx,cw,ch) {
+  ctx.textAlign="center";
+  var size = .07*cw+6; 
+  ctx.font=size+"px courier";
+  linearGradient(ctx, 0, 0, 0, ch, "#444444", "black");
+  ctx.fillRect(0,0,cw,ch);
+  ctx.fillStyle="white";
+  ctx.fillText("Click For",cw/2,ch/2-size/2)
+  ctx.fillText("Regular Page!",cw/2,ch/2+size/2);
+  }
+
+function buttonText(text,ctx,cw,ch,n) {
+  var color = (currentSide == n)? "#888888":"#444444";
+  linearGradient(ctx, 0, 0, 0, ch, color, "black");
+  ctx.fillRect(0,0,cw,ch);
+  ctx.font=(.17*cw)+"px courier";
+  ctx.fillStyle="white";
+  ctx.fillText(text,cw/2,ch*.6);
+}
+
+function linearGradient(ctx, x1, y1, x2, y2, c1, c2) {
+  var grd = ctx.createLinearGradient(x1, y1, x2, y2);
+  grd.addColorStop(0,c1);
+  grd.addColorStop(.5,c2);
+  grd.addColorStop(1,c1);
+  ctx.fillStyle = grd;
+}
+
+function welcomeMessage(ctx,cw,ch) {
+  ctx.fillStyle="lime";
+  ctx.font=(cw*.04)+"px Console";
+  var message = "Hello! I am Jacob Conrads.\nI am a security engineer.\n\nThis page is 3D.\n";
+  message += "Try clicking and dragging!";
+  if (welcome.count < message.length) welcome.count += 1;
+  else welcome.finished = true;
+  var x = 0, y = 0;
+  for (var i=0; i<welcome.count; i++) {
+    x += 1;
+    if (message[i] == "\n") {y += 1; x=0;}
+    else ctx.fillText(message[i],cw*.1+x*cw*.03,ch*.4+y*cw*.05);
+  }
+  if (welcome.count < message.length -1) ctx.fillText("_",cw*.1+(x+1)*cw*.03,ch*.4+y*cw*.05);
+  welcome.time = (new Date()).getTime();
+}
+
+function portfolio(ctx,cw,ch) {
+  var obj,top=0,topZ=0;
+  if ("mesh" in projects[0]) {
+    for (var i=0,len=projects.length; i<len; i++) {
+      if (projects[i].mesh.position.z > topZ) {top=i; topZ=projects[i].mesh.position.z;}
+    }
+  }
+  ctx.fillStyle="white";
+  ctx.font=(cw*.035)+20+"px Arial";
+  ctx.fillText(projects[top].title,cw/2,45);
+  textBox(projects[top].text,.0025*width+20,ctx,cw-20,10,65);
+}
+
+function about(ctx,cw,ch) {
+  if (side[2].scroll < 0) side[2].scroll = 0;
+  if (side[2].scroll > side[2].ch/32.5) side[2].scroll = Math.floor(side[2].ch/32.5); 
+  var s=side[2].scroll*30;
+  ctx.lineWidth=1;
+  var size = .0025*width+15;
+  
+  //textBox(text_to_display,text_size,context,width,starting_x,starting,y)
+  
+  var x, a, y=30;
+  for (var i=0, len=aboutData.length; i<len; i++) {
+    a = aboutData[i];
+    x = (i==0)? cw/2-75:cw/2-120;
+    ctx.drawImage(spritesheet,a.x+1,a.y+1,a.w-2,a.h-2,x,y-s,a.w,a.h);
+    if ("title" in a)
+      textBox(a.title,size+10,ctx,300,cw/2-60,y-s);
+    y += a.h;
+    if ("text" in a)
+      y += textBox(a.text,size,ctx,cw-100,50,y-s);
+    drawLine(ctx,{x:50,y:y-s},{x:cw-50,y:y-s});
+      y += 10;
+  }
+
+  sliderIcon(ctx,cw-15,s/y*ch+20);
+  side[2].ch=y;
+}
+
+function sliderIcon(ctx,x,y) {
+  var h = height*.6;
+  if (y > h-22) y=h-24;
+  if (y < 24) y=24;
+  ctx.fillStyle="#333333";
+  ctx.fillRect(x-10,y-10,20,20);
+  ctx.beginPath();
+  ctx.moveTo(x,2);
+  ctx.lineTo(x-10,12);
+  ctx.lineTo(x+10,12);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x,h-2);
+  ctx.lineTo(x+10,h-12);
+  ctx.lineTo(x-10,h-12);
+  ctx.fill();
+}
+
+
+function drawLine(ctx,p1,p2) {
+  ctx.strokeStyle="white";
+  ctx.beginPath();
+  ctx.moveTo(p1.x,p1.y);
+  ctx.lineTo(p2.x,p2.y);
+  ctx.stroke();
+}
+
+function contact(ctx) {
+  var cw = width * 0.6;
+  var ch = height * 0.6;
+  var sh = (ch < 400)? ch/4:100;
+  var tp = (ch < 400)? 0:(ch-400)/2;
+  ctx.fillStyle="white";
+  ctx.textAlign="left";
+  ctx.font="20px Arial";
+  ctx.drawImage(spritesheet,150,0,50,50,cw/2-150,tp,50,50);
+  ctx.fillText("www.linkedin.com/in/jacob-conrads/",cw/2-90,tp+50); 
+   
+  ctx.drawImage(spritesheet,200,0,50,50,cw/2-150,tp+sh,50,50);
+  ctx.fillText("www.facebook.com/jacob.conrads/",cw/2-90,tp+sh+50);
+  
+  ctx.drawImage(spritesheet,150,50,50,50,cw/2-150,tp+sh*2,50,50);
+  ctx.fillText("jacobtc23@gmail.com",cw/2-90,tp+sh*2+50);
+  
+  ctx.drawImage(spritesheet,50,200,50,50,cw/2-150,tp+sh*3,50,50);
+  ctx.fillText("Résumé",cw/2-90,tp+sh*3+50);
+  
+}
+
+//textBox(text_to_display,text_size,context,width,starting_x,starting,y)
+function textBox(text,size,ctx,cw,cx,cy) {
+  ctx.fillStyle="black"
+  ctx.fillRect(0,0,cw,ch);
+  var line = size+7, x = 0, width; 
+  ctx.font=(size)+"px Arial";
+  ctx.fillStyle= "#cceeff";
+  ctx.textAlign= "left";
+  textAry = text.split(" ");
+  for (var i=0, len=textAry.length; i<len; i++) {
+    width = ctx.measureText(textAry[i]+" ").width;
+    if (width+x > cw) {
+      line += size+7;
+      x = 0;
+    }
+    ctx.fillText(textAry[i]+" ",cx+x,cy+line);
+    x += width;
+  }
+  return line+(size)+7;
+}
+
+function animate() {
+  time = (new Date()).getTime();
+  if (welcome.finished == false && (time - welcome.time > 100)) displays(7);
+  fadeInTraces();
+  
+  var rotationY = (tripod.rotation.y%(Math.PI/2)+Math.PI)%(Math.PI/2);
+  
+  //Keep the current side info updated (for buttons and stuff)
+  var side = Math.floor((tripod.rotation.y+Math.PI/4)*2/Math.PI)%4;
+  if (side != currentSide) {
+    if (side < 0) side+=4;
+    currentSide = side; 
+    for(var i=0; i<4; i++) { displays(i); }
+    }
+
+  if (camera.target > 0) {
+    rotateToTarget(camera.target);
+  } else if (mouse.down.x != -1 && mouse.scroll == false) {
+    if (camera.position.z < cameraD*1.3) camera.position.z += 20;
+  } else {
+    if (camera.position.z > cameraD) camera.position.z -= 20;
+    if (rotationY > Math.PI/4) tripod.rotation.y += 0.02;
+    else if (rotationY > 0.02) tripod.rotation.y -= 0.02;
+    if (tripod.rotation.x > 0.02) tripod.rotation.x -= 0.02;
+    else if (tripod.rotation.x < -0.02) tripod.rotation.x += 0.02;
+  }
+  if (welcome.count > 5) binaryEffect();
+  light.position.copy((new THREE.Vector3()).setFromMatrixPosition( camera.matrixWorld ));
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+  frameTime = (new Date()).getTime() - time;
+}
+
+function binaryEffect() {
+  var speed, size;
+  if ("children" in binaryImg) {
+    if (frameTime < 15 && Math.random() < .03) {
+      var newChain = spriteChain();
+      binaryImg.children.push(newChain);
+      scene.add(newChain);
+    }
+    for (var i=0, len=binaryImg.children.length; i<len; i++) {
+      size = binaryImg.children[i].children[0].scale.x;
+      speed = (400-size)/50;
+      binaryImg.children[i].position.y += speed;
+      binaryImg.children[i].rotation.y += size/5000;
+      if (binaryImg.children[i].position.y > 3000+size*20) {
+        scene.remove(binaryImg.children[i]);
+        binaryImg.children.splice(i,1);
+        len -= 1;
+      }
+    }
+  } else {
+    binaryImg.children = [];
+    binaryImg.zero = newSprite("0");
+    binaryImg.one = newSprite("1");
+  }
+}
+
+function spriteChain() {
+  var chain = new THREE.Group();
+  var radius = width*Math.random()*.45;
+  var angle = Math.random()*Math.PI*2;
+  var x = Math.sin(angle)*radius;
+  var z = Math.cos(angle)*radius;
+  var length = Math.floor(Math.random()*20+5);
+  var size = Math.random()*100+(100-radius/6);
+  for (var i=0; i < length; i++) {
+    if (Math.random() < .5) sprite = binaryImg.zero.mesh.clone();
+    else                    sprite = binaryImg.one.mesh.clone();
+    sprite.position.set(0,-size*i,0);
+    sprite.scale.set(size,size,size);
+    chain.add(sprite);
+  }
+  chain.position.set(x,0,z);
+  return chain;
+}
+
+function newSprite(char) {
+  var sprite = {};
+  sprite.canvas = document.createElement("canvas");
+  sprite.ctx = sprite.canvas.getContext('2d');
+  sprite.canvas.height = sprite.canvas.width = 128;
+  sprite.ctx.font="128px Console";
+  sprite.ctx.fillStyle="white";
+  sprite.ctx.fillText(char,32,128);
+  //sprite.texture = new THREE.Texture(sprite.canvas);
+  //sprite.texture.needsUpdate = true;
+  //sprite.material = new THREE.SpriteMaterial({map:sprite.texture});
+  //sprite.mesh = new THREE.Sprite(sprite.material);
+  sprite.geometry = new THREE.PlaneGeometry(1,1);
+  sprite.alphaMap = new THREE.CanvasTexture(sprite.canvas);
+  sprite.material = new THREE.MeshPhongMaterial( {
+    color:"#FFF",
+    transparent: true,
+    opacity: 0.5,
+    alphaTest: 0.5,
+    side: THREE.DoubleSide,
+    alphaMap: sprite.alphaMap
+  } );
+  sprite.mesh = new THREE.Mesh( sprite.geometry, sprite.material ); 
+  return sprite;
+}
+
+
+function fadeInTraces() {
+  var t;
+  if (frameTime < 10) worker.postMessage({num:1});
+  for (len=counter+traces.length*.2; counter<len; counter++) {
+    t = counter % traces.length;
+    traces[t].material.opacity += traces[t].fadeSpeed;
+    if ((traces[t].material.opacity > 1 && traces[t].fadeSpeed > 0) || 
+        (traces[t].material.opacity < .5 && traces[t].fadeSpeed < 0))
+      traces[t].fadeSpeed *= -1;
+  }
+}
+
+function rotateToTarget(t) {
+  var target;
+  if (t == 1) target = 0;
+  else if (t == 2) target = Math.PI/2;
+  else if (t == 3) target = Math.PI;
+  else if (t == 4) target = Math.PI*3/2;
+  var diff = (tripod.rotation.y - target)%(Math.PI*2);
+  if (Math.abs(diff) <= 0.1) {
+    camera.target = 0;
+  } else if (diff < 0 && diff > -Math.PI || diff > Math.PI) tripod.rotation.y += 0.1;
+  else tripod.rotation.y -= 0.1;
+}
+
+function squareBlockTexture() {
+  var can = document.createElement('canvas');
+  var ctx = can.getContext('2d');
+  can.width=1024; can.height=1024;
+  var r;
+  for (var i=0; i<1024; i+=8) {
+    for (var j=0; j<1024; j+=8) {
+      r = rn(0,30);
+      ctx.fillStyle="rgb("+r+","+r+","+r+")";
+      ctx.fillRect(i,j,8,8);
+    }
+  }
+  return new THREE.CanvasTexture(can);
+}
+
+function raycast(x,y) {
+  var m = {};
+  m.x =  ( x / renderer.domElement.clientWidth ) * 2 - 1;
+  m.y = -( y / renderer.domElement.clientHeight ) * 2 + 1; 
+  raycaster.setFromCamera(m, camera );
+  return raycaster.intersectObjects( objects );
+}
+
+function positionProjects() {
+  var x,y,z,angle;
+  if (side[1].scroll<0) side[1].scroll+=63;
+  for (var i=0, len=projects.length; i<len; i++) {
+    angle = -(Math.PI*2/projects.length)*i+side[1].scroll*.1;
+    projects[i].mesh.position.x = width*.33+Math.sin(angle)*width*.1;
+    projects[i].mesh.position.y = Math.cos(angle)*height*.25-height*.05;
+    projects[i].mesh.position.z = width*.55-Math.sin(angle)*50;
+    projects[i].mesh.scale.setScalar((1-Math.sin(angle))*.3+.3);
+  }
+  displays(4);
+}
+
+function rn(min,max){return Math.floor( Math.random()*(max-min)+min);}
+function dist(p1,p2) {return Math.sqrt(Math.pow(p1.x-p2.x,2)+Math.pow(p1.y-p2.y,2));}
+function autoSet(min) { var r=512; while (r<min) {r *=2;}; return r}
+
+window.addEventListener('mousedown',function(e) {mouseDown(e)});
+window.addEventListener('mouseup',function(e) {mouseUp(e)});
+window.addEventListener('mousemove',function(e) {mouseMove(e)});
+window.addEventListener('wheel',function(e) {onScroll(e)});
+
+window.addEventListener( "touchstart", function(e){onTouchStart(e);}, false);
+window.addEventListener( "touchend", function(e) {onTouchEnd(e);}, false);
+window.addEventListener( "touchmove", function(e) {onTouchMove(e);}, false);
+
+function onScroll(e) {
+  if (currentSide==1) {
+    side[1].scroll -= (e.deltaY<0)? -2:2;
+    positionProjects();
+  } else if (currentSide==2) {
+    side[2].scroll += (e.deltaY<0)? -1:1;
+    displays(5);
+    }
+}
+
+function link(url) {
+  window.open(url,"_blank");
+  mouse.down={x:-1,y:-1};
+}
+  
+function isScrolling(x,y) {
+  if (currentSide == 2 && x > width*.2 && x < width*.82
+      && y > height*.18 && y < height*.8) return true;
+  if (currentSide == 1) {
+    if (raycast(x,y).length > 0) return true; 
+  }
+}
+
+function onDown(x,y) {
+  mouse.x=x;
+  mouse.y=y;
+  mouse.down={x:x,y:y};
+  if (isScrolling(x,y)) mouse.scroll = true;
+  if (y > height*.8 && currentSide == 0 && raycast(x,y).length > 0) link("about.html"); 
+}
+
+function mouseDown(e) {
+  if (window.touchScreen) return;
+  onDown(e.clientX,e.clientY);
+}
+
+function mouseMove(e) {
+  if (window.touchScreen) return;
+  move(e.clientX,e.clientY);
+}
+
+function mouseUp(e) {
+  if (window.touchScreen) return;
+  onUp(e.clientX,e.clientY);
+}
+
+function onUp(x,y) {
+  if (dist({x:x,y:y},mouse.down) < 20) {
+    var button = overButton(x,y);
+    if (y < height*.17) {
+      intersects = raycast(x,y);
+      if (intersects.length > 0) {
+        camera.target = intersects[0].object.name + 1;
+        currentSide = camera.target;
+      }
+    }
+    else if (button == 30) link("http://www.linkedin.com/in/jacob-conrads");
+    else if (button == 31) link("http://www.facebook.com/jacob.conrads");
+    else if (button == 32) link("mailto:jacobtc23@gmail.com");
+    else if (button == 33) link("resume.pdf");
+    if (y > height*.15 && currentSide == 1) {
+      intersects = raycast(x,y);
+      if (intersects.length > 0) {
+        link(intersects[0].object.link);
+      }
+    }
+  }
+  mouse.down={x:-1,y:-1};
+  mouse.scroll=false;
+}
+
+
+function move(x,y) {
+  if (mouse.down.x != -1) {
+    if (mouse.scroll) {
+      if (currentSide == 1 && Math.abs(y - mouse.y) > 10) {
+        side[1].scroll += (mouse.y > y)? 1:-1;
+        mouse.y = y;
+        positionProjects();
+      } else if (currentSide == 2) {
+        side[2].scroll = Math.floor(((y-height*.2)/(height*.6))*side[2].ch/30);
+        displays(5);
+      }
+    } else {
+      //Process Left/Right rotation
+      tripod.rotation.y += (mouse.x - x)/200;
+      mouse.x = x;
+      
+      //Process Up/Down rotation
+      if (Math.abs(tripod.rotation.x + (mouse.y - y)/200) < Math.PI/8)
+        tripod.rotation.x += (mouse.y - y)/200
+      mouse.y = y;
+    }
+  } else if (window.touchScreen == false){
+    renderer.domElement.style["cursor"] = (overButton(x,y) > 0)? "pointer":"move";
+    if (currentSide == 1 && raycast(x,y).length > 0)
+      renderer.domElement.style["cursor"] = "pointer";
+    if (y < height*.17 &&  raycast(x,y).length > 0)
+      renderer.domElement.style["cursor"] = "pointer"; 
+    if (y > height*.8 && currentSide == 0 && raycast(x,y).length > 0)
+      renderer.domElement.style["cursor"] = "pointer";
+  }
+}
+
+function onTouchStart(e) {
+  window.touchScreen = true;
+  e.preventDefault();
+  onDown(e.touches[0].pageX, e.touches[0].pageY);
+}
+
+function onTouchEnd(e) {
+  onUp(mouse.x,mouse.y);
+}
+
+function onTouchMove(e) {
+  move(e.touches[0].pageX, e.touches[0].pageY);
+}
+
+function overButton(x,y) {
+  if (currentSide <3) {
+    if (currentSide ==2) {
+      if (x > width*.2 && x < width*.8 && y > height*.2 && y < height*.8) return 21;
+    }
+  } else {
+    if (currentSide == 3){
+      if (x > width*.5-165 && x < width*.5+210) {
+        var ch = height * 0.6;  
+        var cs = (ch < 400)? ch/4:100;
+        var tp = (ch < 400)? height*.2:(ch-400)/2+height*.2;
+        if (y > height*.2 && y < height*.8) {
+          if (y > tp && y < tp+cs) return 30;
+          if (y > tp+cs && y < tp+cs*2) return 31;
+          if (y > tp+cs*2 && y < tp+cs*3) return 32;
+          if (y > tp+cs*3 && y < tp+cs*4) return 33;
+        }
+      }
+    }
+  }
+}
+
+window.addEventListener('resize',resize);
+
+function resize() {
+  width = window.innerWidth;
+  height = window.innerHeight;
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
+  renderer.setSize( width, height );
+}
+
+</script>
+</body>
+</html>

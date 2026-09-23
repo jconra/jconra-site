@@ -170,7 +170,7 @@ function endFace(part, axis, end) {
   return new THREE.Vector3(med(xs), med(ys), med(zs));
 }
 
-export async function loadKit(base = '../../models/kit/', onProgress) {
+export async function loadKit(base = '/models/kit/', onProgress) {
   const loader = new GLTFLoader();
   const loaded = {}, totals = {};
   const report = () => {
