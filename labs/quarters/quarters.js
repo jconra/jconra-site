@@ -562,9 +562,15 @@ const TOUR = [
   { id: 'MS', t: 57.5, title: 'Mississippi', text: '2 years at Keesler AFB teaching Cyberspace Warfare Operations: Windows, Linux and Python.' },
   { id: 'WA', t: 59.9, title: 'Washington',  text: '7 years AWS Systems Engineer for filesystems (EFS, FSx). Helicopter pilot, 176 hours.' },
 ];
-// where each state's pin stands: a town's [longitude, latitude], or fx / fy set in the panel
+// where each state's pin stands: a place's [longitude, latitude], or fx / fy set in the panel
 // (the fraction of the way across the state, west to east and north to south)
-const PINS = { CO: { town: 'Cortez', lonlat: [-108.585, 37.349] } };
+const PINS = {
+  CO: { place: 'Cortez',     lonlat: [-108.585, 37.349] },
+  NM: { place: 'Alamogordo', lonlat: [-105.960, 32.900] },
+  MD: { place: 'Columbia',   lonlat: [-76.861, 39.204] },
+  MS: { place: 'Biloxi',     lonlat: [-88.885, 30.396] },
+  WA: { place: 'Seattle',    lonlat: [-122.332, 47.606] },
+};
 const MAP = { glow: 48.1, tourEnd: 62.5, shipIn: 46.5, shipAt: 52.5,
   dive: 65.5, diveEnd: 70.1,             // the fighter noses down and races for the cloud bank
   target: [-201, 113, 4],                // where it goes in: the big swirl of cloud off the West Coast, in the picture's units

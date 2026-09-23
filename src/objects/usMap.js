@@ -18,7 +18,7 @@ import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 // SVG units -> photo pixels: px = a*x - b*y + tx, py = b*x + a*y + ty (fitted 2026-09-20)
 export const FIT = { a: 0.40125, b: -0.05498, tx: 201.78, ty: 269.94 };
 const PHOTO = { w: 833, h: 827 };
-// the states' longitude and latitude bounds [west, east, south, north], for placing pins on towns
+// the states' longitude and latitude bounds [west, east, south, north], for placing pins on places
 export const STATE_BOUNDS = { CO: [-109.06, -102.04, 36.99, 41.0], NM: [-109.05, -103.0, 31.33, 37.0], MD: [-79.49, -75.05, 37.89, 39.72], MS: [-91.66, -88.1, 30.17, 35.0], WA: [-124.85, -116.92, 45.54, 49.0] };
 
 export async function loadUSMap(url = '../map/us.svg', { colour = 0x35e07d, line = 0xf2fff6, lift = 0.6, flagDir = '../../textures/flags/' } = {}) {
@@ -95,7 +95,7 @@ export async function loadUSMap(url = '../map/us.svg', { colour = 0x35e07d, line
     },
     // A map pin standing on a spot in the state, shown as the state lights: a tapered point down to
     // the map, a round head, a dark outline (the same shapes a little bigger, drawn inside out) and
-    // a soft shadow on the map. `at` is { lonlat: [lon, lat] } for a real town, or { fx, fy }, the
+    // a soft shadow on the map. `at` is { lonlat: [lon, lat] } for a real place, or { fx, fy }, the
     // fraction of the way across the state west to east and north to south.
     pin(id, at = {}, colourHex = 0xe0302a) {
       const st = states.get(id); if (!st) return;
@@ -124,7 +124,7 @@ export async function loadUSMap(url = '../map/us.svg', { colour = 0x35e07d, line
       }
       api.movePin(id, at);
     },
-    // where a pin stands: a town's longitude and latitude, or a fraction of the way across the state
+    // where a pin stands: a place's longitude and latitude, or a fraction of the way across the state
     movePin(id, at = {}) {
       const st = states.get(id); if (!st || !st.pin) return;
       let fx = at.fx ?? 0.5, fy = at.fy ?? 0.5;
