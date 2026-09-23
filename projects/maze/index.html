@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mazes — jconra.com</title>
+<style>
+  @font-face { font-family: nasa; src: url("/fonts/nasalization-rg.ttf"); font-display: swap; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; background:#07090c; color:#ccd6de; font:13px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  iframe { position:fixed; inset:0; width:100%; height:100%; border:0; background:#fff; }
+  .bar { position:fixed; top:12px; z-index:5; background:rgba(10,13,17,.9); border:1px solid #212a34; border-radius:6px; }
+  #tabs { left:12px; display:flex; align-items:center; gap:4px; padding:5px; }
+  #tabs a.back { font:11px ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase; color:#8494a0; text-decoration:none; padding:6px 8px 6px 6px; border-right:1px solid #212a34; margin-right:2px; }
+  #tabs button { font:600 11px ui-monospace,monospace; letter-spacing:.05em; background:none; color:#aeb9c2; border:1px solid transparent; border-radius:4px; padding:6px 9px; cursor:pointer; }
+  #tabs button:hover { color:#e8f1f5; border-color:#212a34; }
+  #tabs button.on { background:rgba(53,224,125,.18); border-color:#2f7d55; color:#e8f1f5; }
+  #tabs button:focus-visible, #info button:focus-visible { outline:2px solid #35e07d; outline-offset:1px; }
+  #info { right:12px; width:min(330px, calc(100vw - 24px)); padding:12px 14px; }
+  #info h1 { font:400 16px/1.2 nasa, ui-sans-serif, sans-serif; letter-spacing:.05em; color:#e8f1f5; display:flex; justify-content:space-between; gap:10px; align-items:baseline; }
+  #info h1 button { font:600 11px ui-monospace,monospace; background:none; border:1px solid #212a34; color:#8494a0; border-radius:3px; padding:2px 7px; cursor:pointer; flex:none; }
+  #info p { margin-top:7px; color:#aeb9c2; }
+  #info .keys { color:#7f8d99; font-size:12px; }
+  #info b { color:#35e07d; font-weight:600; }
+  #info.min p { display:none; }
+  @media (max-width:640px) { #info { top:auto; bottom:12px; } }
+</style>
+</head>
+<body>
+<iframe id="frame" title="Maze"></iframe>
+<nav id="tabs" class="bar" aria-label="Mazes">
+  <a class="back" href="../">&larr; Projects</a>
+  <button type="button" data-tab="0">Maze 1</button>
+  <button type="button" data-tab="1">Maze 2</button>
+  <button type="button" data-tab="2">Maze 3</button>
+</nav>
+<aside id="info" class="bar">
+  <h1><span id="infoTitle"></span><button id="infoMin" type="button">hide</button></h1>
+  <p id="infoText"></p>
+  <p id="infoKeys" class="keys"></p>
+</aside>
+<script>
+// The three maze experiments in one page, each still its own file, loaded one at a time.
+const MAZES = [
+  { file: 'maze3.html', title: '2D maze and A*',
+    text: 'Generates a random maze, then runs A* from every square to make sure all of it connects to the far corner, opening walls wherever it does not. The path from one corner to the other is drawn in red.',
+    keys: 'Reload for a new maze.' },
+  { file: 'maze1.html', title: '3D with no libraries',
+    text: 'My first attempt at 3D: the projection, rotation and camera are all written by hand on a plain 2D canvas, with no 3D library. It turns the maze around in space.',
+    keys: 'Hover the mouse over the grey buttons round the edge (Spin, Left, Up, Away...) to move it.', min: true },
+  { file: 'maze4.html', title: 'Walking through in three.js',
+    text: 'The maze in three.js, walked from the inside like the old Windows 95 screensaver, with pictures hung along the walls. Left alone, it wanders the maze by itself.',
+    keys: '<b>W</b> step forward · <b>A</b> / <b>D</b> turn. Leave it and it takes over again.' },
+];
+const frame = document.getElementById('frame');
+const tabs = [...document.querySelectorAll('#tabs button')];
+function show(i) {
+  const m = MAZES[i];
+  tabs.forEach((b, k) => { b.classList.toggle('on', k === i); b.setAttribute('aria-pressed', k === i); });
+  document.getElementById('infoTitle').textContent = m.title;
+  document.getElementById('infoText').textContent = m.text;
+  document.getElementById('infoKeys').innerHTML = m.keys;
+  frame.src = m.file;
+  setInfo(!!m.min);   // Maze 2's hover buttons sit under the box, so it starts folded there
+  history.replaceState(null, '', '#' + (i + 1));
+}
+tabs.forEach((b, i) => b.addEventListener('click', () => show(i)));
+// the mazes read the keyboard and mouse themselves, so hand the frame focus once it loads
+frame.addEventListener('load', () => frame.focus());
+function setInfo(min) { document.getElementById('info').classList.toggle('min', min); document.getElementById('infoMin').textContent = min ? 'about' : 'hide'; }
+document.getElementById('infoMin').addEventListener('click', () => setInfo(!document.getElementById('info').classList.contains('min')));
+const start = parseInt(location.hash.slice(1), 10) - 1;
+show(start >= 0 && start < MAZES.length ? start : 0);
+</script>
+</body>
+</html>

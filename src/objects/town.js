@@ -71,8 +71,14 @@ export function buildTown(parts, projects, { shipLength = 7, renderer, origin = 
   // the lots: the drawn rectangles in order (a project each; extra projects go unbuilt), else the spiral
   const buildings = [], lots = spiral(projects.length), r = rnd(31);
   const drawnLots = drawn ? layout.buildings : null;
-  projects.forEach((pr, i) => {
-    if (drawnLots && i >= drawnLots.length) return;
+  // with a drawn layout each lot names its project (or takes the next one nobody named); else the list's order
+  let order = projects;
+  if (drawnLots) {
+    const byId = new Map(projects.map(p => [p.id, p])), named = new Set(drawnLots.map(l => l.project).filter(id => byId.has(id)));
+    const spare = projects.filter(p => !named.has(p.id));
+    order = drawnLots.map(l => byId.get(l.project) || spare.shift()).filter(Boolean);
+  }
+  order.forEach((pr, i) => {
     const lot = drawnLots ? drawnLots[i] : null;
     const [lx, lz] = lots[i];
     const W = lot ? lot.w : LOT[0], Dp = lot ? lot.d : LOT[1], cx = lot ? lot.x : lx * ROAD, cz = lot ? lot.z : lz * ROAD;

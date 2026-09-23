@@ -638,15 +638,11 @@ function loadStation() {
     });
   }).catch(e => console.error(e));
 }
-// THE TOWN SET: the projects list (the old site's, with the new work in front), built into a town
-const PROJECTS_FRONT = [
-  { name: 'RMRF', text: 'A three.js island capture-the-flag with an AI commander, mines, towers and four vehicles. The big one.', href: 'https://rmrfbase.com', colour: '#1a2a1e' },
-  { name: 'Sound Lab', text: 'A modular synth in the browser: patch cables, custom waves, a song editor, the game\'s own sounds.', href: 'https://sound-lab.jconra.com', colour: '#1a1e2a' },
-  { name: 'The Labs', text: 'Where this site is built: the station, the quarters, the characters, the props.', href: 'https://jconra.com/labs/', colour: '#2a1e1a' },
-];
+// THE TOWN SET: the projects (projects/projects.json, the list the projects page and Town Map read), built into a town
 function buildTownSet(parts) {
-  Promise.all([fetch('/textures/projects/old-site.json').then(r => r.json()).catch(() => []), loadTownLayout()]).then(([old, layout]) => {
-    town = buildTown(parts, [...PROJECTS_FRONT, ...old], { renderer, origin: TOWN_AT, light: !renderer.capabilities.isWebGL2, layout });   // a machine without WebGL2 gets imposters only, no shadows
+  Promise.all([fetch('/projects/projects.json').then(r => r.json()).then(j => j.projects).catch(() => []), loadTownLayout()]).then(([list, layout]) => {
+    const projects = layout ? list : list.filter(p => p.group !== 'other');   // with no drawn layout, the spiral takes all but the small old experiments
+    town = buildTown(parts, projects, { renderer, origin: TOWN_AT, light: !renderer.capabilities.isWebGL2, layout });   // a machine without WebGL2 gets imposters only, no shadows
     town.floor.position.copy(TOWN_AT); town.floor.visible = false; scene.add(town.floor);
     town.poseAt(0);
   });

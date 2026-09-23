@@ -1,0 +1,394 @@
+{
+ "groups": {
+  "main": "Main projects",
+  "math": "Math games",
+  "arcade": "Arcade games",
+  "labs": "Labs and tools",
+  "other": "More"
+ },
+ "projects": [
+  {
+   "id": "rmrf",
+   "group": "main",
+   "name": "RMRF",
+   "text": "Capture the flag on a three.js island: four vehicles, towers, mines and an AI commander that plans its own missions. My biggest project.",
+   "href": "https://rmrfbase.com"
+  },
+  {
+   "id": "valehex",
+   "group": "main",
+   "name": "Valehex",
+   "text": "Build a world together: make a private lobby, agree on the rules, and take turns exploring and founding settlements.",
+   "href": "https://valehex.com"
+  },
+  {
+   "id": "montana",
+   "group": "main",
+   "name": "Montana",
+   "text": "Paradise Valley in Montana, built from real terrain.",
+   "href": "https://montana.jconra.com"
+  },
+  {
+   "id": "shipwrecked",
+   "group": "main",
+   "name": "Shipwrecked",
+   "text": "This is a survival game that starts you on a shipwrecked island. It generates the terrain based off of a seed which allows lots of possibilities.",
+   "href": "https://shipwrecked.jconra.com/",
+   "img": "shipwrecked"
+  },
+  {
+   "id": "ant-farm",
+   "group": "main",
+   "name": "Ant Farm",
+   "text": "A colony digging its nest in a tank of sand, from one queen to galleries full of brood and food. Click to drop food.",
+   "href": "/projects/ant-farm/"
+  },
+  {
+   "id": "boxing",
+   "group": "main",
+   "name": "Boxing",
+   "text": "Stephen versus a chimpanzee. Watch its tell, dodge, then hit back. Round two brings a warrior bug that cannot be beaten.",
+   "href": "/projects/boxing/"
+  },
+  {
+   "id": "td",
+   "group": "main",
+   "name": "Gem Tower Defense",
+   "text": "This game lets you build walls and choose gem towers. Then enemies come out and use the A-Star path-finding algorithm to work their way through your maze (unfinished).",
+   "href": "/projects/td/index.html",
+   "img": "td"
+  },
+  {
+   "id": "earth",
+   "group": "main",
+   "name": "Earth Model",
+   "text": "An Earth model based on height and satalite maps from NASA.",
+   "href": "/projects/earth/index.html",
+   "img": "earth"
+  },
+  {
+   "id": "math-south-park",
+   "group": "math",
+   "name": "South Park Math",
+   "text": "Pick a South Park character and walk to the right answer. The UFO beams up the correct one; get it wrong and it takes you.",
+   "href": "https://math-games.jconra.com/south-park/",
+   "img": "math-south-park"
+  },
+  {
+   "id": "math-dino",
+   "group": "math",
+   "name": "Dino Math",
+   "text": "Run around as a T-Rex and eat the correct numbers.",
+   "href": "https://math-games.jconra.com/dino-math/",
+   "img": "math-dino-math"
+  },
+  {
+   "id": "math-lander",
+   "group": "math",
+   "name": "Lunar Lander Math",
+   "text": "Land on the right answer without coming down too hard.",
+   "href": "https://math-games.jconra.com/lunar-lander/",
+   "img": "math-lunar-lander"
+  },
+  {
+   "id": "math-snowboard",
+   "group": "math",
+   "name": "Snowboarding Math",
+   "text": "Steer the snowboarder through the right equations and skip the wrong ones. Avoid the trees.",
+   "href": "https://math-games.jconra.com/snow-board/",
+   "img": "math-snow-board"
+  },
+  {
+   "id": "math-murder",
+   "group": "math",
+   "name": "Math Murder",
+   "text": "Kill the robot with the right answer on its face before it gets you.",
+   "href": "https://math-games.jconra.com/math-murder/",
+   "img": "math-math-murder"
+  },
+  {
+   "id": "lander",
+   "group": "arcade",
+   "name": "Lander",
+   "text": "Try to land on the moon surface without crashing. Then try to make it back up to the lander without running out of fuel! Also from the JavaScript Tutorial.",
+   "href": "/projects/lander/index.html",
+   "img": "lander"
+  },
+  {
+   "id": "missile-defense",
+   "group": "arcade",
+   "name": "Missile Defense",
+   "text": "This might bring back some memories. Try to save the cities for as long as you can. The code is designed to be readable for the JavaScript Tutorial.",
+   "href": "/projects/missileDef/index.html",
+   "img": "missileD"
+  },
+  {
+   "id": "space-game",
+   "group": "arcade",
+   "name": "Space Game",
+   "text": "A game that is actually complete. You try to save the pods in the asteroid field.",
+   "href": "/projects/spaceGame/index.html",
+   "img": "spaceGame"
+  },
+  {
+   "id": "mazes",
+   "group": "arcade",
+   "name": "Mazes",
+   "text": "Three mazes in one page: a 2D maze solved with A*, my first 3D with no libraries, and a three.js walk through a gallery of pictures.",
+   "href": "/projects/maze/",
+   "img": "maze"
+  },
+  {
+   "id": "spin3d",
+   "group": "arcade",
+   "name": "Spin 3D",
+   "text": "A custom build 3D engine is used to spin 100 points to the front from 1 to 100.",
+   "href": "/projects/spin3d/index.html",
+   "img": "spin3d"
+  },
+  {
+   "id": "kid-game",
+   "group": "arcade",
+   "name": "Kid Game",
+   "text": "An incomplete application that allows easy development for simple games.",
+   "href": "/projects/kidGame/index.html",
+   "img": "kidGame"
+  },
+  {
+   "id": "settlers",
+   "group": "arcade",
+   "name": "Settlers",
+   "text": "A 2D Settlers game that I almost finished and then decided to rewrite it. Then it never was finished.",
+   "href": "/projects/settlers/index.html",
+   "img": "settlers"
+  },
+  {
+   "id": "rotator",
+   "group": "arcade",
+   "name": "Rotator",
+   "text": "",
+   "href": "/projects/rotator/index.html",
+   "img": "rotator"
+  },
+  {
+   "id": "jeopardy",
+   "group": "arcade",
+   "name": "Jeopardy",
+   "text": "This Jeopardy game is loaded with Linux questions, but you can easily edit the JSON data to customize it.",
+   "href": "/projects/jeopardy/index.html",
+   "img": "jeopardy"
+  },
+  {
+   "id": "sound-lab",
+   "group": "labs",
+   "name": "Sound Lab",
+   "text": "A modular synth in the browser: patch cables, custom waves, a song editor, and the game's own sounds.",
+   "href": "https://sound-lab.jconra.com"
+  },
+  {
+   "id": "asset-designer",
+   "group": "labs",
+   "name": "Asset Designer",
+   "text": "Builds and polishes the buildings and props that go on RMRF maps.",
+   "href": "https://asset-designer.rmrfbase.com"
+  },
+  {
+   "id": "home-designer",
+   "group": "labs",
+   "name": "Home Designer",
+   "text": "Designs a house for the Montana terrain.",
+   "href": null
+  },
+  {
+   "id": "model-lab",
+   "group": "labs",
+   "name": "Model Lab",
+   "text": "Every model on the site in one viewer, in sections: Jacob, the station kit, trees, the bugs, Shipwrecked and the 2019 site. Orbit it, play its animations, take it apart into parts.",
+   "href": "/labs/models/"
+  },
+  {
+   "id": "noise",
+   "group": "labs",
+   "name": "Noise Gallery",
+   "text": "The noises the textures are built from, side by side: value, simplex, cellular, ridged, and the ways they stack.",
+   "href": "/labs/noise/"
+  },
+  {
+   "id": "fire",
+   "group": "labs",
+   "name": "Fire Lab",
+   "text": "Volumetric fire on a shader: the flame profile, the noise that churns it, lean and colour, tuned live. Came from RMRF, where the wrecks burn with it.",
+   "href": "/labs/fire/"
+  },
+  {
+   "id": "grass",
+   "group": "labs",
+   "name": "Grass Lab",
+   "text": "Blades by the thousand with wind: cone, spike, flat, billboard or a curved bezier blade; colour gradient and variety; unlit against the ground. Came from RMRF.",
+   "href": "/labs/grass/"
+  },
+  {
+   "id": "trees",
+   "group": "labs",
+   "name": "Tree Lab",
+   "text": "A forest drawn two ways: real meshes near the camera, octahedral imposters beyond a line you set, crossfading through a band. The imposter atlases are baked in the page from the same trees. Sliders for how many trees, the atlas grid and the blend; readouts for the cost.",
+   "href": "/labs/trees/"
+  },
+  {
+   "id": "duckcon",
+   "group": "other",
+   "name": "HTML/JavaScript/Canvas Game Tutorial",
+   "text": "This is a tutorial to get someone started with simple game programming using JavaScript.",
+   "href": "/projects/duckcon/index.html",
+   "img": "tutorial"
+  },
+  {
+   "id": "old-site",
+   "group": "other",
+   "name": "The old site",
+   "text": "jacobconrads.com as it was in 2019: a spinning 3D cube of projects, with a plain version behind it.",
+   "href": "/projects/old-site/"
+  },
+  {
+   "id": "shipwrecked-demos",
+   "group": "other",
+   "name": "Shipwrecked Demo Page",
+   "text": "This page breaks down some of the features of the Shipwrecked game. It includes demonstrations of the 3D models. Click the grid to make them walk. Try to drag and rotate.",
+   "href": "https://shipwrecked.jconra.com/demos/",
+   "img": "demoPage"
+  },
+  {
+   "id": "effects",
+   "group": "other",
+   "name": "Effects Page",
+   "text": "An collecting of effects that are just for fun. Press a key to cycle through them. Many of them respond to mouse movement.",
+   "href": "/projects/effects/index.html",
+   "img": "digidraw"
+  },
+  {
+   "id": "recurdraw",
+   "group": "other",
+   "name": "Recursive Artwork",
+   "text": "This program can generate some interesting artwork with a simple recursive algorithm.",
+   "href": "/projects/recurdraw/index.html",
+   "img": "recurdraw"
+  },
+  {
+   "id": "color-fun",
+   "group": "other",
+   "name": "Color Fun",
+   "text": "This little app was made for my kids and lets you mix colors to see the result. You can stir around in a color to get more of it. Works on mobile.",
+   "href": "/projects/colorFun/index.html",
+   "img": "colorFun"
+  },
+  {
+   "id": "astar",
+   "group": "other",
+   "name": "A-Star Algorithm Demo",
+   "text": "A great demonstration of the A-Star path-finding algorithm. Generates random maps and Gives controls to see detailed information.",
+   "href": "/projects/astar/index.html",
+   "img": "astar"
+  },
+  {
+   "id": "wrap",
+   "group": "other",
+   "name": "2D Grid over 3D Globe",
+   "text": "Project from back in the day trying to wrap a 2D map over a 3D Sphere with a no libraries or anything.",
+   "href": "/projects/wrap2D-3D/index.html",
+   "img": "wrap2D-3D"
+  },
+  {
+   "id": "ui-concept",
+   "group": "other",
+   "name": "UI Concept",
+   "text": "This is the result of playing around with a recursive menu idea.",
+   "href": "/projects/menuConcept/index.html",
+   "img": "menuConcept"
+  },
+  {
+   "id": "subnet",
+   "group": "other",
+   "name": "Subnetting Calculator",
+   "text": "This app helps you learn subnetting by asking questions and calculating answers.",
+   "href": "/projects/subnetCalc/index.html",
+   "img": "subnetCalc"
+  },
+  {
+   "id": "audio",
+   "group": "other",
+   "name": "Periodic Wave",
+   "text": "A synth built on the Web Audio createPeriodicWave call: shape a wave and play it.",
+   "href": "/projects/audio/"
+  },
+  {
+   "id": "dots",
+   "group": "other",
+   "name": "Dots",
+   "text": "A hundred dots drifting and bouncing around the screen.",
+   "href": "/projects/dots/"
+  },
+  {
+   "id": "dragon",
+   "group": "other",
+   "name": "Dragon",
+   "text": "A class assignment: a dragon drawn with hand-written 2D affine transforms (rotate, scale, translate).",
+   "href": "/projects/dragon/"
+  },
+  {
+   "id": "house",
+   "group": "other",
+   "name": "House",
+   "text": "A house model in three.js that you can orbit around.",
+   "href": "/projects/house/"
+  },
+  {
+   "id": "landbuilder",
+   "group": "other",
+   "name": "Land Builder",
+   "text": "A canvas experiment toward building land.",
+   "href": "/projects/landBuilder/"
+  },
+  {
+   "id": "matrix",
+   "group": "other",
+   "name": "Matrix",
+   "text": "Falling columns of characters, like the Matrix.",
+   "href": "/projects/matrix/"
+  },
+  {
+   "id": "mortagecalc",
+   "group": "other",
+   "name": "Mortgage Calculator",
+   "text": "Monthly payment, total interest, taxes, insurance and HOA for a home loan, with a graph.",
+   "href": "/projects/mortageCalc/"
+  },
+  {
+   "id": "mousetracking",
+   "group": "other",
+   "name": "Mouse Tracking",
+   "text": "A canvas that turns to follow the mouse.",
+   "href": "/projects/mouseTracking/"
+  },
+  {
+   "id": "neuralactivity",
+   "group": "other",
+   "name": "Neural Activity",
+   "text": "Neurons connected by lines, with signals firing between them.",
+   "href": "/projects/neuralActivity/"
+  },
+  {
+   "id": "uiconcept",
+   "group": "other",
+   "name": "UI Sketch",
+   "text": "A canvas interface sketch.",
+   "href": "/projects/uiConcept/"
+  },
+  {
+   "id": "usheightmap",
+   "group": "other",
+   "name": "US Height Map",
+   "text": "The United States raised from a height map.",
+   "href": "/projects/usheightmap/"
+  }
+ ]
+}

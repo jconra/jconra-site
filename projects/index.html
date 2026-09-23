@@ -38,7 +38,7 @@
   .lede { margin-top:10px; color:var(--ink-dim); max-width:56ch; font-size:14.5px; }
 
   h3.group { font:600 11px ui-monospace,monospace; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-dim); margin:26px 0 10px; }
-  .grid { display:grid; gap:14px; grid-template-columns:repeat(auto-fill, minmax(290px,1fr)); }
+  .grid { display:grid; gap:14px; grid-template-columns:repeat(auto-fill, minmax(290px,1fr)); align-items:start; }
   a.card {
     display:block; text-decoration:none; color:inherit;
     background:var(--panel); border:1px solid var(--line); border-radius:7px;
@@ -67,7 +67,8 @@
     color:var(--ink-faint); letter-spacing:.05em;
   }
   footer a { color:var(--ink-dim); }
-  a.card.pic { padding:0; }
+  a.card.pic, div.card.pic { padding:0; }
+  div.card { display:block; background:var(--panel); border:1px solid var(--line); border-radius:7px; padding:18px 19px 16px; opacity:.75; }
   .card img { display:block; width:100%; aspect-ratio:16/9; object-fit:cover; border-bottom:1px solid var(--line); background:#0b0e12; }
   .card .txt { padding:14px 17px 15px; }
   .card.small p { min-height:0; }
@@ -82,190 +83,26 @@
       that feed the bigger ones are in <a href="../labs/" style="color:var(--accent)">the labs</a>.</p>
   </header>
 
-  <h3 class="group">Recent</h3>
-  <div class="grid">
-    <a class="card small" href="ant-farm/">
-      <h2>Ant Farm</h2>
-      <p>A colony digging its nest in a tank of sand, from one queen to galleries full of brood and food. Click to drop food; tune the nest in the settings.</p><div class="meta"><span class="tag">canvas</span><span class="tag">simulation</span></div>
-    </a>
-    <a class="card small" href="boxing/">
-      <h2>Boxing</h2>
-      <p>Stephen versus a chimpanzee. Watch the chimp&#x27;s tell, dodge out of the way, then hit back. Beat it and round two brings on a warrior bug that cannot be beaten.</p><div class="meta"><span class="tag">three 0.158</span><span class="tag">playable</span></div>
-    </a>
-    <a class="card small" href="old-site/">
-      <h2>The old site</h2>
-      <p>jacobconrads.com as it was in 2019: a spinning 3D cube of projects, with a plain version behind it.</p><div class="meta"><span class="tag">2019</span></div>
-    </a>
-  </div>
-
-  <h3 class="group">From the old site</h3>
-  <div class="grid">
-    <a class="card pic" href="earth/index.html">
-      <img src="/textures/projects/earth.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>Earth Model</h2>
-      <p>An Earth model based on height and satalite maps from NASA.</p></div>
-    </a>
-    <a class="card pic" href="effects/index.html">
-      <img src="/textures/projects/digidraw.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>Effects Page</h2>
-      <p>An collecting of effects that are just for fun. Press a key to cycle through them. Many of them respond to mouse movement.</p></div>
-    </a>
-    <a class="card pic" href="duckcon/index.html">
-      <img src="/textures/projects/tutorial.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>HTML/JavaScript/Canvas Game Tutorial</h2>
-      <p>This is a tutorial to get someone started with simple game programming using JavaScript.</p></div>
-    </a>
-    <a class="card pic" href="subnetCalc/index.html">
-      <img src="/textures/projects/subnetCalc.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>Subnetting Calculator</h2>
-      <p>This app helps you learn subnetting by asking questions and calculating answers.</p></div>
-    </a>
-    <a class="card pic" href="jeopardy/index.html">
-      <img src="/textures/projects/jeopardy.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>Jeopardy</h2>
-      <p>This Jeopardy game is loaded with Linux questions, but you can easily edit the JSON data to customize it.</p></div>
-    </a>
-    <a class="card pic" href="https://shipwrecked.jconra.com/" target="_blank" rel="noopener">
-      <img src="/textures/projects/shipwrecked.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>Shipwrecked</h2>
-      <p>This is a survival game that starts you on a shipwrecked island. It generates the terrain based off of a seed which allows lots of possibilities.</p></div>
-    </a>
-    <a class="card pic" href="https://shipwrecked.jconra.com/demos/" target="_blank" rel="noopener">
-      <img src="/textures/projects/demoPage.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>Shipwrecked Demo Page</h2>
-      <p>This page breaks down some of the features of the Shipwrecked game. It includes demonstrations of the 3D models. Click the grid to make them walk. Try to drag and rotate.</p></div>
-    </a>
-    <a class="card pic" href="td/index.html">
-      <img src="/textures/projects/td.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>Gem Tower Defense</h2>
-      <p>This game lets you build walls and choose gem towers. Then enemies come out and use the A-Star path-finding algorithm to work their way through your maze (unfinished).</p></div>
-    </a>
-    <a class="card pic" href="astar/index.html">
-      <img src="/textures/projects/astar.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>A-Star Algorithm Demo</h2>
-      <p>A great demonstration of the A-Star path-finding algorithm. Generates random maps and Gives controls to see detailed information.</p></div>
-    </a>
-    <a class="card pic" href="recurdraw/index.html">
-      <img src="/textures/projects/recurdraw.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>Recursive Artwork</h2>
-      <p>This program can generate some interesting artwork with a simple recursive algorithm.</p></div>
-    </a>
-    <a class="card pic" href="kidGame/index.html">
-      <img src="/textures/projects/kidGame.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>Kid Game</h2>
-      <p>An incomplete application that allows easy development for simple games.</p></div>
-    </a>
-    <a class="card pic" href="spin3d/index.html">
-      <img src="/textures/projects/spin3d.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>Spin 3D</h2>
-      <p>A custom build 3D engine is used to spin 100 points to the front from 1 to 100.</p></div>
-    </a>
-    <a class="card pic" href="settlers/index.html">
-      <img src="/textures/projects/settlers.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>Settlers</h2>
-      <p>A 2D Settlers game that I almost finished and then decided to rewrite it. Then it never was finished.</p></div>
-    </a>
-    <a class="card pic" href="colorFun/index.html">
-      <img src="/textures/projects/colorFun.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>Color Fun</h2>
-      <p>This little app was made for my kids and lets you mix colors to see the result. You can stir around in a color to get more of it. Works on mobile.</p></div>
-    </a>
-    <a class="card pic" href="spaceGame/index.html">
-      <img src="/textures/projects/spaceGame.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>Space Game</h2>
-      <p>A game that is actually complete. You try to save the pods in the asteroid field.</p></div>
-    </a>
-    <a class="card pic" href="maze/maze3.html">
-      <img src="/textures/projects/maze.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>Simple Maze</h2>
-      <p>This page generates a maze and shows you the path from one corner to the opposite corner. It uses a custom A* that detects if there are multiple routes and seals them so there is only one solution and every part of the maze is accessible.</p></div>
-    </a>
-    <a class="card pic" href="maze/maze1.html">
-      <img src="/textures/projects/maze1.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>3D Maze</h2>
-      <p>The second part of the maze project, this uses a home-built 3D engine to spin it around and move it.</p></div>
-    </a>
-    <a class="card pic" href="maze/maze4.html">
-      <img src="/textures/projects/mazeAuto.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>Inside the 3D Maze</h2>
-      <p>This maze is like the old screensaver that navigates through a large maze. It could be used as a slideshow. It also allows you to manually navigate with WASD. Uses Three.js Library and A* pathfinding.</p></div>
-    </a>
-    <a class="card pic" href="missileDef/index.html">
-      <img src="/textures/projects/missileD.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>Missile Defense</h2>
-      <p>This might bring back some memories. Try to save the cities for as long as you can. The code is designed to be readable for the JavaScript Tutorial.</p></div>
-    </a>
-    <a class="card pic" href="lander/index.html">
-      <img src="/textures/projects/lander.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>Lander</h2>
-      <p>Try to land on the moon surface without crashing. Then try to make it back up to the lander without running out of fuel! Also from the JavaScript Tutorial.</p></div>
-    </a>
-    <a class="card pic" href="rotator/index.html">
-      <img src="/textures/projects/rotator.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>Rotator</h2>
-      <p></p></div>
-    </a>
-    <a class="card pic" href="menuConcept/index.html">
-      <img src="/textures/projects/menuConcept.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>UI Concept</h2>
-      <p>This is the result of playing around with a recursive menu idea.</p></div>
-    </a>
-    <a class="card pic" href="wrap2D-3D/index.html">
-      <img src="/textures/projects/wrap2D-3D.jpg" alt="" loading="lazy">
-      <div class="txt"><h2>2D Grid over 3D Globe</h2>
-      <p>Project from back in the day trying to wrap a 2D map over a 3D Sphere with a no libraries or anything.</p></div>
-    </a>
-  </div>
-
-  <h3 class="group">Older experiments</h3>
-  <div class="grid">
-    <a class="card small" href="audio/">
-      <h2>Periodic Wave</h2>
-      <p>A synth built on the Web Audio createPeriodicWave call: shape a wave and play it.</p>
-    </a>
-    <a class="card small" href="dots/">
-      <h2>Dots</h2>
-      <p>A hundred dots drifting and bouncing around the screen.</p>
-    </a>
-    <a class="card small" href="dragon/">
-      <h2>Dragon</h2>
-      <p>A class assignment: a dragon drawn with hand-written 2D affine transforms (rotate, scale, translate).</p>
-    </a>
-    <a class="card small" href="house/">
-      <h2>House</h2>
-      <p>A house model in three.js that you can orbit around.</p>
-    </a>
-    <a class="card small" href="landBuilder/">
-      <h2>Land Builder</h2>
-      <p>A canvas experiment toward building land.</p>
-    </a>
-    <a class="card small" href="matrix/">
-      <h2>Matrix</h2>
-      <p>Falling columns of characters, like the Matrix.</p>
-    </a>
-    <a class="card small" href="mortageCalc/">
-      <h2>Mortgage Calculator</h2>
-      <p>Monthly payment, total interest, taxes, insurance and HOA for a home loan, with a graph.</p>
-    </a>
-    <a class="card small" href="mouseTracking/">
-      <h2>Mouse Tracking</h2>
-      <p>A canvas that turns to follow the mouse.</p>
-    </a>
-    <a class="card small" href="neuralActivity/">
-      <h2>Neural Activity</h2>
-      <p>Neurons connected by lines, with signals firing between them.</p>
-    </a>
-    <a class="card small" href="uiConcept/">
-      <h2>UI Concept</h2>
-      <p>A canvas interface sketch.</p>
-    </a>
-    <a class="card small" href="usheightmap/">
-      <h2>US Height Map</h2>
-      <p>The United States raised from a height map.</p>
-    </a>
-  </div>
+  <div id="groups"><p class="lede">Loading the list…</p></div>
 
   <footer>Source: <a href="https://github.com/jconra/jconra-site">github.com/jconra/jconra-site</a></footer>
 </div>
+<script>
+// the list lives in projects.json, which the town and the Town Map read too
+const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+fetch('projects.json').then(r => r.json()).then(({ groups, projects }) => {
+  document.getElementById('groups').innerHTML = Object.entries(groups).map(([g, title]) => {
+    const cards = projects.filter(p => p.group === g).map(p => {
+      const tag = p.href ? 'a' : 'div', ext = p.href && /^https?:/.test(p.href) ? ' target="_blank" rel="noopener"' : '';
+      const href = p.href ? ` href="${esc(p.href)}"` : '';
+      const soon = p.href ? '' : '<div class="meta"><span class="tag">not online yet</span></div>';
+      return p.img
+        ? `<${tag} class="card pic"${href}${ext}><img src="/textures/projects/${esc(p.img)}.jpg" alt="" loading="lazy"><div class="txt"><h2>${esc(p.name)}</h2><p>${esc(p.text)}</p>${soon}</div></${tag}>`
+        : `<${tag} class="card small"${href}${ext}><h2>${esc(p.name)}</h2><p>${esc(p.text)}</p>${soon}</${tag}>`;
+    }).join('');
+    return `<h3 class="group">${esc(title)}</h3><div class="grid">${cards}</div>`;
+  }).join('');
+});
+</script>
 </body>
 </html>

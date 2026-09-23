@@ -10,6 +10,9 @@
   html,body { height:100%; overflow:hidden; background:#0b0e12; color:#ccd6de; font:13px/1.45 ui-sans-serif, system-ui, sans-serif; }
   #wrap { position:fixed; inset:0; display:flex; }
   #stage { flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; touch-action:none; }
+  #mapWrap { position:relative; }
+  #labels { position:absolute; inset:0; pointer-events:none; overflow:hidden; }
+  #labels span { position:absolute; transform:translate(-50%,-50%); max-width:110px; text-align:center; font:600 10.5px/1.15 ui-sans-serif, system-ui, sans-serif; color:#fff; text-shadow:0 0 3px #000, 0 1px 2px #000; }
   #map { background:#5a3f2a; image-rendering:pixelated; cursor:crosshair; box-shadow:0 0 0 1px #212a34; }
   #panel { width:300px; overflow-y:auto; background:rgba(10,13,17,.95); border-left:1px solid #212a34; padding:12px 14px; }
   h1 { font:400 17px/1 nasa, ui-sans-serif, sans-serif; letter-spacing:.05em; color:#e8f1f5; }
@@ -24,8 +27,10 @@
   .tools button.on { background:rgba(53,224,125,.35); color:#e8f1f5; }
   .tools button i { display:inline-block; width:12px; height:12px; border-radius:2px; vertical-align:-2px; margin-right:6px; }
   .btns { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }
-  #list { font:11.5px ui-monospace,monospace; color:#aeb9c2; max-height:200px; overflow-y:auto; }
-  #list div { padding:2px 0; border-bottom:1px solid #151a20; }
+  #list { font:11.5px ui-monospace,monospace; color:#aeb9c2; max-height:320px; overflow-y:auto; }
+  #list > div { padding:4px 0; border-bottom:1px solid #151a20; display:grid; grid-template-columns:auto 1fr auto; gap:3px 6px; align-items:center; }
+  #list select { background:#05070a; color:#aeb9c2; border:1px solid #212a34; font:11px ui-monospace,monospace; min-width:0; width:100%; }
+  #projects b { color:#8494a0; font-weight:600; }
   #list b { color:#35e07d; font-weight:600; }
   textarea { width:100%; height:70px; background:#05070a; color:#aeb9c2; border:1px solid #212a34; border-radius:3px; font:11px ui-monospace,monospace; padding:6px; }
   #back { position:fixed; top:14px; left:16px; z-index:6; font:11px ui-monospace,monospace; letter-spacing:.14em; color:#8494a0; text-decoration:none; text-transform:uppercase; }
@@ -35,10 +40,10 @@
 <body>
 <a id="back" href="../">&larr; labs</a>
 <div id="wrap">
-  <div id="stage"><canvas id="map" width="600" height="600"></canvas></div>
+  <div id="stage"><div id="mapWrap"><canvas id="map" width="600" height="600"></canvas><div id="labels"></div></div></div>
   <div id="panel">
     <h1>Town Map</h1>
-    <p class="note">Draw the town as seen from above: 1 pixel is 1 metre, 600 m across, north up. The fighter arrives from the top (north), and every building's front - door, porch, yard - faces that way. Paint roads and grass, drag out buildings (each one is a project, in the order you draw them), click out the fence in runs with gaps for gates. What you don't paint is forest floor.</p>
+    <p class="note">Draw the town as seen from above: 1 pixel is 1 metre, 600 m across, north up. The fighter arrives from the top (north), and every building's front - door, porch, yard - faces that way. Paint roads and grass, drag out buildings (each gets a project, its name shown on it), click out the fence in runs with gaps for gates. What you don't paint is forest floor.</p>
 
     <h2>Tool</h2>
     <div class="tools">
@@ -61,9 +66,10 @@
     <h2>Buildings</h2>
     <div class="row"><label for="bStyle">Style of new buildings</label><select id="bStyle" style="background:#05070a;color:#e8f1f5;border:1px solid #212a34;border-radius:3px;padding:3px 6px;font:12px ui-monospace,monospace"><option value="auto">auto (by size)</option><option value="office">office (any)</option><option value="office/glass">  office/glass</option><option value="office/banded">  office/banded</option><option value="office/stone">  office/stone</option><option value="apartments">apartments (any)</option><option value="apartments/stucco">  apartments/stucco</option><option value="apartments/modern">  apartments/modern</option><option value="house">house (any)</option><option value="house/clapboard">  house/clapboard</option><option value="house/modern">  house/modern</option><option value="house/brick">  house/brick</option></select></div>
     <p class="note">Auto: under about 28 m across a house, over 2,600 m² an office, apartments between. Change one after drawing it with the select on its line; the × deletes it.</p>
-    <p class="note">In the order drawn: each rectangle is the next project in the list below. Click one to delete it. Height is set from the footprint; the roof shows the project's picture.</p>
-    <div id="projects" class="note" style="font-family:ui-monospace,monospace;font-size:11px"></div>
+    <p class="note">Each new building takes the next project that is not placed yet; pick a different one with the project select on its line. Its name is drawn on the map. Height is set from the footprint; the roof shows the project's picture.</p>
     <div id="list"></div>
+    <h2>Not placed yet</h2>
+    <div id="projects" class="note" style="font-family:ui-monospace,monospace;font-size:11px"></div>
 
     <h2>Save</h2>
     <p class="note">Download the map picture and copy the JSON; put the picture in the S3 bucket (or textures/town/) and paste the JSON in chat, and I bake both into the town.</p>
