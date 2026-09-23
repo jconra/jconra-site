@@ -61,11 +61,12 @@ export function buildTown(parts, projects, { shipLength = 7, renderer, origin = 
   const loader = new THREE.TextureLoader();
 
   // GROUND: the plain, and pavement under the town
-  const drawn = layout && layout.map ? { map: classTexture(layout.map, 'A'), map2: classTexture(layout.map, 'B'), metres: layout.metres } : null;
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), groundMaterial({ clearing: { x: origin.x, z: origin.z, radius: drawn ? 0.01 : TOWN_R }, light, layout: drawn }));
+  // the drawn layout: the JSON places the buildings and the fence; the picture, when there is one, paints the ground
+  const drawn = layout ? { map: layout.map ? classTexture(layout.map, 'A') : null, map2: layout.map ? classTexture(layout.map, 'B') : null, metres: layout.metres } : null;
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), groundMaterial({ clearing: { x: origin.x, z: origin.z, radius: drawn && drawn.map ? 0.01 : TOWN_R }, light, layout: drawn && drawn.map ? drawn : null }));
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; floor.add(ground);
   // without a drawn layout: the old paved square with road lines between the lots
-  if (!drawn) {
+  if (!drawn || !drawn.map) {
     const pave = new THREE.Mesh(new THREE.PlaneGeometry(ROAD * 7, ROAD * 7), new THREE.MeshStandardMaterial({ color: 0x5b6169, roughness: 0.95 }));
     pave.rotation.x = -Math.PI / 2; pave.position.y = 0.05; floor.add(pave);
     const g = new THREE.Group(); const m = new THREE.MeshStandardMaterial({ color: 0xd8d8c8, roughness: 0.9 });
