@@ -10,6 +10,7 @@ import { Understory } from './understory.js';
 import { ForceField } from './forceField.js';
 import { classTexture } from './townLayout.js';
 import { shutFighter } from './hangarSet.js';
+import { makeBuilding, autoStyle } from './buildings.js';
 
 const ROAD = 62;            // pitch of the grid the buildings stand on
 const LOT = [36, 27];       // a building's footprint, 4:3 like the screenshots
@@ -47,15 +48,6 @@ function roofTexture(project, loader) {
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return upright(t);
 }
 
-function wallTexture(seed) {
-  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256; const g = cv.getContext('2d'), r = rnd(seed);
-  const tone = 150 + Math.floor(r() * 60);
-  g.fillStyle = `rgb(${tone},${tone + 4},${tone + 10})`; g.fillRect(0, 0, 256, 256);
-  g.fillStyle = 'rgba(30,40,60,0.85)';
-  for (let y = 18; y < 256; y += 32) for (let x = 12; x < 256; x += 30) if (r() < 0.85) g.fillRect(x, y, 18, 20);
-  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
-}
-
 export function buildTown(parts, projects, { shipLength = 7, renderer, origin = new THREE.Vector3(), light = false, layout = null } = {}) {
   const floor = new THREE.Group();
   const loader = new THREE.TextureLoader();
@@ -82,19 +74,16 @@ export function buildTown(parts, projects, { shipLength = 7, renderer, origin = 
   projects.forEach((pr, i) => {
     if (drawnLots && i >= drawnLots.length) return;
     const lot = drawnLots ? drawnLots[i] : null;
-    const [lx, lz] = lots[i], h = lot ? 10 + Math.min(lot.w, lot.d) * 0.6 + r() * 8 : 14 + r() * 26;
+    const [lx, lz] = lots[i];
     const W = lot ? lot.w : LOT[0], Dp = lot ? lot.d : LOT[1], cx = lot ? lot.x : lx * ROAD, cz = lot ? lot.z : lz * ROAD;
-    const walls = new THREE.MeshStandardMaterial({ map: wallTexture(i * 7 + 3), roughness: 0.8 });
-    walls.map.repeat.set(2, Math.max(1, Math.round(h / 12)));
+    // the style: set on the map, else by the lot's size (the spiral's lots take turns)
+    const style = (lot && lot.style && lot.style !== 'auto') ? lot.style : lot ? autoStyle(W, Dp) : ['office', 'apartments', 'house'][i % 3];
     const roof = new THREE.MeshStandardMaterial({ map: roofTexture(pr, loader), roughness: 0.6 });
-    const floorMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
-    const b = new THREE.Mesh(new THREE.BoxGeometry(W, h, Dp), [walls, walls, roof, floorMat, walls, walls]);
-    b.position.set(cx, h / 2, cz); b.castShadow = b.receiveShadow = true;
-    b.userData.project = pr; floor.add(b); buildings.push(b);
-    // a rim round the roof, so the picture reads as something laid on the building: its top a
-    // hand's width below the roof, so the two never share a plane
-    const rim = new THREE.Mesh(new THREE.BoxGeometry(W + 1.6, 1.2, Dp + 1.6), new THREE.MeshStandardMaterial({ color: 0x2a2f36 }));
-    rim.position.set(cx, h - 0.75, cz); floor.add(rim);
+    const { group, body } = makeBuilding({ style, variant: lot && lot.variant, w: W, d: Dp, roofMat: roof, seed: i + 1 });
+    // turned round so doors, porches and yards face north, where the fighter comes from; the roof
+    // picture's own half turn is taken back so it still reads the right way up from there
+    group.position.set(cx, 0, cz); group.rotation.y = Math.PI; roof.map.rotation = 0;
+    body.userData.project = pr; floor.add(group); buildings.push(body);
   });
 
   // FOREST: the imposter forest, laid out on tiles around the fighter; the town's circle kept clear

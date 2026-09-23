@@ -29,7 +29,8 @@ function draw() {
   for (let i = 0; i <= SIZE; i += 50) { g.beginPath(); g.moveTo(i + 0.5, 0); g.lineTo(i + 0.5, SIZE); g.stroke(); g.beginPath(); g.moveTo(0, i + 0.5); g.lineTo(SIZE, i + 0.5); g.stroke(); }
   g.strokeStyle = 'rgba(255,255,255,0.25)'; g.beginPath(); g.moveTo(SIZE / 2, SIZE / 2 - 8); g.lineTo(SIZE / 2, SIZE / 2 + 8); g.moveTo(SIZE / 2 - 8, SIZE / 2); g.lineTo(SIZE / 2 + 8, SIZE / 2); g.stroke();
   // buildings, numbered
-  state.buildings.forEach((b, i) => { g.fillStyle = BUILDING; g.globalAlpha = 0.85; g.fillRect(b.x, b.y, b.w, b.h); g.globalAlpha = 1; g.fillStyle = '#1a1408'; g.font = 'bold 12px ui-monospace, monospace'; g.fillText(String(i + 1), b.x + 3, b.y + 13); });
+  const STYLE_COL = { office: '#8fb3d9', apartments: '#d9b36a', house: '#e08a6a' }, LETTER = { office: 'O', apartments: 'A', house: 'H' };
+  state.buildings.forEach((b, i) => { const st = styleOf(b); g.fillStyle = STYLE_COL[st]; g.globalAlpha = 0.85; g.fillRect(b.x, b.y, b.w, b.h); g.globalAlpha = 1; g.fillStyle = '#1a1408'; g.font = 'bold 12px ui-monospace, monospace'; g.fillText(`${i + 1} ${LETTER[st]}${b.style && b.style !== 'auto' ? '' : '·'}`, b.x + 3, b.y + 13); });
   if (drag) { g.strokeStyle = BUILDING; g.setLineDash([4, 3]); g.strokeRect(drag.x, drag.y, drag.w, drag.h); g.setLineDash([]); }
   // the fence: each run its own line of posts; the run being laid shows to the pointer
   for (const r of state.fence) {
@@ -41,7 +42,7 @@ function draw() {
   // the line being laid
   if (lineStart) { g.strokeStyle = COLOURS[tool] || '#fff'; g.lineWidth = brush; g.lineCap = 'round'; g.globalAlpha = 0.6; g.beginPath(); g.moveTo(lineStart.x, lineStart.y); if (hover) g.lineTo(hover.x, hover.y); else g.lineTo(lineStart.x + 0.1, lineStart.y); g.stroke(); g.globalAlpha = 1; g.lineWidth = 1; }
   // an arrow for where the fighter comes from
-  g.fillStyle = 'rgba(255,255,255,0.5)'; g.font = '11px ui-monospace, monospace'; g.fillText('N', SIZE / 2 - 3, 12); g.fillText('fighter arrives ↑', SIZE / 2 - 48, SIZE - 6);
+  g.fillStyle = 'rgba(255,255,255,0.5)'; g.font = '11px ui-monospace, monospace'; g.fillText('N', SIZE / 2 - 3, 12); g.fillText('fighter arrives from here ↓ (fronts face this way)', SIZE / 2 - 150, 24);
   list(); json();
 }
 function dab(p) { pg.fillStyle = COLOURS[tool]; pg.beginPath(); pg.arc(p.x, p.y, brush / 2, 0, Math.PI * 2); pg.fill(); }
@@ -71,7 +72,7 @@ cv.addEventListener('pointermove', (e) => {
   if (!painting) return; line(last, p); last = p; draw();
 });
 const up = () => {
-  if (drag) { const b = { x: Math.min(drag.x, drag.x + drag.w), y: Math.min(drag.y, drag.y + drag.h), w: Math.abs(drag.w), h: Math.abs(drag.h) }; if (b.w >= 6 && b.h >= 6) state.buildings.push(b); drag = null; draw(); }
+  if (drag) { const b = { x: Math.min(drag.x, drag.x + drag.w), y: Math.min(drag.y, drag.y + drag.h), w: Math.abs(drag.w), h: Math.abs(drag.h), style: $('bStyle').value }; if (b.w >= 6 && b.h >= 6) state.buildings.push(b); drag = null; draw(); }
   painting = false;
 };
 cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
@@ -80,14 +81,19 @@ $('brush').addEventListener('input', e => { brush = +e.target.value; $('brushOut
 $('undo').addEventListener('click', () => { const u = undo.pop(); if (!u) return; pg.putImageData(u.img, 0, 0); state.buildings = u.buildings; state.fence = u.fence; draw(); });
 $('clearFence').addEventListener('click', () => { snapshot(); state.fence = []; run = null; draw(); });
 $('clearAll').addEventListener('click', () => { if (!confirm('Clear the whole map?')) return; snapshot(); pg.fillStyle = COLOURS.floor; pg.fillRect(0, 0, SIZE, SIZE); state.buildings = []; state.fence = []; draw(); });
+// the style a building will get: its own, else by size as the town decides it
+function styleOf(b) { if (b.style && b.style !== 'auto') return b.style.split('/')[0]; const a = b.w * b.h; return Math.min(b.w, b.h) < 28 || a < 800 ? 'house' : a > 2600 ? 'office' : 'apartments'; }
 function list() {
-  $('list').innerHTML = state.buildings.map((b, i) => `<div data-i="${i}"><b>${i + 1}</b> · ${b.w} × ${b.h} m at ${b.x - SIZE / 2}, ${SIZE / 2 - b.y}</div>`).join('') || '<div>none yet</div>';
-  $('list').querySelectorAll('div[data-i]').forEach(d => d.addEventListener('click', () => { snapshot(); state.buildings.splice(+d.dataset.i, 1); draw(); }));
+  const CHOICES = ['auto', 'office', 'office/glass', 'office/banded', 'office/stone', 'apartments', 'apartments/stucco', 'apartments/modern', 'house', 'house/clapboard', 'house/modern', 'house/brick'];
+  const opts = (v) => CHOICES.map(o => `<option value="${o}"${o === (v || 'auto') ? ' selected' : ''}>${o === 'auto' ? 'auto (by size)' : o.includes('/') ? '  ' + o : o + ' (any)'}</option>`).join('');
+  $('list').innerHTML = state.buildings.map((b, i) => `<div data-i="${i}" style="display:flex;gap:6px;align-items:center"><b>${i + 1}</b><span style="flex:1">${b.w} × ${b.h} m</span><select data-s="${i}" style="background:#05070a;color:#aeb9c2;border:1px solid #212a34;font:11px ui-monospace,monospace">${opts(b.style)}</select><button data-x="${i}" type="button" style="background:none;border:1px solid #3a2020;color:#e07a6a;border-radius:3px;cursor:pointer">×</button></div>`).join('') || '<div>none yet</div>';
+  $('list').querySelectorAll('select[data-s]').forEach(el => el.addEventListener('change', () => { snapshot(); state.buildings[+el.dataset.s].style = el.value; draw(); }));
+  $('list').querySelectorAll('button[data-x]').forEach(el => el.addEventListener('click', () => { snapshot(); state.buildings.splice(+el.dataset.x, 1); draw(); }));
 }
 // the JSON: metres from the centre, x east and z south (the fighter comes from +z), so the town uses them as they are
 const toWorld = (p) => ({ x: p.x - SIZE / 2, z: p.y - SIZE / 2 });
 function json() {
-  const out = { metres: SIZE, buildings: state.buildings.map(b => ({ ...toWorld({ x: b.x + b.w / 2, y: b.y + b.h / 2 }), w: b.w, d: b.h })), fence: state.fence.filter(r => r.length > 1).map(r => r.map(toWorld)) };
+  const out = { metres: SIZE, buildings: state.buildings.map(b => { const [style, variant] = (b.style || 'auto').split('/'); return { ...toWorld({ x: b.x + b.w / 2, y: b.y + b.h / 2 }), w: b.w, d: b.h, style, ...(variant ? { variant } : {}) }; }), fence: state.fence.filter(r => r.length > 1).map(r => r.map(toWorld)) };
   $('json').value = JSON.stringify(out);
   return out;
 }
@@ -98,7 +104,7 @@ $('file').addEventListener('change', (e) => { const f = e.target.files[0]; if (!
 // the current layout from the site, if there is one, to start from
 fetch('../../textures/town/layout.json').then(r => r.ok ? r.json() : null).then(j => {
   if (!j) return;
-  state.buildings = (j.buildings || []).map(b => ({ x: Math.round(b.x - b.w / 2 + SIZE / 2), y: Math.round(b.z - b.d / 2 + SIZE / 2), w: b.w, h: b.d }));
+  state.buildings = (j.buildings || []).map(b => ({ x: Math.round(b.x - b.w / 2 + SIZE / 2), y: Math.round(b.z - b.d / 2 + SIZE / 2), w: b.w, h: b.d, style: (b.style || 'auto') + (b.variant ? '/' + b.variant : '') }));
   const runs = (j.fence || []); state.fence = (runs.length && !Array.isArray(runs[0]) ? [runs] : runs).map(r => r.map(p => ({ x: p.x + SIZE / 2, y: p.z + SIZE / 2 })));   // an old single loop reads as one run
   const img = new Image(); img.onload = () => { pg.drawImage(img, 0, 0, SIZE, SIZE); draw(); }; img.onerror = draw; img.src = '../../textures/town/layout.png';
 }).catch(() => {});
