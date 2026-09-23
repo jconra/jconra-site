@@ -74,8 +74,8 @@ const SPEC = {
   // modelYaw squares each model onto +Z, which is what the movement code treats as forward.
   // Blender->glTF maps (x,y,z) to (x,z,-y): the spider faced -Y so it arrives facing +Z already,
   // the insect faced -X so it arrives facing -X and needs a quarter turn.
-  spider: { file:'../../models/spider_animated.glb', slipFree:0.225, scale:2.6, turn:1.7, sight:4.6, fov:1.15, modelYaw:0 },
-  insect: { file:'../../models/insect_animated.glb', slipFree:0.276, scale:2.7, turn:1.5, sight:5.2, fov:1.05, modelYaw:Math.PI/2 },
+  spider: { file:'/models/spider_animated.glb', slipFree:0.225, scale:2.6, turn:1.7, sight:4.6, fov:1.15, modelYaw:0 },
+  insect: { file:'/models/insect_animated.glb', slipFree:0.276, scale:2.7, turn:1.5, sight:5.2, fov:1.05, modelYaw:Math.PI/2 },
 };
 
 const FORCE_GL1 = new URLSearchParams(location.search).has('gl1');

@@ -26,7 +26,7 @@ class Light extends THREE.Group {
 class Ship extends THREE.Group {
   constructor() {
     super();
-    this.url = './models/jay.glb'
+    this.url = '../../models/jay.glb'
     this.onCreate();
   }
   onCreate() {
@@ -114,7 +114,7 @@ class Panels extends THREE.Group {
 class StationTop extends THREE.Group {
   constructor() {
     super();
-    this.url = './models/stationTop.glb'
+    this.url = '../../models/stationTop.glb'
     this.onCreate();
     let poleGeo = new THREE.CylinderGeometry( 1, 3, 120, 8 );
     let poleMat = new THREE.MeshLambertMaterial({color:0x666666});
@@ -135,7 +135,7 @@ class StationTop extends THREE.Group {
 class Station extends THREE.Group {
   constructor() {
     super();
-    this.url = './models/station2.glb'
+    this.url = '../../models/station2.glb'
     this.onCreate();
   }
   onCreate() {
