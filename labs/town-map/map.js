@@ -10,7 +10,8 @@ const BUILDING = '#c9a23a', FENCE = '#26aeff';
 
 let tool = 'road', brush = 14, painting = false, drag = null, lineStart = null, lineMode = false;
 const snap = (p) => { const s = (v) => { const g = Math.round(v / 50) * 50; return Math.abs(v - g) <= 3 ? g : v; }; return { x: s(p.x), y: s(p.y) }; };
-const state = { buildings: [], fence: [] };
+const state = { buildings: [], fence: [] };     // fence: runs of corners; a gap between runs is a gate
+let run = null;                                  // the run being clicked out
 const paint = document.createElement('canvas'); paint.width = paint.height = SIZE;   // the painted classes alone
 const pg = paint.getContext('2d'); pg.fillStyle = COLOURS.floor; pg.fillRect(0, 0, SIZE, SIZE);
 const undo = [];
@@ -30,12 +31,13 @@ function draw() {
   // buildings, numbered
   state.buildings.forEach((b, i) => { g.fillStyle = BUILDING; g.globalAlpha = 0.85; g.fillRect(b.x, b.y, b.w, b.h); g.globalAlpha = 1; g.fillStyle = '#1a1408'; g.font = 'bold 12px ui-monospace, monospace'; g.fillText(String(i + 1), b.x + 3, b.y + 13); });
   if (drag) { g.strokeStyle = BUILDING; g.setLineDash([4, 3]); g.strokeRect(drag.x, drag.y, drag.w, drag.h); g.setLineDash([]); }
-  // the fence
-  if (state.fence.length) {
-    g.strokeStyle = FENCE; g.lineWidth = 2; g.beginPath(); state.fence.forEach((p, i) => i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)); if (state.fence.length > 2) g.closePath(); g.stroke();
-    g.fillStyle = FENCE; for (const p of state.fence) { g.beginPath(); g.arc(p.x, p.y, 3.5, 0, Math.PI * 2); g.fill(); }
-    g.lineWidth = 1;
+  // the fence: each run its own line of posts; the run being laid shows to the pointer
+  for (const r of state.fence) {
+    g.strokeStyle = FENCE; g.lineWidth = 2; g.beginPath(); r.forEach((p, i) => i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)); g.stroke();
+    g.fillStyle = FENCE; for (const p of r) { g.beginPath(); g.arc(p.x, p.y, 3.5, 0, Math.PI * 2); g.fill(); }
   }
+  if (run && run.length) { g.strokeStyle = FENCE; g.lineWidth = 2; g.setLineDash([5, 4]); g.beginPath(); run.forEach((p, i) => i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)); if (hover) g.lineTo(hover.x, hover.y); g.stroke(); g.setLineDash([]); g.fillStyle = FENCE; for (const p of run) { g.beginPath(); g.arc(p.x, p.y, 3.5, 0, Math.PI * 2); g.fill(); } }
+  g.lineWidth = 1;
   // the line being laid
   if (lineStart) { g.strokeStyle = COLOURS[tool] || '#fff'; g.lineWidth = brush; g.lineCap = 'round'; g.globalAlpha = 0.6; g.beginPath(); g.moveTo(lineStart.x, lineStart.y); if (hover) g.lineTo(hover.x, hover.y); else g.lineTo(lineStart.x + 0.1, lineStart.y); g.stroke(); g.globalAlpha = 1; g.lineWidth = 1; }
   // an arrow for where the fighter comes from
@@ -46,10 +48,13 @@ function dab(p) { pg.fillStyle = COLOURS[tool]; pg.beginPath(); pg.arc(p.x, p.y,
 function line(a, b) { const n = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / (brush / 4)) + 1; for (let i = 0; i <= n; i++) dab({ x: a.x + (b.x - a.x) * i / n, y: a.y + (b.y - a.y) * i / n }); }
 let last = null, hover = null;
 $('lineMode').addEventListener('change', e => { lineMode = e.target.checked; lineStart = null; draw(); });
-addEventListener('keydown', e => { if (e.key === 'Escape') { lineStart = null; draw(); } });
+function endRun() { if (run && run.length < 2) state.fence.pop(); run = null; hover = null; draw(); }
+addEventListener('keydown', e => { if (e.key === 'Escape') { lineStart = null; endRun(); } });
+$('endRun').addEventListener('click', endRun);
+document.querySelectorAll('.tools button').forEach(b => b.addEventListener('click', () => { if (b.dataset.tool !== 'fence') endRun(); }));
 cv.addEventListener('pointerdown', (e) => {
   const p = at(e); cv.setPointerCapture(e.pointerId);
-  if (tool === 'fence') { snapshot(); state.fence.push(p); draw(); return; }
+  if (tool === 'fence') { const q = snap(p); if (!run) { snapshot(); run = [q]; state.fence.push(run); } else run.push(q); draw(); return; }
   if (tool === 'building') { snapshot(); drag = { x: p.x, y: p.y, w: 0, h: 0 }; return; }
   if (lineMode && !e.shiftKey) {
     // straight lines: the first click sets the start, the second draws the line and starts the next from its end
@@ -62,7 +67,7 @@ cv.addEventListener('pointerdown', (e) => {
 cv.addEventListener('pointermove', (e) => {
   const p = at(e);
   if (drag) { drag.w = p.x - drag.x; drag.h = p.y - drag.y; draw(); return; }
-  if (lineStart) { hover = snap(p); draw(); return; }
+  if (lineStart || run) { hover = snap(p); draw(); return; }
   if (!painting) return; line(last, p); last = p; draw();
 });
 const up = () => {
@@ -73,7 +78,7 @@ cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
 document.querySelectorAll('.tools button').forEach(b => b.addEventListener('click', () => { tool = b.dataset.tool; document.querySelectorAll('.tools button').forEach(x => x.classList.toggle('on', x === b)); }));
 $('brush').addEventListener('input', e => { brush = +e.target.value; $('brushOut').textContent = brush + ' m'; });
 $('undo').addEventListener('click', () => { const u = undo.pop(); if (!u) return; pg.putImageData(u.img, 0, 0); state.buildings = u.buildings; state.fence = u.fence; draw(); });
-$('clearFence').addEventListener('click', () => { snapshot(); state.fence = []; draw(); });
+$('clearFence').addEventListener('click', () => { snapshot(); state.fence = []; run = null; draw(); });
 $('clearAll').addEventListener('click', () => { if (!confirm('Clear the whole map?')) return; snapshot(); pg.fillStyle = COLOURS.floor; pg.fillRect(0, 0, SIZE, SIZE); state.buildings = []; state.fence = []; draw(); });
 function list() {
   $('list').innerHTML = state.buildings.map((b, i) => `<div data-i="${i}"><b>${i + 1}</b> · ${b.w} × ${b.h} m at ${b.x - SIZE / 2}, ${SIZE / 2 - b.y}</div>`).join('') || '<div>none yet</div>';
@@ -82,7 +87,7 @@ function list() {
 // the JSON: metres from the centre, x east and z south (the fighter comes from +z), so the town uses them as they are
 const toWorld = (p) => ({ x: p.x - SIZE / 2, z: p.y - SIZE / 2 });
 function json() {
-  const out = { metres: SIZE, buildings: state.buildings.map(b => ({ ...toWorld({ x: b.x + b.w / 2, y: b.y + b.h / 2 }), w: b.w, d: b.h })), fence: state.fence.map(toWorld) };
+  const out = { metres: SIZE, buildings: state.buildings.map(b => ({ ...toWorld({ x: b.x + b.w / 2, y: b.y + b.h / 2 }), w: b.w, d: b.h })), fence: state.fence.filter(r => r.length > 1).map(r => r.map(toWorld)) };
   $('json').value = JSON.stringify(out);
   return out;
 }
@@ -94,7 +99,7 @@ $('file').addEventListener('change', (e) => { const f = e.target.files[0]; if (!
 fetch('../../textures/town/layout.json').then(r => r.ok ? r.json() : null).then(j => {
   if (!j) return;
   state.buildings = (j.buildings || []).map(b => ({ x: Math.round(b.x - b.w / 2 + SIZE / 2), y: Math.round(b.z - b.d / 2 + SIZE / 2), w: b.w, h: b.d }));
-  state.fence = (j.fence || []).map(p => ({ x: p.x + SIZE / 2, y: p.z + SIZE / 2 }));
+  const runs = (j.fence || []); state.fence = (runs.length && !Array.isArray(runs[0]) ? [runs] : runs).map(r => r.map(p => ({ x: p.x + SIZE / 2, y: p.z + SIZE / 2 })));   // an old single loop reads as one run
   const img = new Image(); img.onload = () => { pg.drawImage(img, 0, 0, SIZE, SIZE); draw(); }; img.onerror = draw; img.src = '../../textures/town/layout.png';
 }).catch(() => {});
 // the projects, in the order the buildings take them

@@ -101,9 +101,11 @@ export function buildTown(parts, projects, { shipLength = 7, renderer, origin = 
     clear: (x, z) => Math.hypot(x, z) < TOWN_R, sunDir: new THREE.Vector3(0.5, 1, 0.3) });
   const relay = () => {};
   // THE FENCE: the force field round the town, an octagon of emitter posts just inside the tree line
-  const fence = (() => { const c = [];
-    if (drawn && layout.fence.length > 2) for (const p of layout.fence) c.push(new THREE.Vector3(p.x, 0, p.z));
-    else for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 + Math.PI / 8; c.push(new THREE.Vector3(Math.sin(a) * (TOWN_R - 22), 0, Math.cos(a) * (TOWN_R - 22))); }
+  const fence = (() => {
+    const f = drawn ? layout.fence : [];
+    const runs = f.length && Array.isArray(f[0]) ? f : (f.length > 1 ? [f] : []);     // an old single loop reads as one run
+    if (runs.length) return new ForceField({ runs: runs.map(r => r.map(p => new THREE.Vector3(p.x, 0, p.z))), height: 12, postEvery: 36 });
+    const c = []; for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 + Math.PI / 8; c.push(new THREE.Vector3(Math.sin(a) * (TOWN_R - 22), 0, Math.cos(a) * (TOWN_R - 22))); }
     return new ForceField({ corners: c, height: 12, postEvery: 36 }); })();
   floor.add(fence.group);
   const understory = new Understory(floor, { clear: (x, z) => Math.hypot(x, z) < TOWN_R, reach: light ? 160 : 260, perTile: light ? 120 : 260 });

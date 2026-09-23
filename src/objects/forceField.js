@@ -98,17 +98,25 @@ function panelUniforms(colour, width, height) {
   };
 }
 
-// A fence round a polygon of corner points (Vector3s on the ground, in order): posts at the
-// corners and every `postEvery` metres along each side, a panel between neighbouring posts.
+// A fence of RUNS: each run is an open line of corner points (Vector3s on the ground, in order),
+// posts at the corners and every `postEvery` metres along each side, a panel between
+// neighbouring posts. The gap between two runs is a gate. (`corners` alone is one closed loop.)
 export class ForceField {
-  constructor({ corners, height = 12, postEvery = 40, colour = '#26aeff' } = {}) {
+  constructor({ runs = null, corners = null, closed = false, height = 12, postEvery = 40, colour = '#26aeff' } = {}) {
     this.group = new THREE.Group(); this.panels = []; this.posts = [];
     this.height = height; this.colour = colour; this.time = 0; this.hitCursor = 0;
-    // the posts along the perimeter
+    const lines = runs || [corners]; const loop = !runs && (closed || true);
+    // the posts along each run
+    const spans = [];                              // [a, b] post pairs to panel
     const pts = [];
-    for (let i = 0; i < corners.length; i++) {
-      const a = corners[i], b = corners[(i + 1) % corners.length], len = a.distanceTo(b), n = Math.max(1, Math.round(len / postEvery));
-      for (let k = 0; k < n; k++) pts.push(a.clone().lerp(b, k / n));
+    for (const line of lines) {
+      const first = pts.length;
+      const segs = loop ? line.length : line.length - 1;
+      for (let i = 0; i < segs; i++) {
+        const a = line[i], b = line[(i + 1) % line.length], len = a.distanceTo(b), n = Math.max(1, Math.round(len / postEvery));
+        for (let k = 0; k < n; k++) { const p = a.clone().lerp(b, k / n); pts.push(p); const q = a.clone().lerp(b, (k + 1) / n); spans.push([p, q]); }
+      }
+      if (!loop) pts.push(line[line.length - 1].clone());
     }
     const postGeo = new THREE.CylinderGeometry(0.6, 0.9, height + 2, 10), capGeo = new THREE.SphereGeometry(1.1, 12, 10);
     const postMat = new THREE.MeshStandardMaterial({ color: 0x3a4048, metalness: 0.7, roughness: 0.4 });
@@ -117,9 +125,9 @@ export class ForceField {
       const post = new THREE.Mesh(postGeo, postMat); post.position.copy(p); post.position.y += (height + 2) / 2; post.castShadow = true; this.group.add(post); this.posts.push(post);
       const cap = new THREE.Mesh(capGeo, this.capMat); cap.position.copy(p); cap.position.y += height + 2.4; this.group.add(cap);
     }
-    // the panels
-    for (let i = 0; i < pts.length; i++) {
-      const a = pts[i], b = pts[(i + 1) % pts.length], w = a.distanceTo(b);
+    // the panels, one per span
+    for (const [a, b] of spans) {
+      const w = a.distanceTo(b);
       const geo = new THREE.PlaneGeometry(w, height, 1, 1);
       const mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: panelUniforms(colour, w, height), transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
       const m = new THREE.Mesh(geo, mat);

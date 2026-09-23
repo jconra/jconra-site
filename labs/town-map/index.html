@@ -38,7 +38,7 @@
   <div id="stage"><canvas id="map" width="600" height="600"></canvas></div>
   <div id="panel">
     <h1>Town Map</h1>
-    <p class="note">Draw the town as seen from above: 1 pixel is 1 metre, 600 m across, north up. The fighter arrives from the bottom (south). Paint roads and grass, drag out buildings (each one is a project, in the order you draw them), click the fence's corners. What you don't paint is forest floor.</p>
+    <p class="note">Draw the town as seen from above: 1 pixel is 1 metre, 600 m across, north up. The fighter arrives from the bottom (south). Paint roads and grass, drag out buildings (each one is a project, in the order you draw them), click out the fence in runs with gaps for gates. What you don't paint is forest floor.</p>
 
     <h2>Tool</h2>
     <div class="tools">
@@ -50,12 +50,13 @@
       <button data-tool="dark"><i style="background:#2e5a24"></i>Dark grass</button>
       <button data-tool="floor"><i style="background:#5a3f2a"></i>Forest floor</button>
       <button data-tool="building"><i style="background:#c9a23a"></i>Building (drag)</button>
-      <button data-tool="fence"><i style="background:#26aeff"></i>Fence (click corners)</button>
+      <button data-tool="fence"><i style="background:#26aeff"></i>Fence (click posts)</button>
     </div>
     <div class="row"><label for="brush">Brush</label><output id="brushOut">14 m</output><input id="brush" type="range" min="2" max="60" step="1" value="14"></div>
     <label class="check" for="lineMode" style="display:flex;gap:8px;align-items:center;margin:6px 0;color:#aeb9c2;cursor:pointer"><input id="lineMode" type="checkbox" style="accent-color:#35e07d"> Straight lines (click the start, click the end; hold Shift for freehand)</label>
     <p class="note">Lines snap to the grid when they are within 3 m of it, so streets meet cleanly.</p>
-    <div class="btns"><button id="undo" type="button">Undo</button><button id="clearFence" type="button">Clear fence</button><button id="clearAll" type="button">Clear all</button></div>
+    <div class="btns"><button id="undo" type="button">Undo</button><button id="endRun" type="button">End fence run</button><button id="clearFence" type="button">Clear fence</button><button id="clearAll" type="button">Clear all</button></div>
+    <p class="note">The fence is drawn in runs: click post after post, then End run (or Esc) and start the next run elsewhere. The gap between two runs is a gate.</p>
 
     <h2>Buildings</h2>
     <p class="note">In the order drawn: each rectangle is the next project in the list below. Click one to delete it. Height is set from the footprint; the roof shows the project's picture.</p>
