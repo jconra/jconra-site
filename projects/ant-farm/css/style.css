@@ -1,0 +1,22 @@
+/* Nothing on screen but the tank. */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #06090c;
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* a screensaver should not show a cursor sitting over it */
+  cursor: none;
+}
+
+/* The canvas backing store is already sized to device pixels, so the browser
+   never rescales it - the sand stays a crisp grid of grains. */
+#farm {
+  display: block;
+}

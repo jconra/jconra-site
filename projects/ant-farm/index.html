@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ant Farm</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="farm"></canvas>
+<!-- Classic scripts in dependency order, deliberately unbundled: the whole
+     thing has to run by opening this file straight off the disk. -->
+<script src="js/config.js"></script>
+<script src="js/util.js"></script>
+<script src="js/grid.js"></script>
+<script src="js/pheromone.js"></script>
+<script src="js/ant.js"></script>
+<script src="js/colony.js"></script>
+<script src="js/render.js"></script>
+<script src="js/main.js"></script>
+<!-- The settings panel reads farm off window, so it loads after main.js. -->
+<script src="js/settings.js"></script>
+</body>
+</html>
