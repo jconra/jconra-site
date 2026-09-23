@@ -18,6 +18,8 @@ import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 // SVG units -> photo pixels: px = a*x - b*y + tx, py = b*x + a*y + ty (fitted 2026-09-20)
 export const FIT = { a: 0.40125, b: -0.05498, tx: 201.78, ty: 269.94 };
 const PHOTO = { w: 833, h: 827 };
+// the states' longitude and latitude bounds [west, east, south, north], for placing pins on towns
+export const STATE_BOUNDS = { CO: [-109.06, -102.04, 36.99, 41.0], NM: [-109.05, -103.0, 31.33, 37.0], MD: [-79.49, -75.05, 37.89, 39.72], MS: [-91.66, -88.1, 30.17, 35.0], WA: [-124.85, -116.92, 45.54, 49.0] };
 
 export async function loadUSMap(url = '../map/us.svg', { colour = 0x35e07d, line = 0xf2fff6, lift = 0.6, flagDir = '../../textures/flags/' } = {}) {
   const data = await new SVGLoader().loadAsync(url);
@@ -32,7 +34,7 @@ export async function loadUSMap(url = '../map/us.svg', { colour = 0x35e07d, line
   for (const path of data.paths) {
     const id = path.userData.node.id, name = path.userData.node.dataset.name || id;
     if (!id || id.length !== 2) continue;
-    const st = { id, name, group: new THREE.Group(), fills: [], amount: 0, box: new THREE.Box2() };
+    const st = { id, name, group: new THREE.Group(), fills: [], amount: 0, box: new THREE.Box2(), svgBox: new THREE.Box2() };
     const fillMat = new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
     const dark = new LineMaterial({ color: 0x06100a, linewidth: 3.2, transparent: true, opacity: 0, depthWrite: false, resolution });
     const light = new LineMaterial({ color: line, linewidth: 1.1, transparent: true, opacity: 0, depthWrite: false, resolution });
@@ -42,6 +44,7 @@ export async function loadUSMap(url = '../map/us.svg', { colour = 0x35e07d, line
       const s2 = new THREE.Shape(remap(shape.getPoints()));
       s2.holes = shape.holes.map(h => new THREE.Path(remap(h.getPoints())));
       for (const p of s2.getPoints()) st.box.expandByPoint(p);
+      for (const p of shape.getPoints()) st.svgBox.expandByPoint(p);
       const fill = new THREE.Mesh(new THREE.ShapeGeometry(s2), fillMat);
       fill.position.z = lift; fill.userData.state = id;
       st.group.add(fill); st.fills.push(fill); pickable.push(fill);
@@ -90,17 +93,46 @@ export async function loadUSMap(url = '../map/us.svg', { colour = 0x35e07d, line
       if (drawn) { set(new THREE.CanvasTexture(drawn)); return; }
       new THREE.TextureLoader().load(`${flagDir}${id}.png`, set, undefined, () => {});
     },
-    // a pin standing on the state, shown as the state lights
-    pin(id, colourHex = 0xff4a3d) {
-      const st = states.get(id); if (!st || st.pin) return;
-      const c = st.box.getCenter(new THREE.Vector2());
-      const pin = new THREE.Group();
-      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 14, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-      stem.rotation.x = Math.PI / 2; stem.position.z = 7;
-      const head = new THREE.Mesh(new THREE.SphereGeometry(3.2, 16, 12), new THREE.MeshBasicMaterial({ color: colourHex }));
-      head.position.z = 14;
-      pin.add(stem, head); pin.position.set(c.x, c.y, lift); pin.scale.setScalar(0.001);
-      st.pin = pin; group.add(pin);
+    // A map pin standing on a spot in the state, shown as the state lights: a tapered point down to
+    // the map, a round head, a dark outline (the same shapes a little bigger, drawn inside out) and
+    // a soft shadow on the map. `at` is { lonlat: [lon, lat] } for a real town, or { fx, fy }, the
+    // fraction of the way across the state west to east and north to south.
+    pin(id, at = {}, colourHex = 0xe0302a) {
+      const st = states.get(id); if (!st) return;
+      if (!st.pin) {
+        const pin = new THREE.Group();
+        const point = new THREE.CylinderGeometry(2.3, 0.05, 10, 20).rotateX(Math.PI / 2).translate(0, 0, 5);   // tip at the map, widening upward
+        const head = new THREE.SphereGeometry(3.8, 24, 16).translate(0, 0, 11.5);
+        const redM = new THREE.MeshStandardMaterial({ color: colourHex, roughness: 0.3, metalness: 0.05, emissive: 0x3a0806 });
+        const lineM = new THREE.MeshBasicMaterial({ color: 0x1a0606, side: THREE.BackSide });
+        for (const geo of [point, head]) {
+          pin.add(new THREE.Mesh(geo, redM));
+          const edge = new THREE.Mesh(geo.clone(), lineM); edge.scale.setScalar(1.14); edge.position.z = geo === head ? -11.5 * 0.14 : -0.2; pin.add(edge);
+        }
+        const shine = new THREE.Mesh(new THREE.SphereGeometry(1.1, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffd9d0 }));
+        shine.position.set(-1.4, 1.6, 13.6); pin.add(shine);
+        // the shadow: a soft dark oval on the map, cast away from the light
+        const sc = document.createElement('canvas'); sc.width = sc.height = 64; const g = sc.getContext('2d'), rg = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+        rg.addColorStop(0, 'rgba(0,0,0,0.55)'); rg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = rg; g.fillRect(0, 0, 64, 64);
+        const shadow = new THREE.Mesh(new THREE.PlaneGeometry(12, 6), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sc), transparent: true, depthWrite: false }));
+        shadow.position.set(5, -2.5, 0.1); shadow.rotation.z = -0.4; pin.add(shadow);
+        // the pin itself a little smaller than it was drawn and leaning back from the viewer, so the
+        // point is seen going into the map; the shadow stays flat on the map
+        const inner = new THREE.Group(); for (const c of [...pin.children]) if (c !== shadow) inner.add(c);
+        inner.scale.setScalar(0.65); inner.rotation.x = 0.3; pin.add(inner); shadow.scale.setScalar(0.65); shadow.position.multiplyScalar(0.65);
+        pin.scale.setScalar(0.001); st.pin = pin; group.add(pin);
+      }
+      api.movePin(id, at);
+    },
+    // where a pin stands: a town's longitude and latitude, or a fraction of the way across the state
+    movePin(id, at = {}) {
+      const st = states.get(id); if (!st || !st.pin) return;
+      let fx = at.fx ?? 0.5, fy = at.fy ?? 0.5;
+      const B = STATE_BOUNDS[id];
+      if (at.lonlat && B && at.fx === undefined) { fx = (at.lonlat[0] - B[0]) / (B[1] - B[0]); fy = (B[3] - at.lonlat[1]) / (B[3] - B[2]); }
+      st.pinAt = { fx, fy };
+      const sb = st.svgBox, x = sb.min.x + fx * (sb.max.x - sb.min.x), y = sb.min.y + fy * (sb.max.y - sb.min.y);
+      const [px, py] = toPlane(x, y); st.pin.position.set(px, py, lift);
     },
     // where a state is, in plane units
     centre(id) { const st = states.get(id); if (!st) return null; const c = st.box.getCenter(new THREE.Vector2()); return new THREE.Vector3(c.x, c.y, 0); },
@@ -114,11 +146,15 @@ export async function loadUSMap(url = '../map/us.svg', { colour = 0x35e07d, line
 function drawFlag(id) {
   const W = 512, H = 341, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d');
   if (id === 'CO') {
-    // three stripes, blue white blue; a red C, its opening to the right, round a gold disc
+    // Colorado's flag by its law (1911/1929): three equal stripes, blue white blue; the gold disc
+    // exactly as tall as the white stripe; the red C twice that across, its inside filled by the
+    // disc; the C's ends cut off square along a vertical line on the fly side
     g.fillStyle = '#002868'; g.fillRect(0, 0, W, H); g.fillStyle = '#ffffff'; g.fillRect(0, H / 3, W, H / 3);
-    const cx = W * 0.36, cy = H / 2, R = H * 0.34, r = R * 0.62;
-    g.fillStyle = '#bf0a30'; g.beginPath(); g.arc(cx, cy, R, Math.PI * 0.2, Math.PI * 1.8); g.arc(cx, cy, r, Math.PI * 1.8, Math.PI * 0.2, true); g.closePath(); g.fill();
-    g.fillStyle = '#ffd700'; g.beginPath(); g.arc(cx, cy, r * 0.62, 0, Math.PI * 2); g.fill();
+    // the C's opening is a wedge from its centre, 30 degrees either side of the fly, so its outer
+    // corners land on the edges of the white stripe and the white runs in to the gold
+    const r = H / 6, R = H / 3, cx = W * 0.38, cy = H / 2, a = Math.PI / 6;
+    g.fillStyle = '#bf0a30'; g.beginPath(); g.arc(cx, cy, R, a, Math.PI * 2 - a); g.arc(cx, cy, r, Math.PI * 2 - a, a, true); g.closePath(); g.fill();
+    g.fillStyle = '#ffd700'; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
     return cv;
   }
   if (id === 'NM') {

@@ -562,6 +562,9 @@ const TOUR = [
   { id: 'MS', t: 57.5, title: 'Mississippi', text: '2 years at Keesler AFB teaching Cyberspace Warfare Operations: Windows, Linux and Python.' },
   { id: 'WA', t: 59.9, title: 'Washington',  text: '7 years AWS Systems Engineer for filesystems (EFS, FSx). Helicopter pilot, 176 hours.' },
 ];
+// where each state's pin stands: a town's [longitude, latitude], or fx / fy set in the panel
+// (the fraction of the way across the state, west to east and north to south)
+const PINS = { CO: { town: 'Cortez', lonlat: [-108.585, 37.349] } };
 const MAP = { glow: 48.1, tourEnd: 62.5, shipIn: 46.5, shipAt: 52.5,
   dive: 65.5, diveEnd: 70.1,             // the fighter noses down and races for the cloud bank
   target: [-201, 113, 4],                // where it goes in: the big swirl of cloud off the West Coast, in the picture's units
@@ -739,7 +742,7 @@ function buildMapSet(parts) {
   mapSet = { floor, pic, ship, plume, sparks, clouds, map: null };
   loadUSMap('../map/us.svg').then(map => {
     mapSet.map = map; pic.add(map.group); map.setResolution(innerWidth, innerHeight);
-    for (const s of TOUR) { map.flag(s.id); map.pin(s.id); }
+    for (const s of TOUR) { map.flag(s.id); map.pin(s.id, PINS[s.id] || {}); }
     applyMapFit();
   }).catch(e => console.error(e));
 }
@@ -747,6 +750,19 @@ function buildMapSet(parts) {
 // shift (picture pixels) and size (%). Set from the panel, baked from Copy settings.
 const MAPFIT = { turn: 0, x: 0, y: 0, size: 100 };
 const MAP_PIVOT = new THREE.Vector3(33, 83, 0);
+// the Pins panel: pick a state (the timeline jumps to its moment), then move its pin
+function pinState() { return $('pinState') ? $('pinState').value : 'CO'; }
+function movePinFromPanel(key, v) {
+  const id = pinState(), m = mapSet && mapSet.map; if (!m) return;
+  const cur = (m.states.get(id) || {}).pinAt || { fx: 0.5, fy: 0.5 };
+  PINS[id] = { fx: cur.fx, fy: cur.fy, [key]: v }; m.movePin(id, PINS[id]);
+}
+function showPin() {
+  const id = pinState(), m = mapSet && mapSet.map; const at = m && m.states.get(id) && m.states.get(id).pinAt; if (!at) return;
+  $('pinX').value = Math.round(at.fx * 100); $('pinXOut').textContent = Math.round(at.fx * 100) + '% east';
+  $('pinY').value = Math.round(at.fy * 100); $('pinYOut').textContent = Math.round(at.fy * 100) + '% south';
+  const s = TOUR.find(x => x.id === id); if (s) { if (!SEQ.active) activateIntro(); SEQ.playing = false; RESUME.hold = true; seek(s.t + 0.8); }
+}
 function applyMapFit() {
   const m = mapSet && mapSet.map; if (!m) return;
   const g = m.group, k = MAPFIT.size / 100, a = -THREE.MathUtils.degToRad(MAPFIT.turn);
@@ -1575,6 +1591,8 @@ const SLIDERS = {
   mapX:       [v => { MAPFIT.x = v; applyMapFit(); }, v => v + ' px'],
   mapY:       [v => { MAPFIT.y = v; applyMapFit(); }, v => v + ' px'],
   mapSize:    [v => { MAPFIT.size = v; applyMapFit(); }, v => v + '%'],
+  pinX:       [v => movePinFromPanel('fx', v / 100), v => v + '% east'],
+  pinY:       [v => movePinFromPanel('fy', v / 100), v => v + '% south'],
   helmetSize: [v => { HELMET.size = v; applyHelmetFit(); }, v => v + '%'],
   helmetUp:   [v => { HELMET.up = v; applyHelmetFit(); }, v => v + ' cm'],
   helmetFwd:  [v => { HELMET.forward = v; applyHelmetFit(); }, v => v + ' cm'],
@@ -1626,10 +1644,11 @@ for (const [id, [apply, fmt]] of Object.entries(SLIDERS)) {
   const el = $(id);
   const run = () => { apply(+el.value); $(id + 'Out').textContent = fmt(+el.value); };
   el.addEventListener('input', run);
-  if (id in KEYFIELDS || id in PROPFIELDS || /^screen[WHXY]$/.test(id)) $(id + 'Out').textContent = fmt(+el.value); else run();   // key, prop and screen sliders read from their object, they do not write it at start
+  if (id in KEYFIELDS || id in PROPFIELDS || /^screen[WHXY]$/.test(id) || /^pin[XY]$/.test(id)) $(id + 'Out').textContent = fmt(+el.value); else run();   // key, prop and screen sliders read from their object, they do not write it at start
 }
 $('keyLook').addEventListener('change', e => { const v = e.target.value; const k = KEYS[keyIndex]; if (v === 'point') captureView(k); else k.look = v; seek(k.t); });
 $('screenPick').addEventListener('change', e => { screenPick = +e.target.value; showScreenFit(); });
+$('pinState').addEventListener('change', showPin);
 $('useView').addEventListener('click', () => { const k = KEYS[keyIndex]; if (!k) return; captureView(k); showKey(); });
 // working in the panel holds the timeline: no playing on by itself until the scene is scrolled again
 $('panel').addEventListener('input', () => { RESUME.hold = true; });
@@ -1674,6 +1693,7 @@ $('min').onclick = () => { $('panel').classList.toggle('min'); $('min').textCont
 $('copy').onclick = () => {
   const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, helmet: (({ show, ...h }) => h)(HELMET),
     map: { ...MAPFIT },
+    pins: Object.fromEntries(Object.entries(PINS).map(([k, p]) => [k, p.fx !== undefined ? { fx: +p.fx.toFixed(3), fy: +p.fy.toFixed(3) } : p])),
     fighter: { seatForwardCm: Math.round(-HANGAR.seatBack * 100), seatDownCm: Math.round(HANGAR.seatDown * 100), recline: HANGAR.recline, canopyDeg: HANGAR.canopyDeg, canopyDropCm: Math.round(HANGAR.canopyDrop * 100), canopySlideCm: Math.round(HANGAR.canopySlide * 100) }, props: PROPS.map(({ obj, ...p }) => p), screens: SCREEN_FIT[build] || [], intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) }, earth: { ...EARTH },
     light: { cabin: cabin.intensity, screens: screens.intensity, sun: sun.intensity, ambient: ambient.intensity, exposure: renderer.toneMappingExposure },
     openWindows: $('openWindows').checked };

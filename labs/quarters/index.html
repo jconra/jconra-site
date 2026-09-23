@@ -107,6 +107,12 @@
     <div class="row"><label for="mapY">Up / down</label><output id="mapYOut"></output><input id="mapY" type="range" min="-60" max="60" step="0.5" value="0"></div>
     <div class="row"><label for="mapSize">Size</label><output id="mapSizeOut"></output><input id="mapSize" type="range" min="80" max="120" step="0.5" value="100"></div>
 
+    <h2>Map pins</h2>
+    <p class="note">Pick a state and the film jumps to it; the sliders move its pin across the state. Colorado stands on Cortez. Copy settings gives the spots.</p>
+    <div class="row"><label for="pinState">State</label><select id="pinState"><option value="CO">Colorado</option><option value="NM">New Mexico</option><option value="MD">Maryland</option><option value="MS">Mississippi</option><option value="WA">Washington</option></select></div>
+    <div class="row"><label for="pinX">West to east</label><output id="pinXOut"></output><input id="pinX" type="range" min="0" max="100" step="0.5" value="50"></div>
+    <div class="row"><label for="pinY">North to south</label><output id="pinYOut"></output><input id="pinY" type="range" min="0" max="100" step="0.5" value="50"></div>
+
     <h2>In the fighter</h2>
     <p class="note">How he sits in the cockpit (from 39 s). Pick a key in the hangar and move these; the frame follows.</p>
     <div class="row"><label for="seatFwd">Seat forward / back</label><output id="seatFwdOut"></output><input id="seatFwd" type="range" min="-60" max="60" step="1" value="0"></div>
