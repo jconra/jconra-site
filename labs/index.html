@@ -37,6 +37,7 @@
   }
   .lede { margin-top:10px; color:var(--ink-dim); max-width:56ch; font-size:14.5px; }
 
+  h3.group { font:600 11px ui-monospace,monospace; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-dim); margin:26px 0 10px; }
   .grid { display:grid; gap:14px; grid-template-columns:repeat(auto-fill, minmax(290px,1fr)); }
   a.card {
     display:block; text-decoration:none; color:inherit;
@@ -77,6 +78,7 @@
       against different versions of the library, so the version each one pins is listed with it.</p>
   </header>
 
+  <h3 class="group">World</h3>
   <div class="grid">
     <a class="card" href="quarters/">
       <h2>Quarters Lab</h2>
@@ -84,7 +86,6 @@
          lifts out, Earth turns past outside, and every prop can be switched off.</p>
       <div class="meta"><span class="tag v">three 0.158</span><span class="tag">interior</span><span class="tag">portfolio</span></div>
     </a>
-
     <a class="card" href="town-map/">
       <h2>Town Map</h2>
       <p>Draw the projects town from above, a metre a pixel: paint roads, grass and water, drag
@@ -99,13 +100,11 @@
          same trees. Sliders for how many trees, the atlas grid and the blend; readouts for the cost.</p>
       <div class="meta"><span class="tag v">three 0.158</span><span class="tag">forest</span><span class="tag">performance</span></div>
     </a>
-    <a class="card" href="props/">
-      <h2>Prop Viewer</h2>
-      <p>Every loose piece of the old quarters, one at a time on a turntable with its measurements,
-         or all together as the room they came from. For choosing what moves to the new room.</p>
-      <div class="meta"><span class="tag v">three 0.158</span><span class="tag">interior</span><span class="tag">tool</span></div>
+    <a class="card" href="grass/">
+      <h2>Grass Lab</h2>
+      <p>Blades by the thousand with wind: cone, spike, flat, billboard or a curved bezier blade; colour gradient and variety; unlit against the ground. Came from RMRF.</p>
+      <div class="meta"><span class="tag v">three 0.160</span><span class="tag">world</span><span class="tag">shader</span></div>
     </a>
-
     <a class="card" href="station-build/">
       <h2>Station Builder</h2>
       <p>Builds one station from separate Tripo parts: a tower on the axis, rings turning on a collar,
@@ -113,44 +112,33 @@
          slider, and Copy layout writes out the result.</p>
       <div class="meta"><span class="tag v">three 0.158</span><span class="tag">kitbash</span><span class="tag">instancing</span><span class="tag">portfolio</span></div>
     </a>
-
     <a class="card" href="station/">
       <h2>Station Lab</h2>
       <p>A kilometre-scale space station whose outer ring spins for gravity, with hull lamps, bloom, depth
          of field, lens flare and film grain to tune. This page runs on WebGL1, the version that works everywhere.</p>
       <div class="meta"><span class="tag v">three 0.158</span><span class="tag">WebGL1</span><span class="tag">post-processing</span><span class="tag">portfolio</span></div>
     </a>
-
     <a class="card" href="station-next/">
       <h2>Station Lab r186</h2>
       <p>The same Station Lab on three.js 0.186 and WebGL2, for comparison: environment lighting and
          multisampled effects that WebGL1 cannot do.</p>
       <div class="meta"><span class="tag v">three 0.186</span><span class="tag">WebGL2</span><span class="tag">compare</span></div>
     </a>
-
-    <a class="card" href="rig/">
-      <h2>Rig Lab</h2>
-      <p>Pose any rigged glTF in the browser, measure what each bone <i>actually</i> drives once
-         skinning is applied, and search for the pose that reaches furthest. Drop your own .glb in.</p>
-      <div class="meta"><span class="tag v">three 0.158</span><span class="tag">skinned glTF</span><span class="tag">tool</span></div>
+    <a class="card" href="map/">
+      <h2>Raycast Map</h2>
+      <p>An SVG map of the United States in 3D, with a raycaster picking out whichever region sits
+         under the cursor.</p>
+      <div class="meta"><span class="tag v">three 0.156</span><span class="tag">raycasting</span><span class="tag">svg</span></div>
     </a>
-
-    <a class="card" href="https://sound-lab.rmrfbase.com/">
-      <h2>Sound Lab</h2>
-      <p>The modular synth behind RMRF's sound. Patch oscillators, filters, noise, envelopes and
-         LFOs together with cables in a 3D node editor, fire the patch to hear it, and export it to
-         the game. No samples: every engine and gunshot is synthesised live.</p>
-      <div class="meta"><span class="tag v">three 0.160</span><span class="tag">web audio</span><span class="tag">rmrf tool</span></div>
+    <a class="card" href="tree/">
+      <h2>Tree</h2>
+      <p>A procedurally grown tree — branches recursing down to leaf geometry. Leaf count, leaf
+         size and age are live sliders, so it regrows as you drag.</p>
+      <div class="meta"><span class="tag v">three r99</span><span class="tag">procedural</span></div>
     </a>
-
-    <a class="card" href="https://asset-designer.rmrfbase.com/">
-      <h2>Asset Designer</h2>
-      <p>Builds the buildings and props that go onto RMRF maps. Shape them from primitives, set
-         materials and damage behaviour, and measure each one's footprint on the map grid before
-         it is written into the game's asset manifest.</p>
-      <div class="meta"><span class="tag">rmrf tool</span><span class="tag">modelling</span><span class="tag">rmrfbase.com</span></div>
-    </a>
-
+  </div>
+  <h3 class="group">Characters and props</h3>
+  <div class="grid">
     <a class="card" href="characters/">
       <h2>Character Lab</h2>
       <p>Three Tripo generations of Jacob on plinths, sharing one skeleton and set of animations.
@@ -158,47 +146,86 @@
          down the hair.</p>
       <div class="meta"><span class="tag v">three 0.158</span><span class="tag">glTF</span><span class="tag">rigging</span><span class="tag">compare</span></div>
     </a>
-
     <a class="card" href="characters-next/">
       <h2>Character Lab r186</h2>
       <p>The Character Lab on the latest three.js, to compare against 0.158. Adds tone mapping
          choices (ACES, AgX, Neutral), exposure and environment light. Needs WebGL2.</p>
       <div class="meta"><span class="tag v">three 0.186</span><span class="tag">glTF</span><span class="tag">compare</span></div>
     </a>
-
+    <a class="card" href="rig/">
+      <h2>Rig Lab</h2>
+      <p>Pose any rigged glTF in the browser, measure what each bone <i>actually</i> drives once
+         skinning is applied, and search for the pose that reaches furthest. Drop your own .glb in.</p>
+      <div class="meta"><span class="tag v">three 0.158</span><span class="tag">skinned glTF</span><span class="tag">tool</span></div>
+    </a>
     <a class="card" href="hoodies/">
       <h2>Hoodie Lab</h2>
       <p>Two Tripo generations of the city skyline hoodie side by side under a spotlight. Move the
          mouse to spin them and compare the two.</p>
       <div class="meta"><span class="tag v">three 0.158</span><span class="tag">glTF</span><span class="tag">compare</span></div>
     </a>
-
     <a class="card" href="boxing/">
       <h2>Boxing</h2>
       <p>Stephen versus a chimpanzee. Watch the chimp's tell, dodge out of the way, then hit back.
          Beat it and round two brings on a warrior bug that cannot be beaten.</p>
       <div class="meta"><span class="tag v">three 0.158</span><span class="tag">skinned glTF</span><span class="tag">playable</span></div>
     </a>
-
     <a class="card" href="bugs/">
       <h2>Bug Lab</h2>
       <p>Two rigged bugs wander an arena. When one catches the other in its sight cone it squares
          up, rears as a threat display, then lunges. Five baked animations each.</p>
       <div class="meta"><span class="tag v">three 0.158</span><span class="tag">skinned glTF</span><span class="tag">webgl 1 safe</span></div>
     </a>
-
-    <a class="card" href="map/">
-      <h2>Raycast Map</h2>
-      <p>An SVG map of the United States in 3D, with a raycaster picking out whichever region sits
-         under the cursor.</p>
-      <div class="meta"><span class="tag v">three 0.156</span><span class="tag">raycasting</span><span class="tag">svg</span></div>
+    <a class="card" href="props/">
+      <h2>Prop Viewer</h2>
+      <p>Every loose piece of the old quarters, one at a time on a turntable with its measurements,
+         or all together as the room they came from. For choosing what moves to the new room.</p>
+      <div class="meta"><span class="tag v">three 0.158</span><span class="tag">interior</span><span class="tag">tool</span></div>
     </a>
-
-    <a class="card" href="tree/">
-      <h2>Tree</h2>
-      <p>A procedurally grown tree — branches recursing down to leaf geometry. Leaf count, leaf
-         size and age are live sliders, so it regrows as you drag.</p>
-      <div class="meta"><span class="tag v">three r99</span><span class="tag">procedural</span></div>
+  </div>
+  <h3 class="group">Effects and materials</h3>
+  <div class="grid">
+    <a class="card" href="fire/">
+      <h2>Fire Lab</h2>
+      <p>Volumetric fire on a shader: the flame profile, the noise that churns it, lean and colour, tuned live. Came from RMRF, where the wrecks burn with it.</p>
+      <div class="meta"><span class="tag v">three 0.160</span><span class="tag">effect</span><span class="tag">shader</span></div>
+    </a>
+    <a class="card" href="shield/">
+      <h2>Shield Lab</h2>
+      <p>The force-field bubble: hex grid, rim glow, flashing cells, rings where it is hit, blue to red as it drains. The town's fence and RMRF's vehicle shields share it.</p>
+      <div class="meta"><span class="tag v">three 0.160</span><span class="tag">effect</span><span class="tag">shader</span></div>
+    </a>
+    <a class="card" href="texture/">
+      <h2>Texture Lab</h2>
+      <p>Procedural materials from noise: colour, roughness and normal maps drawn on canvases and compared on a sphere.</p>
+      <div class="meta"><span class="tag v">three 0.160</span><span class="tag">material</span><span class="tag">tool</span></div>
+    </a>
+    <a class="card" href="noise/">
+      <h2>Noise Gallery</h2>
+      <p>The noises the textures are built from, side by side: value, simplex, cellular, ridged, and the ways they stack.</p>
+      <div class="meta"><span class="tag">2D</span><span class="tag">reference</span></div>
+    </a>
+    <a class="card" href="surface/">
+      <h2>Bump vs Normal</h2>
+      <p>The same surface as a bump map and as a normal map, under a moving light, to see what each buys.</p>
+      <div class="meta"><span class="tag v">three 0.160</span><span class="tag">material</span><span class="tag">reference</span></div>
+    </a>
+  </div>
+  <h3 class="group">Other apps</h3>
+  <div class="grid">
+    <a class="card" href="https://sound-lab.rmrfbase.com/">
+      <h2>Sound Lab</h2>
+      <p>The modular synth behind RMRF's sound. Patch oscillators, filters, noise, envelopes and
+         LFOs together with cables in a 3D node editor, fire the patch to hear it, and export it to
+         the game. No samples: every engine and gunshot is synthesised live.</p>
+      <div class="meta"><span class="tag v">three 0.160</span><span class="tag">web audio</span><span class="tag">rmrf tool</span></div>
+    </a>
+    <a class="card" href="https://asset-designer.rmrfbase.com/">
+      <h2>Asset Designer</h2>
+      <p>Builds the buildings and props that go onto RMRF maps. Shape them from primitives, set
+         materials and damage behaviour, and measure each one's footprint on the map grid before
+         it is written into the game's asset manifest.</p>
+      <div class="meta"><span class="tag">rmrf tool</span><span class="tag">modelling</span><span class="tag">rmrfbase.com</span></div>
     </a>
   </div>
 
