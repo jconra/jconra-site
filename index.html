@@ -44,6 +44,18 @@
   #mapCaption.on { opacity:1; }
   #townCard { position:fixed; z-index:6; pointer-events:none; width:280px; padding:10px 14px; background:rgba(4,8,12,.84); border:1px solid rgba(53,224,125,.5); border-radius:6px; opacity:0; transition:opacity .2s; }
   #townCard.on { opacity:1; }
+  /* the room's clickable things: a small tag by the cursor, and the card a click opens */
+  #hoverTag { position:fixed; z-index:7; pointer-events:none; padding:5px 9px; background:rgba(4,8,12,.84); border:1px solid rgba(53,224,125,.5); border-radius:5px; font:12px/1.35 ui-sans-serif, system-ui, sans-serif; color:#e8f1f5; opacity:0; transition:opacity .15s; max-width:260px; }
+  #hoverTag.on { opacity:1; }
+  #hoverTag b { color:#35e07d; font-weight:600; }
+  #likesCard { position:fixed; z-index:8; left:50%; top:50%; transform:translate(-50%,-50%); width:min(92vw, 420px); max-height:80vh; overflow-y:auto; padding:18px 20px; background:rgba(4,8,12,.94); border:1px solid rgba(53,224,125,.55); border-radius:8px; display:none; }
+  #likesCard.on { display:block; }
+  #likesCard h3 { font:400 18px nasa, ui-sans-serif, sans-serif; letter-spacing:.06em; color:#35e07d; margin:0 0 10px; display:flex; justify-content:space-between; align-items:center; }
+  #likesCard h3 button { font:600 11px ui-monospace, monospace; background:none; border:1px solid #2f7d55; color:#35e07d; border-radius:4px; padding:4px 9px; cursor:pointer; }
+  #likesCard ul { list-style:none; margin:0; padding:0; }
+  #likesCard li { padding:6px 0; border-top:1px solid rgba(53,224,125,.15); font:14px/1.35 ui-sans-serif, system-ui, sans-serif; color:#e8f1f5; }
+  #likesCard li span { display:block; font-size:12px; color:#8aa3b3; }
+  #likesCard li.hit { color:#35e07d; }
   #townCard b { display:block; font:400 15px nasa, ui-sans-serif, sans-serif; letter-spacing:.06em; color:#35e07d; margin-bottom:4px; }
   #townCard span { font:12.5px/1.4 ui-sans-serif, system-ui, sans-serif; color:#e8f1f5; }
   #flash { position:fixed; inset:0; z-index:5; pointer-events:none; opacity:0;
@@ -67,6 +79,8 @@
 <div id="mapCaption"><b></b><span></span></div>
 <div id="flash"></div>
 <div id="townCard"><b></b><span></span></div>
+<div id="hoverTag"></div>
+<div id="likesCard" role="dialog" aria-label="Things I like"><h3><span id="likesTitle"></span><button id="likesClose" type="button">close</button></h3><ul id="likesList"></ul></div>
 <div id="panel">
   <h1>Quarters Lab <button id="min" type="button">hide</button></h1>
   <div class="body">

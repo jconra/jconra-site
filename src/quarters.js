@@ -17,6 +17,7 @@ import { buildHangarSet, shutFighter } from './objects/hangarSet.js';
 import { loadUSMap } from './objects/usMap.js';
 import { buildTown } from './objects/town.js';
 import { loadTownLayout } from './objects/townLayout.js';
+import { buildBookshelf, SERIES } from './objects/bookshelf.js';
 
 const Q = new URLSearchParams(location.search);
 if (Q.has('edit')) document.body.classList.add('edit');   // the editing panel (the Quarters Lab) is jconra.com/?edit
@@ -308,7 +309,7 @@ function loadRoom(name) {
   placeSitter();
   $('boot')?.remove();
   bootProgress('cabin', 1); loadSitter(); loadStation();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getMap: () => mapSet, getTown: () => town, TOWN_INPUT });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getProps: () => PROPS, getMap: () => mapSet, getTown: () => town, TOWN_INPUT });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; if (e.total) bootProgress('cabin', e.loaded / e.total); },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -1405,8 +1406,10 @@ const PROP_SETS = {
     // Jacob's bass, leaning against the side of the desk's drawer unit, headstock up, facing the room
     { name: 'bass', file: '/models/props/bass.glb', x: -1.22, y: 1.79, z: -0.41, yaw: 74, lean: -2, height: 1.12 },   // where Jacob hung it (2026-09-20)
     // Jacob's Gladius as a desk model on a display stand; the model turns on the rod's tip, the stand stays flat
-    // a poster over the bed: music Jacob likes (24 x 36 in), hung in front of the wall's rail so the rail does not cross it
-    { name: 'ska poster', image: '/textures/posters/ska.jpg', x: -1.49, y: 1.45, z: 0.45, yaw: 90, lean: 0, height: 0.91, frame: true },
+    // a poster over the bed, under the book ledge: music Jacob likes (16 x 24 in)
+    { name: 'ska poster', image: '/textures/posters/ska.jpg', x: -1.63, y: 1.38, z: 0.1, yaw: 90, lean: 0, height: 0.61, frame: true },
+    // the books Jacob likes, along the ledge over the bed (spines to the room); a click lists them
+    { name: 'books', books: true, x: -1.525, y: 2.132, z: 1.2, yaw: 90, lean: 0, height: 1, length: 1.42 },
     { name: 'gladius', file: '/models/props/gladius.glb', x: -1.29, y: 2.21, z: -0.71, yaw: -47, lean: 0, height: 0.33, stand: true, pitch: -15, roll: -72, spin: 111, rise: 0.51, belly: -1 },   // on the shelf by the bass (Jacob, 2026-09-23)
   ],
 };
@@ -1414,7 +1417,7 @@ let PROPS = [];
 function buildProps(name) {
   for (const pr of PROPS) if (pr.obj) { room.remove(pr.obj); pr.obj.traverse(o => { if (o.isMesh) { o.geometry.dispose(); const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { m.map?.dispose(); m.dispose(); }); } }); }
   PROPS = (PROP_SETS[name] || []).map(spec => ({ ...spec, obj: null }));
-  PROPS.forEach((pr, i) => pr.image ? buildPoster(pr, i) : loader.load(pr.file, (gltf) => {
+  PROPS.forEach((pr, i) => pr.books ? buildBooks(pr, i) : pr.image ? buildPoster(pr, i) : loader.load(pr.file, (gltf) => {
     const model = gltf.scene; model.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3());
     // stood on its own base, centred, scaled to its real height
@@ -1445,6 +1448,18 @@ function buildProps(name) {
 // A POSTER: the picture on a plane at its own proportions, one metre tall (the prop's height scales
 // it), standing on its bottom edge like the models so the same sliders place it; matte, a hair off
 // the wall so it never fights it, and a slim black frame if `frame`.
+function buildBooks(pr, i) {
+  // built on the next tick: loadRoom clears the room's old children right after buildProps, and
+  // the books (unlike the models, which load) would otherwise be cleared with them
+  setTimeout(() => buildBooksNow(pr, i), 0);
+}
+function buildBooksNow(pr, i) {
+  if (!PROPS.includes(pr)) return;                                   // the room changed again meanwhile
+  const { group, picks } = buildBookshelf({ length: pr.length || 1.3 });
+  const holder = new THREE.Group(); holder.name = 'Prop_' + pr.name; holder.add(group);
+  pr.obj = holder; pr.picks = picks; room.add(holder); placeProp(pr);
+  if (i === propIdx) showProp();
+}
 function buildPoster(pr, i) {
   new THREE.TextureLoader().load(pr.image, (tex) => {
     tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
@@ -1583,21 +1598,45 @@ buildScreens(build);
   // a tap on a screen that has a link opens it; a drag is the camera, not a tap
   const ray = new THREE.Raycaster(), down = new THREE.Vector2();
   renderer.domElement.addEventListener('pointerdown', e => down.set(e.clientX, e.clientY));
+  // what the pointer is over: a screen with a link, or a book (the nearest of either)
+  const pointAt = (e) => {
+    ray.setFromCamera(new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
+    const picks = PROPS.flatMap(pr => pr.picks || []);
+    const hit = ray.intersectObjects([...SCREENS, ...picks], false)[0];
+    if (!hit) return null;
+    if (hit.object.userData.book) return { book: hit.object.userData.book };
+    return hit.object.href ? { href: hit.object.href } : null;
+  };
   renderer.domElement.addEventListener('pointerup', e => {
-    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) return;
-    ray.setFromCamera(new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
-    const hit = ray.intersectObjects(SCREENS, false)[0];
-    if (hit && hit.object.href) location.href = hit.object.href;
+    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6 || currentSet !== 'cabin') return;
+    const at = pointAt(e);
+    if (at && at.href) location.href = at.href;
+    else if (at && at.book) openLikes(at.book);
   });
-  // the pointing hand over a screen that is a link, so it reads as one
+  // the pointing hand over anything that does something, and a tag saying what a book is
+  const tag = $('hoverTag');
   renderer.domElement.addEventListener('pointermove', e => {
-    if (e.pointerType !== 'mouse' || e.buttons) return;
-    if (currentSet !== 'cabin') { if (renderer.domElement.style.cursor === 'pointer') renderer.domElement.style.cursor = ''; return; }
-    ray.setFromCamera(new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
-    const hit = ray.intersectObjects(SCREENS, false)[0];
-    renderer.domElement.style.cursor = hit && hit.object.href ? 'pointer' : '';
+    if (e.pointerType !== 'mouse' || e.buttons || currentSet !== 'cabin') { renderer.domElement.style.cursor = ''; tag.classList.remove('on'); return; }
+    const at = pointAt(e);
+    renderer.domElement.style.cursor = at ? 'pointer' : '';
+    if (at && at.book) {
+      tag.innerHTML = `<b>${at.book.title}</b><br>${at.book.series.name} · ${at.book.series.author}`;
+      tag.style.left = Math.min(e.clientX + 16, innerWidth - 280) + 'px'; tag.style.top = (e.clientY + 18) + 'px'; tag.classList.add('on');
+    } else tag.classList.remove('on');
   });
+  renderer.domElement.addEventListener('pointerleave', () => tag.classList.remove('on'));
 }
+// THE LIKES CARD: a click on a book lists every series on the shelf, the one clicked lit. The film
+// holds while it is open, so the idle auto-play does not carry on underneath it.
+function openLikes(book) {
+  $('likesTitle').textContent = 'Books I like';
+  $('likesList').innerHTML = SERIES.map(s => `<li class="${s === book.series ? 'hit' : ''}">${s.name}<span>${s.author}</span></li>`).join('');
+  $('likesCard').classList.add('on'); $('hoverTag').classList.remove('on');
+  SEQ.playing = false; RESUME.hold = true;
+}
+function closeLikes() { $('likesCard').classList.remove('on'); scrubbed(); }
+$('likesClose').onclick = closeLikes;
+addEventListener('keydown', e => { if (e.key === 'Escape' && $('likesCard').classList.contains('on')) closeLikes(); });
 
 // ── camera views, in metres inside the cabin ────────────────────────────────────
 const VIEWS = {
@@ -1783,7 +1822,7 @@ $('copy').onclick = () => {
   const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, helmet: (({ show, ...h }) => h)(HELMET),
     map: { ...MAPFIT },
     pins: Object.fromEntries(Object.entries(PINS).map(([k, p]) => [k, p.fx !== undefined ? { fx: +p.fx.toFixed(3), fy: +p.fy.toFixed(3) } : p])),
-    fighter: { seatForwardCm: Math.round(-HANGAR.seatBack * 100), seatDownCm: Math.round(HANGAR.seatDown * 100), recline: HANGAR.recline, canopyDeg: HANGAR.canopyDeg, canopyDropCm: Math.round(HANGAR.canopyDrop * 100), canopySlideCm: Math.round(HANGAR.canopySlide * 100) }, props: PROPS.map(({ obj, rod, pivot, ...p }) => p), screens: SCREEN_FIT[build] || [], intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) },
+    fighter: { seatForwardCm: Math.round(-HANGAR.seatBack * 100), seatDownCm: Math.round(HANGAR.seatDown * 100), recline: HANGAR.recline, canopyDeg: HANGAR.canopyDeg, canopyDropCm: Math.round(HANGAR.canopyDrop * 100), canopySlideCm: Math.round(HANGAR.canopySlide * 100) }, props: PROPS.map(({ obj, rod, pivot, picks, ...p }) => p), screens: SCREEN_FIT[build] || [], intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) },
     timing: { tour: TOUR.map(s => s.t), map: (({ glow, tourEnd, shipIn, shipAt, dive, diveEnd, fire, flash, clear, clouds }) => ({ glow, tourEnd, shipIn, shipAt, dive, diveEnd, fire, flash, clear, clouds }))(MAP), hangar: { walk: HANGAR.walk, sit: HANGAR.sit, canopy: HANGAR.canopy, roll: HANGAR.roll }, flybys: FLYBYS.map(f => ({ t0: f.t0, t1: f.t1, ...(f.line ? { at: f.line.at } : {}) })) }, earth: { ...EARTH },
     light: { cabin: cabin.intensity, screens: screens.intensity, sun: sun.intensity, ambient: ambient.intensity, exposure: renderer.toneMappingExposure },
     openWindows: $('openWindows').checked };
