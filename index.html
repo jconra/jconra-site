@@ -135,7 +135,13 @@
     <div class="row"><label for="propZ">Toward the window</label><output id="propZOut"></output><input id="propZ" type="range" min="-1.9" max="1.9" step="0.01" value="0" data-prop="z"></div>
     <div class="row"><label for="propY">Height off the floor</label><output id="propYOut"></output><input id="propY" type="range" min="0" max="2.5" step="0.01" value="0.45" data-prop="y"></div>
     <div class="row"><label for="propYaw">Turn</label><output id="propYawOut"></output><input id="propYaw" type="range" min="-180" max="180" step="1" value="0" data-prop="yaw"></div>
-    <div class="row"><label for="propLean">Lean back</label><output id="propLeanOut"></output><input id="propLean" type="range" min="-30" max="45" step="1" value="0" data-prop="lean"></div>
+    <div class="row" id="propLeanRow"><label for="propLean">Lean back</label><output id="propLeanOut"></output><input id="propLean" type="range" min="-30" max="45" step="1" value="0" data-prop="lean"></div>
+    <div id="propOnStand">
+      <div class="row"><label for="propPitch">Model pitch (nose up / down)</label><output id="propPitchOut"></output><input id="propPitch" type="range" min="-180" max="180" step="1" value="0" data-prop="pitch"></div>
+      <div class="row"><label for="propRoll">Model roll (bank)</label><output id="propRollOut"></output><input id="propRoll" type="range" min="-180" max="180" step="1" value="0" data-prop="roll"></div>
+      <div class="row"><label for="propSpin">Model turn on the stand</label><output id="propSpinOut"></output><input id="propSpin" type="range" min="-180" max="180" step="1" value="0" data-prop="spin"></div>
+      <div class="row"><label for="propRise">Rod length</label><output id="propRiseOut"></output><input id="propRise" type="range" min="0.05" max="0.6" step="0.01" value="0.18" data-prop="rise"></div>
+    </div>
     <div class="row"><label for="propH">Size (height)</label><output id="propHOut"></output><input id="propH" type="range" min="0.05" max="2.5" step="0.01" value="1" data-prop="height"></div>
 
     <h2>Earth outside</h2>

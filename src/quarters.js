@@ -1405,8 +1405,8 @@ const PROP_SETS = {
   Smart: [
     // Jacob's bass, leaning against the side of the desk's drawer unit, headstock up, facing the room
     { name: 'bass', file: '/models/props/bass.glb', x: -1.22, y: 1.79, z: -0.41, yaw: 74, lean: -2, height: 1.12 },   // where Jacob hung it (2026-09-20)
-    // Jacob's Gladius as a desk model, nose down on a display stand at the right end of the desk
-    { name: 'gladius', file: '/models/props/gladius.glb', x: 0.62, y: 1.275, z: -1.02, yaw: -25, lean: 0, height: 0.3, stand: true },
+    // Jacob's Gladius as a desk model on a display stand; the model turns on the rod's tip, the stand stays flat
+    { name: 'gladius', file: '/models/props/gladius.glb', x: -1.40, y: 2.21, z: -0.97, yaw: -25, lean: 0, height: 0.33, stand: true, pitch: 0, roll: 0, spin: 0, rise: 0.18 },   // on the shelf by the bass (Jacob, 2026-09-23)
   ],
 };
 let PROPS = [];
@@ -1429,7 +1429,10 @@ function buildProps(name) {
       const base = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.29, 0.035, 40), standMat); base.position.y = 0.0175;
       const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.016, 0.16, 12), standMat); rod.position.y = 0.035 + 0.08;
       for (const m of [base, rod]) { m.castShadow = m.receiveShadow = true; holder.add(m); }
-      model.position.y += 0.18;
+      // the model hangs from a pivot at the rod's tip, touching it with its lowest point, so pitch,
+      // roll and turn move the aircraft alone and the stand stays flat on the shelf
+      const pivot = new THREE.Group(); pivot.name = 'standPivot'; holder.remove(model); pivot.add(model); holder.add(pivot);
+      pr.rod = rod; pr.pivot = pivot;
     }
     pr.obj = holder; room.add(holder); placeProp(pr);
     if (i === propIdx) showProp();
@@ -1443,9 +1446,16 @@ function placeProp(pr) {
   pr.obj.rotation.set(0, 0, 0);
   pr.obj.rotateY(THREE.MathUtils.degToRad(pr.yaw)); pr.obj.rotateX(THREE.MathUtils.degToRad(-pr.lean));
   pr.obj.scale.setScalar(pr.height);
+  if (pr.pivot) {
+    const rise = pr.rise ?? 0.18;
+    pr.rod.scale.y = (rise - 0.035) / 0.16; pr.rod.position.y = 0.035 + (rise - 0.035) / 2;
+    pr.pivot.position.set(0, rise, 0);
+    pr.pivot.rotation.set(0, 0, 0);
+    pr.pivot.rotateY(THREE.MathUtils.degToRad(pr.spin || 0)); pr.pivot.rotateX(THREE.MathUtils.degToRad(pr.pitch || 0)); pr.pivot.rotateZ(THREE.MathUtils.degToRad(pr.roll || 0));
+  }
 }
 let propIdx = 0;
-const PROPFIELDS = { propX: 'x', propZ: 'z', propY: 'y', propYaw: 'yaw', propLean: 'lean', propH: 'height' };
+const PROPFIELDS = { propX: 'x', propZ: 'z', propY: 'y', propYaw: 'yaw', propLean: 'lean', propH: 'height', propPitch: 'pitch', propRoll: 'roll', propSpin: 'spin', propRise: 'rise' };
 function buildPropPicker() {
   const list = $('propPick'); if (!list) return;
   list.innerHTML = '';
@@ -1454,7 +1464,9 @@ function buildPropPicker() {
 }
 function showProp() {
   const pr = PROPS[propIdx]; if (!pr) return;
-  for (const [id, key] of Object.entries(PROPFIELDS)) { const el = $(id); if (!el) continue; el.value = pr[key]; $(id + 'Out').textContent = SLIDERS[id][1](+el.value); }
+  for (const [id, key] of Object.entries(PROPFIELDS)) { const el = $(id); if (!el || pr[key] === undefined) continue; el.value = pr[key]; $(id + 'Out').textContent = SLIDERS[id][1](+el.value); }
+  // a model on a stand turns on the stand instead of leaning (leaning would tip the stand too)
+  $('propLeanRow').style.display = pr.stand ? 'none' : ''; $('propOnStand').style.display = pr.stand ? '' : 'none';
 }
 function editProp(id, v) { const pr = PROPS[propIdx]; if (!pr) return; pr[PROPFIELDS[id]] = v; placeProp(pr); }
 
@@ -1633,6 +1645,10 @@ const SLIDERS = {
   propY:      [v => editProp('propY', v), v => v.toFixed(2) + ' m'],
   propYaw:    [v => editProp('propYaw', v), v => v.toFixed(0) + '°'],
   propLean:   [v => editProp('propLean', v), v => v.toFixed(0) + '°'],
+  propPitch:  [v => editProp('propPitch', v), v => v.toFixed(0) + '°'],
+  propRoll:   [v => editProp('propRoll', v), v => v.toFixed(0) + '°'],
+  propSpin:   [v => editProp('propSpin', v), v => v.toFixed(0) + '°'],
+  propRise:   [v => editProp('propRise', v), v => (v * 100).toFixed(0) + '% of its height'],
   propH:      [v => editProp('propH', v), v => v.toFixed(2) + ' m'],
   keyT:       [v => editKey('keyT', v), v => v.toFixed(2) + ' s'],
   camX:       [v => editKey('camX', v), v => v.toFixed(2) + ' m'],
@@ -1737,7 +1753,7 @@ $('copy').onclick = () => {
   const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, helmet: (({ show, ...h }) => h)(HELMET),
     map: { ...MAPFIT },
     pins: Object.fromEntries(Object.entries(PINS).map(([k, p]) => [k, p.fx !== undefined ? { fx: +p.fx.toFixed(3), fy: +p.fy.toFixed(3) } : p])),
-    fighter: { seatForwardCm: Math.round(-HANGAR.seatBack * 100), seatDownCm: Math.round(HANGAR.seatDown * 100), recline: HANGAR.recline, canopyDeg: HANGAR.canopyDeg, canopyDropCm: Math.round(HANGAR.canopyDrop * 100), canopySlideCm: Math.round(HANGAR.canopySlide * 100) }, props: PROPS.map(({ obj, ...p }) => p), screens: SCREEN_FIT[build] || [], intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) },
+    fighter: { seatForwardCm: Math.round(-HANGAR.seatBack * 100), seatDownCm: Math.round(HANGAR.seatDown * 100), recline: HANGAR.recline, canopyDeg: HANGAR.canopyDeg, canopyDropCm: Math.round(HANGAR.canopyDrop * 100), canopySlideCm: Math.round(HANGAR.canopySlide * 100) }, props: PROPS.map(({ obj, rod, pivot, ...p }) => p), screens: SCREEN_FIT[build] || [], intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) },
     timing: { tour: TOUR.map(s => s.t), map: (({ glow, tourEnd, shipIn, shipAt, dive, diveEnd, fire, flash, clear, clouds }) => ({ glow, tourEnd, shipIn, shipAt, dive, diveEnd, fire, flash, clear, clouds }))(MAP), hangar: { walk: HANGAR.walk, sit: HANGAR.sit, canopy: HANGAR.canopy, roll: HANGAR.roll }, flybys: FLYBYS.map(f => ({ t0: f.t0, t1: f.t1, ...(f.line ? { at: f.line.at } : {}) })) }, earth: { ...EARTH },
     light: { cabin: cabin.intensity, screens: screens.intensity, sun: sun.intensity, ambient: ambient.intensity, exposure: renderer.toneMappingExposure },
     openWindows: $('openWindows').checked };
