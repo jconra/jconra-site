@@ -82,9 +82,46 @@ function mossTexture(size = 512) {
     speck(g, s, r, 1800, ['#5f8a34', '#3f5f24', '#76a040', '#4d7a2c'], 2, 6, 0.7);
   });
 }
+// THE SPLAT: where each forest-floor layer goes. Every layer has its own noise - the shape of it,
+// how big a patch is, how much ground it covers, how soft its edge is, how strongly it shows - and
+// all of them share the fractal settings, a domain warp (which bends straight noise into wandering
+// shapes) and a fine "breakup" noise that roughens every edge so patches look torn, not blurred.
+// Tuned in the Tree Lab; the town uses the same defaults.
+// Noise shapes: 0 value, 1 gradient (Perlin), 2 cellular blobs, 3 ridged, 4 billow, 5 patches
+// (a flat random value per cell, for a hard-edged mosaic).
+export const NOISE_TYPES = ['value', 'gradient', 'cellular blobs', 'ridged', 'billow', 'patches'];
+export const SPLAT_LAYERS = ['needles', 'leaves', 'moss', 'ferns'];
+export const SPLAT_DEFAULTS = {
+  octaves: 4, lacunarity: 2.1, gain: 0.5, contrast: 1.8,   // contrast spreads the noise back out: averaging octaves bunches it round the middle
+  warp: 6, warpSize: 22,                      // metres the noise is pushed around, and the size of the push
+  breakup: 0.14, breakupSize: 2.2,            // how much the fine noise roughens edges, and its grain in metres
+  tile: 1.6, antiTile: 0.4,                   // metres a texture repeats over; how much of a second, larger read hides the repeat
+  needles: { type: 1, size: 26, cover: 0.38, soft: 0.05, strength: 1, tex: 1 },
+  leaves:  { type: 1, size: 14, cover: 0.3,  soft: 0.05, strength: 1, tex: 1 },
+  moss:    { type: 2, size: 7,  cover: 0.22, soft: 0.06, strength: 0.9, tex: 1.2 },
+  ferns:   { type: 0, size: 11, cover: 0.18, soft: 0.05, strength: 1, tex: 0.8 },
+  paths:   { type: 1, size: 60, width: 0.012, soft: 0.012, strength: 0.9, tex: 1 },
+  debug: 0,                                   // 1 shows the layers as flat colours instead of pictures
+};
+export function splatUniforms(set = SPLAT_DEFAULTS) {
+  const u = {
+    sFractal: { value: new THREE.Vector4() }, sWarp: { value: new THREE.Vector2() }, sBreak: { value: new THREE.Vector2() },
+    sTile: { value: new THREE.Vector2() }, sDebug: { value: 0 }, sPath: { value: new THREE.Vector4() }, sPathB: { value: new THREE.Vector2() },
+  };
+  for (const k of SPLAT_LAYERS) { u['s_' + k] = { value: new THREE.Vector4() }; u['s_' + k + 'B'] = { value: new THREE.Vector2() }; }
+  applySplat(u, set);
+  return u;
+}
+export function applySplat(u, set) {
+  u.sFractal.value.set(set.octaves, set.lacunarity, set.gain, set.contrast); u.sWarp.value.set(set.warp, set.warpSize);
+  u.sBreak.value.set(set.breakup, set.breakupSize); u.sTile.value.set(set.tile, set.antiTile); u.sDebug.value = set.debug;
+  for (const k of SPLAT_LAYERS) { const l = set[k]; u['s_' + k].value.set(l.type, l.size, l.cover, l.soft); u['s_' + k + 'B'].value.set(l.strength, l.tex); }
+  const p = set.paths; u.sPath.value.set(p.type, p.size, p.width, p.soft); u.sPathB.value.set(p.strength, p.tex);
+}
+
 // `layout`: { map: class texture (R road, G grass, B water), metres } from townLayout.js, laid over
 // the town's square; where it says road or grass the noise floor gives way to asphalt or lawn
-export function groundMaterial({ base = '/textures/ground/', metresPerTile = 1.6, clearing = { x: 0, z: 0, radius: 260 }, light = false, layout = null } = {}) {
+export function groundMaterial({ base = '/textures/ground/', clearing = { x: 0, z: 0, radius: 260 }, light = false, layout = null, splat = SPLAT_DEFAULTS } = {}) {
   // Jacob's set (2026-09-22): forest litter as the base, needle duff and leaf drifts by noise, fern
   // and moss patches, dirt on the paths, dark dirt in the clearing. Seven pictures; a machine
   // without WebGL2 has too few texture units for them all, so it drops the ferns and the dark dirt.
@@ -92,41 +129,84 @@ export function groundMaterial({ base = '/textures/ground/', metresPerTile = 1.6
   const forest = L('forest', needlesTexture), needles = L('needles', needlesTexture), leaves = L('leaves', leavesTexture), moss = L('moss', mossTexture), dirt = L('dirt', dirtTexture);
   const ferns = light ? null : L('ferns', mossTexture), darkDirt = light ? null : L('darkDirt', dirtTexture);
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0 });
+  const su = splatUniforms(splat);
+  mat.userData.splat = su;                      // applySplat(mat.userData.splat, settings) retunes it live
   mat.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, { forestMap: { value: forest }, needlesMap: { value: needles }, leavesMap: { value: leaves }, mossMap: { value: moss }, dirtMap: { value: dirt },
-      fernsMap: { value: ferns || moss }, darkDirtMap: { value: darkDirt || dirt }, tileM: { value: metresPerTile }, clearingAt: { value: new THREE.Vector3(clearing.x, clearing.z, clearing.radius) },
+    Object.assign(sh.uniforms, su, { forestMap: { value: forest }, needlesMap: { value: needles }, leavesMap: { value: leaves }, mossMap: { value: moss }, dirtMap: { value: dirt },
+      fernsMap: { value: ferns || moss }, darkDirtMap: { value: darkDirt || dirt }, clearingAt: { value: new THREE.Vector3(clearing.x, clearing.z, clearing.radius) },
       layoutMap: { value: layout ? layout.map : dirt }, layoutMap2: { value: layout ? layout.map2 : dirt }, layoutMetres: { value: layout ? layout.metres : 0 },
       roadMap: { value: L('asphalt', roadTexture) }, grassMap: { value: L('grassMed', grassTexture) }, concreteMap: { value: L('concrete', rockTexture) }, dryMap: { value: L('grassDry', grassTexture) }, darkGrassMap: { value: L('grassDark', grassTexture) } });
     sh.vertexShader = 'varying vec3 vWorld;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = `
       uniform sampler2D forestMap; uniform sampler2D needlesMap; uniform sampler2D leavesMap; uniform sampler2D mossMap; uniform sampler2D dirtMap;
       ${light ? '' : 'uniform sampler2D fernsMap; uniform sampler2D darkDirtMap;'}
-      uniform float tileM; uniform vec3 clearingAt;
+      uniform vec3 clearingAt;
+      uniform vec4 sFractal; uniform vec2 sWarp; uniform vec2 sBreak; uniform vec2 sTile; uniform float sDebug;
+      uniform vec4 s_needles; uniform vec2 s_needlesB; uniform vec4 s_leaves; uniform vec2 s_leavesB;
+      uniform vec4 s_moss; uniform vec2 s_mossB; uniform vec4 s_ferns; uniform vec2 s_fernsB; uniform vec4 sPath; uniform vec2 sPathB;
       uniform sampler2D layoutMap; uniform sampler2D layoutMap2; uniform float layoutMetres; uniform sampler2D roadMap; uniform sampler2D grassMap; uniform sampler2D concreteMap; uniform sampler2D dryMap; uniform sampler2D darkGrassMap;
       varying vec3 vWorld;
       float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      vec2 hash22(vec2 p) { return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453); }
       float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
         return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), f.x), mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), f.x), f.y); }
-      float fbm(vec2 p) { return 0.5 * vnoise(p) + 0.25 * vnoise(p * 2.03 + 7.1) + 0.125 * vnoise(p * 4.1 + 3.3) + 0.0625 * vnoise(p * 8.3 + 1.7); }
-      // a picture read at two scales and blended, so its repeat is not seen
-      vec3 twice(sampler2D t, vec2 uv, float k, vec2 off) { return mix(texture2D(t, uv).rgb, texture2D(t, uv * k + off).rgb, 0.4); }
+      float gnoise(vec2 p) { vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
+        float a = dot(hash22(i) * 2.0 - 1.0, f), b = dot(hash22(i + vec2(1.0, 0.0)) * 2.0 - 1.0, f - vec2(1.0, 0.0));
+        float c = dot(hash22(i + vec2(0.0, 1.0)) * 2.0 - 1.0, f - vec2(0.0, 1.0)), d = dot(hash22(i + vec2(1.0, 1.0)) * 2.0 - 1.0, f - vec2(1.0, 1.0));
+        return clamp(0.5 + 0.9 * mix(mix(a, b, u.x), mix(c, d, u.x), u.y), 0.0, 1.0); }
+      // distance to the nearest cell point, and that cell's own random value
+      vec2 cells(vec2 p) { vec2 i = floor(p), f = fract(p); float best = 8.0, v = 0.0;
+        for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) { vec2 g = vec2(float(x), float(y)), r = g + hash22(i + g) - f; float d = dot(r, r); if (d < best) { best = d; v = hash2(i + g + 17.3); } }
+        return vec2(sqrt(best), v); }
+      float noiseOf(vec2 p, float type) {
+        if (type < 0.5) return vnoise(p);
+        if (type < 1.5) return gnoise(p);
+        if (type < 2.5) return 1.0 - min(cells(p).x, 1.0);
+        if (type < 3.5) return 1.0 - abs(gnoise(p) * 2.0 - 1.0);
+        if (type < 4.5) return abs(gnoise(p) * 2.0 - 1.0);
+        return cells(p).y;
+      }
+      float field(vec2 p, float type, float seed) {
+        p += seed * vec2(37.1, 91.7);
+        float sum = 0.0, amp = 1.0, norm = 0.0;
+        for (int i = 0; i < 6; i++) { if (float(i) >= sFractal.x) break; sum += amp * noiseOf(p, type); norm += amp; p = p * sFractal.y + vec2(7.1, 3.3); amp *= sFractal.z; }
+        return clamp(0.5 + (sum / max(norm, 1e-4) - 0.5) * sFractal.w, 0.0, 1.0);
+      }
+      // a layer's share of the ground: its noise over its patch size, cut at its coverage, edges roughened
+      float layer(vec2 m, vec4 a, vec2 b, float seed, float grain) {
+        float f = field(m / max(a.y, 0.1), a.x, seed) + grain;
+        float cut = 1.0 - a.z;
+        return smoothstep(cut - a.w, cut + a.w, f) * b.x;
+      }
+      vec3 twice(sampler2D t, vec2 uv, float k, vec2 off) { return mix(texture2D(t, uv).rgb, texture2D(t, uv * k + off).rgb, sTile.y); }
     ` + sh.fragmentShader.replace('#include <map_fragment>', `
       vec2 rel = vWorld.xz - clearingAt.xy;
-      vec2 uvW = rel / tileM;
-      float n = fbm(rel * 0.010), n2 = fbm(rel * 0.045 + 40.0), n3 = fbm(rel * 0.02 + 90.0), n4 = fbm(rel * 0.03 + 150.0);
-      vec3 ground = twice(forestMap, uvW, 0.29, vec2(0.37, 0.11));
-      // needle duff in the higher ground of the slow noise, leaf drifts in the low
-      ground = mix(ground, twice(needlesMap, uvW, 0.27, vec2(0.13, 0.59)), smoothstep(0.52, 0.66, n));
-      ground = mix(ground, twice(leavesMap, uvW, 0.31, vec2(0.71, 0.29)), smoothstep(0.46, 0.34, n));
-      // moss in the damp spots, fern patches by their own noise
-      ground = mix(ground, twice(mossMap, uvW * 1.2, 0.29, vec2(0.41, 0.83)), smoothstep(0.64, 0.8, n2));
-      ${light ? '' : 'ground = mix(ground, twice(fernsMap, uvW * 0.8, 0.27, vec2(0.23, 0.67)), smoothstep(0.62, 0.76, n4));'}
-      // bare dirt on the winding paths; the clearing is dark, trodden earth
-      float path = 1.0 - smoothstep(0.0, 0.035, abs(n3 - 0.5));
+      vec2 uvW = rel / sTile.x;
+      // the warp bends every layer's noise the same way, so the patches wander together
+      vec2 m = rel + sWarp.x * (vec2(vnoise(rel / max(sWarp.y, 0.1)), vnoise(rel / max(sWarp.y, 0.1) + 19.7)) * 2.0 - 1.0);
+      float grain = (vnoise(rel / max(sBreak.y, 0.05)) - 0.5) * sBreak.x;
+      float wNeedles = layer(m, s_needles, s_needlesB, 1.0, grain);
+      float wLeaves = layer(m, s_leaves, s_leavesB, 2.0, grain);
+      float wMoss = layer(m, s_moss, s_mossB, 3.0, grain);
+      float wFerns = ${light ? '0.0' : 'layer(m, s_ferns, s_fernsB, 4.0, grain)'};
+      float pf = field(m / max(sPath.y, 0.1), sPath.x, 5.0) + grain * 0.3;
+      float wPath = (1.0 - smoothstep(sPath.z, sPath.z + sPath.w, abs(pf - 0.5))) * sPathB.x;
       float toTown = distance(vWorld.xz, clearingAt.xy) / clearingAt.z;
-      float clearingW = 1.0 - smoothstep(0.85, 1.15, toTown + (n2 - 0.5) * 0.25);
-      ground = mix(ground, twice(dirtMap, uvW, 0.23, vec2(0.71, 0.29)), path * 0.9);
+      float clearingW = 1.0 - smoothstep(0.85, 1.15, toTown + grain);
+      vec3 ground = twice(forestMap, uvW, 0.29, vec2(0.37, 0.11));
+      ground = mix(ground, twice(needlesMap, uvW * s_needlesB.y, 0.27, vec2(0.13, 0.59)), wNeedles);
+      ground = mix(ground, twice(leavesMap, uvW * s_leavesB.y, 0.31, vec2(0.71, 0.29)), wLeaves);
+      ground = mix(ground, twice(mossMap, uvW * s_mossB.y, 0.29, vec2(0.41, 0.83)), wMoss);
+      ${light ? '' : 'ground = mix(ground, twice(fernsMap, uvW * s_fernsB.y, 0.27, vec2(0.23, 0.67)), wFerns);'}
+      ground = mix(ground, twice(dirtMap, uvW * sPathB.y, 0.23, vec2(0.71, 0.29)), wPath);
       ${light ? 'ground = mix(ground, twice(dirtMap, uvW, 0.23, vec2(0.71, 0.29)) * 0.6, clearingW);' : 'ground = mix(ground, twice(darkDirtMap, uvW, 0.23, vec2(0.51, 0.19)), clearingW);'}
+      // the mask view: forest floor grey, needles red, leaves orange, moss green, ferns cyan, paths white, clearing dark
+      if (sDebug > 0.5) {
+        vec3 d = vec3(0.35);
+        d = mix(d, vec3(0.8, 0.15, 0.1), wNeedles); d = mix(d, vec3(1.0, 0.6, 0.1), wLeaves); d = mix(d, vec3(0.2, 0.75, 0.2), wMoss);
+        d = mix(d, vec3(0.1, 0.8, 0.85), wFerns); d = mix(d, vec3(1.0), wPath); d = mix(d, vec3(0.1), clearingW);
+        ground = d;
+      }
       // the drawn layout: roads, lawns and water where the map says, inside its square
       if (layoutMetres > 0.0) {
         vec2 luv = rel / layoutMetres + 0.5;
@@ -142,6 +222,6 @@ export function groundMaterial({ base = '/textures/ground/', metresPerTile = 1.6
     `);
     mat.userData.shader = sh;
   };
-  mat.customProgramCacheKey = () => 'splat-ground-7' + (light ? 'L' : '');
+  mat.customProgramCacheKey = () => 'splat-ground-9' + (light ? 'L' : '');
   return mat;
 }

@@ -93,7 +93,7 @@ export function buildTown(parts, projects, { shipLength = 7, renderer, origin = 
   });
 
   // FOREST: the imposter forest, laid out on tiles around the fighter; the town's circle kept clear
-  const forest = new Forest(renderer, floor, { base: '/models/trees/', light, tile: 420, tiles: 7, perTile: light ? 120 : 220, imposterAt: light ? 0 : 140, band: 40, grid: light ? 8 : 12, cell: 192, detail: 'coarse', shadows: false,
+  const forest = new Forest(renderer, floor, { base: '/models/trees/', light, tile: 420, tiles: 7, perTile: light ? 120 : 220, imposterAt: light ? 0 : 150, band: 120, ahead: 0.6, grid: light ? 8 : 12, cell: 192, detail: 'sparse', shadows: false,   // the Tree Lab's settings (2026-09-23); shadows need a sun here first
     clear: (x, z) => Math.hypot(x, z) < TOWN_R, sunDir: new THREE.Vector3(0.5, 1, 0.3) });
   const relay = () => {};
   // THE FENCE: the force field round the town, an octagon of emitter posts just inside the tree line

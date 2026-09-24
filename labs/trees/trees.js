@@ -7,14 +7,14 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { bakeImposterSteps, imposterMaterial } from '../../src/objects/imposter.js';
-import { groundMaterial } from '../../src/objects/ground.js';
+import { groundMaterial, applySplat, SPLAT_DEFAULTS, SPLAT_LAYERS, NOISE_TYPES } from '../../src/objects/ground.js';
 import { Understory } from '../../src/objects/understory.js';
 
 const Q = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
-// ?noaa: no multisampling. It costs an integrated GPU a lot of bandwidth on overlapping quads,
-// and the soft leaf edges need it; this is how to measure what it costs
-const AA = !Q.has('noaa');
+// Multisampling is off unless ?aa is in the address (Jacob's default, 2026-09-23). It costs an
+// integrated GPU a lot of bandwidth on overlapping quads, and the soft leaf edges need it.
+const AA = Q.has('aa');
 const renderer = new THREE.WebGLRenderer({ antialias: AA });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
@@ -62,9 +62,9 @@ const SPECIES = [
 // ?heavy in the address force one or the other.
 const weak = !renderer.capabilities.isWebGL2 || Q.has('light');
 const SET = weak && !Q.has('heavy')
-  ? { count: 1500, radius: 900, imposterAt: 60, band: 30, ahead: 0.75, grid: 8, cell: 64, hemi: true, blend: true, nearCap: 600, show: 'both', detail: 'coarse', a2c: true, depth: false, shadows: false, ss: false, blendDist: 200 }
-  : { count: 2500, radius: 1200, imposterAt: 120, band: 40, ahead: 0.75, grid: 12, cell: 96, hemi: true, blend: true, nearCap: 1500, show: 'both', detail: 'coarse', a2c: true, depth: true, shadows: false, ss: false, blendDist: 400 };
-renderer.shadowMap.enabled = SET.shadows;
+  ? { count: 1500, radius: 900, imposterAt: 60, band: 30, ahead: 0.75, grid: 8, cell: 64, hemi: true, blend: true, nearCap: 600, show: 'both', detail: 'sparse', a2c: AA, depth: false, shadows: false, ss: false, blendDist: 200 }
+  : { count: 10000, radius: 1000, imposterAt: 150, band: 120, ahead: 0.6, grid: 12, cell: 192, hemi: true, blend: true, nearCap: 1500, show: 'both', detail: 'sparse', a2c: AA, depth: true, shadows: true, ss: false, blendDist: 400 };   // Jacob's defaults, 2026-09-23
+renderer.shadowMap.enabled = SET.shadows; sun.castShadow = SET.shadows;
 let forest = [];                  // { pos, yaw, scale, tint, sp }
 const built = [];                 // per species: { bake, imposterMesh, meshes: [InstancedMesh...], fade: attribute }
 
@@ -240,7 +240,7 @@ $('parallax').addEventListener('change', e => { SET.parallax = e.target.checked;
 $('depth').addEventListener('change', e => { SET.depth = e.target.checked; for (const b of built) { b.imposter.material.uniforms.useDepth.value = SET.depth ? 1 : 0; b.imposter.material.userData.depthMaterial.uniforms.useDepth.value = SET.depth ? 1 : 0; } });
 $('shadows').addEventListener('change', e => { SET.shadows = e.target.checked; sun.castShadow = SET.shadows; renderer.shadowMap.enabled = SET.shadows; for (const b of built) { b.imposter.castShadow = SET.shadows; b.imposter.material.uniforms.useShadow.value = SET.shadows ? 1 : 0; for (const m of b.meshes) m.castShadow = SET.shadows; } });
 $('aa').checked = AA;
-$('aa').addEventListener('change', e => { const u = new URL(location.href); if (e.target.checked) u.searchParams.delete('noaa'); else u.searchParams.set('noaa', ''); location.href = u.toString(); });
+$('aa').addEventListener('change', e => { const u = new URL(location.href); if (e.target.checked) u.searchParams.set('aa', ''); else u.searchParams.delete('aa'); location.href = u.toString(); });
 $('ss').addEventListener('change', e => { SET.ss = e.target.checked; applyScale(); });
 // render scale: the picture drawn at a fraction of the screen's pixels and stretched up - the cheap
 // opposite of supersampling, and the first thing to try on a weak GPU
@@ -312,7 +312,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 
 // ── go ─────────────────────────────────────────────────────────────────────────
 for (const [id, key] of [['count', 'count'], ['radius', 'radius'], ['imposterAt', 'imposterAt'], ['band', 'band'], ['grid', 'grid'], ['cell', 'cell'], ['ahead', 'ahead']]) { $(id).value = SET[key]; $(id + 'Out').textContent = SLIDERS[id][1](SET[key]); }
-$('detail').value = SET.detail; $('shadows').checked = SET.shadows; $('depth').checked = SET.depth;
+$('detail').value = SET.detail; $('a2c').checked = SET.a2c; $('shadows').checked = SET.shadows; $('depth').checked = SET.depth;
 loadSpecies().then(() => {
   plant(); capAtlas(); bakeAll(buildDraws);
   $('boot').style.display = 'none';
@@ -338,3 +338,68 @@ renderer.setAnimationLoop(() => {
   if (raw > 0) fps += (1 / raw - fps) * Math.min(1, raw * 2);   // weighted by the frame's own length: a two-second frame counts in full, not five percent
   if ((shown += raw) > 0.5) { shown = 0; const i = renderer.info.render; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${i.calls} draws · ${(i.triangles / 1000).toFixed(0)}k triangles · ${nearCount.toLocaleString()} meshes / ${(forest.length - nearCount).toLocaleString()} imposters`; }
 });
+
+// ── ground splatting ────────────────────────────────────────────────────────────
+// every setting of the splat as a control; the ground re-reads them live (no recompile)
+const SPLAT = (() => { try { const v = JSON.parse(localStorage.getItem('treeLab.splat')); if (v) return mergeSplat(v); } catch { /* no storage */ } return mergeSplat({}); })();
+function mergeSplat(v) { const o = JSON.parse(JSON.stringify(SPLAT_DEFAULTS)); for (const k in v) { if (o[k] && typeof o[k] === 'object') Object.assign(o[k], v[k]); else if (k in o) o[k] = v[k]; } return o; }
+function splatChanged() {
+  applySplat(ground.material.userData.splat, SPLAT);
+  try { localStorage.setItem('treeLab.splat', JSON.stringify(SPLAT)); } catch { /* no storage */ }
+  SET.dirty = true;
+}
+const SHARED = [
+  ['octaves', 'Octaves (layers of detail)', 1, 6, 1, v => v],
+  ['lacunarity', 'Octave size step', 1.3, 3.5, 0.05, v => v.toFixed(2) + '×'],
+  ['gain', 'Octave strength step', 0.1, 0.9, 0.01, v => v.toFixed(2)],
+  ['contrast', 'Contrast', 0.5, 4, 0.05, v => v.toFixed(2) + '×'],
+  ['warp', 'Warp (bends the shapes)', 0, 40, 0.5, v => v + ' m'],
+  ['warpSize', 'Warp size', 1, 120, 1, v => v + ' m'],
+  ['breakup', 'Edge breakup', 0, 0.6, 0.01, v => v.toFixed(2)],
+  ['breakupSize', 'Breakup grain', 0.2, 12, 0.1, v => v.toFixed(1) + ' m'],
+  ['tile', 'Picture repeats every', 0.4, 8, 0.1, v => v.toFixed(1) + ' m'],
+  ['antiTile', 'Hide the repeat (second read)', 0, 1, 0.01, v => Math.round(v * 100) + '%'],
+];
+const PER = [
+  ['size', 'Patch size', 1, 200, 0.5, v => v + ' m'],
+  ['cover', 'Coverage', 0, 1, 0.01, v => Math.round(v * 100) + '%'],
+  ['soft', 'Edge softness', 0, 0.3, 0.005, v => v.toFixed(3)],
+  ['strength', 'Strength', 0, 1, 0.01, v => Math.round(v * 100) + '%'],
+  ['tex', 'Picture scale', 0.2, 4, 0.05, v => v.toFixed(2) + '×'],
+];
+const PATH = [['size', 'Path spacing', 5, 400, 1, v => v + ' m'], ['width', 'Path width', 0, 0.2, 0.001, v => v.toFixed(3)], ['soft', 'Edge softness', 0, 0.1, 0.001, v => v.toFixed(3)], ['strength', 'Strength', 0, 1, 0.01, v => Math.round(v * 100) + '%'], ['tex', 'Picture scale', 0.2, 4, 0.05, v => v.toFixed(2) + '×']];
+function splatUi() {
+  const host = $('splat'); host.innerHTML = '';
+  const row = (obj, key, label, min, max, step, fmt, id) => {
+    const d = document.createElement('div'); d.className = 'row';
+    d.innerHTML = `<label for="${id}">${label}</label><output id="${id}Out">${fmt(obj[key])}</output><input id="${id}" type="range" min="${min}" max="${max}" step="${step}" value="${obj[key]}">`;
+    d.querySelector('input').addEventListener('input', e => { obj[key] = +e.target.value; d.querySelector('output').textContent = fmt(obj[key]); splatChanged(); });
+    return d;
+  };
+  const noise = (obj, id) => {
+    const d = document.createElement('div'); d.className = 'row';
+    d.innerHTML = `<label for="${id}">Noise</label><select id="${id}">${NOISE_TYPES.map((n, i) => `<option value="${i}"${i === obj.type ? ' selected' : ''}>${n}</option>`).join('')}</select>`;
+    d.querySelector('select').addEventListener('change', e => { obj.type = +e.target.value; splatChanged(); });
+    return d;
+  };
+  const section = (title, open) => { const det = document.createElement('details'); det.className = 'sec'; det.open = open; det.innerHTML = `<summary>${title}</summary>`; host.appendChild(det); return det; };
+  const shared = section('Shared noise', true);
+  for (const [k, l, a, b, st, f] of SHARED) shared.appendChild(row(SPLAT, k, l, a, b, st, f, 'sp_' + k));
+  for (const name of SPLAT_LAYERS) {
+    const sec = section(name[0].toUpperCase() + name.slice(1), false);
+    sec.appendChild(noise(SPLAT[name], 'sp_' + name + '_type'));
+    for (const [k, l, a, b, st, f] of PER) sec.appendChild(row(SPLAT[name], k, l, a, b, st, f, `sp_${name}_${k}`));
+  }
+  const paths = section('Dirt paths', false);
+  paths.appendChild(noise(SPLAT.paths, 'sp_paths_type'));
+  for (const [k, l, a, b, st, f] of PATH) paths.appendChild(row(SPLAT.paths, k, l, a, b, st, f, 'sp_paths_' + k));
+  $('sDebug').checked = !!SPLAT.debug;
+}
+$('sDebug').addEventListener('change', e => { SPLAT.debug = e.target.checked ? 1 : 0; splatChanged(); });
+$('splatReset').addEventListener('click', () => { const d = mergeSplat({}); for (const k in d) SPLAT[k] = d[k]; splatUi(); splatChanged(); });
+$('splatCopy').addEventListener('click', () => {
+  const out = $('splatOut'); out.style.display = 'block'; out.value = JSON.stringify(SPLAT); out.select();
+  try { navigator.clipboard.writeText(out.value); $('splatCopy').textContent = 'Copied'; setTimeout(() => { $('splatCopy').textContent = 'Copy ground settings'; }, 1200); } catch { /* the box is selected to copy by hand */ }
+});
+splatUi(); splatChanged();
+
