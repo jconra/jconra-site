@@ -12,21 +12,24 @@
    "group": "main",
    "name": "RMRF",
    "text": "Capture the flag on a three.js island: four vehicles, towers, mines and an AI commander that plans its own missions. My biggest project.",
-   "href": "https://rmrfbase.com"
+   "href": "https://rmrfbase.com",
+   "img": "shots/rmrf"
   },
   {
    "id": "valehex",
    "group": "main",
    "name": "Valehex",
    "text": "Build a world together: make a private lobby, agree on the rules, and take turns exploring and founding settlements.",
-   "href": "https://valehex.com"
+   "href": "https://valehex.com",
+   "img": "shots/valehex"
   },
   {
    "id": "montana",
    "group": "main",
    "name": "Montana",
    "text": "Paradise Valley in Montana, built from real terrain.",
-   "href": "https://montana.jconra.com"
+   "href": "https://montana.jconra.com",
+   "img": "shots/montana"
   },
   {
    "id": "shipwrecked",
@@ -34,7 +37,7 @@
    "name": "Shipwrecked",
    "text": "This is a survival game that starts you on a shipwrecked island. It generates the terrain based off of a seed which allows lots of possibilities.",
    "href": "https://shipwrecked.jconra.com/",
-   "img": "shipwrecked"
+   "img": "shots/shipwrecked"
   },
   {
    "id": "ant-farm",
@@ -48,7 +51,8 @@
    "group": "main",
    "name": "Boxing",
    "text": "Stephen versus a chimpanzee. Watch its tell, dodge, then hit back. Round two brings a warrior bug that cannot be beaten.",
-   "href": "/projects/boxing/"
+   "href": "/projects/boxing/",
+   "img": "shots/boxing"
   },
   {
    "id": "td",
@@ -56,7 +60,7 @@
    "name": "Gem Tower Defense",
    "text": "This game lets you build walls and choose gem towers. Then enemies come out and use the A-Star path-finding algorithm to work their way through your maze (unfinished).",
    "href": "/projects/td/index.html",
-   "img": "td"
+   "img": "shots/td"
   },
   {
    "id": "earth",
@@ -64,7 +68,7 @@
    "name": "Earth Model",
    "text": "An Earth model based on height and satalite maps from NASA.",
    "href": "/projects/earth/index.html",
-   "img": "earth"
+   "img": "shots/earth"
   },
   {
    "id": "math-south-park",
@@ -72,7 +76,7 @@
    "name": "South Park Math",
    "text": "Pick a South Park character and walk to the right answer. The UFO beams up the correct one; get it wrong and it takes you.",
    "href": "https://math-games.jconra.com/south-park/",
-   "img": "math-south-park"
+   "img": "shots/math-south-park"
   },
   {
    "id": "math-dino",
@@ -80,7 +84,7 @@
    "name": "Dino Math",
    "text": "Run around as a T-Rex and eat the correct numbers.",
    "href": "https://math-games.jconra.com/dino-math/",
-   "img": "math-dino-math"
+   "img": "shots/math-dino"
   },
   {
    "id": "math-lander",
@@ -88,7 +92,7 @@
    "name": "Lunar Lander Math",
    "text": "Land on the right answer without coming down too hard.",
    "href": "https://math-games.jconra.com/lunar-lander/",
-   "img": "math-lunar-lander"
+   "img": "shots/math-lander"
   },
   {
    "id": "math-snowboard",
@@ -96,7 +100,7 @@
    "name": "Snowboarding Math",
    "text": "Steer the snowboarder through the right equations and skip the wrong ones. Avoid the trees.",
    "href": "https://math-games.jconra.com/snow-board/",
-   "img": "math-snow-board"
+   "img": "shots/math-snowboard"
   },
   {
    "id": "math-murder",
@@ -104,7 +108,7 @@
    "name": "Math Murder",
    "text": "Kill the robot with the right answer on its face before it gets you.",
    "href": "https://math-games.jconra.com/math-murder/",
-   "img": "math-math-murder"
+   "img": "shots/math-murder"
   },
   {
    "id": "lander",
@@ -112,7 +116,7 @@
    "name": "Lander",
    "text": "Try to land on the moon surface without crashing. Then try to make it back up to the lander without running out of fuel! Also from the JavaScript Tutorial.",
    "href": "/projects/lander/index.html",
-   "img": "lander"
+   "img": "shots/lander"
   },
   {
    "id": "missile-defense",
@@ -120,7 +124,7 @@
    "name": "Missile Defense",
    "text": "This might bring back some memories. Try to save the cities for as long as you can. The code is designed to be readable for the JavaScript Tutorial.",
    "href": "/projects/missileDef/index.html",
-   "img": "missileD"
+   "img": "shots/missile-defense"
   },
   {
    "id": "space-game",
@@ -128,7 +132,7 @@
    "name": "Space Game",
    "text": "A game that is actually complete. You try to save the pods in the asteroid field.",
    "href": "/projects/spaceGame/index.html",
-   "img": "spaceGame"
+   "img": "shots/space-game"
   },
   {
    "id": "mazes",
@@ -136,7 +140,7 @@
    "name": "Mazes",
    "text": "Three mazes in one page: a 2D maze solved with A*, my first 3D with no libraries, and a three.js walk through a gallery of pictures.",
    "href": "/projects/maze/",
-   "img": "maze"
+   "img": "shots/mazes"
   },
   {
    "id": "spin3d",
@@ -219,6 +223,14 @@
    "name": "Fire Lab",
    "text": "Volumetric fire on a shader: the flame profile, the noise that churns it, lean and colour, tuned live. Came from RMRF, where the wrecks burn with it.",
    "href": "/labs/fire/"
+  },
+  {
+   "id": "shield",
+   "group": "labs",
+   "name": "Shield Lab",
+   "text": "The force-field bubble: hex grid, rim glow, flashing cells, rings where it is hit, blue to red as it drains. The town's fence and RMRF's vehicle shields share it.",
+   "href": "/labs/shield/",
+   "img": "shots/shield"
   },
   {
    "id": "grass",

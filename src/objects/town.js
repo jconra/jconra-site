@@ -33,9 +33,20 @@ function spiral(n) {
 // a roof with the picture on it, or the name set in type when there is no picture
 // (the box's top face has its picture upside down to a camera coming in over the forest, so it is turned round)
 const upright = (t) => { t.center.set(0.5, 0.5); t.rotation = Math.PI; return t; };
-function roofTexture(project, loader) {
+// The picture is cropped to the roof's own shape (its middle kept) rather than stretched over it,
+// and drawn at powers of two, which WebGL1 needs to mipmap: 1024 along the roof's long side.
+const pot = (v) => Math.pow(2, Math.round(Math.log2(Math.max(64, v))));
+function roofTexture(project, loader, w = 4, d = 3) {
   if (project.img) {
-    const t = loader.load(`/textures/projects/${project.img}.jpg`); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    const long = 1024, cw = w >= d ? long : pot(long * w / d), ch = w >= d ? pot(long * d / w) : long;
+    const cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    new THREE.ImageLoader().load(`/textures/projects/${project.img}.jpg`, (img) => {
+      const want = w / d, have = img.width / img.height;
+      const sw = have > want ? img.height * want : img.width, sh = have > want ? img.height : img.width / want;
+      cv.getContext('2d').drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, 0, 0, cw, ch);
+      t.needsUpdate = true;
+    });
     return upright(t);
   }
   const cv = document.createElement('canvas'); cv.width = 512; cv.height = 384; const g = cv.getContext('2d');
@@ -84,7 +95,7 @@ export function buildTown(parts, projects, { shipLength = 7, renderer, origin = 
     const W = lot ? lot.w : LOT[0], Dp = lot ? lot.d : LOT[1], cx = lot ? lot.x : lx * ROAD, cz = lot ? lot.z : lz * ROAD;
     // the style: set on the map, else by the lot's size (the spiral's lots take turns)
     const style = (lot && lot.style && lot.style !== 'auto') ? lot.style : lot ? autoStyle(W, Dp) : ['office', 'apartments', 'house'][i % 3];
-    const roof = new THREE.MeshStandardMaterial({ map: roofTexture(pr, loader), roughness: 0.6 });
+    const roof = new THREE.MeshStandardMaterial({ map: roofTexture(pr, loader, W, Dp), roughness: 0.6 });
     const { group, body } = makeBuilding({ style, variant: lot && lot.variant, w: W, d: Dp, roofMat: roof, seed: i + 1 });
     // turned round so doors, porches and yards face north, where the fighter comes from; the roof
     // picture's own half turn is taken back so it still reads the right way up from there
