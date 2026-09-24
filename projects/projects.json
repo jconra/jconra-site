@@ -44,7 +44,8 @@
    "group": "main",
    "name": "Ant Farm",
    "text": "A colony digging its nest in a tank of sand, from one queen to galleries full of brood and food. Click to drop food.",
-   "href": "/projects/ant-farm/"
+   "href": "/projects/ant-farm/",
+   "img": "shots/ant-farm"
   },
   {
    "id": "boxing",
@@ -156,7 +157,7 @@
    "name": "Kid Game",
    "text": "An incomplete application that allows easy development for simple games.",
    "href": "/projects/kidGame/index.html",
-   "img": "kidGame"
+   "img": "shots/kid-game"
   },
   {
    "id": "settlers",
@@ -164,7 +165,7 @@
    "name": "Settlers",
    "text": "A 2D Settlers game that I almost finished and then decided to rewrite it. Then it never was finished.",
    "href": "/projects/settlers/index.html",
-   "img": "settlers"
+   "img": "shots/settlers"
   },
   {
    "id": "rotator",
@@ -172,7 +173,7 @@
    "name": "Rotator",
    "text": "",
    "href": "/projects/rotator/index.html",
-   "img": "rotator"
+   "img": "shots/rotator"
   },
   {
    "id": "jeopardy",
@@ -180,49 +181,55 @@
    "name": "Jeopardy",
    "text": "This Jeopardy game is loaded with Linux questions, but you can easily edit the JSON data to customize it.",
    "href": "/projects/jeopardy/index.html",
-   "img": "jeopardy"
+   "img": "shots/jeopardy"
   },
   {
    "id": "sound-lab",
    "group": "labs",
    "name": "Sound Lab",
    "text": "A modular synth in the browser: patch cables, custom waves, a song editor, and the game's own sounds.",
-   "href": "https://sound-lab.jconra.com"
+   "href": "https://sound-lab.jconra.com",
+   "img": "shots/sound-lab"
   },
   {
    "id": "asset-designer",
    "group": "labs",
    "name": "Asset Designer",
    "text": "Builds and polishes the buildings and props that go on RMRF maps.",
-   "href": "https://asset-designer.rmrfbase.com"
+   "href": "https://asset-designer.rmrfbase.com",
+   "img": "shots/asset-designer"
   },
   {
    "id": "home-designer",
    "group": "labs",
    "name": "Home Designer",
    "text": "Draw a house floor by floor - outline, walls, windows, doors, stairs, roofs - and walk through it in 3D. Built for the Montana terrain.",
-   "href": "https://building-designer.jconra.com/"
+   "href": "https://building-designer.jconra.com/",
+   "img": "shots/home-designer"
   },
   {
    "id": "model-lab",
    "group": "labs",
    "name": "Model Lab",
    "text": "Every model on the site in one viewer, in sections: Jacob, the station kit, trees, the bugs, Shipwrecked and the 2019 site. Orbit it, play its animations, take it apart into parts.",
-   "href": "/labs/models/"
+   "href": "/labs/models/",
+   "img": "shots/model-lab"
   },
   {
    "id": "noise",
    "group": "labs",
    "name": "Noise Gallery",
    "text": "The noises the textures are built from, side by side: value, simplex, cellular, ridged, and the ways they stack.",
-   "href": "/labs/noise/"
+   "href": "/labs/noise/",
+   "img": "shots/noise"
   },
   {
    "id": "fire",
    "group": "labs",
    "name": "Fire Lab",
    "text": "Volumetric fire on a shader: the flame profile, the noise that churns it, lean and colour, tuned live. Came from RMRF, where the wrecks burn with it.",
-   "href": "/labs/fire/"
+   "href": "/labs/fire/",
+   "img": "shots/fire"
   },
   {
    "id": "shield",
@@ -237,14 +244,16 @@
    "group": "labs",
    "name": "Grass Lab",
    "text": "Blades by the thousand with wind: cone, spike, flat, billboard or a curved bezier blade; colour gradient and variety; unlit against the ground. Came from RMRF.",
-   "href": "/labs/grass/"
+   "href": "/labs/grass/",
+   "img": "shots/grass"
   },
   {
    "id": "trees",
    "group": "labs",
    "name": "Tree Lab",
    "text": "A forest drawn two ways: real meshes near the camera, octahedral imposters beyond a line you set, crossfading through a band. The imposter atlases are baked in the page from the same trees. Sliders for how many trees, the atlas grid and the blend; readouts for the cost.",
-   "href": "/labs/trees/"
+   "href": "/labs/trees/",
+   "img": "shots/trees"
   },
   {
    "id": "duckcon",
@@ -259,7 +268,8 @@
    "group": "other",
    "name": "The old site",
    "text": "jacobconrads.com as it was in 2019: a spinning 3D cube of projects, with a plain version behind it.",
-   "href": "/projects/old-site/"
+   "href": "/projects/old-site/",
+   "img": "shots/old-site"
   },
   {
    "id": "shipwrecked-demos",
