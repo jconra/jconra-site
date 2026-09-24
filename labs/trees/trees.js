@@ -341,11 +341,11 @@ renderer.setAnimationLoop(() => {
 
 // ── ground splatting ────────────────────────────────────────────────────────────
 // every setting of the splat as a control; the ground re-reads them live (no recompile)
-const SPLAT = (() => { try { const v = JSON.parse(localStorage.getItem('treeLab.splat')); if (v) return mergeSplat(v); } catch { /* no storage */ } return mergeSplat({}); })();
+const SPLAT = (() => { try { const v = JSON.parse(localStorage.getItem('treeLab.splat2')); if (v) return mergeSplat(v); } catch { /* no storage */ } return mergeSplat({}); })();
 function mergeSplat(v) { const o = JSON.parse(JSON.stringify(SPLAT_DEFAULTS)); for (const k in v) { if (o[k] && typeof o[k] === 'object') Object.assign(o[k], v[k]); else if (k in o) o[k] = v[k]; } return o; }
 function splatChanged() {
   applySplat(ground.material.userData.splat, SPLAT);
-  try { localStorage.setItem('treeLab.splat', JSON.stringify(SPLAT)); } catch { /* no storage */ }
+  try { localStorage.setItem('treeLab.splat2', JSON.stringify(SPLAT)); } catch { /* no storage */ }
   SET.dirty = true;
 }
 const SHARED = [
@@ -365,9 +365,9 @@ const PER = [
   ['cover', 'Coverage', 0, 1, 0.01, v => Math.round(v * 100) + '%'],
   ['soft', 'Edge softness', 0, 0.3, 0.005, v => v.toFixed(3)],
   ['strength', 'Strength', 0, 1, 0.01, v => Math.round(v * 100) + '%'],
-  ['tex', 'Picture scale', 0.2, 4, 0.05, v => v.toFixed(2) + '×'],
+  ['tex', 'Picture size', 0.25, 5, 0.05, v => v.toFixed(2) + '×'],
 ];
-const PATH = [['size', 'Path spacing', 5, 400, 1, v => v + ' m'], ['width', 'Path width', 0, 0.2, 0.001, v => v.toFixed(3)], ['soft', 'Edge softness', 0, 0.1, 0.001, v => v.toFixed(3)], ['strength', 'Strength', 0, 1, 0.01, v => Math.round(v * 100) + '%'], ['tex', 'Picture scale', 0.2, 4, 0.05, v => v.toFixed(2) + '×']];
+const PATH = [['size', 'Path spacing', 5, 400, 1, v => v + ' m'], ['width', 'Path width', 0, 0.2, 0.001, v => v.toFixed(3)], ['soft', 'Edge softness', 0, 0.1, 0.001, v => v.toFixed(3)], ['strength', 'Strength', 0, 1, 0.01, v => Math.round(v * 100) + '%'], ['tex', 'Picture size', 0.25, 5, 0.05, v => v.toFixed(2) + '×']];
 function splatUi() {
   const host = $('splat'); host.innerHTML = '';
   const row = (obj, key, label, min, max, step, fmt, id) => {

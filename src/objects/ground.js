@@ -96,10 +96,10 @@ export const SPLAT_DEFAULTS = {
   warp: 6, warpSize: 22,                      // metres the noise is pushed around, and the size of the push
   breakup: 0.14, breakupSize: 2.2,            // how much the fine noise roughens edges, and its grain in metres
   tile: 1.6, antiTile: 0.4,                   // metres a texture repeats over; how much of a second, larger read hides the repeat
-  needles: { type: 1, size: 26, cover: 0.38, soft: 0.05, strength: 1, tex: 1 },
-  leaves:  { type: 1, size: 14, cover: 0.3,  soft: 0.05, strength: 1, tex: 1 },
-  moss:    { type: 2, size: 7,  cover: 0.22, soft: 0.06, strength: 0.9, tex: 1.2 },
-  ferns:   { type: 0, size: 11, cover: 0.18, soft: 0.05, strength: 1, tex: 0.8 },
+  needles: { type: 1, size: 26, cover: 0.38, soft: 0.05, strength: 1, tex: 1 },     // tex: the picture's size, 2 = twice as big
+  leaves:  { type: 1, size: 14, cover: 0.3,  soft: 0.05, strength: 1, tex: 1.5 },
+  moss:    { type: 2, size: 7,  cover: 0.22, soft: 0.06, strength: 0.9, tex: 0.85 },
+  ferns:   { type: 0, size: 11, cover: 0.18, soft: 0.05, strength: 1, tex: 1.25 },
   paths:   { type: 1, size: 60, width: 0.012, soft: 0.012, strength: 0.9, tex: 1 },
   debug: 0,                                   // 1 shows the layers as flat colours instead of pictures
 };
@@ -115,8 +115,8 @@ export function splatUniforms(set = SPLAT_DEFAULTS) {
 export function applySplat(u, set) {
   u.sFractal.value.set(set.octaves, set.lacunarity, set.gain, set.contrast); u.sWarp.value.set(set.warp, set.warpSize);
   u.sBreak.value.set(set.breakup, set.breakupSize); u.sTile.value.set(set.tile, set.antiTile); u.sDebug.value = set.debug;
-  for (const k of SPLAT_LAYERS) { const l = set[k]; u['s_' + k].value.set(l.type, l.size, l.cover, l.soft); u['s_' + k + 'B'].value.set(l.strength, l.tex); }
-  const p = set.paths; u.sPath.value.set(p.type, p.size, p.width, p.soft); u.sPathB.value.set(p.strength, p.tex);
+  for (const k of SPLAT_LAYERS) { const l = set[k]; u['s_' + k].value.set(l.type, l.size, l.cover, l.soft); u['s_' + k + 'B'].value.set(l.strength, 1 / Math.max(l.tex, 0.05)); }
+  const p = set.paths; u.sPath.value.set(p.type, p.size, p.width, p.soft); u.sPathB.value.set(p.strength, 1 / Math.max(p.tex, 0.05));
 }
 
 // `layout`: { map: class texture (R road, G grass, B water), metres } from townLayout.js, laid over
@@ -222,6 +222,6 @@ export function groundMaterial({ base = '/textures/ground/', clearing = { x: 0, 
     `);
     mat.userData.shader = sh;
   };
-  mat.customProgramCacheKey = () => 'splat-ground-9' + (light ? 'L' : '');
+  mat.customProgramCacheKey = () => 'splat-ground-10' + (light ? 'L' : '');
   return mat;
 }
