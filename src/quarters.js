@@ -1405,6 +1405,8 @@ const PROP_SETS = {
     // Jacob's bass, leaning against the side of the desk's drawer unit, headstock up, facing the room
     { name: 'bass', file: '/models/props/bass.glb', x: -1.22, y: 1.79, z: -0.41, yaw: 74, lean: -2, height: 1.12 },   // where Jacob hung it (2026-09-20)
     // Jacob's Gladius as a desk model on a display stand; the model turns on the rod's tip, the stand stays flat
+    // a poster over the bed: music Jacob likes (24 x 36 in), hung in front of the wall's rail so the rail does not cross it
+    { name: 'ska poster', image: '/textures/posters/ska.jpg', x: -1.49, y: 1.45, z: 0.45, yaw: 90, lean: 0, height: 0.91, frame: true },
     { name: 'gladius', file: '/models/props/gladius.glb', x: -1.29, y: 2.21, z: -0.71, yaw: -47, lean: 0, height: 0.33, stand: true, pitch: -15, roll: -72, spin: 111, rise: 0.51, belly: -1 },   // on the shelf by the bass (Jacob, 2026-09-23)
   ],
 };
@@ -1412,7 +1414,7 @@ let PROPS = [];
 function buildProps(name) {
   for (const pr of PROPS) if (pr.obj) { room.remove(pr.obj); pr.obj.traverse(o => { if (o.isMesh) { o.geometry.dispose(); const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { m.map?.dispose(); m.dispose(); }); } }); }
   PROPS = (PROP_SETS[name] || []).map(spec => ({ ...spec, obj: null }));
-  PROPS.forEach((pr, i) => loader.load(pr.file, (gltf) => {
+  PROPS.forEach((pr, i) => pr.image ? buildPoster(pr, i) : loader.load(pr.file, (gltf) => {
     const model = gltf.scene; model.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3());
     // stood on its own base, centred, scaled to its real height
@@ -1439,6 +1441,25 @@ function buildProps(name) {
     if (i === propIdx) showProp();
   }, undefined, (e) => console.error(e)));
   buildPropPicker();
+}
+// A POSTER: the picture on a plane at its own proportions, one metre tall (the prop's height scales
+// it), standing on its bottom edge like the models so the same sliders place it; matte, a hair off
+// the wall so it never fights it, and a slim black frame if `frame`.
+function buildPoster(pr, i) {
+  new THREE.TextureLoader().load(pr.image, (tex) => {
+    tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    const w = tex.image.width / tex.image.height, holder = new THREE.Group(); holder.name = 'Prop_' + pr.name;
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(w, 1), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0 }));
+    face.position.set(0, 0.5, 0.006); face.receiveShadow = true; holder.add(face);
+    if (pr.frame) {
+      const t = 0.018, d = 0.012, fm = new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.5, metalness: 0.3 });
+      for (const [fw, fh, fx, fy] of [[w + 2 * t, t, 0, -t / 2], [w + 2 * t, t, 0, 1 + t / 2], [t, 1, -w / 2 - t / 2, 0.5], [t, 1, w / 2 + t / 2, 0.5]]) {
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(fw, fh, d), fm); bar.position.set(fx, fy, d / 2); bar.castShadow = true; holder.add(bar);
+      }
+    }
+    pr.obj = holder; room.add(holder); placeProp(pr);
+    if (i === propIdx) showProp();
+  }, undefined, (e) => console.error(e));
 }
 // the lean tilts the model back about its base, after the yaw, so it rests against whatever is behind it
 function placeProp(pr) {
