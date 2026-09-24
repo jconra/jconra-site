@@ -200,8 +200,8 @@
    "id": "home-designer",
    "group": "labs",
    "name": "Home Designer",
-   "text": "Designs a house for the Montana terrain.",
-   "href": null
+   "text": "Draw a house floor by floor - outline, walls, windows, doors, stairs, roofs - and walk through it in 3D. Built for the Montana terrain.",
+   "href": "https://building-designer.jconra.com/"
   },
   {
    "id": "model-lab",
