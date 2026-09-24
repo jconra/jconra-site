@@ -309,7 +309,7 @@ function loadRoom(name) {
   placeSitter();
   $('boot')?.remove();
   bootProgress('cabin', 1); loadSitter(); loadStation();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, getMap: () => mapSet, getTown: () => town, TOWN_INPUT });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getMap: () => mapSet, getTown: () => town, TOWN_INPUT });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; if (e.total) bootProgress('cabin', e.loaded / e.total); },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -1669,6 +1669,35 @@ $('panel').addEventListener('input', () => { RESUME.hold = true; });
 $('panel').addEventListener('change', () => { RESUME.hold = true; });
 $('panel').addEventListener('click', (e) => { if (!e.target.closest('#playIntro')) RESUME.hold = true; });   // any button in the panel holds too; Play intro is the way out
 $('addKey').onclick = addKeyHere; $('delKey').onclick = deleteKey;
+// CUT OR INSERT TIME. Everything on the timeline is in absolute seconds, so taking time out (or
+// making room) from `at` moves every later key and every timed event by the same amount. A cut
+// removes the keys inside it and pulls the events inside it back to its start.
+function shiftTime(at, delta) {
+  const end = delta < 0 ? at - delta : at;
+  const move = (t) => t >= end ? t + delta : t > at ? at : t;           // after the cut: moved; inside it: to its start
+  const fields = (obj, keys) => { for (const k of keys) if (typeof obj[k] === 'number') obj[k] = +move(obj[k]).toFixed(3); };
+  if (delta < 0) for (let i = KEYS.length - 1; i >= 0; i--) if (KEYS[i].t > at && KEYS[i].t < end) KEYS.splice(i, 1);
+  for (const k of KEYS) {
+    k.t = +move(k.t).toFixed(3);
+    for (const part of [k.cam, k.look]) if (part && typeof part === 'object' && !Array.isArray(part) && typeof part.freeze === 'number') part.freeze = +move(part.freeze).toFixed(3);
+  }
+  fields(ACTS, ['wave', 'stand', 'walk']);
+  for (const p of PARTS) fields(p, ['start', 'end']);
+  for (const s of TOUR) fields(s, ['t']);
+  fields(MAP, ['glow', 'tourEnd', 'shipIn', 'shipAt', 'dive', 'diveEnd', 'fire', 'flash', 'clear', 'clouds']);
+  fields(HANGAR, ['walk', 'sit', 'canopy', 'roll']);
+  for (const f of FLYBYS) { fields(f, ['t0', 't1']); if (f.line) fields(f.line, ['at']); }
+  for (const tr of traffic) fields(tr, ['t0', 't1']);                  // the built copies (their line is shared with FLYBYS)
+  keyIndex = Math.min(keyIndex, KEYS.length - 1);
+  buildKeyList(); showKey(); $('seqTime').max = total().toFixed(2);
+  RESUME.hold = true; SEQ.playing = false;
+  seek(Math.min(delta < 0 && SEQ.T > at ? Math.max(at, SEQ.T + delta) : SEQ.T >= at ? SEQ.T + delta : SEQ.T, total()));
+  $('cutNote').textContent = `${delta < 0 ? 'Cut' : 'Inserted'} ${Math.abs(delta).toFixed(1)} s at ${at.toFixed(1)} s. The film is now ${total().toFixed(1)} s to the live flight.`;
+}
+for (const id of ['cutAt', 'cutLen']) $(id).addEventListener('input', () => { $(id + 'Out').textContent = (+$(id).value).toFixed(1) + ' s'; });
+$('cutHere').onclick = () => { $('cutAt').value = SEQ.T.toFixed(1); $('cutAtOut').textContent = SEQ.T.toFixed(1) + ' s'; };
+$('cutTime').onclick = () => shiftTime(+$('cutAt').value, -$('cutLen').value);
+$('insertTime').onclick = () => shiftTime(+$('cutAt').value, +$('cutLen').value);
 // Flat is the default. The face's colour map already carries light and shade, painted in by Tripo,
 // and a strong key lays a second set of shadows over it that disagree with the first. Soft light
 // from everywhere leaves the painted light to do the work; the cabin's own look is kept as Cabin.
@@ -1708,7 +1737,8 @@ $('copy').onclick = () => {
   const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, helmet: (({ show, ...h }) => h)(HELMET),
     map: { ...MAPFIT },
     pins: Object.fromEntries(Object.entries(PINS).map(([k, p]) => [k, p.fx !== undefined ? { fx: +p.fx.toFixed(3), fy: +p.fy.toFixed(3) } : p])),
-    fighter: { seatForwardCm: Math.round(-HANGAR.seatBack * 100), seatDownCm: Math.round(HANGAR.seatDown * 100), recline: HANGAR.recline, canopyDeg: HANGAR.canopyDeg, canopyDropCm: Math.round(HANGAR.canopyDrop * 100), canopySlideCm: Math.round(HANGAR.canopySlide * 100) }, props: PROPS.map(({ obj, ...p }) => p), screens: SCREEN_FIT[build] || [], intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) }, earth: { ...EARTH },
+    fighter: { seatForwardCm: Math.round(-HANGAR.seatBack * 100), seatDownCm: Math.round(HANGAR.seatDown * 100), recline: HANGAR.recline, canopyDeg: HANGAR.canopyDeg, canopyDropCm: Math.round(HANGAR.canopyDrop * 100), canopySlideCm: Math.round(HANGAR.canopySlide * 100) }, props: PROPS.map(({ obj, ...p }) => p), screens: SCREEN_FIT[build] || [], intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) },
+    timing: { tour: TOUR.map(s => s.t), map: (({ glow, tourEnd, shipIn, shipAt, dive, diveEnd, fire, flash, clear, clouds }) => ({ glow, tourEnd, shipIn, shipAt, dive, diveEnd, fire, flash, clear, clouds }))(MAP), hangar: { walk: HANGAR.walk, sit: HANGAR.sit, canopy: HANGAR.canopy, roll: HANGAR.roll }, flybys: FLYBYS.map(f => ({ t0: f.t0, t1: f.t1, ...(f.line ? { at: f.line.at } : {}) })) }, earth: { ...EARTH },
     light: { cabin: cabin.intensity, screens: screens.intensity, sun: sun.intensity, ambient: ambient.intensity, exposure: renderer.toneMappingExposure },
     openWindows: $('openWindows').checked };
   $('out').style.display = 'block'; $('out').value = JSON.stringify(out, null, 2); $('out').select();

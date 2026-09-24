@@ -152,6 +152,13 @@
     <label class="check" for="scrubOn"><input id="scrubOn" type="checkbox" checked> Wheel or a finger drag scrubs time (instead of zooming)</label>
     <div class="row"><label for="seqTime">Time</label><output id="seqTimeOut"></output><input id="seqTime" type="range" min="0" max="30" step="0.02" value="0"></div>
 
+    <h2>Cut or insert time</h2>
+    <p class="note">Takes seconds out of the film, or makes room, from a point on: every key, the greeting, his actions, the flybys, the fighter's walk, canopy and roll-out, and the map's tour and dive all move with it. Keys inside a cut are removed; events inside it land at its start. Copy settings then carries the new times for me to bake.</p>
+    <div class="row"><label for="cutAt">From</label><output id="cutAtOut">12.0 s</output><input id="cutAt" type="range" min="0" max="80" step="0.1" value="12"></div>
+    <div class="row"><label for="cutLen">Seconds</label><output id="cutLenOut">3.0 s</output><input id="cutLen" type="range" min="0.1" max="10" step="0.1" value="3"></div>
+    <div class="btns"><button id="cutTime" type="button">Cut</button><button id="insertTime" type="button">Insert</button><button id="cutHere" type="button">From = now</button></div>
+    <p class="note" id="cutNote"></p>
+
     <h2>Keys</h2>
     <p class="note">The camera, where it looks, the chair and how much he faces the camera, at each moment. Pick a key and move it; the scene jumps there so you see it. Add a key at the current time, then Copy settings when it is right and I will bake it in.</p>
     <div class="btns" id="keys"></div>
