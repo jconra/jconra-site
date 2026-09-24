@@ -1405,6 +1405,8 @@ const PROP_SETS = {
   Smart: [
     // Jacob's bass, leaning against the side of the desk's drawer unit, headstock up, facing the room
     { name: 'bass', file: '/models/props/bass.glb', x: -1.22, y: 1.79, z: -0.41, yaw: 74, lean: -2, height: 1.12 },   // where Jacob hung it (2026-09-20)
+    // Jacob's Gladius as a desk model, nose down on a display stand at the right end of the desk
+    { name: 'gladius', file: '/models/props/gladius.glb', x: 0.62, y: 1.275, z: -1.02, yaw: -25, lean: 0, height: 0.3, stand: true },
   ],
 };
 let PROPS = [];
@@ -1420,6 +1422,15 @@ function buildProps(name) {
     model.scale.setScalar(k); model.position.set(-(box.min.x + box.max.x) / 2 * k, -box.min.y * k, -(box.min.z + box.max.z) / 2 * k);
     model.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; const m = o.material; if (m.map) { m.map.colorSpace = THREE.SRGBColorSpace; m.map.anisotropy = renderer.capabilities.getMaxAnisotropy(); } m.envMapIntensity = 0.35; } });
     const holder = new THREE.Group(); holder.add(model); holder.name = 'Prop_' + pr.name;
+    // a display stand: a dark disc and a short rod, the model raised onto the rod's tip (all in the
+    // model's one-metre units, so the prop's height scales the stand with it)
+    if (pr.stand) {
+      const standMat = new THREE.MeshStandardMaterial({ color: 0x1b1f24, metalness: 0.6, roughness: 0.35 });
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.29, 0.035, 40), standMat); base.position.y = 0.0175;
+      const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.016, 0.16, 12), standMat); rod.position.y = 0.035 + 0.08;
+      for (const m of [base, rod]) { m.castShadow = m.receiveShadow = true; holder.add(m); }
+      model.position.y += 0.18;
+    }
     pr.obj = holder; room.add(holder); placeProp(pr);
     if (i === propIdx) showProp();
   }, undefined, (e) => console.error(e)));
