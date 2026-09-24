@@ -17,6 +17,7 @@ export class Terminal {
     this.font = font; this.colour = colour; this.cps = cps;      // characters per second
     this.size = Math.max(22, Math.min(34, Math.round(width / 28)));   // 26 px on the phone column, 34 on a wide screen
     this.lineH = Math.round(this.size * 1.3); this.pad = 28;
+    this.reserve = 0;                        // rows kept clear at the bottom (for a link laid over them)
     this.cols = Math.floor((width - this.pad * 2) / (this.size * 0.6));
     this.lines = [];           // { text, done } typed lines, or { bar, label, frac } progress bars
     this.queue = [];           // lines still to type, in order
@@ -87,7 +88,7 @@ export class Terminal {
   // the row the cursor is on (where the next line will print), in canvas pixels from the top,
   // allowing for the scroll when the text has run past the bottom; and whether a line is up
   cursorY() {
-    const rows = this.lines.length + (this.typing ? 1 : 0), maxRows = Math.floor((this.canvas.height - this.pad * 2) / this.lineH);
+    const rows = this.lines.length + (this.typing ? 1 : 0), maxRows = Math.floor((this.canvas.height - this.pad * 2) / this.lineH) - this.reserve;
     return this.pad + (rows - Math.max(0, rows - maxRows)) * this.lineH;
   }
   printed(text) { return this.lines.some(l => l.text === text); }
@@ -99,7 +100,7 @@ export class Terminal {
     g.font = `${s}px ${this.font}`; g.textBaseline = 'top';
     const rows = [...this.lines]; if (this.typing) rows.push({ text: this.typing.text.slice(0, this.typing.shown), live: true });
     // keep the tail on screen: scroll up when the text runs past the bottom
-    const maxRows = Math.floor((H - pad * 2) / lh);
+    const maxRows = Math.floor((H - pad * 2) / lh) - this.reserve;
     const start = Math.max(0, rows.length - maxRows);
     let y = pad;
     for (let i = start; i < rows.length; i++) {

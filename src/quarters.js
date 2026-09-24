@@ -170,8 +170,8 @@ bootBar('cabin'); bootBar('jacob'); bootBar('clips'); bootBar('station');
 term.gate().wait(0.15)
     .cmd('./greeting.sh')
     .out('Welcome to jconra.com.').out('Hello! I am Jacob Conrads, a Systems Engineer. This station is a project to play around with and highlight my skills.')
-    .out('Thank you for visiting! Scroll or swipe to move through it, or wait for the animation.').wait(0.3)
-    .out('> Click here for the basic site');
+    .out('Thank you for visiting! Scroll or swipe to move through it, or wait for the animation.').wait(0.3);
+term.reserve = 2;   // the bottom rows stay clear: the basic-site link sits there the whole time
 const termCanvas = $('term'); const termCtx = termCanvas ? termCanvas.getContext('2d') : null;
 function drawBootOverlay() {
   if (!termCtx || !BOOT.on) return;
@@ -182,14 +182,13 @@ function drawBootOverlay() {
   const k = Math.min(W / term.canvas.width, H / term.canvas.height), sw = term.canvas.width * k, sh = term.canvas.height * k;
   const ox = (W - sw) / 2, oy = (H - sh) / 2;
   termCtx.drawImage(term.canvas, ox, oy, sw, sh);
-  // the link sits on the cursor row, in the terminal's own type, so it is exactly where the
-  // terminal prints the same line at the end - and it goes when that line is up
+  // the link stays put on the terminal's bottom row, in its own type, so it can be clicked while
+  // the commands are still printing (the terminal keeps that row clear)
   const a = $('basic');
   if (a) {
     const dpr = W / innerWidth;
-    a.style.left = (ox + term.pad * k) / dpr + 'px'; a.style.top = (oy + (term.cursorY() + 2) * k) / dpr + 'px';
+    a.style.left = (ox + term.pad * k) / dpr + 'px'; a.style.top = (oy + (term.canvas.height - term.pad - term.lineH) * k) / dpr + 'px';
     a.style.fontSize = (term.size * k) / dpr + 'px'; a.style.lineHeight = (term.size * k) / dpr + 'px';
-    a.style.display = term.printed('> Click here for the basic site') ? 'none' : '';
   }
 }
 let bootDone = false;
@@ -1406,7 +1405,7 @@ const PROP_SETS = {
     // Jacob's bass, leaning against the side of the desk's drawer unit, headstock up, facing the room
     { name: 'bass', file: '/models/props/bass.glb', x: -1.22, y: 1.79, z: -0.41, yaw: 74, lean: -2, height: 1.12 },   // where Jacob hung it (2026-09-20)
     // Jacob's Gladius as a desk model on a display stand; the model turns on the rod's tip, the stand stays flat
-    { name: 'gladius', file: '/models/props/gladius.glb', x: -1.40, y: 2.21, z: -0.97, yaw: -25, lean: 0, height: 0.33, stand: true, pitch: 0, roll: 0, spin: 0, rise: 0.18 },   // on the shelf by the bass (Jacob, 2026-09-23)
+    { name: 'gladius', file: '/models/props/gladius.glb', x: -1.29, y: 2.21, z: -0.71, yaw: -47, lean: 0, height: 0.33, stand: true, pitch: -15, roll: -72, spin: 111, rise: 0.51, belly: -1 },   // on the shelf by the bass (Jacob, 2026-09-23)
   ],
 };
 let PROPS = [];
@@ -1432,6 +1431,8 @@ function buildProps(name) {
       // the model hangs from a pivot at the rod's tip, touching it with its lowest point, so pitch,
       // roll and turn move the aircraft alone and the stand stays flat on the shelf
       const pivot = new THREE.Group(); pivot.name = 'standPivot'; holder.remove(model); pivot.add(model); holder.add(pivot);
+      // `belly` (+1 or -1): the rod meets the middle of that broad face instead of the lowest point
+      if (pr.belly) { model.position.y -= size.y * k / 2; model.position.z -= pr.belly * size.z * k / 2; }
       pr.rod = rod; pr.pivot = pivot;
     }
     pr.obj = holder; room.add(holder); placeProp(pr);
@@ -1566,6 +1567,14 @@ buildScreens(build);
     ray.setFromCamera(new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
     const hit = ray.intersectObjects(SCREENS, false)[0];
     if (hit && hit.object.href) location.href = hit.object.href;
+  });
+  // the pointing hand over a screen that is a link, so it reads as one
+  renderer.domElement.addEventListener('pointermove', e => {
+    if (e.pointerType !== 'mouse' || e.buttons) return;
+    if (currentSet !== 'cabin') { if (renderer.domElement.style.cursor === 'pointer') renderer.domElement.style.cursor = ''; return; }
+    ray.setFromCamera(new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera);
+    const hit = ray.intersectObjects(SCREENS, false)[0];
+    renderer.domElement.style.cursor = hit && hit.object.href ? 'pointer' : '';
   });
 }
 

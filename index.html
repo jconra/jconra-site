@@ -34,7 +34,7 @@
   #bootOverlay { position:fixed; inset:0; z-index:9; background:#020604; transition:opacity .8s ease; }
   #bootOverlay.gone { opacity:0; pointer-events:none; }
   #term { position:absolute; inset:0; width:100%; height:100%; display:block; }
-  /* the link sits on the terminal's cursor row (placed by script), so it is where the terminal will print the same line */
+  /* the link sits on the terminal's bottom row (placed by script) the whole time the commands print */
   #basic { position:absolute; left:28px; top:60%; font:22px Console, ui-monospace, monospace; color:#dfffe6; text-decoration:none; background:#020604; padding:2px 6px 2px 0; white-space:nowrap; }
   #basic:hover, #basic:focus { color:#5eff8a; }
   #boot { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; font:13px nasa, monospace; letter-spacing:4px; color:#b9c8d2; background:#000; z-index:9; }
