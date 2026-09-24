@@ -65,10 +65,10 @@ cv.addEventListener('pointerdown', (e) => {
   if (tool === 'fence') { const q = snap(p); if (!run) { snapshot(); run = [q]; state.fence.push(run); } else run.push(q); draw(); return; }
   if (tool === 'building') { snapshot(); drag = { x: p.x, y: p.y, w: 0, h: 0 }; return; }
   if (lineMode && !e.shiftKey) {
-    // straight lines: the first click sets the start, the second draws the line and starts the next from its end
+    // straight lines: the first click sets the start, the second draws the line and ends it
     const q = snap(p);
     if (!lineStart) { lineStart = q; draw(); return; }
-    snapshot(); line(lineStart, q); lineStart = q; draw(); return;
+    snapshot(); line(lineStart, q); lineStart = null; hover = null; draw(); return;
   }
   snapshot(); painting = true; last = p; dab(p); draw();
 });
