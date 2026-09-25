@@ -207,7 +207,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // export - that is what Blender is for, and this does not try to replace it.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const MODELS = ['insect_animated','chimpanzee','stephen','spider_animated','jay','ship'];
+const MODELS = ['jacob4','insect_animated','chimpanzee','stephen','spider_animated','jay','ship'];
+// clips kept in their own files, fitted to the Tripo biped skeleton (Jacob's models and Stephen)
+const RIG_CLIPS = ['wave_clip','idle_clip','sit_down_clip','stand_up_clip','climb_clip','ladder_clip'];
 
 const stage = document.getElementById('stage');
 const renderer = new THREE.WebGLRenderer({ antialias:true });
@@ -286,6 +288,9 @@ function frameModel() {
   // across and parked the camera inside it. Sampling real skinned vertices costs a few thousand
   // transforms once, at load.
   const box = new THREE.Box3();
+  // the bone matrices are only filled in by a render; before the first one they are all zero and
+  // every sampled vertex lands at the origin (Jacob's model framed on its boots)
+  root.updateMatrixWorld(true); for (const s of skins) s.skeleton.update();
   if (skins.length) {
     const pv = new THREE.Vector3();
     for (const skin of skins) {
@@ -316,8 +321,18 @@ function frameModel() {
 }
 
 function loadNamed(name) {
-  loader.load(`../../models/${name}.glb`, adopt,
-    undefined, e => els.measure.textContent = 'load failed: ' + e.message);
+  loader.load(`../../models/${name}.glb`, (gltf) => {
+    // a biped with a Hip bone also gets the shared clips whose bones it has
+    const hasHip = !!gltf.scene.getObjectByName('Hip');
+    if (!hasHip) { adopt(gltf); return; }
+    Promise.all(RIG_CLIPS.map(f => loader.loadAsync(`../../models/${f}.glb`).then(g => g.animations.map(c => { c.name = f.replace('_clip', '').replace('_', ' '); return c; })).catch(() => []))).then(lists => {
+      for (const c of lists.flat()) {
+        const names = c.tracks.map(t => t.name.split('.')[0]), found = names.filter(n => gltf.scene.getObjectByName(n)).length;
+        if (names.length && found / names.length > 0.8 && !gltf.animations.some(a => a.name === c.name)) gltf.animations.push(c);
+      }
+      adopt(gltf);
+    });
+  }, undefined, e => els.measure.textContent = 'load failed: ' + e.message);
 }
 
 // ── clips + time ─────────────────────────────────────────────────────────────
@@ -332,14 +347,16 @@ function useClip(name) {
   if (action) { action.stop(); action = null; }
   const clip = clips.find(c => c.name === name);
   if (!clip) { els.time.max = 1; els.time.value = 0; setTime(0); return; }
+  // not paused: a paused action ignores the mixer's clock, so the time bar ran and the model stood
+  // still. The clip's own time is set directly instead (setTime), with the mixer re-evaluated.
   action = mixer.clipAction(clip);
-  action.play(); action.paused = true;
+  action.play();
   els.time.max = clip.duration; els.time.step = clip.duration/600;
   setTime(Math.min(+els.time.value, clip.duration));
 }
 function setTime(t) {
   els.time.value = t; els.tval.textContent = (+t).toFixed(2) + 's';
-  if (mixer && action) mixer.setTime(t);
+  if (mixer && action) { action.time = +t; mixer.update(0); }
 }
 
 // ── bones ────────────────────────────────────────────────────────────────────
@@ -551,7 +568,7 @@ function runSearch() {
   const score = p => {
     for (let i = 0; i < vary.length; i++)
       pose.set(vary[i], { x:p[i*3], y:p[i*3+1], z:p[i*3+2] });
-    if (action) mixer.setTime(+els.time.value);
+    if (action) { action.time = +els.time.value; mixer.update(0); }
     applyPose(); root.updateMatrixWorld(true);
     return reachOf(selected).reach;
   };
@@ -653,7 +670,7 @@ renderer.setAnimationLoop(() => {
     let t = (+els.time.value + dt) % clip.duration;
     setTime(t);
   } else if (mixer && action) {
-    mixer.setTime(+els.time.value);            // re-evaluate so the pose is laid on a fresh base
+    action.time = +els.time.value; mixer.update(0);   // re-evaluate so the pose is laid on a fresh base
   }
   applyPose();
   if (skelHelper) skelHelper.visible = showSkel;
@@ -661,7 +678,7 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
 });
 
-window.__lab = { pose, reachOf, drivenBy, THREE, bonesOf: () => bones.map(b => b.name) };
+window.__lab = { pose, reachOf, drivenBy, THREE, bonesOf: () => bones.map(b => b.name), bone: (n) => bones.find(b => b.name === n), getAction: () => action, getMixer: () => mixer };
 resize();
 loadNamed(MODELS[0]);
 </script>

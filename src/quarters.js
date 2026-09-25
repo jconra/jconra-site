@@ -382,6 +382,17 @@ const HEIGHT = 1.8;
 const SEAT = { up: 0.232 * HEIGHT, back: 0.045 * HEIGHT };
 const SITTER = { on: true, height: 0, forward: 0, turn: 0 };     // nudges in cm and degrees
 let sitter = null, sitterMixer = null, sitterLoading = false, sitAction = null, waveAction = null, standAction = null, walkAction = null;
+let waveParts = null;                       // the wave's arm / body / head actions, weighted by WAVE
+const WAVE = { arm: 1, body: 1, head: 1 };     // how much of each part of the standing wave he does
+// THE SITTING CLIP (Tripo's, 7.2 s) leans him about 15 cm forward from 2.2 s to 6.5 s and back:
+// under the wave and the greeting that read as a hunch. By default only its calm start plays, to
+// and fro, so he still breathes and shifts; `full` plays the whole clip as before.
+const SIT = { full: false, calm: 1.9 };
+function sitTime(T) {
+  const d = sitAction.getClip().duration;
+  if (SIT.full) return T % d;
+  const c = Math.min(SIT.calm, d), k = (T % (2 * c)); return k < c ? k : 2 * c - k;   // back and forth over the calm stretch
+}
 function loadSitter() {
   if (sitter || sitterLoading) return;
   sitterLoading = true;
@@ -415,12 +426,18 @@ function loadSitter() {
     loader.load('/models/wave_clip.glb', (g) => {
       const src = g.animations[0];
       if (!src) return;
-      const upper = /^(Waist|Spine01|Spine02|NeckTwist01|Head|[LR]_(Clavicle|Upperarm|Forearm|Hand))\.quaternion$/;   // turns only: nothing moves or grows
-      const wave = new THREE.AnimationClip('wave', src.duration, src.tracks.filter(t => upper.test(t.name)));
-      THREE.AnimationUtils.makeClipAdditive(wave);
-      waveAction = sitterMixer.clipAction(wave);
-      waveAction.setLoop(THREE.LoopOnce, 1); waveAction.clampWhenFinished = true;
-      waveAction.enabled = true; waveAction.setEffectiveWeight(0); waveAction.play();
+      // in three parts, each with its own strength (WAVE): the arms, the body's lean (waist and
+      // spine - the standing wave bends forward, which on a man already sitting forward was too
+      // much) and the head
+      const PARTS_RE = { arm: /^[LR]_(Clavicle|Upperarm|Forearm|Hand)\.quaternion$/, body: /^(Waist|Spine01|Spine02)\.quaternion$/, head: /^(NeckTwist01|Head)\.quaternion$/ };   // turns only: nothing moves or grows
+      waveParts = {};
+      for (const [part, re] of Object.entries(PARTS_RE)) {
+        const clip = new THREE.AnimationClip('wave_' + part, src.duration, src.tracks.filter(t => re.test(t.name)));
+        THREE.AnimationUtils.makeClipAdditive(clip);
+        const act = sitterMixer.clipAction(clip); act.setLoop(THREE.LoopOnce, 1); act.clampWhenFinished = true;
+        act.enabled = true; act.setEffectiveWeight(0); act.play(); waveParts[part] = act;
+      }
+      waveAction = waveParts.arm;
       SEQ.waveLen = wave.duration; bootProgress('clips', 1);
     });
     // standing up (Mixamo, retargeted) and Tripo's own walk; both start silent and the timeline drives them
@@ -1108,13 +1125,12 @@ function seek(T) {
       if (walking) sitter.position.add(new THREE.Vector3(Math.sin(dirYaw), 0, Math.cos(dirYaw)).multiplyScalar(ACTS.walkSpeed * Math.max(0, T - ACTS.walk - 0.25)));
       sitter.rotation.set(0, y, 0);
     } else if (sitter.parent !== chairPivot) { chairPivot.add(sitter); placeSitter(); }
-    sitAction.setEffectiveWeight(standing ? 0 : 1); sitAction.time = T % sitAction.getClip().duration;
+    sitAction.setEffectiveWeight(standing ? 0 : 1); sitAction.time = sitTime(T);
     if (standAction) { standAction.setEffectiveWeight(standing && !walking ? 1 : 0); standAction.time = Math.min(SEQ.standLen, Math.max(0, T - ACTS.stand)); }
     if (walkAction) { walkAction.setEffectiveWeight(walking ? 1 : 0); walkAction.time = Math.max(0, T - ACTS.walk) % walkAction.getClip().duration; }
-    if (waveAction) {
-      const w = T - ACTS.wave;
-      waveAction.setEffectiveWeight(w >= 0 && !standing ? 1 : 0);
-      waveAction.time = Math.min(SEQ.waveLen, Math.max(0, w));
+    if (waveParts) {
+      const w = T - ACTS.wave, on = w >= 0 && !standing ? 1 : 0;
+      for (const [part, act] of Object.entries(waveParts)) { act.setEffectiveWeight(on * WAVE[part]); act.time = Math.min(SEQ.waveLen, Math.max(0, w)); }
     }
     const headBone = sitter.getObjectByName('Head'); if (headBone && headBone.userData.restQ) headBone.quaternion.copy(headBone.userData.restQ);
     sitterMixer.update(0);
@@ -1174,10 +1190,10 @@ function stepHangar(T, a, b, u, set = 'hangar') {
       sitter.rotation.set(0, Math.atan2(to.x - from.x, to.z - from.z), 0);     // upright (scrubbed back out of the seat, the recline must not stay)
     }
     const walking = !seated && T > HANGAR.walk + 0.2 && sitter.position.distanceTo(new THREE.Vector3(...HANGAR.to)) > 0.01;
-    if (sitAction) { sitAction.setEffectiveWeight(seated ? 1 : 0); sitAction.time = T % sitAction.getClip().duration; }
+    if (sitAction) { sitAction.setEffectiveWeight(seated ? 1 : 0); sitAction.time = sitTime(T); }
     if (standAction) { standAction.setEffectiveWeight(!seated && !walking ? 1 : 0); standAction.time = SEQ.standLen; }   // the end of standing up: upright, still
     if (walkAction) { walkAction.setEffectiveWeight(walking ? 1 : 0); walkAction.time = Math.max(0, T - HANGAR.walk) % walkAction.getClip().duration; }
-    if (waveAction) waveAction.setEffectiveWeight(0);
+    if (waveParts) for (const act of Object.values(waveParts)) act.setEffectiveWeight(0);
     const headBone = sitter.getObjectByName('Head'); if (headBone && headBone.userData.restQ) headBone.quaternion.copy(headBone.userData.restQ);
     sitterMixer.update(0);
     const model = sitter.children[0], rest = sitter.userData.hipRest, hipBone = model.getObjectByName('Hip');
@@ -1194,6 +1210,7 @@ function stepHangar(T, a, b, u, set = 'hangar') {
   const el = $('seqTime'); if (el && document.activeElement !== el) el.value = T.toFixed(2);
   $('seqTimeOut').textContent = T.toFixed(1) + ' s';
 }
+function reseatWave() { if (SEQ.active) seek(SEQ.T); }   // show a wave change at once
 function reseat() { if (SEQ.active && currentSet === 'hangar') seek(SEQ.T); }
 // The helmet hangs on his head bone, sized to his head and turned the way he faces, so it goes
 // where the head goes. Its place is the middle of the head's skin: the vertices the head bone owns,
@@ -1714,6 +1731,10 @@ const SLIDERS = {
   propY:      [v => editProp('propY', v), v => v.toFixed(2) + ' m'],
   propYaw:    [v => editProp('propYaw', v), v => v.toFixed(0) + '°'],
   propLean:   [v => editProp('propLean', v), v => v.toFixed(0) + '°'],
+  sitCalm:    [v => { SIT.calm = v; reseatWave(); }, v => v.toFixed(1) + ' s'],
+  waveArm:    [v => { WAVE.arm = v; reseatWave(); }, v => Math.round(v * 100) + '%'],
+  waveBody:   [v => { WAVE.body = v; reseatWave(); }, v => Math.round(v * 100) + '%'],
+  waveHead:   [v => { WAVE.head = v; reseatWave(); }, v => Math.round(v * 100) + '%'],
   propPitch:  [v => editProp('propPitch', v), v => v.toFixed(0) + '°'],
   propRoll:   [v => editProp('propRoll', v), v => v.toFixed(0) + '°'],
   propSpin:   [v => editProp('propSpin', v), v => v.toFixed(0) + '°'],
@@ -1808,6 +1829,7 @@ $('playIntro').onclick = playIntro;
 const CHECKS = {
   openWindows: () => applyWindows(),
   swivel: e => { CHAIR.swivel = e.target.checked; },
+  sitFull: e => { SIT.full = e.target.checked; reseatWave(); },
   helmetShow: e => { HELMET.show = e.target.checked; applyHelmetFit(); },
   scrubOn: e => { SEQ.scrub = e.target.checked; controls.enableZoom = !SEQ.scrub; },
   sitterOn: e => { SITTER.on = e.target.checked; if (SITTER.on) loadSitter(); if (sitter) sitter.visible = SITTER.on; },
@@ -1822,7 +1844,7 @@ $('copy').onclick = () => {
   const out = { roomMetres: ROOM_METRES, chair: { ...CHAIR }, sitter: { ...SITTER }, helmet: (({ show, ...h }) => h)(HELMET),
     map: { ...MAPFIT },
     pins: Object.fromEntries(Object.entries(PINS).map(([k, p]) => [k, p.fx !== undefined ? { fx: +p.fx.toFixed(3), fy: +p.fy.toFixed(3) } : p])),
-    fighter: { seatForwardCm: Math.round(-HANGAR.seatBack * 100), seatDownCm: Math.round(HANGAR.seatDown * 100), recline: HANGAR.recline, canopyDeg: HANGAR.canopyDeg, canopyDropCm: Math.round(HANGAR.canopyDrop * 100), canopySlideCm: Math.round(HANGAR.canopySlide * 100) }, props: PROPS.map(({ obj, rod, pivot, picks, ...p }) => p), screens: SCREEN_FIT[build] || [], intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) },
+    fighter: { seatForwardCm: Math.round(-HANGAR.seatBack * 100), seatDownCm: Math.round(HANGAR.seatDown * 100), recline: HANGAR.recline, canopyDeg: HANGAR.canopyDeg, canopyDropCm: Math.round(HANGAR.canopyDrop * 100), canopySlideCm: Math.round(HANGAR.canopySlide * 100) }, props: PROPS.map(({ obj, rod, pivot, picks, ...p }) => p), wave: { ...WAVE }, sit: { ...SIT }, screens: SCREEN_FIT[build] || [], intro: { keys: KEYS, acts: ACTS, parts: PARTS.map(p => ({ start: p.start, end: p.end })) },
     timing: { tour: TOUR.map(s => s.t), map: (({ glow, tourEnd, shipIn, shipAt, dive, diveEnd, fire, flash, clear, clouds }) => ({ glow, tourEnd, shipIn, shipAt, dive, diveEnd, fire, flash, clear, clouds }))(MAP), hangar: { walk: HANGAR.walk, sit: HANGAR.sit, canopy: HANGAR.canopy, roll: HANGAR.roll }, flybys: FLYBYS.map(f => ({ t0: f.t0, t1: f.t1, ...(f.line ? { at: f.line.at } : {}) })) }, earth: { ...EARTH },
     light: { cabin: cabin.intensity, screens: screens.intensity, sun: sun.intensity, ambient: ambient.intensity, exposure: renderer.toneMappingExposure },
     openWindows: $('openWindows').checked };

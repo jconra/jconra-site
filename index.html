@@ -197,6 +197,12 @@
     <div class="row"><label for="actStand">Stand up</label><output id="actStandOut"></output><input id="actStand" type="range" min="0" max="20" step="0.1" value="8.2"></div>
     <div class="row"><label for="actWalk">Walk off</label><output id="actWalkOut"></output><input id="actWalk" type="range" min="0" max="20" step="0.1" value="10"></div>
     <div class="row"><label for="walkDir">Walks toward</label><output id="walkDirOut"></output><input id="walkDir" type="range" min="-180" max="180" step="5" value="35"></div>
+    <label class="check" for="sitFull"><input id="sitFull" type="checkbox"> Full sitting clip (it leans him well forward from 2 to 6.5 s; off, only its calm start plays)</label>
+    <div class="row"><label for="sitCalm">Calm stretch of the sitting clip</label><output id="sitCalmOut"></output><input id="sitCalm" type="range" min="0.2" max="7" step="0.1" value="1.9"></div>
+    <p class="note">The wave is a standing wave laid over his sitting pose, in three parts, each with its own strength.</p>
+    <div class="row"><label for="waveArm">Wave: arms</label><output id="waveArmOut"></output><input id="waveArm" type="range" min="0" max="1.5" step="0.05" value="1"></div>
+    <div class="row"><label for="waveBody">Wave: body lean (waist and spine)</label><output id="waveBodyOut"></output><input id="waveBody" type="range" min="0" max="1.5" step="0.05" value="1"></div>
+    <div class="row"><label for="waveHead">Wave: head (neck and head)</label><output id="waveHeadOut"></output><input id="waveHead" type="range" min="0" max="1.5" step="0.05" value="1"></div>
 
     <h2>Light</h2>
     <div class="btns" id="lights"></div>
