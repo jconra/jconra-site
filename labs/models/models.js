@@ -30,6 +30,7 @@ const CATALOGUE = [
   ['Creatures', [
     ['insect', 'Insect', 'insect_animated.glb', 1.0, 'The warrior bug from Boxing round two and the old Bug Lab.'],
     ['spider', 'Spider', 'spider_animated.glb', 2.0, 'The other bug from the old Bug Lab.'],
+    ['husky', 'Husky', 'props/husky.glb', 2.6, 'The 404 page\'s dog; its head tilts on the neck bone (bone_23).'],
   ]],
   ['Clothes and props', [
     ['hoodie1', 'Skyline hoodie A', 'hoodie1.glb', 5.9, 'Tripo generation of the city skyline hoodie.'],
