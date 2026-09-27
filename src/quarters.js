@@ -310,7 +310,7 @@ function loadRoom(name) {
   placeSitter();
   $('boot')?.remove();
   bootProgress('cabin', 1); loadSitter(); loadStation();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getProps: () => PROPS, total, getMap: () => mapSet, getTown: () => town, TOWN_INPUT });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getProps: () => PROPS, total, getHangarSet: () => hangarSet, getMap: () => mapSet, getTown: () => town, TOWN_INPUT });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; if (e.total) bootProgress('cabin', e.loaded / e.total); },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -383,7 +383,7 @@ const HEIGHT = 1.8;
 const SEAT = { up: 0.232 * HEIGHT, back: 0.045 * HEIGHT };
 const SITTER = { on: true, height: 0, forward: 0, turn: 0 };     // nudges in cm and degrees
 let sitter = null, sitterMixer = null, sitterLoading = false, sitAction = null, waveAction = null, standAction = null, walkAction = null;
-let waveParts = null;                       // the wave's arm / body / head actions, weighted by WAVE
+let waveParts = null, ladderAction = null, sitDownAction = null;                       // the wave's arm / body / head actions, weighted by WAVE
 const WAVE = { arm: 1, body: 1, head: 1 };     // how much of each part of the standing wave he does
 // THE SITTING CLIP (Tripo's, 7.2 s) leans him about 15 cm forward from 2.2 s to 6.5 s and back:
 // under the wave and the greeting that read as a hunch. By default only its calm start plays, to
@@ -450,6 +450,9 @@ function loadSitter() {
     });
     const walk = gltf.animations.find(c => /walk/i.test(c.name));
     if (walk) { walkAction = sitterMixer.clipAction(walk); walkAction.setEffectiveWeight(0); walkAction.play(); }
+    // for boarding the fighter: climbing a ladder (a loop) and lowering into a seat (Mixamo, retargeted)
+    loader.load('/models/ladder_clip.glb', (g) => { const c = g.animations.find(x => /ladder/i.test(x.name)) || g.animations[0]; if (c) { ladderAction = sitterMixer.clipAction(c); ladderAction.setEffectiveWeight(0); ladderAction.play(); } });
+    loader.load('/models/sit_down_clip.glb', (g) => { const c = g.animations.find(x => /sit/i.test(x.name)) || g.animations[0]; if (c) { sitDownAction = sitterMixer.clipAction(c); sitDownAction.setLoop(THREE.LoopOnce, 1); sitDownAction.clampWhenFinished = true; sitDownAction.setEffectiveWeight(0); sitDownAction.play(); } });
   }, (e) => { if (e.total) bootProgress('jacob', e.loaded / e.total); }, (e) => console.error(e));
 }
 // The chair, measured in the holder's own frame so it holds while the chair turns: the seat pan is
@@ -527,9 +530,13 @@ const KEYS = [
   // deck is the origin, the deck is y = 0, the mouth is toward +x.
   { t: 14.01, set: 'hangar', cam: { at: 'mouth', outU: 0.2, upU: 0.07 }, look: 'ship' }, // the same framing as the last shot outside
   { t: 17.5,  set: 'hangar', cam: [5.5, 1.9, -5.5],   look: 'him' },
-  { t: 20,  set: 'hangar', cam: [3.4, 2.1, -3.2],   look: 'him' },
-  { t: 20.01, set: 'hangar', cam: [2.6, 2.3, -3.4],   look: 'cockpit' },                  // he is in the seat
-  { t: 23,  set: 'hangar', cam: [4.2, 2.0, -4.6],   look: 'cockpit' },                  // the canopy comes down
+  // the camera arcs round the cockpit as he climbs aboard, ending behind the fighter as the canopy
+  // closes, so he is never seen popping into the seat
+  { t: 18.6,  set: 'hangar', cam: [3.4, 2.4, -5.0],   look: 'him' },
+  { t: 19.7,  set: 'hangar', cam: [-0.6, 2.9, -6.2],  look: 'him' },
+  { t: 20.7,  set: 'hangar', cam: [-4.9, 3.0, -4.3],  look: 'cockpit' },
+  { t: 21.7,  set: 'hangar', cam: [-7.0, 2.9, -1.0],  look: 'cockpit' },
+  { t: 23.0,  set: 'hangar', cam: [-8.5, 2.7, 1.8],   look: 'cockpit' },
   // from the roll-out the camera locks onto the fighter: `{ at: 'chase', back, up, side }` is
   // metres behind it, above it and to its right, wherever it has got to
   { t: 24,  set: 'hangar', cam: { at: 'chase', back: 9, up: 2.6, side: -4.5 }, look: 'ship' },
@@ -590,7 +597,11 @@ const MAP = { glow: 29.1, tourEnd: 43.5, shipIn: 27.5, shipAt: 33.5,
   target: [-201, 113, 4],                // where it goes in: the big swirl of cloud off the West Coast, in the picture's units
   fire: 48.1, flash: 50.9, clear: 53.1,  // the glow builds, peaks white, and clears
   clouds: 51.1, cloudsIn: 2.4 };          // clouds pop in over this many seconds from here
-const HANGAR = { walk: 14.0, from: [0.3, 0, -9.4], to: [0.3, 0, -2.4], speed: 1.15, sit: 20, canopy: 20.4, canopyLen: 2.4, roll: 23.5, accel: 2.5,
+// BOARDING (2026-09-27): he walks to a short ladder beside the wing at the seat's station, climbs
+// it (climbLen), steps across the wing to the cockpit rim (cross), turns to the nose and lowers into
+// the seat (sitIn); the canopy closes behind him and the fighter rolls out. `to` is the ladder's foot.
+const BOARD = { ladderZ: -2.3, wingY: 0.9, rimZ: -0.75, rimY: 1.15, climbLen: 1.0, cross: 0.6, sitIn: 0.8 };
+const HANGAR = { walk: 14.0, from: [0.3, 0, -7.2], to: [-0.56, 0, -2.6], speed: 1.15, climb: 18.7, sit: 21.1, canopy: 21.2, canopyLen: 1.7, roll: 23.5, accel: 2.5,
   // the fit in the seat: how far down from the measured seat pan he sits, how far back, and how far
   // he reclines (degrees); and how far the canopy turns to shut
   seatDown: 0.17, seatBack: 0, recline: 24, canopyDeg: -50, canopyDrop: 0.05, canopySlide: 0.02 };   // canopyDrop / canopySlide: metres the shut canopy is let down / slid toward the nose
@@ -1161,6 +1172,7 @@ function seek(T) {
     const standRate = Math.max(1, SEQ.standLen / Math.max(0.6, ACTS.walk - ACTS.stand)), walkIn = walking ? THREE.MathUtils.smoothstep(T, ACTS.walk, ACTS.walk + 0.35) : 0;
     if (standAction) { standAction.setEffectiveWeight(standing ? 1 - walkIn : 0); standAction.time = Math.min(SEQ.standLen, Math.max(0, T - ACTS.stand) * standRate); }
     if (walkAction) { walkAction.setEffectiveWeight(walkIn); walkAction.time = Math.max(0, T - ACTS.walk) % walkAction.getClip().duration; }
+    for (const x of [ladderAction, sitDownAction]) if (x) x.setEffectiveWeight(0);   // those are for boarding the fighter
     if (waveParts) {
       const w = T - ACTS.wave, on = w >= 0 && !standing ? 1 : 0;
       for (const [part, act] of Object.entries(waveParts)) { act.setEffectiveWeight(part === 'arm' ? 0 : on * WAVE[part]); act.time = Math.min(SEQ.waveLen, Math.max(0, w)); }   // the arm is waved in code (handWave)
@@ -1204,12 +1216,14 @@ function seek(T) {
 // closes over him, and the fighter rolls out through the mouth. Everything from T, so it scrubs.
 function stepHangar(T, a, b, u, set = 'hangar') {
   const HS = hangarSet; if (!HS) return;
+  let board = null;
+  if (!HS.ladder) HS.ladder = buildLadder(HS);
   const seated = T >= HANGAR.sit;
   HS.setCanopy((T - HANGAR.canopy) / HANGAR.canopyLen, HANGAR.canopyDeg, HANGAR.canopyDrop, HANGAR.canopySlide);
   const roll = Math.max(0, T - HANGAR.roll);
   HS.ship.position.set(0.5 * HANGAR.accel * roll * roll, 0, 0);
   // the burner lights as he rolls: a flicker first, full burn as it clears the mouth
-  if (HS.burner) { HS.burner.setThrust(roll <= 0 ? 0 : THREE.MathUtils.clamp(0.2 + roll * 0.35, 0, 1)); HS.burner.update(1 / 60); }
+  if (HS.burner) { HS.burner.setThrust(roll <= 0 ? 0 : THREE.MathUtils.clamp(0.2 + roll * 0.35, 0, 1)); if (roll <= 0) HS.burner.thrust = 0; HS.burner.update(1 / 60); }   // cold (not easing down) until the roll-out, however the timeline got here
   if (twin) for (const sp of twin.spinners) sp.turntable.rotation.y = sp.sign * (Math.PI * 2 / StationKit.period(sp.radius)) * T;   // the station outside keeps turning
   // banking to the mouse once he is out of the mouth; level while he is still in the bay
   if (HS.ship.position.x > HS.mouth.x) FLY.roll += (FLY.target - FLY.roll) * FLY.follow; else FLY.roll = 0;
@@ -1222,20 +1236,23 @@ function stepHangar(T, a, b, u, set = 'hangar') {
       sitter.rotateX(-THREE.MathUtils.degToRad(HANGAR.recline));             // leaning back into the seat
     } else {
       if (sitter.parent !== HS.floor) HS.floor.add(sitter);
-      const from = new THREE.Vector3(...HANGAR.from), to = new THREE.Vector3(...HANGAR.to);
-      const dist = from.distanceTo(to), gone = Math.min(dist, HANGAR.speed * Math.max(0, T - HANGAR.walk - 0.2));
-      sitter.position.copy(from).addScaledVector(to.clone().sub(from).normalize(), gone);
-      sitter.rotation.set(0, Math.atan2(to.x - from.x, to.z - from.z), 0);     // upright (scrubbed back out of the seat, the recline must not stay)
+      board = boardingPose(T);
+      sitter.position.copy(board.pos);
+      sitter.rotation.set(0, board.yaw, 0); sitter.rotateX(-board.recline);   // upright (scrubbed back out of the seat, the recline must not stay)
     }
-    const walking = !seated && T > HANGAR.walk + 0.2 && sitter.position.distanceTo(new THREE.Vector3(...HANGAR.to)) > 0.01;
+    const walking = !seated && board && board.clip === 'walk';
+    const clipW = (name) => (!seated && board && board.clip === name) ? 1 : 0;
     if (sitAction) { sitAction.setEffectiveWeight(seated ? 1 : 0); sitAction.time = sitTime(T); }
-    if (standAction) { standAction.setEffectiveWeight(!seated && !walking ? 1 : 0); standAction.time = SEQ.standLen; }   // the end of standing up: upright, still
-    if (walkAction) { walkAction.setEffectiveWeight(walking ? 1 : 0); walkAction.time = Math.max(0, T - HANGAR.walk) % walkAction.getClip().duration; }
+    if (standAction) { standAction.setEffectiveWeight(clipW('stand')); standAction.time = SEQ.standLen; }   // the end of standing up: upright, still
+    if (walkAction) { walkAction.setEffectiveWeight(clipW('walk')); walkAction.time = Math.max(0, T - HANGAR.walk) % walkAction.getClip().duration; }
+    if (ladderAction) { ladderAction.setEffectiveWeight(clipW('ladder')); ladderAction.time = Math.max(0, T - HANGAR.climb) % ladderAction.getClip().duration; }
+    if (sitDownAction) { sitDownAction.setEffectiveWeight(clipW('sitDown')); sitDownAction.time = board ? board.k * sitDownAction.getClip().duration : 0; }
+    if (HS.ladder) { const up = 1 - THREE.MathUtils.smoothstep(T, HANGAR.canopy, HANGAR.canopy + 0.6); HS.ladder.visible = up > 0.01; HS.ladder.scale.y = Math.max(0.01, up); }   // it folds away as the canopy comes down
     if (waveParts) for (const act of Object.values(waveParts)) act.setEffectiveWeight(0);
     const headBone = sitter.getObjectByName('Head'); if (headBone && headBone.userData.restQ) headBone.quaternion.copy(headBone.userData.restQ);
     sitterMixer.update(0);
     const model = sitter.children[0], rest = sitter.userData.hipRest, hipBone = model.getObjectByName('Hip');
-    if (walking && rest && hipBone) {
+    if (board && (board.clip === 'walk' || board.clip === 'ladder') && rest && hipBone) {
       model.updateMatrixWorld(true);
       const now = model.worldToLocal(hipBone.getWorldPosition(new THREE.Vector3()));
       model.position.set(rest.x - now.x, 0, rest.z - now.z);
@@ -1294,6 +1311,33 @@ function standEndHip(model, hipBone) {
   return sitter.userData.standEnd;
 }
 function reseatWave() { if (SEQ.active) seek(SEQ.T); }   // show a wave change at once
+// where he is and what he is doing at time T before he is seated: the walk to the ladder, the
+// climb, the step across the wing and the lowering into the seat. Positions in the set's metres.
+function boardingPose(T) {
+  const H = HANGAR, B = BOARD, from = new THREE.Vector3(...H.from), foot = new THREE.Vector3(...H.to);
+  const seatAt = hangarSet.seat.clone().add(new THREE.Vector3(0, -SEAT.up - H.seatDown, 0)).addScaledVector(new THREE.Vector3(1, 0, 0), SEAT.back - H.seatBack);
+  const top = new THREE.Vector3(foot.x, B.wingY, B.ladderZ + 0.15), rim = new THREE.Vector3(foot.x, B.rimY, B.rimZ);
+  const walkYaw = Math.atan2(foot.x - from.x, foot.z - from.z), faceHull = 0, faceNose = Math.PI / 2;
+  const tCross = H.climb + B.climbLen, tSit = tCross + B.cross, sm = THREE.MathUtils.smoothstep;
+  if (T < H.climb) {
+    const dist = from.distanceTo(foot), gone = Math.min(dist, H.speed * Math.max(0, T - H.walk - 0.2)), there = gone >= dist - 0.01;
+    const turn = there ? sm(T, H.climb - 0.5, H.climb) : 0;    // at the ladder he turns to face the hull
+    return { pos: from.clone().addScaledVector(foot.clone().sub(from).normalize(), gone), yaw: walkYaw + Math.atan2(Math.sin(faceHull - walkYaw), Math.cos(faceHull - walkYaw)) * turn, recline: 0, clip: T > H.walk + 0.2 && !there ? 'walk' : 'stand' };
+  }
+  if (T < tCross) { const k = (T - H.climb) / B.climbLen; return { pos: new THREE.Vector3(foot.x, 0, B.ladderZ - 0.3).lerp(top, k), yaw: faceHull, recline: 0, clip: 'ladder' }; }
+  if (T < tSit) { const k = sm(T, tCross, tSit); return { pos: top.clone().lerp(rim, k), yaw: faceHull, recline: 0, clip: 'walk' }; }
+  const k = sm(T, tSit, H.sit);
+  return { pos: rim.clone().lerp(seatAt, k), yaw: faceHull + (faceNose - faceHull) * sm(T, tSit, tSit + B.sitIn * 0.6), recline: THREE.MathUtils.degToRad(H.recline) * k, clip: 'sitDown', k: Math.min(1, (T - tSit) / B.sitIn) };
+}
+// the boarding ladder: two rails and rungs against the wing's edge, folding away with the canopy
+function buildLadder(HS) {
+  const g = new THREE.Group(), m = new THREE.MeshStandardMaterial({ color: 0x3a4048, metalness: 0.7, roughness: 0.45 });
+  const x = HANGAR.to[0], z = BOARD.ladderZ, hgt = BOARD.wingY + 0.05;
+  for (const dx of [-0.22, 0.22]) { const r = new THREE.Mesh(new THREE.BoxGeometry(0.04, hgt, 0.04), m); r.position.set(x + dx, hgt / 2, z); g.add(r); }
+  for (let y = 0.2; y < hgt - 0.05; y += 0.22) { const r = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.03, 0.05), m); r.position.set(x, y, z); g.add(r); }
+  g.traverse(o => { if (o.isMesh) o.castShadow = o.receiveShadow = true; });
+  HS.floor.add(g); return g;
+}
 function reseat() { if (SEQ.active && currentSet === 'hangar') seek(SEQ.T); }
 // The helmet hangs on his head bone, sized to his head and turned the way he faces, so it goes
 // where the head goes. Its place is the middle of the head's skin: the vertices the head bone owns,
