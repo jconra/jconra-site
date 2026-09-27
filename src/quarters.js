@@ -1003,7 +1003,7 @@ function showSet(name) {
   if (!inHangar && sitter && sitter.parent !== room && sitter.parent !== chairPivot) chairPivot.add(sitter);
   // space light: a hard sun and almost nothing else; the cabin gets its preset back
   spaceFill.intensity = inCabin ? 0 : 1.8;      // earthshine: the planet below lights the undersides blue
-  if (inCabin) setLight(lightName);
+  if (inCabin) { spaceFill.color.setHex(0x6f8fb8); setLight(lightName); }
   if (inCabin) { sun.position.set(2.5, 2.0, -5); sun.target.position.set(0, 0, 0); spaceFill.target.position.set(0, 0, 0); }
   else {
     // aimed at the set, not the cabin: from 100 km away a light aimed at the origin arrives sideways.
@@ -1012,8 +1012,11 @@ function showSet(name) {
     sun.position.copy(AT).add((inHangar ? new THREE.Vector3(1, 0.35, 0.25) : inMap ? new THREE.Vector3(0.4, 0.6, 1) : inTown ? new THREE.Vector3(0.5, 1, 0.3) : new THREE.Vector3(1, 0.6, 0.45)).multiplyScalar(5000)); sun.target.position.copy(AT);
     spaceFill.position.copy(AT).add((inHangar ? new THREE.Vector3(0.3, 0.9, -0.4) : new THREE.Vector3(-0.6, -0.8, -0.3)).multiplyScalar(5000)); spaceFill.target.position.copy(AT);
     sun.intensity = 3.2; sun.color.setHex(0xfff4e6); cabin.intensity = 0; screens.intensity = 0;
-         ambient.intensity = inHangar ? 0.6 : inTown ? 1.6 : 0.35; ambient.color.setHex(inTown ? 0xcfe9ff : 0x8aa0b8); ambient.groundColor.setHex(inTown ? 0x5a8a48 : 0x2a3340); renderer.toneMappingExposure = inTown ? 1.15 : 1.05;
-         spaceFill.intensity = inHangar ? 1.2 : inTown ? 0 : 1.8; if (inTown) { sun.intensity = 2.4; sun.color.setHex(0xfff6e4); } }
+         ambient.intensity = inHangar ? 0.45 : inTown ? 1.6 : 0.35; ambient.color.setHex(inTown ? 0xcfe9ff : 0x8aa0b8); ambient.groundColor.setHex(inTown ? 0x5a8a48 : 0x2a3340); renderer.toneMappingExposure = inTown ? 1.15 : 1.05;
+         // inside the hangar the fill is the deck lit by the sun through the mouth, a warm neutral that
+         // matches the outside at the cut; outside it is the blue earthshine from below
+         spaceFill.color.setHex(inHangar ? 0xc9b9a2 : 0x6f8fb8); ambient.color.setHex(inTown ? 0xcfe9ff : inHangar ? 0xa8a49a : 0x8aa0b8);
+         spaceFill.intensity = inHangar ? 0.75 : inTown ? 0 : 1.8; if (inTown) { sun.intensity = 2.4; sun.color.setHex(0xfff6e4); } }
 }
 const holos = [];          // the greeting is on the terminal now, not floating over his head; Hologram stays for later
 const SEQ = { hold: 0.9, turn: 1.3, draw: 1.8, waveLen: 1.5, standLen: 2.0, T: 0, playing: false, active: false, scrub: true, turned: 0 };
