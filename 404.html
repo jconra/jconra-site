@@ -64,11 +64,15 @@ try {
     const yaw = THREE.MathUtils.degToRad(25), up = THREE.MathUtils.degToRad(15);
     const look = new THREE.Vector3(Math.cos(yaw) * Math.cos(up), Math.sin(up), Math.sin(yaw) * Math.cos(up));
     const face = head.getWorldPosition(new THREE.Vector3());
-    camera.position.set(face.x + Math.cos(yaw) * 1.2, face.y + 0.04, face.z + Math.sin(yaw) * 1.2); camera.lookAt(face.x, face.y - 0.08, face.z);
+    // the whole puppy in frame, feet to ear tips: look at the middle of its height from far enough back
+    const bb = new THREE.Box3().setFromObject(dog), mid = (bb.min.y + bb.max.y) / 2, tall = bb.max.y - bb.min.y;
+    const back = tall / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 1.06;
+    camera.position.set(face.x + Math.cos(yaw) * back, mid + tall * 0.12, face.z + Math.sin(yaw) * back); camera.lookAt(face.x - 0.1, mid, face.z);
     // the roll axis (the face's line) and the turn axis, in the neck's parent frame
     const pq = neck.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
     const rollAxis = look.clone().applyQuaternion(pq), turnAxis = new THREE.Vector3(0, 1, 0).applyQuaternion(pq);
     let mouse = 0; addEventListener('pointermove', e => { mouse = THREE.MathUtils.clamp((e.clientX / innerWidth) * 2 - 1, -1, 1); });
+    const TILT = +(new URLSearchParams(location.search).get('tilt') || 0.7);   // radians each way (?tilt= to try others)
     let turn = 0; const t0 = performance.now(), q = new THREE.Quaternion();
     // one cycle: tilt right, hold, back, tilt left, hold, back, a rest (seconds)
     const tilt = (t) => { const c = t % 3.2, ease = (u) => u * u * (3 - 2 * u);
@@ -76,7 +80,7 @@ try {
     renderer.setAnimationLoop(() => {
       const t = (performance.now() - t0) / 1000;
       turn += (mouse * 0.3 - turn) * 0.08;
-      neck.quaternion.copy(rest).premultiply(q.setFromAxisAngle(turnAxis, turn)).premultiply(new THREE.Quaternion().setFromAxisAngle(rollAxis, tilt(t) * 0.45));
+      neck.quaternion.copy(rest).premultiply(q.setFromAxisAngle(turnAxis, turn)).premultiply(new THREE.Quaternion().setFromAxisAngle(rollAxis, tilt(t) * TILT));
       renderer.render(scene, camera);
     });
     box.classList.add('live');
