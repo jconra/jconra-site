@@ -438,7 +438,7 @@ function loadSitter() {
         act.enabled = true; act.setEffectiveWeight(0); act.play(); waveParts[part] = act;
       }
       waveAction = waveParts.arm;
-      SEQ.waveLen = wave.duration; bootProgress('clips', 1);
+      SEQ.waveLen = src.duration; bootProgress('clips', 1);
     });
     // standing up (Mixamo, retargeted) and Tripo's own walk; both start silent and the timeline drives them
     loader.load('/models/stand_up_clip.glb', (g) => {
