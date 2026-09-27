@@ -309,7 +309,7 @@ function loadRoom(name) {
   placeSitter();
   $('boot')?.remove();
   bootProgress('cabin', 1); loadSitter(); loadStation();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getProps: () => PROPS, getMap: () => mapSet, getTown: () => town, TOWN_INPUT });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getProps: () => PROPS, total, getMap: () => mapSet, getTown: () => town, TOWN_INPUT });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; if (e.total) bootProgress('cabin', e.loaded / e.total); },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -613,7 +613,8 @@ const HANGAR_AT = new THREE.Vector3(-100000, 0, 0);       // the human-scale han
 const MAP_AT = new THREE.Vector3(0, 0, 120000);            // the map over the photograph, off on its own
 const TOWN_AT = new THREE.Vector3(0, -50000, -150000);     // the projects world, off on its own
 let town = null;
-const TOWN_INPUT = { dest: null, turn: 0, throttle: 0 };
+const TOWN_INPUT = { dest: null, holding: false, turn: 0, throttle: 0 };
+const liveInTown = () => currentSet === 'town' && SEQ.T >= total() - 1e-6;
 const SKY = new THREE.Color(0x9ec9ec);
 let mapSet = null, poked = null, hangarIndex = -1, hangarMatrix = null, twin = null;
 let station = null, stationLoading = false, hangarAt = null, bayAt = null, hangarMouth = null, currentSet = 'cabin', hangarSet = null, helmet = null;
@@ -669,7 +670,8 @@ function buildTownSet(parts) {
 function stepTown(T, a, b, u, set = 'town') {
   if (!town) return;
   const t0 = KEYS.find(k => setOf(k) === 'town').t, live = T >= total() - 1e-6;
-  if (!live) town.poseAt(T - t0);
+  if (!live) { town.poseAt(T - t0, total() - t0); town.liveFrom = false; }
+  else if (!town.liveFrom) { town.poseAt(total() - t0, total() - t0); town.liveFrom = true; }   // however it got here (a jump to the end, too), the live flight starts where the arrival ends
   town.setCloud(1 - THREE.MathUtils.smoothstep(T, t0, t0 + 3.2));
   camera.position.copy(cameraAt(T)).add(TOWN_AT);
   controls.target.copy(lookPoint(a.look, set).lerp(lookPoint(b.look, set), u)); camera.lookAt(controls.target);
@@ -705,8 +707,21 @@ function liveTown(dt) {
     card.classList.add('on');
   };
   renderer.domElement.addEventListener('pointermove', (e) => { if (currentSet !== 'town' || !town || e.pointerType !== 'mouse') return; showCard(town.pick(cast(e)), e); });
-  renderer.domElement.addEventListener('pointerdown', (e) => down.set(e.clientX, e.clientY));
+  // a press held for a moment steers: the fighter chases the ground under the finger (or mouse)
+  // until it is let go, then finishes the trip and stops; a quick tap is handled on release
+  let holdTimer = 0, steering = false, lastE = null;
+  const steerTo = (e) => { const g = town.groundPoint(cast(e)); if (g) TOWN_INPUT.dest = g.sub(TOWN_AT); };
+  renderer.domElement.addEventListener('pointerdown', (e) => {
+    down.set(e.clientX, e.clientY); lastE = e;
+    if (!town || !liveInTown() || !e.isPrimary) return;
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => { if (TOWN_SCRUBBING()) return; steering = true; TOWN_INPUT.holding = true; showCard(null, lastE); steerTo(lastE); }, 160);
+  });
+  renderer.domElement.addEventListener('pointermove', (e) => { lastE = e; if (steering && liveInTown()) { if (TOWN_SCRUBBING()) { steering = false; TOWN_INPUT.holding = false; TOWN_INPUT.dest = null; return; } steerTo(e); } });
+  const release = () => { clearTimeout(holdTimer); const was = steering; steering = false; TOWN_INPUT.holding = false; return was; };
+  renderer.domElement.addEventListener('pointercancel', release);
   renderer.domElement.addEventListener('pointerup', (e) => {
+    if (release()) return;                                   // it was a hold: the fighter goes on to where the finger was
     if (currentSet !== 'town' || !town || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) return;
     const r = cast(e), b = town.pick(r);
     if (b) {
@@ -1367,24 +1382,32 @@ renderer.domElement.addEventListener('pointermove', (e) => {
 // the drag is not fighting it.
 // sideways drag, while he is flying, banks the fighter instead: the drag's first few pixels decide
 // which it is, so a swipe never does both.
+// A SCRUB IS DELIBERATE: a mostly vertical swipe of about 180 px inside half a second. Anything
+// gentler is not the timeline's: in the town it steers the fighter (and must never send it back
+// to where it came in), while he flies a sideways drag banks him.
+let touchScrubbing = false;
+const TOWN_SCRUBBING = () => touchScrubbing;
 {
-  let lastY = null, id = null, startX = 0, startY = 0, mode = null;
-  renderer.domElement.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse' && e.isPrimary) { lastY = e.clientY; startX = e.clientX; startY = e.clientY; id = e.pointerId; mode = null; } });
+  let lastY = null, id = null, startX = 0, startY = 0, startT = 0, mode = null;
+  renderer.domElement.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse' && e.isPrimary) { lastY = e.clientY; startX = e.clientX; startY = e.clientY; startT = performance.now(); id = e.pointerId; mode = null; } });
   renderer.domElement.addEventListener('pointermove', (e) => {
     if (e.pointerId !== id || lastY === null || !SEQ.scrub || !chairPivot) return;
     if (!mode) {
-      const dx = e.clientX - startX, dyy = e.clientY - startY;
-      if (Math.hypot(dx, dyy) < 6) return;
-      const flying = SEQ.active && SEQ.T >= HANGAR.roll;
-      mode = flying && Math.abs(dx) > Math.abs(dyy) ? 'bank' : 'scrub';
+      const dx = e.clientX - startX, dyy = e.clientY - startY, quick = performance.now() - startT < 500;
+      const flying = SEQ.active && SEQ.T >= HANGAR.roll && !liveInTown();
+      if (quick && Math.abs(dyy) > 180 && Math.abs(dyy) > 2 * Math.abs(dx)) { mode = 'scrub'; touchScrubbing = true; lastY = e.clientY; return; }
+      if (flying && Math.abs(dx) > 30 && Math.abs(dx) > Math.abs(dyy)) mode = 'bank';
+      else if (!quick) mode = 'none';                        // too slow for a scrub: it is someone steering or looking
+      if (!mode) return;
     }
+    if (mode === 'none') return;
     if (mode === 'bank') { FLY.target = THREE.MathUtils.clamp(-((e.clientX - startX) / (innerWidth / 2)) * FLY.maxRoll, -FLY.maxRoll, FLY.maxRoll); return; }
     const dy = lastY - e.clientY; lastY = e.clientY;
     if (!SEQ.active) activateIntro();
     SEQ.playing = false; scrubbed();
     seek(SEQ.T + dy * 0.012);
   });
-  const end = (e) => { if (e.pointerId === id) { lastY = null; id = null; if (mode === 'bank') FLY.target = 0; mode = null; } };
+  const end = (e) => { if (e.pointerId === id) { lastY = null; id = null; if (mode === 'bank') FLY.target = 0; mode = null; touchScrubbing = false; } };
   renderer.domElement.addEventListener('pointerup', end); renderer.domElement.addEventListener('pointercancel', end);
 }
 

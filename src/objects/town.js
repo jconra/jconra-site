@@ -121,7 +121,8 @@ export function buildTown(parts, projects, { shipLength = 7, renderer, origin = 
   const F = parts.ship1, jet = new THREE.Group();
   const body = shutFighter(F, { metres: shipLength }); body.position.y -= 1.5;      // canopy shut for the flight
   jet.add(body); floor.add(jet);
-  const state = { pos: new THREE.Vector3(0, 56, -900), heading: 0, speed: 46, bank: 0, turn: 0, alt: 56 };   // above the tallest roof
+  const ARRIVE_Z = -330;                                    // where the arrival stops: just outside the fence's north side
+  const state = { pos: new THREE.Vector3(0, 56, -900), heading: 0, speed: 0, bank: 0, turn: 0, alt: 56 };   // above the tallest roof
   const fwd = () => new THREE.Vector3(Math.sin(state.heading), 0, Math.cos(state.heading));
   const place = () => {
     jet.position.copy(state.pos);
@@ -148,27 +149,43 @@ export function buildTown(parts, projects, { shipLength = 7, renderer, origin = 
     // the fighter's way, and a point ahead of it to look at
     forward: fwd,
     lookAhead(d = 26) { return state.pos.clone().addScaledVector(fwd(), d); },
-    // one step of the flight: `input` is { dest: Vector3 | null, turn: -1..1, throttle: -1..1 }
+    // one step of the flight: `input` is { dest: Vector3 | null, holding, turn: -1..1, throttle: -1..1 }.
+    // It hovers when told nothing: sent somewhere, it turns (on the spot if it must), flies there,
+    // eases in and stops; held, it chases the point under the finger; W thrusts, S brakes, A/D turn.
     update(dt, input = {}) {
-      let want = state.heading;
+      let want = state.heading, wantSpeed = 0, dist = 0;
       if (input.dest) {
-        const d = input.dest.clone().sub(state.pos); d.y = 0;
-        if (d.length() > 12) want = Math.atan2(d.x, d.z); else input.dest = null;
+        const d = input.dest.clone().sub(state.pos); d.y = 0; dist = d.length();
+        if (dist > 6) { want = Math.atan2(d.x, d.z); }
+        else if (!input.holding) input.dest = null;
       }
-      let turn = input.turn || 0;
-      if (!turn && input.dest) { let e = want - state.heading; e = Math.atan2(Math.sin(e), Math.cos(e)); turn = THREE.MathUtils.clamp(e * 2.2, -1, 1); }
+      let turn = input.turn || 0, facing = 1;
+      if (!turn && input.dest && dist > 6) {
+        let e = want - state.heading; e = Math.atan2(Math.sin(e), Math.cos(e));
+        turn = THREE.MathUtils.clamp(e * 2.2, -1, 1);
+        facing = Math.max(0, Math.cos(e));                     // no speed until it points roughly the right way
+        wantSpeed = Math.min(70, dist * 0.9) * facing;         // eases in as it arrives
+      }
+      if (input.throttle > 0) wantSpeed = 70;
+      if (input.throttle < 0) wantSpeed = 0;
       state.turn += (turn - state.turn) * Math.min(1, dt * 6);
-      state.heading += state.turn * 1.4 * dt;
-      state.speed = THREE.MathUtils.clamp(state.speed + (input.throttle || 0) * 30 * dt, 25, 90);
-      state.bank += (-state.turn * 0.75 - state.bank) * Math.min(1, dt * 4);
+      state.heading += state.turn * 1.5 * dt;
+      state.speed += (wantSpeed - state.speed) * Math.min(1, dt * (wantSpeed > state.speed ? 1.2 : 1.8));
+      state.bank += (-state.turn * 0.75 * Math.min(1, 0.3 + state.speed / 40) - state.bank) * Math.min(1, dt * 4);
       state.pos.addScaledVector(fwd(), state.speed * dt);
-      // the burner answers the throttle: idling at cruise, full when pushed, a glow when eased off
-      const bn = body.userData.burner; if (bn) { bn.setThrust(input.throttle > 0 ? 1 : input.throttle < 0 ? 0.15 : 0.45 + 0.4 * (state.speed - 25) / 65); bn.update(dt); }
+      // the burner answers the speed: a glow at a hover, full when pushed
+      const bn = body.userData.burner; if (bn) { bn.setThrust(input.throttle > 0 ? 1 : 0.12 + 0.75 * state.speed / 70); bn.update(dt); }
       state.pos.y = state.alt + Math.sin(performance.now() * 0.0012) * 0.6;
       place(); relay(state.pos.x, state.pos.z);
     },
     // the flight as a function of time for the scrubbable part: straight in over the town
-    poseAt(t) { const bn = body.userData.burner; if (bn) { bn.setThrust(0.7); bn.update(1 / 60); } state.pos.set(0, state.alt, -900 + 46 * t); state.heading = 0; state.bank = 0; state.turn = 0; place(); relay(state.pos.x, state.pos.z); },
+    // it comes in fast from 900 m out and eases to a stop at the town's edge by the end (`dur` s),
+    // so the live flight starts there, at rest
+    poseAt(t, dur = 3.5) {
+      const u = THREE.MathUtils.clamp(t / dur, 0, 1), z = -900 + (ARRIVE_Z + 900) * (1 - (1 - u) * (1 - u));
+      const bn = body.userData.burner; if (bn) { bn.setThrust(0.9 * (1 - u) + 0.15); bn.update(1 / 60); }
+      state.pos.set(0, state.alt, z); state.heading = 0; state.bank = 0; state.turn = 0; state.speed = 0; place(); relay(state.pos.x, state.pos.z);
+    },
     // the clouds: 1 = solid, 0 = gone
     setCloud(k) { for (const c of clouds) { c.material.opacity = THREE.MathUtils.clamp(k, 0, 1); c.visible = k > 0.01; } },
     faceClouds(camera) { for (const c of clouds) c.quaternion.copy(camera.quaternion); },
