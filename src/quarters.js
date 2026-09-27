@@ -117,7 +117,7 @@ post.setSize(innerWidth, innerHeight);
 const room = new THREE.Group();
 scene.add(room);
 let windows = null, chairPivot = null, props = [];
-const CHAIR = { swivel: true, speed: 12, angle: 0, x: 25, y: 0, z: -55, height: 100 };   // x, z: where Jacob slid it (2026-09-20)   // x, y, z: nudges in cm from where the chair stands; height: the seat, % (the chair squashed or stretched on its base)
+const CHAIR = { swivel: false, speed: 12, angle: 0, x: 25, y: 0, z: -55, height: 100 };   // x, z: where Jacob slid it (2026-09-20)   // x, y, z: nudges in cm from where the chair stands; height: the seat, % (the chair squashed or stretched on its base)
 let chairBase = null;
 function placeChair() {
   if (!chairPivot || !chairBase) return;
@@ -511,57 +511,54 @@ const WINDOW = [0.05, 1.8, -1.62];
 const KEYS = [
   // Jacob's keys (2026-09-20): a captured look point is pushed out along the line of sight (2 m in
   // the cabin, 1 km outside) so a wobble of the camera's path can never put it behind the camera
-  { t: 0.0,  cam: [-0.028, 1.602, -0.742], look: [-0.027, 1.592, -1.201], chair: -112, face: 0 },   // square on the terminal (the pull-back lands here)
+  { t: 0,  cam: [-0.028, 1.602, -0.742], look: [-0.027, 1.592, -1.201], chair: -112, face: 0 },   // square on the terminal (the pull-back lands here)
   { t: 1.4,  cam: [1.74, 1.933, 1.591],    look: [0.031, 1.532, -0.695],  chair: -112, face: 0 },
-  { t: 2.5,  cam: [1.63, 1.713, 1.656],    look: [-0.078, 1.164, -0.427], chair: 114,  face: 1 },
-  { t: 7.0,  cam: [3.034, 2.036, 0.268],   look: [0.375, 1.599, -0.653],  chair: -180, face: 0.4 },
-  { t: 9.5,  cam: [1.96, 1.772, -0.03],    look: [-0.015, 1.805, -0.148], chair: 'turned', face: 0.6 },
-  { t: 12.0, cam: [0.526, 2.225, -1.115],  look: [-0.005, 2.211, -1.424], chair: 'turned', face: 0 },
-  { t: 14.0, cam: [0.216, 2.191, -1.711],  look: [-1.775, 2.218, -1.897], chair: 'turned', face: 0 },
+  { t: 2.5,  cam: [2.045, 2.003, 2.362],   look: [0.837, 1.758, 0.787],   chair: 114,  face: 1 },
+  { t: 7.98, cam: [0.103, 2.22, -1.746],   look: [-1.852, 2.057, -1.354], chair: 210.9, face: 0.69 },   // at the window (Jacob, 2026-09-27: out at 8 s)
   // OUTSIDE. Station keys are in the station's own metres.
-  { t: 14.01, set: 'station', cam: [748.697, 822.855, -292.606], look: [229.139, 788.329, -1146.344] },
-  { t: 15.4,  set: 'station', cam: [716.627, 780.535, -702.714], look: [-273.615, 746.635, -837.888] },
-  { t: 17.5,  set: 'station', cam: [1550, 800, 850],   look: 'station' },           // level, clear of the arms
-  { t: 22.0,  set: 'station', cam: [2100, 1250, 1400], look: 'station' },           // wide, from a little above the deck
-  { t: 26.0,  set: 'station', cam: { at: 'mouth', out: 900, up: 380, side: 500 }, look: 'hangar' },   // panning right
-  { t: 30.0,  set: 'station', cam: { at: 'mouth', out: 260, up: 40 },  look: 'hangar' },              // at the mouth
-  { t: 33.0,  set: 'station', cam: { at: 'mouth', outU: 0.2, upU: 0.07 }, look: 'bay' },            // in, onto the fighter (in hangar units: the cut inside matches)
+  { t: 7.99, set: 'station', cam: [748.697, 822.855, -292.606], look: [229.139, 788.329, -1146.344] },
+  { t: 9.38,  set: 'station', cam: [716.627, 780.535, -702.714], look: [-273.615, 746.635, -837.888] },
+  { t: 11.48,  set: 'station', cam: [1550, 800, 850],   look: 'station' },           // level, clear of the arms
+  { t: 15.98,  set: 'station', cam: [2100, 1250, 1400], look: 'station' },           // wide, from a little above the deck
+  { t: 19.98,  set: 'station', cam: { at: 'mouth', out: 900, up: 380, side: 500 }, look: 'hangar' },   // panning right
+  { t: 23.98,  set: 'station', cam: { at: 'mouth', out: 260, up: 40 },  look: 'hangar' },              // at the mouth
+  { t: 26.98,  set: 'station', cam: { at: 'mouth', outU: 0.2, upU: 0.07 }, look: 'bay' },            // in, onto the fighter (in hangar units: the cut inside matches)
   // INSIDE THE HANGAR, at human scale: the same hangar and fighter, the fighter 6 m long. He walks
   // in from the right, in his helmet, to the cockpit; then he is in the seat, the canopy closes,
   // and the fighter rolls out of the mouth. Keys are in the set's metres: the fighter's spot on the
   // deck is the origin, the deck is y = 0, the mouth is toward +x.
-  { t: 33.01, set: 'hangar', cam: { at: 'mouth', outU: 0.2, upU: 0.07 }, look: 'ship' }, // the same framing as the last shot outside
-  { t: 36.5,  set: 'hangar', cam: [5.5, 1.9, -5.5],   look: 'him' },
-  { t: 39.0,  set: 'hangar', cam: [3.4, 2.1, -3.2],   look: 'him' },
-  { t: 39.01, set: 'hangar', cam: [2.6, 2.3, -3.4],   look: 'cockpit' },                  // he is in the seat
-  { t: 42.0,  set: 'hangar', cam: [4.2, 2.0, -4.6],   look: 'cockpit' },                  // the canopy comes down
+  { t: 26.99, set: 'hangar', cam: { at: 'mouth', outU: 0.2, upU: 0.07 }, look: 'ship' }, // the same framing as the last shot outside
+  { t: 30.48,  set: 'hangar', cam: [5.5, 1.9, -5.5],   look: 'him' },
+  { t: 32.98,  set: 'hangar', cam: [3.4, 2.1, -3.2],   look: 'him' },
+  { t: 32.99, set: 'hangar', cam: [2.6, 2.3, -3.4],   look: 'cockpit' },                  // he is in the seat
+  { t: 35.98,  set: 'hangar', cam: [4.2, 2.0, -4.6],   look: 'cockpit' },                  // the canopy comes down
   // from the roll-out the camera locks onto the fighter: `{ at: 'chase', back, up, side }` is
   // metres behind it, above it and to its right, wherever it has got to
-  { t: 43.0,  set: 'hangar', cam: { at: 'chase', back: 9, up: 2.6, side: -4.5 }, look: 'ship' },
-  { t: 45.2,  set: 'hangar', cam: { at: 'chase', back: 13, up: 3.4, side: 3.0 }, look: 'ship' },
+  { t: 36.98,  set: 'hangar', cam: { at: 'chase', back: 9, up: 2.6, side: -4.5 }, look: 'ship' },
+  { t: 39.18,  set: 'hangar', cam: { at: 'chase', back: 13, up: 3.4, side: 3.0 }, look: 'ship' },
   // the camera stops where the chase had it at 45.2 s and looks away to the right, so the fighter
   // flies on out of the left of the frame; then the map
-  { t: 46.49, set: 'hangar', cam: { at: 'chase', freeze: 45.2, back: 13, up: 3.4, side: 3.0 }, look: { at: 'ship', freeze: 45.2, ahead: 30, side: -70 } },
+  { t: 40.47, set: 'hangar', cam: { at: 'chase', freeze: 39.18, back: 13, up: 3.4, side: 3.0 }, look: { at: 'ship', freeze: 39.18, ahead: 30, side: -70 } },
   // THE MAP. Earth as the photograph, large, the fighter flying in over it toward the States;
   // the outline of the country glows on the picture, then the states of his story light up one
   // by one with a line each. Keys are in the picture's own units (pixels of the photograph,
   // centred, y up), the picture in the z = 0 plane and the camera out along +z.
-  { t: 46.5,  set: 'map', cam: [-40, 60, 980],  look: [33, 83, 0] },
-  { t: 50.0,  set: 'map', cam: [33, 83, 380],   look: [33, 83, 0] },
-  { t: 62.5,  set: 'map', cam: [30, 80, 330],   look: [25, 88, 0] },
-  { t: 65.5,  set: 'map', cam: [34, 78, 320],   look: [25, 88, 0] },
+  { t: 40.48,  set: 'map', cam: [-40, 60, 980],  look: [33, 83, 0] },
+  { t: 43.98,  set: 'map', cam: [33, 83, 380],   look: [33, 83, 0] },
+  { t: 56.48,  set: 'map', cam: [30, 80, 330],   look: [25, 88, 0] },
+  { t: 59.48,  set: 'map', cam: [34, 78, 320],   look: [25, 88, 0] },
   // RE-ENTRY. The fighter noses down and dives at the country; the camera falls in behind it. Fire
   // builds around the nose and washes the frame out; as it clears, clouds pop into being all round.
-  { t: 67.0,  set: 'map', cam: { at: 'chase', back: 70, up: 24, side: 10 }, look: 'ship' },
-  { t: 70.5,  set: 'map', cam: { at: 'chase', back: 40, up: 12, side: 0 },  look: 'ship' },
-  { t: 76.5,  set: 'map', cam: { at: 'chase', back: 42, up: 14, side: -6 }, look: 'ship' },
+  { t: 60.98,  set: 'map', cam: { at: 'chase', back: 70, up: 24, side: 10 }, look: 'ship' },
+  { t: 64.48,  set: 'map', cam: { at: 'chase', back: 40, up: 12, side: 0 },  look: 'ship' },
+  { t: 70.48,  set: 'map', cam: { at: 'chase', back: 42, up: 14, side: -6 }, look: 'ship' },
   // THE TOWN. Out of the white: the projects world, the fighter skimming in over the forest to the
   // town, the camera high behind it. From the last key the flight is live - tap or click where to
   // go, or WASD - and the roofs are the projects.
-  { t: 76.51, set: 'town', cam: { at: 'follow', back: 120, up: 90 }, look: 'jet' },
-  { t: 80.0,  set: 'town', cam: { at: 'follow', back: 38, up: 20 },  look: 'jet' },
+  { t: 70.49, set: 'town', cam: { at: 'follow', back: 120, up: 90 }, look: 'jet' },
+  { t: 73.98,  set: 'town', cam: { at: 'follow', back: 38, up: 20 },  look: 'jet' },
 ];
-const ACTS = { wave: 1.9, stand: 8.2, walk: 10.0, walkSpeed: 1.1, walkDir: 35 };   // seconds; m/s; degrees from +z toward +x
+const ACTS = { wave: 1.3, stand: 2.7, walk: 4.2, walkSpeed: 1.1, walkDir: 75 };   // Jacob's quicker start (2026-09-27)   // seconds; m/s; degrees from +z toward +x
 // in the hangar: when he starts walking in, where from (metres beside the fighter's spot, the
 // right of the mouth's view is -z), when he is in the seat, when the canopy starts down and how
 // long it takes, and when the fighter rolls, at what acceleration
@@ -574,11 +571,11 @@ function scrubbed() { RESUME.last = performance.now(); RESUME.hold = false; }
 // the story on the map: which state lights when, and what is said. Poking a state with the
 // pointer lights it and shows its line (or just its name) and holds the timeline.
 const TOUR = [
-  { id: 'CO', t: 50.3, title: 'Colorado',    text: 'Born and raised.' },
-  { id: 'NM', t: 52.7, title: 'New Mexico',  text: '4 years USAF avionics on MQ-1 and MQ-9 aircraft.' },
-  { id: 'MD', t: 55.1, title: 'Maryland',    text: '4 years Red Team for USAF Cyber Warfare Operations. Computer Science BA, UMUC.' },
-  { id: 'MS', t: 57.5, title: 'Mississippi', text: '2 years at Keesler AFB teaching Cyberspace Warfare Operations: Windows, Linux and Python.' },
-  { id: 'WA', t: 59.9, title: 'Washington',  text: '7 years AWS Systems Engineer for filesystems (EFS, FSx). Helicopter pilot, 176 hours.' },
+  { id: 'CO', t: 44.28, title: 'Colorado',    text: 'Born and raised.' },
+  { id: 'NM', t: 46.68, title: 'New Mexico',  text: '4 years USAF avionics on MQ-1 and MQ-9 aircraft.' },
+  { id: 'MD', t: 49.08, title: 'Maryland',    text: '4 years Red Team for USAF Cyber Warfare Operations. Computer Science BA, UMUC.' },
+  { id: 'MS', t: 51.48, title: 'Mississippi', text: '2 years at Keesler AFB teaching Cyberspace Warfare Operations: Windows, Linux and Python.' },
+  { id: 'WA', t: 53.88, title: 'Washington',  text: '7 years AWS Systems Engineer for filesystems (EFS, FSx). Helicopter pilot, 176 hours.' },
 ];
 // where each state's pin stands: a place's [longitude, latitude], or fx / fy set in the panel
 // (the fraction of the way across the state, west to east and north to south)
@@ -590,12 +587,12 @@ const PINS = {
   WA: { place: 'Seattle',    lonlat: [-122.332, 47.606] },
 };
 const MAP_CLOSEST = 320;               // metres: how near the tour keys bring the camera to the map (the 65.5 s key); a narrow screen stops further out
-const MAP = { glow: 48.1, tourEnd: 62.5, shipIn: 46.5, shipAt: 52.5,
-  dive: 65.5, diveEnd: 70.1,             // the fighter noses down and races for the cloud bank
+const MAP = { glow: 42.08, tourEnd: 56.48, shipIn: 40.48, shipAt: 46.48,
+  dive: 59.48, diveEnd: 64.08,             // the fighter noses down and races for the cloud bank
   target: [-201, 113, 4],                // where it goes in: the big swirl of cloud off the West Coast, in the picture's units
-  fire: 67.1, flash: 69.9, clear: 72.1,  // the glow builds, peaks white, and clears
-  clouds: 70.1, cloudsIn: 2.4 };          // clouds pop in over this many seconds from here
-const HANGAR = { walk: 33.0, from: [0.3, 0, -9.4], to: [0.3, 0, -2.4], speed: 1.15, sit: 39.0, canopy: 39.4, canopyLen: 2.4, roll: 42.5, accel: 2.5,
+  fire: 61.08, flash: 63.88, clear: 66.08,  // the glow builds, peaks white, and clears
+  clouds: 64.08, cloudsIn: 2.4 };          // clouds pop in over this many seconds from here
+const HANGAR = { walk: 26.98, from: [0.3, 0, -9.4], to: [0.3, 0, -2.4], speed: 1.15, sit: 32.98, canopy: 33.38, canopyLen: 2.4, roll: 36.48, accel: 2.5,
   // the fit in the seat: how far down from the measured seat pan he sits, how far back, and how far
   // he reclines (degrees); and how far the canopy turns to shut
   seatDown: 0.17, seatBack: 0, recline: 24, canopyDeg: -50, canopyDrop: 0.05, canopySlide: 0.02 };   // canopyDrop / canopySlide: metres the shut canopy is let down / slid toward the nose
@@ -603,7 +600,7 @@ const HANGAR = { walk: 33.0, from: [0.3, 0, -9.4], to: [0.3, 0, -2.4], speed: 1.
 // dissolves again as the next one forms.
 const PARTS = [
   { start: 2.4, end: 6.2, size: 0.07, lines: ['Welcome To', 'Jconra.com'] },
-  { start: 5.8, end: 9.6, size: 0.034, lines: ['Hello! I am Jacob Conrads,', 'a Systems Engineer.', 'This is a project to play around', 'with and highlight my skills.', 'Thank you for visiting!'] },
+  { start: 5.8, end: 7.98, size: 0.034, lines: ['Hello! I am Jacob Conrads,', 'a Systems Engineer.', 'This is a project to play around', 'with and highlight my skills.', 'Thank you for visiting!'] },
 ];
 // ── the station outside ──────────────────────────────────────────────────────────
 // The second set, 100 km from the cabin in the same scene, built from the kit with its default
@@ -899,12 +896,12 @@ const FLYBYS = [
   // `at` seconds (the wide shot): the line is set out in that view - so much ahead and up, this
   // long, along the view's right - and then it is just a line in the world, so it never backs up
   // or turns however the camera moves
-  { part: 'freighter', size: 260, flip: true, line: { at: 21.5, fwd: 1300, up: 120, span: 2600 }, t0: 16.5, t1: 27.5 },   // flip: the part's nose is at -x
+  { part: 'freighter', size: 260, flip: true, line: { at: 15.48, fwd: 1300, up: 120, span: 2600 }, t0: 10.48, t1: 21.48 },   // flip: the part's nose is at -x
   // the pair's path is set against the camera's own view at its start and end - metres ahead, to
   // the right and up from where the camera is and looks at that moment - so it crosses the frame
   // the pair's path is given in the camera's view the whole way (`inView`), not just at its ends,
   // so however the camera pans they cross the frame over the four seconds, right to left
-  { part: 'ship1', size: 50, inView: true, from: { fwd: 700, right: 620, up: 130 }, to: { fwd: 640, right: -640, up: -50 }, t0: 23.0, t1: 27.4, wing: [0, 14, 44] },
+  { part: 'ship1', size: 50, inView: true, from: { fwd: 700, right: 620, up: 130 }, to: { fwd: 640, right: -640, up: -50 }, t0: 16.98, t1: 21.38, wing: [0, 14, 44] },
 ];
 // a point given against the camera's view at time t, in the station's metres
 function viewPoint(t, { fwd, right, up }) {
@@ -1150,8 +1147,11 @@ function seek(T) {
       sitter.rotation.set(0, y, 0);
     } else if (sitter.parent !== chairPivot) { chairPivot.add(sitter); placeSitter(); }
     sitAction.setEffectiveWeight(standing ? 0 : 1); sitAction.time = sitTime(T);
-    if (standAction) { standAction.setEffectiveWeight(standing && !walking ? 1 : 0); standAction.time = Math.min(SEQ.standLen, Math.max(0, T - ACTS.stand)); }
-    if (walkAction) { walkAction.setEffectiveWeight(walking ? 1 : 0); walkAction.time = Math.max(0, T - ACTS.walk) % walkAction.getClip().duration; }
+    // the stand-up plays fast enough to finish before the walk (it is 2.3 s long, the gap may be
+    // shorter), then fades into the walk over a third of a second instead of cutting mid-rise
+    const standRate = Math.max(1, SEQ.standLen / Math.max(0.6, ACTS.walk - ACTS.stand)), walkIn = walking ? THREE.MathUtils.smoothstep(T, ACTS.walk, ACTS.walk + 0.35) : 0;
+    if (standAction) { standAction.setEffectiveWeight(standing ? 1 - walkIn : 0); standAction.time = Math.min(SEQ.standLen, Math.max(0, T - ACTS.stand) * standRate); }
+    if (walkAction) { walkAction.setEffectiveWeight(walkIn); walkAction.time = Math.max(0, T - ACTS.walk) % walkAction.getClip().duration; }
     if (waveParts) {
       const w = T - ACTS.wave, on = w >= 0 && !standing ? 1 : 0;
       for (const [part, act] of Object.entries(waveParts)) { act.setEffectiveWeight(part === 'arm' ? 0 : on * WAVE[part]); act.time = Math.min(SEQ.waveLen, Math.max(0, w)); }   // the arm is waved in code (handWave)
@@ -1161,9 +1161,13 @@ function seek(T) {
     if (!standing) handWave(T);
     const model = sitter.children[0], rest = sitter.userData.hipRest, hipBone = model.getObjectByName('Hip');
     if (walking && rest && hipBone) {
+      // the walk's own travel is cancelled (he moves by the timeline), and its hips are held where
+      // the stand-up left them, so the hand-over from one clip to the other does not jump
+      const from = standEndHip(model, hipBone) || rest;
       model.updateMatrixWorld(true);
       const now = model.worldToLocal(hipBone.getWorldPosition(new THREE.Vector3()));
-      model.position.set(rest.x - now.x, 0, rest.z - now.z);    // the clip's own travel cancelled; he moves by the timeline
+      model.position.set(from.x - now.x, 0, from.z - now.z);
+      // (then the pose is already the right one this frame: standEndHip re-evaluated the mixer)
     } else model.position.set(0, 0, 0);
   }
   // the camera
@@ -1265,6 +1269,20 @@ function handWave(T) {
   aimBone(up, fore, side.clone().multiplyScalar(0.85).addScaledVector(upW, 0.35 + 0.25 * WAVE.arm).addScaledVector(fwd, 0.25).normalize(), e);
   const swing = Math.sin(w * Math.PI * 2 * H.rate) * 0.5 * Math.min(1, w / H.up);
   aimBone(fore, hand, upW.clone().addScaledVector(side, swing).addScaledVector(fwd, 0.2).normalize(), e);
+}
+// where the stand-up leaves his hips (in his model's frame), found once by posing the clip's last
+// frame on its own, then the mixer is put back as it was
+function standEndHip(model, hipBone) {
+  if (sitter.userData.standEnd) return sitter.userData.standEnd;
+  if (!standAction) return null;
+  const acts = sitterMixer._actions, saved = acts.map(x => [x, x.getEffectiveWeight(), x.time]);
+  for (const x of acts) x.setEffectiveWeight(0);
+  standAction.setEffectiveWeight(1); standAction.time = SEQ.standLen; sitterMixer.update(0);
+  model.updateMatrixWorld(true);
+  sitter.userData.standEnd = model.worldToLocal(hipBone.getWorldPosition(new THREE.Vector3()));
+  for (const [x, w, t] of saved) { x.setEffectiveWeight(w); x.time = t; }
+  sitterMixer.update(0);
+  return sitter.userData.standEnd;
 }
 function reseatWave() { if (SEQ.active) seek(SEQ.T); }   // show a wave change at once
 function reseat() { if (SEQ.active && currentSet === 'hangar') seek(SEQ.T); }
@@ -1491,7 +1509,7 @@ const PROP_SETS = {
     { name: 'ska poster', image: '/textures/posters/ska.jpg', x: -1.63, y: 1.38, z: 0.1, yaw: 90, lean: 0, height: 0.61, frame: true },
     // the books Jacob likes, along the ledge over the bed (spines to the room); a click lists them
     { name: 'books', books: true, x: -1.525, y: 2.132, z: 1.2, yaw: 90, lean: 0, height: 1, length: 1.42 },
-    { name: 'gladius', file: '/models/props/gladius.glb', x: -1.29, y: 2.21, z: -0.71, yaw: -47, lean: 0, height: 0.33, stand: true, pitch: -15, roll: -72, spin: 111, rise: 0.51, belly: -1 },   // on the shelf by the bass (Jacob, 2026-09-23)
+    { name: 'gladius', file: '/models/props/gladius.glb', x: -1.29, y: 2.21, z: -1.06, yaw: -47, lean: 0, height: 0.33, stand: true, pitch: -15, roll: -72, spin: 111, rise: 0.51, belly: -1 },   // on the shelf by the bass (Jacob, 2026-09-23)
   ],
 };
 let PROPS = [];
