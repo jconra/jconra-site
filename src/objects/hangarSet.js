@@ -29,7 +29,7 @@ export function shutFighter(F, { deg = -50, drop = 0.05, slide = 0.02, metres = 
     const glass = new THREE.Mesh(new ConvexGeometry(pts), new THREE.MeshPhysicalMaterial({ color: 0x223a52, metalness: 0.1, roughness: 0.08, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }));
     glass.renderOrder = 2; canopyMesh.add(glass); }
   g.add(hullMesh, canopyMesh); g.scale.setScalar(fu); g.position.y = -F.box.min.y * fu;
-  addAfterburner(g, F);
+  g.userData.burner = addAfterburner(g, F);   // kept, so whoever flies it can set its thrust
   return g;
 }
 

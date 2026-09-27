@@ -899,7 +899,7 @@ const FLYBYS = [
   // the right and up from where the camera is and looks at that moment - so it crosses the frame
   // the pair's path is given in the camera's view the whole way (`inView`), not just at its ends,
   // so however the camera pans they cross the frame over the four seconds, right to left
-  { part: 'ship1', size: 50, inView: true, from: { fwd: 700, right: 620, up: 130 }, to: { fwd: 640, right: -640, up: -50 }, t0: 11, t1: 12.6, wing: [0, 14, 44] },
+  { part: 'ship1', size: 50, inView: true, from: { fwd: 420, across: -1.25, up: -95 }, to: { fwd: 380, across: 1.25, up: -60 }, t0: 10.4, t1: 13.4, wing: [0, 14, 44] },
 ];
 // a point given against the camera's view at time t, in the station's metres
 function viewPoint(t, { fwd, right, up }) {
@@ -916,9 +916,11 @@ function buildTraffic(parts) {
     const group = new THREE.Group();
     const k = f.size / P.size.x, n = f.wing ? 2 : 1;
     for (let i = 0; i < n; i++) {
-      const m = new THREE.Mesh(P.geometry, P.material); m.scale.setScalar(k); m.castShadow = m.receiveShadow = true;
+      // the fighters fly with their canopies shut and their burners lit
+      let m;
+      if (f.part === 'ship1') { m = shutFighter(P, { metres: f.size }); m.position.y = 0; m.userData.burner.setThrust(1); burners.push(m.userData.burner); }
+      else { m = new THREE.Mesh(P.geometry, P.material); m.scale.setScalar(k); m.castShadow = m.receiveShadow = true; }
       if (i) m.position.set(...f.wing);
-      if (f.part === 'ship1') { const bn = addAfterburner(m, P); bn.setThrust(1); burners.push(bn); }   // the fighters go by at full burn
       group.add(m);
     }
     // pointed along the path: the parts lie along +x
@@ -950,7 +952,11 @@ function stepTraffic(T) {
     if (f.inView) {
       // placed in the camera's view now, and pointed the way it is going a moment later
       const A = f.spec.from, B = f.spec.to;
-      const at = (t) => { const w = (t - f.t0) / (f.t1 - f.t0); return viewPoint(t, { fwd: A.fwd + (B.fwd - A.fwd) * w, right: A.right + (B.right - A.right) * w, up: A.up + (B.up - A.up) * w }); };
+      // `across` is a fraction of the screen's half-width at that distance (-1 the left edge, 1 the
+      // right), so a narrow phone sees the whole pass too; `right` is metres
+      const halfW = (d) => d * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect;
+      const side = (P, d) => P.across !== undefined ? P.across * halfW(d) : P.right;
+      const at = (t) => { const w = (t - f.t0) / (f.t1 - f.t0), fwd = A.fwd + (B.fwd - A.fwd) * w; return viewPoint(t, { fwd, right: side(A, fwd) + (side(B, fwd) - side(A, fwd)) * w, up: A.up + (B.up - A.up) * w }); };
       const p0 = at(T), p1 = at(T + 0.05);
       f.group.position.copy(p0);
       f.group.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), p1.sub(p0).normalize());
