@@ -58,10 +58,26 @@ export class Screen extends THREE.Mesh {
     rows.forEach(([k, v], i) => { g.fillStyle = 'rgba(127,208,255,0.55)'; g.fillText(k, 18, 70 + i * 26); g.fillStyle = c; g.fillText(v, 230, 70 + i * 26); });
     if (this.rand() < 0.08) this.log.unshift(['reactor trim', 'antenna slew 3°', 'hatch 2 sealed', 'coolant loop nominal', 'ping: ground 41 ms', 'solar wing tracking'][Math.floor(this.rand() * 6)]);
     this.log.length = Math.min(this.log.length, 5);
+    // three bands that never overlap: the readouts at the top, the log at the bottom, the trace in
+    // the space between (the log gives up lines before the trace is squeezed below 40 px)
+    const rowsBottom = 70 + (rows.length - 1) * 26 + 12;
+    const logLines = Math.max(1, Math.min(this.log.length || 1, Math.floor((H - rowsBottom - 16 - 56) / 20)));
+    const logTop = H - 16 - (logLines - 1) * 20 - 18;
     g.font = `14px ${FONT}`; g.fillStyle = 'rgba(127,208,255,0.5)';
-    this.log.forEach((l, i) => g.fillText('› ' + l, 18, H - 16 - i * 20));
+    this.log.slice(0, logLines).forEach((l, i) => g.fillText('› ' + l, 18, H - 16 - i * 20));
+    const mid = (rowsBottom + logTop) / 2, amp = Math.max(6, Math.min(24, (logTop - rowsBottom) / 2 - 8));
+    // faint rules either side of the trace
+    g.strokeStyle = 'rgba(127,208,255,0.15)'; g.lineWidth = 1;
+    for (const y of [mid - amp - 6, mid + amp + 6]) { g.beginPath(); g.moveTo(18, y); g.lineTo(W - 18, y); g.stroke(); }
+    // the trace glides between a few frequencies, a new one every few seconds
+    const FREQS = [0.05, 0.11, 0.03, 0.075], hold = 5.5, span = 1.6;
+    const k = Math.floor(t / hold), f = t - k * hold, blend = THREE.MathUtils.smoothstep(f, hold - span, hold);
+    const freq = THREE.MathUtils.lerp(FREQS[k % FREQS.length], FREQS[(k + 1) % FREQS.length], blend);
     g.strokeStyle = c; g.lineWidth = 2; g.beginPath();
-    for (let x = 0; x < W - 36; x += 4) { const y = H - 150 + Math.sin((x + t * 90) * 0.05) * 14 + Math.sin((x - t * 30) * 0.013) * 10; x ? g.lineTo(18 + x, y) : g.moveTo(18 + x, y); }
+    for (let x = 0; x <= W - 36; x += 3) {
+      const y = mid + (Math.sin((x + t * 90) * freq) * 0.62 + Math.sin((x - t * 30) * freq * 0.27) * 0.38) * amp;
+      x ? g.lineTo(18 + x, y) : g.moveTo(18 + x, y);
+    }
     g.stroke();
   }
 
