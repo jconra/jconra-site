@@ -1890,6 +1890,28 @@ for (const name of Object.keys(LIGHT_PRESETS)) {
 }
 setLight('Flat');
 $('playIntro').onclick = playIntro;
+// the pinned bar: step to the previous / next key (and hold there), play or pause from here
+function stepKey(dir) {
+  if (!SEQ.active) activateIntro();
+  const ts = [...new Set(KEYS.map(k => k.t))].sort((x, y) => x - y), T = SEQ.T;
+  const t = dir > 0 ? ts.find(x => x > T + 0.02) : [...ts].reverse().find(x => x < T - 0.02);
+  if (t === undefined) return;
+  SEQ.playing = false; RESUME.hold = true; seek(t);
+  const i = KEYS.findIndex(k => k.t === t); if (i >= 0) { keyIndex = i; buildKeyList(); showKey(); }
+}
+$('prevKey').onclick = () => stepKey(-1);
+$('nextKey').onclick = () => stepKey(1);
+$('playPause').onclick = () => {
+  if (!SEQ.active) activateIntro();
+  SEQ.playing = !SEQ.playing;
+  if (SEQ.playing) { if (SEQ.T >= total() - 0.01) seek(0); scrubbed(); } else RESUME.hold = true;
+};
+setInterval(() => { const b = $('playPause'); if (b) b.textContent = SEQ.playing ? 'pause' : 'play'; }, 250);
+// the collapsible sections remember which are open
+for (const d of document.querySelectorAll('#panel details[data-sec]')) {
+  try { d.open = JSON.parse(localStorage.getItem('quartersLab.open') || '[]').includes(d.dataset.sec); } catch (e) { /* no storage */ }
+  d.addEventListener('toggle', () => { try { localStorage.setItem('quartersLab.open', JSON.stringify([...document.querySelectorAll('#panel details[data-sec]')].filter(x => x.open).map(x => x.dataset.sec))); } catch (e) { /* no storage */ } });
+}
 const CHECKS = {
   openWindows: () => applyWindows(),
   swivel: e => { CHAIR.swivel = e.target.checked; },
