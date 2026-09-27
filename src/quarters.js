@@ -14,6 +14,7 @@ import { Screen } from './objects/screens.js';
 import { Terminal } from './objects/terminal.js';
 import { loadKit, StationKit, DEFAULT_LAYOUT } from './objects/stationKit.js';
 import { buildHangarSet, shutFighter } from './objects/hangarSet.js';
+import { addAfterburner } from './objects/afterburner.js';
 import { loadUSMap } from './objects/usMap.js';
 import { buildTown } from './objects/town.js';
 import { loadTownLayout } from './objects/townLayout.js';
@@ -517,46 +518,43 @@ const KEYS = [
   { t: 7.98, cam: [0.103, 2.22, -1.746],   look: [-1.852, 2.057, -1.354], chair: 210.9, face: 0.69 },   // at the window (Jacob, 2026-09-27: out at 8 s)
   // OUTSIDE. Station keys are in the station's own metres.
   { t: 7.99, set: 'station', cam: [748.697, 822.855, -292.606], look: [229.139, 788.329, -1146.344] },
-  { t: 9.38,  set: 'station', cam: [716.627, 780.535, -702.714], look: [-273.615, 746.635, -837.888] },
-  { t: 11.48,  set: 'station', cam: [1550, 800, 850],   look: 'station' },           // level, clear of the arms
-  { t: 15.98,  set: 'station', cam: [2100, 1250, 1400], look: 'station' },           // wide, from a little above the deck
-  { t: 19.98,  set: 'station', cam: { at: 'mouth', out: 900, up: 380, side: 500 }, look: 'hangar' },   // panning right
-  { t: 23.98,  set: 'station', cam: { at: 'mouth', out: 260, up: 40 },  look: 'hangar' },              // at the mouth
-  { t: 26.98,  set: 'station', cam: { at: 'mouth', outU: 0.2, upU: 0.07 }, look: 'bay' },            // in, onto the fighter (in hangar units: the cut inside matches)
+  { t: 10,   set: 'station', cam: [2100, 1250, 1400], look: 'station' },           // wide: most of the station (Jacob, 2026-09-27)
+  { t: 12.2,  set: 'station', cam: { at: 'mouth', out: 900, up: 380, side: 500 }, look: 'hangar' },   // off the hangar's mouth, so the path from the wide shot stays outside the arms
+  { t: 14,   set: 'station', cam: { at: 'mouth', outU: 0.2, upU: 0.07 }, look: 'bay' },            // in, onto the fighter (in hangar units: the cut inside matches)
   // INSIDE THE HANGAR, at human scale: the same hangar and fighter, the fighter 6 m long. He walks
   // in from the right, in his helmet, to the cockpit; then he is in the seat, the canopy closes,
   // and the fighter rolls out of the mouth. Keys are in the set's metres: the fighter's spot on the
   // deck is the origin, the deck is y = 0, the mouth is toward +x.
-  { t: 26.99, set: 'hangar', cam: { at: 'mouth', outU: 0.2, upU: 0.07 }, look: 'ship' }, // the same framing as the last shot outside
-  { t: 30.48,  set: 'hangar', cam: [5.5, 1.9, -5.5],   look: 'him' },
-  { t: 32.98,  set: 'hangar', cam: [3.4, 2.1, -3.2],   look: 'him' },
-  { t: 32.99, set: 'hangar', cam: [2.6, 2.3, -3.4],   look: 'cockpit' },                  // he is in the seat
-  { t: 35.98,  set: 'hangar', cam: [4.2, 2.0, -4.6],   look: 'cockpit' },                  // the canopy comes down
+  { t: 14.01, set: 'hangar', cam: { at: 'mouth', outU: 0.2, upU: 0.07 }, look: 'ship' }, // the same framing as the last shot outside
+  { t: 17.5,  set: 'hangar', cam: [5.5, 1.9, -5.5],   look: 'him' },
+  { t: 20,  set: 'hangar', cam: [3.4, 2.1, -3.2],   look: 'him' },
+  { t: 20.01, set: 'hangar', cam: [2.6, 2.3, -3.4],   look: 'cockpit' },                  // he is in the seat
+  { t: 23,  set: 'hangar', cam: [4.2, 2.0, -4.6],   look: 'cockpit' },                  // the canopy comes down
   // from the roll-out the camera locks onto the fighter: `{ at: 'chase', back, up, side }` is
   // metres behind it, above it and to its right, wherever it has got to
-  { t: 36.98,  set: 'hangar', cam: { at: 'chase', back: 9, up: 2.6, side: -4.5 }, look: 'ship' },
-  { t: 39.18,  set: 'hangar', cam: { at: 'chase', back: 13, up: 3.4, side: 3.0 }, look: 'ship' },
+  { t: 24,  set: 'hangar', cam: { at: 'chase', back: 9, up: 2.6, side: -4.5 }, look: 'ship' },
+  { t: 26.2,  set: 'hangar', cam: { at: 'chase', back: 13, up: 3.4, side: 3.0 }, look: 'ship' },
   // the camera stops where the chase had it at 45.2 s and looks away to the right, so the fighter
   // flies on out of the left of the frame; then the map
-  { t: 40.47, set: 'hangar', cam: { at: 'chase', freeze: 39.18, back: 13, up: 3.4, side: 3.0 }, look: { at: 'ship', freeze: 39.18, ahead: 30, side: -70 } },
+  { t: 27.49, set: 'hangar', cam: { at: 'chase', freeze: 26.2, back: 13, up: 3.4, side: 3.0 }, look: { at: 'ship', freeze: 26.2, ahead: 30, side: -70 } },
   // THE MAP. Earth as the photograph, large, the fighter flying in over it toward the States;
   // the outline of the country glows on the picture, then the states of his story light up one
   // by one with a line each. Keys are in the picture's own units (pixels of the photograph,
   // centred, y up), the picture in the z = 0 plane and the camera out along +z.
-  { t: 40.48,  set: 'map', cam: [-40, 60, 980],  look: [33, 83, 0] },
-  { t: 43.98,  set: 'map', cam: [33, 83, 380],   look: [33, 83, 0] },
-  { t: 56.48,  set: 'map', cam: [30, 80, 330],   look: [25, 88, 0] },
-  { t: 59.48,  set: 'map', cam: [34, 78, 320],   look: [25, 88, 0] },
+  { t: 27.5,  set: 'map', cam: [-40, 60, 980],  look: [33, 83, 0] },
+  { t: 31,  set: 'map', cam: [33, 83, 380],   look: [33, 83, 0] },
+  { t: 43.5,  set: 'map', cam: [30, 80, 330],   look: [25, 88, 0] },
+  { t: 46.5,  set: 'map', cam: [34, 78, 320],   look: [25, 88, 0] },
   // RE-ENTRY. The fighter noses down and dives at the country; the camera falls in behind it. Fire
   // builds around the nose and washes the frame out; as it clears, clouds pop into being all round.
-  { t: 60.98,  set: 'map', cam: { at: 'chase', back: 70, up: 24, side: 10 }, look: 'ship' },
-  { t: 64.48,  set: 'map', cam: { at: 'chase', back: 40, up: 12, side: 0 },  look: 'ship' },
-  { t: 70.48,  set: 'map', cam: { at: 'chase', back: 42, up: 14, side: -6 }, look: 'ship' },
+  { t: 48,  set: 'map', cam: { at: 'chase', back: 70, up: 24, side: 10 }, look: 'ship' },
+  { t: 51.5,  set: 'map', cam: { at: 'chase', back: 40, up: 12, side: 0 },  look: 'ship' },
+  { t: 57.5,  set: 'map', cam: { at: 'chase', back: 42, up: 14, side: -6 }, look: 'ship' },
   // THE TOWN. Out of the white: the projects world, the fighter skimming in over the forest to the
   // town, the camera high behind it. From the last key the flight is live - tap or click where to
   // go, or WASD - and the roofs are the projects.
-  { t: 70.49, set: 'town', cam: { at: 'follow', back: 120, up: 90 }, look: 'jet' },
-  { t: 73.98,  set: 'town', cam: { at: 'follow', back: 38, up: 20 },  look: 'jet' },
+  { t: 57.51, set: 'town', cam: { at: 'follow', back: 120, up: 90 }, look: 'jet' },
+  { t: 61,  set: 'town', cam: { at: 'follow', back: 38, up: 20 },  look: 'jet' },
 ];
 const ACTS = { wave: 1.3, stand: 2.7, walk: 4.2, walkSpeed: 1.1, walkDir: 75 };   // Jacob's quicker start (2026-09-27)   // seconds; m/s; degrees from +z toward +x
 // in the hangar: when he starts walking in, where from (metres beside the fighter's spot, the
@@ -571,11 +569,11 @@ function scrubbed() { RESUME.last = performance.now(); RESUME.hold = false; }
 // the story on the map: which state lights when, and what is said. Poking a state with the
 // pointer lights it and shows its line (or just its name) and holds the timeline.
 const TOUR = [
-  { id: 'CO', t: 44.28, title: 'Colorado',    text: 'Born and raised.' },
-  { id: 'NM', t: 46.68, title: 'New Mexico',  text: '4 years USAF avionics on MQ-1 and MQ-9 aircraft.' },
-  { id: 'MD', t: 49.08, title: 'Maryland',    text: '4 years Red Team for USAF Cyber Warfare Operations. Computer Science BA, UMUC.' },
-  { id: 'MS', t: 51.48, title: 'Mississippi', text: '2 years at Keesler AFB teaching Cyberspace Warfare Operations: Windows, Linux and Python.' },
-  { id: 'WA', t: 53.88, title: 'Washington',  text: '7 years AWS Systems Engineer for filesystems (EFS, FSx). Helicopter pilot, 176 hours.' },
+  { id: 'CO', t: 31.3, title: 'Colorado',    text: 'Born and raised.' },
+  { id: 'NM', t: 33.7, title: 'New Mexico',  text: '4 years USAF avionics on MQ-1 and MQ-9 aircraft.' },
+  { id: 'MD', t: 36.1, title: 'Maryland',    text: '4 years Red Team for USAF Cyber Warfare Operations. Computer Science BA, UMUC.' },
+  { id: 'MS', t: 38.5, title: 'Mississippi', text: '2 years at Keesler AFB teaching Cyberspace Warfare Operations: Windows, Linux and Python.' },
+  { id: 'WA', t: 40.9, title: 'Washington',  text: '7 years AWS Systems Engineer for filesystems (EFS, FSx). Helicopter pilot, 176 hours.' },
 ];
 // where each state's pin stands: a place's [longitude, latitude], or fx / fy set in the panel
 // (the fraction of the way across the state, west to east and north to south)
@@ -587,12 +585,12 @@ const PINS = {
   WA: { place: 'Seattle',    lonlat: [-122.332, 47.606] },
 };
 const MAP_CLOSEST = 320;               // metres: how near the tour keys bring the camera to the map (the 65.5 s key); a narrow screen stops further out
-const MAP = { glow: 42.08, tourEnd: 56.48, shipIn: 40.48, shipAt: 46.48,
-  dive: 59.48, diveEnd: 64.08,             // the fighter noses down and races for the cloud bank
+const MAP = { glow: 29.1, tourEnd: 43.5, shipIn: 27.5, shipAt: 33.5,
+  dive: 46.5, diveEnd: 51.1,             // the fighter noses down and races for the cloud bank
   target: [-201, 113, 4],                // where it goes in: the big swirl of cloud off the West Coast, in the picture's units
-  fire: 61.08, flash: 63.88, clear: 66.08,  // the glow builds, peaks white, and clears
-  clouds: 64.08, cloudsIn: 2.4 };          // clouds pop in over this many seconds from here
-const HANGAR = { walk: 26.98, from: [0.3, 0, -9.4], to: [0.3, 0, -2.4], speed: 1.15, sit: 32.98, canopy: 33.38, canopyLen: 2.4, roll: 36.48, accel: 2.5,
+  fire: 48.1, flash: 50.9, clear: 53.1,  // the glow builds, peaks white, and clears
+  clouds: 51.1, cloudsIn: 2.4 };          // clouds pop in over this many seconds from here
+const HANGAR = { walk: 14.0, from: [0.3, 0, -9.4], to: [0.3, 0, -2.4], speed: 1.15, sit: 20, canopy: 20.4, canopyLen: 2.4, roll: 23.5, accel: 2.5,
   // the fit in the seat: how far down from the measured seat pan he sits, how far back, and how far
   // he reclines (degrees); and how far the canopy turns to shut
   seatDown: 0.17, seatBack: 0, recline: 24, canopyDeg: -50, canopyDrop: 0.05, canopySlide: 0.02 };   // canopyDrop / canopySlide: metres the shut canopy is let down / slid toward the nose
@@ -896,12 +894,12 @@ const FLYBYS = [
   // `at` seconds (the wide shot): the line is set out in that view - so much ahead and up, this
   // long, along the view's right - and then it is just a line in the world, so it never backs up
   // or turns however the camera moves
-  { part: 'freighter', size: 260, flip: true, line: { at: 15.48, fwd: 1300, up: 120, span: 2600 }, t0: 10.48, t1: 21.48 },   // flip: the part's nose is at -x
+  { part: 'freighter', size: 260, flip: true, line: { at: 10, fwd: 1300, up: 120, span: 1800 }, t0: 7.99, t1: 14 },   // flip: the part's nose is at -x
   // the pair's path is set against the camera's own view at its start and end - metres ahead, to
   // the right and up from where the camera is and looks at that moment - so it crosses the frame
   // the pair's path is given in the camera's view the whole way (`inView`), not just at its ends,
   // so however the camera pans they cross the frame over the four seconds, right to left
-  { part: 'ship1', size: 50, inView: true, from: { fwd: 700, right: 620, up: 130 }, to: { fwd: 640, right: -640, up: -50 }, t0: 16.98, t1: 21.38, wing: [0, 14, 44] },
+  { part: 'ship1', size: 50, inView: true, from: { fwd: 700, right: 620, up: 130 }, to: { fwd: 640, right: -640, up: -50 }, t0: 11, t1: 12.6, wing: [0, 14, 44] },
 ];
 // a point given against the camera's view at time t, in the station's metres
 function viewPoint(t, { fwd, right, up }) {
@@ -910,7 +908,7 @@ function viewPoint(t, { fwd, right, up }) {
   const f = target.sub(cam).normalize(), r = f.clone().cross(new THREE.Vector3(0, 1, 0)).normalize(), U = r.clone().cross(f);
   return cam.addScaledVector(f, fwd).addScaledVector(r, right).addScaledVector(U, up);
 }
-let traffic = [];
+let traffic = [], burners = [];
 function buildTraffic(parts) {
   traffic = [];
   for (const f of FLYBYS) {
@@ -920,6 +918,7 @@ function buildTraffic(parts) {
     for (let i = 0; i < n; i++) {
       const m = new THREE.Mesh(P.geometry, P.material); m.scale.setScalar(k); m.castShadow = m.receiveShadow = true;
       if (i) m.position.set(...f.wing);
+      if (f.part === 'ship1') { const bn = addAfterburner(m, P); bn.setThrust(1); burners.push(bn); }   // the fighters go by at full burn
       group.add(m);
     }
     // pointed along the path: the parts lie along +x
@@ -943,6 +942,7 @@ function buildTraffic(parts) {
   }
 }
 function stepTraffic(T) {
+  for (const bn of burners) bn.update(1 / 60);
   for (const f of traffic) {
     const u = (T - f.t0) / (f.t1 - f.t0);
     f.group.visible = u > -0.02 && u < 1.02;
