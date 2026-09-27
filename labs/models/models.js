@@ -358,5 +358,5 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
 });
 
-if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, show, ENTRIES, getCurrent: () => current, getActions: () => actions });
+if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, show, ENTRIES, getCurrent: () => current, getActions: () => actions });
 show(Q.get('m') || store.get('last', 'jacob4'));

@@ -39,7 +39,9 @@
 <script type="module">
 // THE HUSKY IN 3D: Jacob's Tripo husky, its head tilting one way, pausing, then the other, like
 // the GIF it replaces once it has loaded (the GIF stays if anything fails). The tilt rolls the
-// neck bone (bone_23) about the dog's nose-to-tail line; the head also turns a little to the mouse.
+// neck bone (bone_23) about the line the face looks along: the head mesh is turned about 25 deg to
+// the dog's left of its bones, and the face tips up, so rolling about the body's own line read as
+// a nod. The camera looks straight at the face, and the head also turns a little to the mouse.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 const cv = document.getElementById('dog3d'), box = document.getElementById('dog');
@@ -58,12 +60,14 @@ try {
     const neck = dog.getObjectByName('bone_23'), head = dog.getObjectByName('bone_25');
     if (!neck || !head) return;
     const rest = neck.quaternion.clone();
-    // framed on the face, from in front (the dog faces +x)
+    // where the face looks: 25 deg to the dog's left of +x, tipped 15 deg up
+    const yaw = THREE.MathUtils.degToRad(25), up = THREE.MathUtils.degToRad(15);
+    const look = new THREE.Vector3(Math.cos(yaw) * Math.cos(up), Math.sin(up), Math.sin(yaw) * Math.cos(up));
     const face = head.getWorldPosition(new THREE.Vector3());
-    camera.position.set(face.x + 1.2, face.y + 0.04, face.z); camera.lookAt(face.x, face.y - 0.08, face.z);
-    // the roll axis and the turn axis, in the neck's parent frame
+    camera.position.set(face.x + Math.cos(yaw) * 1.2, face.y + 0.04, face.z + Math.sin(yaw) * 1.2); camera.lookAt(face.x, face.y - 0.08, face.z);
+    // the roll axis (the face's line) and the turn axis, in the neck's parent frame
     const pq = neck.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
-    const rollAxis = new THREE.Vector3(1, 0, 0).applyQuaternion(pq), turnAxis = new THREE.Vector3(0, 1, 0).applyQuaternion(pq);
+    const rollAxis = look.clone().applyQuaternion(pq), turnAxis = new THREE.Vector3(0, 1, 0).applyQuaternion(pq);
     let mouse = 0; addEventListener('pointermove', e => { mouse = THREE.MathUtils.clamp((e.clientX / innerWidth) * 2 - 1, -1, 1); });
     let turn = 0; const t0 = performance.now(), q = new THREE.Quaternion();
     // one cycle: tilt right, hold, back, tilt left, hold, back, a rest (seconds)
@@ -72,7 +76,7 @@ try {
     renderer.setAnimationLoop(() => {
       const t = (performance.now() - t0) / 1000;
       turn += (mouse * 0.3 - turn) * 0.08;
-      neck.quaternion.copy(rest).premultiply(q.setFromAxisAngle(turnAxis, turn)).premultiply(new THREE.Quaternion().setFromAxisAngle(rollAxis, tilt(t) * 0.38));
+      neck.quaternion.copy(rest).premultiply(q.setFromAxisAngle(turnAxis, turn)).premultiply(new THREE.Quaternion().setFromAxisAngle(rollAxis, tilt(t) * 0.45));
       renderer.render(scene, camera);
     });
     box.classList.add('live');
