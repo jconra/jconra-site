@@ -47,13 +47,16 @@ export async function loadUSMap(url = '/labs/map/us.svg', { colour = 0x35e07d, l
       for (const p of shape.getPoints()) st.svgBox.expandByPoint(p);
       const fill = new THREE.Mesh(new THREE.ShapeGeometry(s2), fillMat);
       fill.position.z = lift; fill.userData.state = id;
+      // drawn after the picture they lie on: all are transparent at nearly the same spot, so left to
+      // sorting by distance the picture sometimes drew last and hid whole regions (the West)
+      fill.renderOrder = 1;
       st.group.add(fill); st.fills.push(fill); pickable.push(fill);
       const pts = s2.getPoints(), flat = [];
       for (const p of pts) flat.push(p.x, p.y, 0);
       flat.push(pts[0].x, pts[0].y, 0);
       for (const [mat, z] of [[dark, lift + 0.3], [light, lift + 0.5]]) {
         const geo = new LineGeometry(); geo.setPositions(flat);
-        const l = new Line2(geo, mat); l.computeLineDistances(); l.position.z = z; l.frustumCulled = false;
+        const l = new Line2(geo, mat); l.computeLineDistances(); l.position.z = z; l.frustumCulled = false; l.renderOrder = 1;
         st.group.add(l);
       }
     }

@@ -589,6 +589,7 @@ const PINS = {
   MS: { place: 'Biloxi',     lonlat: [-88.885, 30.396] },
   WA: { place: 'Seattle',    lonlat: [-122.332, 47.606] },
 };
+const MAP_CLOSEST = 320;               // metres: how near the tour keys bring the camera to the map (the 65.5 s key); a narrow screen stops further out
 const MAP = { glow: 48.1, tourEnd: 62.5, shipIn: 46.5, shipAt: 52.5,
   dive: 65.5, diveEnd: 70.1,             // the fighter noses down and races for the cloud bank
   target: [-201, 113, 4],                // where it goes in: the big swirl of cloud off the West Coast, in the picture's units
@@ -737,7 +738,7 @@ function buildMapSet(parts) {
     g.fillStyle = r; g.fillRect(0, 0, 128, 128); }
   // (planes turned to the camera, not sprites: a sprite's depth does not agree with the post-processing's, and it whited out the fighter)
   const plume = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(glowCanvas), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
-  plume.scale.setScalar(0.01); floor.add(plume);
+  plume.scale.setScalar(0.01); plume.renderOrder = 2; floor.add(plume);
   // sparks: points streaming back off the nose while the fire is on
   const nSparks = 220, sparkPos = new Float32Array(nSparks * 3), sparkSeed = new Float32Array(nSparks * 4);
   for (let i = 0; i < nSparks; i++) { sparkSeed[i * 4] = Math.random(); sparkSeed[i * 4 + 1] = Math.random() - 0.5; sparkSeed[i * 4 + 2] = Math.random() - 0.5; sparkSeed[i * 4 + 3] = 0.6 + Math.random() * 0.8; }
@@ -745,7 +746,7 @@ function buildMapSet(parts) {
   { const g = dot.getContext('2d'), r = g.createRadialGradient(16, 16, 0, 16, 16, 16); r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.35, 'rgba(255,220,160,0.8)'); r.addColorStop(1, 'rgba(255,160,60,0)'); g.fillStyle = r; g.fillRect(0, 0, 32, 32); }
   const sparks = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(sparkPos, 3)),
     new THREE.PointsMaterial({ color: 0xffc27a, map: new THREE.CanvasTexture(dot), size: 0.7, sizeAttenuation: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
-  sparks.userData.seed = sparkSeed; sparks.frustumCulled = false; floor.add(sparks);
+  sparks.userData.seed = sparkSeed; sparks.frustumCulled = false; sparks.renderOrder = 2; floor.add(sparks);
   // clouds: white puffs on sprites, scattered about the fighter's way down, each popping in at its own moment
   const cloudCanvas = document.createElement('canvas'); cloudCanvas.width = cloudCanvas.height = 256;
   { const g = cloudCanvas.getContext('2d'); let seed = 5; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
@@ -757,7 +758,7 @@ function buildMapSet(parts) {
       const c = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: cloudTex, transparent: true, depthWrite: false, opacity: 0.92 }));
       // spread around where the dive ends, all below the chase camera's height so they are in front of it
       c.userData = { at: new THREE.Vector3(MAP.target[0] + (rnd() - 0.5) * 260, MAP.target[1] + (rnd() - 0.5) * 200, 2 + rnd() * 24), size: 24 + rnd() * 44, when: rnd() };
-      c.position.copy(c.userData.at); c.visible = false; floor.add(c); clouds.push(c);
+      c.position.copy(c.userData.at); c.visible = false; c.renderOrder = 2; floor.add(c); clouds.push(c);   // over the state outlines (1)
     } }
   mapSet = { floor, pic, ship, plume, sparks, clouds, map: null };
   loadUSMap('/labs/map/us.svg').then(map => {
@@ -846,7 +847,15 @@ function stepMap(T, a, b, u, set = 'map') {
     else cap.classList.remove('on');
   }
   camera.position.copy(cameraAt(T)).add(MAP_AT);
-  controls.target.copy(lookPoint(a.look, set).lerp(lookPoint(b.look, set), u)); camera.lookAt(controls.target);
+  controls.target.copy(lookPoint(a.look, set).lerp(lookPoint(b.look, set), u));
+  // A narrow screen sees less across, so the keys (framed on a 16:9 screen) would crop both coasts.
+  // The camera's approach stops early instead: never nearer than the distance at which the closest
+  // tour key's view (framed for 16:9) still fits across this screen - the map smaller, never
+  // cropped, and never pulled back mid-shot. It lets go over the 1.5 s before the dive.
+  const closest = MAP_CLOSEST * Math.max(1, (16 / 9) / camera.aspect), hold = 1 - THREE.MathUtils.smoothstep(T, MAP.dive, MAP.dive + 1.5);
+  const off = camera.position.clone().sub(controls.target), dist = off.length();
+  if (hold > 0 && dist < closest) camera.position.copy(controls.target).addScaledVector(off, THREE.MathUtils.lerp(dist, closest, hold) / dist);
+  camera.lookAt(controls.target);
   post.focus = camera.position.distanceTo(controls.target);
   for (const h of holos) h.fill = 0;
   const el = $('seqTime'); if (el && document.activeElement !== el) el.value = T.toFixed(2);
