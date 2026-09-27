@@ -220,7 +220,7 @@ function startPullBack() {
   if (!SEQ.active) activateIntro();
   SEQ.playing = false; seek(0);
   const endPos = camera.position.clone(), endAt = controls.target.clone();
-  pull = { t: 0, len: 3.2, from: bc.pos, at: bc.at, to: endPos, toAt: endAt };
+  pull = { t: 0, len: 1.2, from: bc.pos, at: bc.at, to: endPos, toAt: endAt };   // quick: a slow back-away from the monitor read as a stall
   camera.position.copy(bc.pos); controls.target.copy(bc.at); camera.lookAt(bc.at);
   BOOT.phase = 'pull';
   const ov = $('bootOverlay'); if (ov) { ov.classList.add('gone'); setTimeout(() => ov.remove(), 900); }
@@ -1139,10 +1139,11 @@ function seek(T) {
     if (walkAction) { walkAction.setEffectiveWeight(walking ? 1 : 0); walkAction.time = Math.max(0, T - ACTS.walk) % walkAction.getClip().duration; }
     if (waveParts) {
       const w = T - ACTS.wave, on = w >= 0 && !standing ? 1 : 0;
-      for (const [part, act] of Object.entries(waveParts)) { act.setEffectiveWeight(on * WAVE[part]); act.time = Math.min(SEQ.waveLen, Math.max(0, w)); }
+      for (const [part, act] of Object.entries(waveParts)) { act.setEffectiveWeight(part === 'arm' ? 0 : on * WAVE[part]); act.time = Math.min(SEQ.waveLen, Math.max(0, w)); }   // the arm is waved in code (handWave)
     }
     const headBone = sitter.getObjectByName('Head'); if (headBone && headBone.userData.restQ) headBone.quaternion.copy(headBone.userData.restQ);
     sitterMixer.update(0);
+    if (!standing) handWave(T);
     const model = sitter.children[0], rest = sitter.userData.hipRest, hipBone = model.getObjectByName('Hip');
     if (walking && rest && hipBone) {
       model.updateMatrixWorld(true);
@@ -1218,6 +1219,37 @@ function stepHangar(T, a, b, u, set = 'hangar') {
   for (const h of holos) h.fill = 0;
   const el = $('seqTime'); if (el && document.activeElement !== el) el.value = T.toFixed(2);
   $('seqTimeOut').textContent = T.toFixed(1) + ' s';
+}
+// THE WAVE, in code: the Mixamo wave starts with its arm already up and only wags the forearm, so
+// over the sitting pose there was almost nothing to see. His right arm comes up and out, the
+// forearm points up and the hand swings side to side, quickly - up in a quarter of a second, a
+// couple of waves, down again. Bones are aimed by direction in the room, so the skeleton's own
+// axes do not matter; WAVE.arm scales how high the arm goes.
+const HAND_WAVE = { len: 1.4, up: 0.25, down: 0.3, rate: 2.3 };   // seconds; waves a second
+const _wv = { a: new THREE.Vector3(), b: new THREE.Vector3(), q: new THREE.Quaternion(), pq: new THREE.Quaternion(), bq: new THREE.Quaternion(), I: new THREE.Quaternion() };
+function aimBone(bone, child, dir, amount) {
+  bone.updateWorldMatrix(true, true);
+  const from = child.getWorldPosition(_wv.b).sub(bone.getWorldPosition(_wv.a)).normalize();
+  const turn = _wv.q.setFromUnitVectors(from, dir); _wv.I.identity().slerp(turn, amount);
+  const pq = bone.parent.getWorldQuaternion(_wv.pq), bq = bone.getWorldQuaternion(_wv.bq);
+  bone.quaternion.copy(pq.clone().invert().multiply(_wv.I.clone().multiply(bq)));
+}
+function handWave(T) {
+  const w = T - ACTS.wave, H = HAND_WAVE;
+  if (w < 0 || w > H.len || !sitter) return;
+  const e = THREE.MathUtils.smoothstep(w, 0, H.up) * (1 - THREE.MathUtils.smoothstep(w, H.len - H.down, H.len)) * Math.min(1, WAVE.arm);
+  if (e <= 0) return;
+  const up = sitter.getObjectByName('R_Upperarm'), fore = sitter.getObjectByName('R_Forearm'), hand = sitter.getObjectByName('R_Hand'), spine = sitter.getObjectByName('Spine02');
+  if (!up || !fore || !hand || !spine) return;
+  sitter.updateWorldMatrix(true, true);
+  // his right, his forward and the room's up, from where his shoulder is
+  const side = up.getWorldPosition(new THREE.Vector3()).sub(spine.getWorldPosition(new THREE.Vector3())); side.y = 0; side.normalize();
+  const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(sitter.getWorldQuaternion(new THREE.Quaternion())); fwd.y = 0; fwd.normalize();
+  const upW = new THREE.Vector3(0, 1, 0);
+  // the upper arm out to the side and a little up and forward; the forearm up, swinging across
+  aimBone(up, fore, side.clone().multiplyScalar(0.85).addScaledVector(upW, 0.35 + 0.25 * WAVE.arm).addScaledVector(fwd, 0.25).normalize(), e);
+  const swing = Math.sin(w * Math.PI * 2 * H.rate) * 0.5 * Math.min(1, w / H.up);
+  aimBone(fore, hand, upW.clone().addScaledVector(side, swing).addScaledVector(fwd, 0.2).normalize(), e);
 }
 function reseatWave() { if (SEQ.active) seek(SEQ.T); }   // show a wave change at once
 function reseat() { if (SEQ.active && currentSet === 'hangar') seek(SEQ.T); }
