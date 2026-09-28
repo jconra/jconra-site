@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terrain Lab</title>
+<script src="/src/oops.js"></script>
+<style>
+  @font-face { font-family: nasa; src: url("../../fonts/nasalization-rg.ttf"); font-display: swap; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; background:#000; color:#ccd6de; font:13px/1.45 ui-sans-serif, system-ui, sans-serif; }
+  canvas { display:block; touch-action:none; }
+  #panel { position:fixed; top:12px; right:12px; bottom:12px; width:310px; overflow-y:auto; z-index:5;
+           background:rgba(10,13,17,.92); border:1px solid #212a34; border-radius:6px; padding:12px 14px; }
+  #panel.min { bottom:auto; } #panel.min .body { display:none; }
+  h1 { font:400 17px/1 nasa, ui-sans-serif, sans-serif; letter-spacing:.05em; color:#e8f1f5; display:flex; justify-content:space-between; align-items:center; }
+  h1 button { font:600 11px ui-monospace,monospace; background:none; border:1px solid #212a34; color:#8494a0; border-radius:3px; padding:3px 7px; cursor:pointer; }
+  details.sec { margin:8px 0 0; border-top:1px solid #1a2129; padding-top:4px; }
+  details.sec summary { font:600 10.5px/1 ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase; color:#8494a0; cursor:pointer; list-style:none; padding:7px 0; user-select:none; }
+  details.sec summary::before { content:"\25B8  "; color:#35e07d; }
+  details.sec[open] > summary::before { content:"\25BE  "; }
+  details.sec[open] > summary { color:#e8f1f5; }
+  .note { color:#7f8d99; font-size:11.5px; margin:6px 0 4px; }
+  .note b { color:#aeb9c2; font-weight:600; }
+  .row { display:grid; grid-template-columns:1fr auto; gap:2px 8px; align-items:center; margin:6px 0; }
+  .row label { color:#aeb9c2; }
+  .row output { font:12px ui-monospace,monospace; color:#e8f1f5; font-variant-numeric:tabular-nums; }
+  .row input[type=range] { grid-column:1 / -1; width:100%; accent-color:#35e07d; }
+  .row select { grid-column:1 / -1; width:100%; background:#05070a; color:#ccd6de; border:1px solid #212a34; padding:4px; font:12px ui-monospace,monospace; }
+  .check { display:flex; gap:8px; align-items:center; margin:6px 0; color:#aeb9c2; cursor:pointer; }
+  .check input { accent-color:#35e07d; }
+  .btns { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }
+  .btns button { font:600 11px ui-monospace,monospace; letter-spacing:.05em; text-transform:uppercase; background:rgba(53,224,125,.12); color:#35e07d; border:1px solid #2f7d55; border-radius:4px; padding:6px 8px; cursor:pointer; }
+  #hud { position:fixed; top:36px; left:16px; z-index:6; pointer-events:none; font:11.5px/1.5 ui-monospace,monospace; color:#e8f1f5; text-shadow:0 1px 4px #000; }
+  #hud b { color:#35e07d; font-weight:600; }
+  #back { position:fixed; top:14px; left:16px; z-index:6; font:11px ui-monospace,monospace; letter-spacing:.14em; color:#e8f1f5; text-decoration:none; text-transform:uppercase; text-shadow:0 1px 4px #000; }
+  /* the split: a line you drag; left of it the plain texture, right of it the techniques */
+  #split { position:fixed; top:0; bottom:0; width:2px; margin-left:-1px; background:rgba(255,255,255,.75); z-index:4; cursor:ew-resize; touch-action:none; }
+  #split::after { content:""; position:absolute; left:-14px; right:-14px; top:0; bottom:0; }
+  #split span { position:absolute; top:50%; font:600 10px ui-monospace,monospace; letter-spacing:.1em; color:#fff; text-shadow:0 1px 3px #000; white-space:nowrap; }
+  #split .l { right:10px; } #split .r { left:10px; }
+  @media (max-width:700px) { #panel, #panel.min { width:auto; left:12px; top:auto; bottom:12px; max-height:46vh; } }
+</style>
+</head>
+<body>
+<a id="back" href="../">&larr; labs</a>
+<div id="hud"></div>
+<div id="split"><span class="l">PLAIN</span><span class="r">TECHNIQUES</span></div>
+<div id="panel">
+  <h1>Terrain Lab <button id="min" type="button">hide</button></h1>
+  <div class="body">
+    <p class="note">Ways games hide that a ground texture repeats. Drag the white line: left of it is the plain texture, right of it everything switched on below. Drag the scene to look around.</p>
+    <label class="check" for="splitOn"><input id="splitOn" type="checkbox" checked> Split screen</label>
+    <div class="btns" id="views"></div>
+
+    <details class="sec" open><summary>Ground</summary>
+      <div class="row"><label for="tex">Texture</label><select id="tex"></select></div>
+      <div class="row"><label for="tile">Texture repeats every</label><output id="tileOut"></output><input id="tile" type="range" min="0.5" max="12" step="0.1" value="3"></div>
+      <label class="check" for="grid"><input id="grid" type="checkbox"> Show where each repeat starts</label>
+    </details>
+
+    <details class="sec" open><summary>1 · Hex-tiling</summary>
+      <p class="note">The ground is cut into small hexagons. Each gets its own random shift and turn of the texture, and neighbours are blended where they meet, so no two patches line up and the grid of repeats disappears. <b>Cost:</b> three texture reads instead of one.</p>
+      <label class="check" for="hexOn"><input id="hexOn" type="checkbox" checked> On</label>
+      <div class="row"><label for="hexSize">Hexagon size (in texture repeats)</label><output id="hexSizeOut"></output><input id="hexSize" type="range" min="0.2" max="3" step="0.05" value="0.8"></div>
+      <div class="row"><label for="hexRot">Random turn</label><output id="hexRotOut"></output><input id="hexRot" type="range" min="0" max="180" step="1" value="180"></div>
+      <div class="row"><label for="hexSharp">Edge sharpness</label><output id="hexSharpOut"></output><input id="hexSharp" type="range" min="1" max="12" step="0.5" value="7"></div>
+      <div class="row"><label for="hexBright">Brighter texture wins at the edges</label><output id="hexBrightOut"></output><input id="hexBright" type="range" min="0" max="1" step="0.05" value="0.6"></div>
+      <p class="note">Sharp edges keep the texture crisp; soft ones blur it. Letting the brighter texture win makes the blend follow the picture (stones over soil) instead of a smooth fade.</p>
+    </details>
+
+    <details class="sec" open><summary>2 · Large-scale variation</summary>
+      <p class="note">Big, slow patches of lighter, darker, greener and drier ground laid over everything, the way real ground is never one colour for a whole hillside. Read from noise, so it costs no texture at all.</p>
+      <label class="check" for="macroOn"><input id="macroOn" type="checkbox" checked> On</label>
+      <div class="row"><label for="macroStr">Strength</label><output id="macroStrOut"></output><input id="macroStr" type="range" min="0" max="1" step="0.01" value="0.55"></div>
+      <div class="row"><label for="macroSize">Patch size</label><output id="macroSizeOut"></output><input id="macroSize" type="range" min="5" max="300" step="1" value="60"></div>
+      <div class="row"><label for="macroHue">Colour shift (dry to green)</label><output id="macroHueOut"></output><input id="macroHue" type="range" min="0" max="1" step="0.01" value="0.5"></div>
+    </details>
+
+    <details class="sec"><summary>3 · Far-away second scale</summary>
+      <p class="note">In the distance the same texture is also read at four times the size and blended in, so far ground shows big shapes instead of a fine repeating grain. <b>Cost:</b> one more read (three more with hex-tiling on).</p>
+      <label class="check" for="farOn"><input id="farOn" type="checkbox"> On</label>
+      <div class="row"><label for="farFrom">Starts at</label><output id="farFromOut"></output><input id="farFrom" type="range" min="5" max="200" step="1" value="40"></div>
+    </details>
+
+    <details class="sec"><summary>Coming next</summary>
+      <p class="note"><b>Blending by height:</b> two ground types meeting with pebbles poking through dirt instead of fading.<br><b>Stamps:</b> single leaves, cones and stones from a sprite sheet, scattered by the shader.<br><b>Slope painting:</b> rock where it is steep, grass where it is flat.<br><b>Ground cover:</b> cheap bushes, shrubs, rocks and grass meshes, and what they cost.</p>
+    </details>
+  </div>
+</div>
+<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+<script type="importmap">
+{ "imports": {
+    "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+} }
+</script>
+<script type="module" src="./terrain.js"></script>
+</body>
+</html>
