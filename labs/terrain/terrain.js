@@ -9,6 +9,7 @@
 // The ground is MeshStandardMaterial with the map lookup replaced, so it lights like the town.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const $ = (id) => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
@@ -39,6 +40,82 @@ function heightAt(x, z) {
 const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG); geo.rotateX(-Math.PI / 2);
 { const p = geo.attributes.position; for (let i = 0; i < p.count; i++) p.setY(i, heightAt(p.getX(i), p.getZ(i))); geo.computeVertexNormals(); }
 
+// ── THE LAND'S OWN MAPS ─────────────────────────────────────────────────────────
+// Worked out once from the terrain, the way terrain tools do it, instead of from random noise:
+//   wet     - hollows lower than the ground round them (where water would sit)
+//   dry     - rises and ridges (drained, out in the wind and sun)
+//   canopy  - under the trees, which grow in clumps away from the wet and the steep
+//   shade   - the band of part shade round each clump
+//   paths   - routes found across the land that prefer gentle, dry ground, drawn as worn strips
+// Stored in two textures the shader reads; noise only roughens their edges.
+const N = 512, TEX = SIZE / N;                       // 3.1 m a texel
+const Hg = new Float32Array(N * N);
+for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) Hg[j * N + i] = heightAt((i + 0.5) * TEX - SIZE / 2, (j + 0.5) * TEX - SIZE / 2);
+function blur(src, r) {                             // two passes of a box blur, each way: close to a Gaussian
+  let a = src.slice(), b = new Float32Array(N * N);
+  for (let pass = 0; pass < 2; pass++) {
+    for (let j = 0; j < N; j++) { let acc = 0; for (let i = -r; i <= r; i++) acc += a[j * N + Math.min(N - 1, Math.max(0, i))];
+      for (let i = 0; i < N; i++) { b[j * N + i] = acc / (2 * r + 1); acc += a[j * N + Math.min(N - 1, i + r + 1)] - a[j * N + Math.max(0, i - r)]; } }
+    for (let i = 0; i < N; i++) { let acc = 0; for (let j = -r; j <= r; j++) acc += b[Math.min(N - 1, Math.max(0, j)) * N + i];
+      for (let j = 0; j < N; j++) { a[j * N + i] = acc / (2 * r + 1); acc += b[Math.min(N - 1, j + r + 1) * N + i] - b[Math.max(0, j - r) * N + i]; } }
+  }
+  return a;
+}
+const LAND = { wetDepth: 4.5, dryHeight: 6.0, forest: 0.55, shadeReach: 4, pathWidth: 2.2 };
+const Hb = blur(Hg, 12);                             // the ground's height averaged over about 40 m
+const slopeAt = (i, j) => { const a = Hg[j * N + Math.min(N - 1, i + 1)] - Hg[j * N + Math.max(0, i - 1)], b = Hg[Math.min(N - 1, j + 1) * N + i] - Hg[Math.max(0, j - 1) * N + i]; return Math.hypot(a, b) / (2 * TEX); };
+let trees = [], maskA = null, pathCanvas = null;
+function buildLand() {
+  // wet and dry: how far below or above its surroundings each spot is
+  const wet = new Float32Array(N * N), dry = new Float32Array(N * N), steep = new Float32Array(N * N);
+  for (let k = 0; k < N * N; k++) { const d = Hb[k] - Hg[k]; wet[k] = Math.min(1, Math.max(0, d / LAND.wetDepth)); dry[k] = Math.min(1, Math.max(0, -d / LAND.dryHeight)); }
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) steep[j * N + i] = THREE.MathUtils.smoothstep(slopeAt(i, j), 0.35, 0.7);
+  // trees: clumps from slow noise, thinned on wet and steep ground; one candidate every 6 m
+  trees = []; const tree = new Float32Array(N * N);
+  const clump = (x, z) => { let n = 0, a = 1, f = 1 / 230; for (let o = 0; o < 3; o++) { n += (vnoise(x * f + 40, z * f + 17) - 0.5) * a; a *= 0.5; f *= 2.2; } return n + 0.5; };
+  for (let z = -SIZE / 2 + 3; z < SIZE / 2; z += 6) for (let x = -SIZE / 2 + 3; x < SIZE / 2; x += 6) {
+    const jx = x + (hash(x, z) - 0.5) * 5, jz = z + (hash(z, x) - 0.5) * 5;
+    const i = Math.min(N - 1, Math.max(0, Math.floor((jx + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((jz + SIZE / 2) / TEX))), k = j * N + i;
+    const F = THREE.MathUtils.smoothstep(clump(jx, jz), 1 - LAND.forest * 0.6, 1.05 - LAND.forest * 0.6) * (1 - wet[k] * 0.9) * (1 - steep[k]);
+    if (hash(jx * 1.3, jz * 0.7) < F * 0.85) { trees.push([jx, heightAt(jx, jz), jz, 0.8 + hash(jx, jz * 2) * 0.5]); tree[k] = 1; }
+  }
+  const canopy = blur(tree, 1), wide = blur(tree, LAND.shadeReach);
+  for (let k = 0; k < N * N; k++) canopy[k] = Math.min(1, canopy[k] * 3.2);
+  // paths: cheapest routes over the grid, where steep, wet and thick forest cost more
+  const cost = new Float32Array(N * N); for (let k = 0; k < N * N; k++) cost[k] = 1 + 60 * steep[k] + 8 * wet[k] + 2 * canopy[k];
+  const route = (ax, az, bx, bz) => {
+    const S = N / 2, cell = (x, z) => [Math.round((x + SIZE / 2) / TEX), Math.round((z + SIZE / 2) / TEX)];
+    const [si, sj] = cell(ax, az), [ti, tj] = cell(bx, bz), g = new Float32Array(N * N).fill(Infinity), from = new Int32Array(N * N).fill(-1), heap = [];
+    const push = (k, f) => { heap.push([f, k]); let c = heap.length - 1; while (c > 0) { const p = (c - 1) >> 1; if (heap[p][0] <= heap[c][0]) break; [heap[p], heap[c]] = [heap[c], heap[p]]; c = p; } };
+    const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let c = 0; for (;;) { const l = 2 * c + 1, r = l + 1; let m = c; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === c) break; [heap[m], heap[c]] = [heap[c], heap[m]]; c = m; } } return top; };
+    const start = sj * N + si, goal = tj * N + ti; g[start] = 0; push(start, 0);
+    while (heap.length) { const [, k] = pop(); if (k === goal) break; const i = k % N, j = (k / N) | 0;
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { if (!di && !dj) continue; const ni = i + di, nj = j + dj; if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue;
+        const n = nj * N + ni, step = (di && dj ? 1.414 : 1) * (cost[k] + cost[n]) / 2 + Math.abs(Hg[n] - Hg[k]) * 3, ng = g[k] + step;
+        if (ng < g[n]) { g[n] = ng; from[n] = k; push(n, ng + Math.hypot(ni - ti, nj - tj) * 0.9); } } }
+    const pts = []; for (let k = goal; k >= 0; k = from[k]) pts.push([(k % N) * TEX - SIZE / 2, ((k / N) | 0) * TEX - SIZE / 2]);
+    // smoothed, so it wanders instead of stepping along the grid
+    for (let it = 0; it < 6; it++) for (let q = 1; q < pts.length - 1; q++) pts[q] = [(pts[q - 1][0] + 2 * pts[q][0] + pts[q + 1][0]) / 4, (pts[q - 1][1] + 2 * pts[q][1] + pts[q + 1][1]) / 4];
+    return pts;
+  };
+  const paths = [route(-760, -520, 740, 380), route(-560, 760, 520, -760), route(40, -790, -60, 790), route(-790, 120, 30, 20)];
+  // the path texture: a worn core and a trampled shoulder, drawn at 0.8 m a pixel
+  const P = 2048, k = P / SIZE; pathCanvas = pathCanvas || document.createElement('canvas'); pathCanvas.width = pathCanvas.height = P;
+  const g2 = pathCanvas.getContext('2d'); g2.fillStyle = '#000'; g2.fillRect(0, 0, P, P); g2.lineCap = g2.lineJoin = 'round';
+  const stroke = (w, colour, blurPx) => { g2.filter = `blur(${blurPx}px)`; g2.strokeStyle = colour; g2.lineWidth = w * k;
+    for (const pts of paths) { g2.beginPath(); pts.forEach(([x, z], q) => q ? g2.lineTo((x + SIZE / 2) * k, (z + SIZE / 2) * k) : g2.moveTo((x + SIZE / 2) * k, (z + SIZE / 2) * k)); g2.stroke(); } };
+  g2.globalCompositeOperation = 'lighter'; stroke(LAND.pathWidth * 3.2, 'rgb(0,90,0)', 3); stroke(LAND.pathWidth, 'rgb(255,0,0)', 1.2); g2.filter = 'none'; g2.globalCompositeOperation = 'source-over';
+  // pack: R wet, G dry, B canopy, A part shade (and steep into the part-shade texture's spare... kept in the shader from the normal)
+  const data = new Uint8Array(N * N * 4);
+  for (let q = 0; q < N * N; q++) { data[q * 4] = wet[q] * 255; data[q * 4 + 1] = dry[q] * 255; data[q * 4 + 2] = canopy[q] * 255; data[q * 4 + 3] = Math.min(1, Math.max(0, wide[q] * 2.2 - canopy[q] * 0.8)) * 255; }
+  if (!maskA) { maskA = new THREE.DataTexture(data, N, N, THREE.RGBAFormat); maskA.magFilter = maskA.minFilter = THREE.LinearFilter; maskA.generateMipmaps = false; }
+  else maskA.image.data.set(data);
+  maskA.needsUpdate = true;
+  if (!U.pathMap.value) { const t = new THREE.CanvasTexture(pathCanvas); t.flipY = false; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; U.pathMap.value = t; }
+  U.pathMap.value.needsUpdate = true; U.maskA.value = maskA;
+  placeTrees();
+}
+
 // ── textures ────────────────────────────────────────────────────────────────────
 const TEXTURES = ['forest', 'leaves', 'needles', 'moss', 'dirt', 'darkDirt', 'ferns', 'shrubs', 'grassMed', 'grassDry', 'grassDark', 'concrete', 'asphalt'];
 const loader = new THREE.TextureLoader(), cache = {};
@@ -59,17 +136,24 @@ const U = {
   stampOn: { value: 1 }, stampAtlas: { value: null }, stampCell: { value: 0.55 }, stampDensity: { value: 0.55 }, stampSize: { value: 1 },
   stampCum: { value: [0, 0, 0, 0, 0, 0, 0, 0] }, stampBase: { value: [0.13, 0.28, 0.13, 0.16, 0.34, 0.12, 0.26, 0.4] },
   stampHue: { value: 0.35 }, stampShade: { value: 0.45 }, stampFar: { value: 30 },
+  // mixing by the land: the masks, the layers' pictures, and how they meet
+  mixOn: { value: 1 }, maskA: { value: null }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
+  layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layWet: { value: null }, layPath: { value: null }, laySteep: { value: null },
+  mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.55 },
 };
 { const t = new THREE.TextureLoader().load('/textures/stamps/atlas.png'); t.colorSpace = THREE.SRGBColorSpace; t.premultiplyAlpha = true; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); U.stampAtlas.value = t; }
 const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0 });
 if (GL2) mat.defines = { HEX_GRAD: '' };        // WebGL 2 can give each turned read its own true gradients (no seams); WebGL 1 lets the blend hide them
 mat.onBeforeCompile = (sh) => {
   Object.assign(sh.uniforms, U);
-  sh.vertexShader = 'varying vec3 vW;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+  sh.vertexShader = 'varying vec3 vW; varying vec3 vWN;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvW = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);');
   sh.fragmentShader = `
     uniform sampler2D groundMap; uniform float tile, split; uniform vec2 res;
     uniform float hexOn, hexSize, hexRot, hexSharp, hexBright, macroOn, macroStr, macroSize, macroHue, farOn, farFrom, grid;
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
+    uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D pathMap;
+    uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layWet; uniform sampler2D layPath; uniform sampler2D laySteep;
+    varying vec3 vWN;
     varying vec3 vW;
     float h1(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
     vec2 h2(vec2 p) { return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453); }
@@ -138,6 +222,14 @@ mat.onBeforeCompile = (sh) => {
       }
       return mix(col, col * (1.0 - stampShade), shade * (1.0 - 0.0));
     }
+    // a layer's picture, read twice at two scales so its own repeat is softened
+    vec3 lay(sampler2D t, vec2 uv, vec2 off) { return mix(texture2D(t, uv + off).rgb, texture2D(t, uv * 0.31 + off * 1.7).rgb, 0.35); }
+    // HEIGHT BLENDING: b comes in where its weight says, but its brighter (taller) parts arrive first
+    // and a's brighter parts hold out longest, so the edge follows the pictures instead of fading
+    vec3 over(vec3 a, vec3 b, float w) {
+      float lift = (dot(b, vec3(0.333)) - dot(a, vec3(0.333))) * mixHeight;
+      return mix(a, b, clamp((w - 0.5) * mixSharp + 0.5 + lift * mixSharp * 0.5, 0.0, 1.0) * step(0.001, w));
+    }
     vec3 hexTile(vec2 uv) {
       vec2 dx = dFdx(uv), dy = dFdy(uv);
       // the triangle grid, skewed so it is equilateral; w: the three barycentric weights
@@ -157,6 +249,38 @@ mat.onBeforeCompile = (sh) => {
     bool plain = gl_FragCoord.x < split * res.x;
     vec3 g;
     if (plain || hexOn < 0.5) g = texture2D(groundMap, uv).rgb; else g = hexTile(uv);
+    if (!plain && mixOn > 0.5) {
+      // the land's maps here, each edge roughened by a little noise
+      vec2 luv = vW.xz / landSize + 0.5;
+      vec4 m = texture2D(maskA, luv); vec2 pth = texture2D(pathMap, luv).rg;
+      float bn = (fbm(vW.xz / mixBreakSize) - 0.5) * mixBreak, bn2 = (fbm(vW.xz / (mixBreakSize * 3.1) + 13.0) - 0.5) * mixBreak;
+      float steep = smoothstep(steepFrom, steepFrom + 0.2, 1.0 - vWN.y);
+      float wWet = clamp(m.r * 1.5 + bn, 0.0, 1.0), wMud = clamp(m.r * 2.2 - 1.3 + bn, 0.0, 1.0), wDry = clamp(m.g * 1.3 - 0.15 - m.b - m.a * 0.6 + bn2, 0.0, 1.0);
+      float wLush = clamp(m.a * 1.4 + bn, 0.0, 1.0), wForest = clamp(m.b * 1.3 + bn2 * 0.7, 0.0, 1.0);
+      float wPath = clamp(pth.r + bn * 0.5, 0.0, 1.0), wShoulder = clamp(pth.g * 1.5 + bn, 0.0, 1.0);
+      vec3 dryC = lay(layDry, uv, vec2(0.13, 0.71)), lushC = lay(layLush, uv, vec2(0.61, 0.27)), forC = lay(layForest, uv * 1.3, vec2(0.37, 0.93));
+      vec3 wetC = lay(layWet, uv, vec2(0.83, 0.41)), pathC = lay(layPath, uv * 1.6, vec2(0.29, 0.17)), steepC = lay(laySteep, uv, vec2(0.53, 0.11));
+      g = over(g, dryC, wDry);
+      g = over(g, lushC, wLush);
+      g = over(g, lushC * vec3(0.72, 0.8, 0.7), wWet);                      // damp: dark, heavy grass round a hollow
+      g = over(g, wetC * vec3(0.9, 0.92, 0.88), wMud);                      // mud only in the deepest middle
+      g = over(g, forC, wForest);
+      g = over(g, mix(g, pathC, 0.5), wShoulder * (1.0 - wForest * 0.5));     // trampled edge: half-worn
+      g = over(g, pathC, wPath);
+      g = over(g, steepC, steep);
+      // the maps themselves, in false colour
+      if (view > 0.5) {
+        vec3 v = vec3(0.12);
+        if (view < 1.5) v = vec3(0.1, 0.25, 0.9) * m.r + vec3(0.9, 0.7, 0.2) * m.g + vec3(0.1, 0.55, 0.15) * m.b + vec3(0.5, 0.9, 0.4) * m.a * (1.0 - m.b);
+        else if (view < 2.5) v = vec3(m.r);
+        else if (view < 3.5) v = vec3(m.g);
+        else if (view < 4.5) v = vec3(m.b);
+        else if (view < 5.5) v = vec3(m.a);
+        else if (view < 6.5) v = vec3(pth.r, pth.g, 0.0);
+        else v = vec3(steep);
+        g = v;
+      }
+    }
     if (!plain) {
       if (farOn > 0.5) {
         float k = smoothstep(farFrom, farFrom * 2.5, length(vW - cameraPosition));
@@ -176,9 +300,23 @@ mat.onBeforeCompile = (sh) => {
     diffuseColor.rgb *= g;
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-2' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-3' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground);
+// stand-in trees where the canopy map says (a cone and a trunk each, one draw for all of them)
+const treeGeo = (() => { const c = new THREE.ConeGeometry(2.6, 9, 7); c.translate(0, 7.5, 0); const t = new THREE.CylinderGeometry(0.25, 0.35, 3.5, 6); t.translate(0, 1.75, 0);
+  const col = (gg, r, gr, b) => { const a = new Float32Array(gg.attributes.position.count * 3); for (let q = 0; q < a.length; q += 3) { a[q] = r; a[q + 1] = gr; a[q + 2] = b; } gg.setAttribute('color', new THREE.BufferAttribute(a, 3)); return gg; };
+  return mergeGeometries([col(c.toNonIndexed(), 0.16, 0.3, 0.14), col(t.toNonIndexed(), 0.3, 0.22, 0.15)]); })();
+let treeMesh = null;
+function placeTrees() {
+  if (treeMesh) { scene.remove(treeMesh); treeMesh.dispose(); }
+  treeMesh = new THREE.InstancedMesh(treeGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), Math.max(1, trees.length));
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion();
+  trees.forEach(([x, y, z, s], i) => treeMesh.setMatrixAt(i, m4.compose(new THREE.Vector3(x, y - 0.3, z), q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), hash(x, z) * 6.28), new THREE.Vector3(s, s * (0.85 + hash(z, x) * 0.4), s))));
+  treeMesh.count = trees.length; treeMesh.visible = $('treesOn').checked; scene.add(treeMesh);
+  $('landInfo').textContent = `${trees.length.toLocaleString()} trees, 4 paths`;
+}
+buildLand();
 
 // ── views ─────────────────────────────────────────────────────────────────────
 const VIEWS = {
@@ -207,10 +345,25 @@ const SL = {
   stampHue: [v => { U.stampHue.value = v; }, v => Math.round(v * 57.3) + '°'],
   stampShade: [v => { U.stampShade.value = v; }, v => Math.round(v * 100) + '%'],
   stampFar: [v => { U.stampFar.value = v; }, v => v + ' m'],
+  mixSharp: [v => { U.mixSharp.value = v; }, v => v.toFixed(1)],
+  mixHeight: [v => { U.mixHeight.value = v; }, v => v.toFixed(2)],
+  mixBreak: [v => { U.mixBreak.value = v; }, v => Math.round(v * 100) + '%'],
+  mixBreakSize: [v => { U.mixBreakSize.value = v; }, v => v.toFixed(1) + ' m'],
+  steepFrom: [v => { U.steepFrom.value = v; }, v => Math.round(Math.acos(1 - v) * 57.3) + '°'],
 };
 for (const [id, [apply, fmt]] of Object.entries(SL)) { const el = $(id), go = () => { apply(+el.value); $(id + 'Out').textContent = fmt(+el.value); }; el.addEventListener('input', go); go(); }
-for (const [id, key] of [['hexOn', 'hexOn'], ['macroOn', 'macroOn'], ['farOn', 'farOn'], ['grid', 'grid'], ['stampOn', 'stampOn']]) { const el = $(id), go = () => { U[key].value = el.checked ? 1 : 0; }; el.addEventListener('change', go); go(); }
+for (const [id, key] of [['hexOn', 'hexOn'], ['macroOn', 'macroOn'], ['farOn', 'farOn'], ['grid', 'grid'], ['stampOn', 'stampOn'], ['mixOn', 'mixOn']]) { const el = $(id), go = () => { U[key].value = el.checked ? 1 : 0; }; el.addEventListener('change', go); go(); }
 $('tex').addEventListener('change', () => { U.groundMap.value = tex($('tex').value); });
+// the layers' pictures, and the land's settings (these rebuild the maps)
+const LAYERS = { layDry: 'grassDry', layLush: 'grassDark', layForest: 'forest', layWet: 'darkDirt', layPath: 'dirt', laySteep: 'dirt' };
+for (const [id, def] of Object.entries(LAYERS)) { const el = $(id); for (const n of TEXTURES) el.add(new Option(n, n)); el.value = def; const go = () => { U[id].value = tex(el.value); }; el.addEventListener('change', go); go(); }
+for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'], ['landDry', 'dryHeight', v => v.toFixed(1) + ' m'], ['landForest', 'forest', v => Math.round(v * 100) + '%'], ['landShade', 'shadeReach', v => Math.round(v * TEX) + ' m'], ['landPath', 'pathWidth', v => v.toFixed(1) + ' m']]) {
+  const el = $(id); el.value = LAND[key]; $(id + 'Out').textContent = fmt(+el.value);
+  el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
+  el.addEventListener('change', () => { LAND[key] = +el.value; buildLand(); });
+}
+$('mixView').addEventListener('change', e => { U.view.value = +e.target.value; });
+$('treesOn').addEventListener('change', e => { if (treeMesh) treeMesh.visible = e.target.checked; });
 // the kinds' weights, as a running total for the shader to pick by
 const KINDS = ['Leaves', 'Twigs and bark', 'Cones and needles', 'Stones', 'Moss and lichen', 'Mushrooms', 'Small plants', 'Grass tufts'];
 const MIXES = {
@@ -247,4 +400,4 @@ renderer.setAnimationLoop(() => {
   if ((shown += dt) > 0.5) { shown = 0; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${(1000 / Math.max(1, fps)).toFixed(1)} ms · ${GL2 ? 'WebGL2' : 'WebGL1'}`; }
   controls.update(); renderer.render(scene, camera);
 });
-if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, U, VIEWS, heightAt });
+if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees });

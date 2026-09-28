@@ -59,6 +59,28 @@
       <label class="check" for="grid"><input id="grid" type="checkbox"> Show where each repeat starts</label>
     </details>
 
+    <details class="sec" open><summary>5 · Mixing by the land</summary>
+      <p class="note">Several ground pictures laid over each other by maps worked out from the land itself, the way terrain tools do it: <b>wet</b> hollows lower than their surroundings, <b>dry</b> rises, <b>forest</b> floor under clumps of trees, <b>lusher</b> grass in the part shade round them, worn <b>paths</b> routed across gentle dry ground, bare <b>steep</b> slopes. Where two meet, the brighter (taller) parts of a picture come through first, so the edge follows the pictures. Noise only roughens the edges. <b>Cost:</b> about a dozen texture reads.</p>
+      <label class="check" for="mixOn"><input id="mixOn" type="checkbox" checked> On</label>
+      <label class="check" for="treesOn"><input id="treesOn" type="checkbox" checked> Show the (stand-in) trees</label>
+      <div class="row"><label for="mixView">Show</label><select id="mixView"><option value="0">the ground</option><option value="1">all the maps, in colour</option><option value="2">wet</option><option value="3">dry</option><option value="4">canopy</option><option value="5">part shade</option><option value="6">paths</option><option value="7">steep</option></select></div>
+      <p class="note" id="landInfo"></p>
+      <p class="note"><b>The land</b> (these redraw the maps)</p>
+      <div class="row"><label for="landWet">Wet: how deep a hollow is fully wet</label><output id="landWetOut"></output><input id="landWet" type="range" min="0.5" max="8" step="0.1"></div>
+      <div class="row"><label for="landDry">Dry: how high a rise is fully dry</label><output id="landDryOut"></output><input id="landDry" type="range" min="0.5" max="10" step="0.1"></div>
+      <div class="row"><label for="landForest">Forest cover</label><output id="landForestOut"></output><input id="landForest" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="landShade">Part shade reaches</label><output id="landShadeOut"></output><input id="landShade" type="range" min="1" max="10" step="1"></div>
+      <div class="row"><label for="landPath">Path width</label><output id="landPathOut"></output><input id="landPath" type="range" min="0.8" max="6" step="0.1"></div>
+      <p class="note"><b>The edges</b></p>
+      <div class="row"><label for="mixSharp">Sharpness</label><output id="mixSharpOut"></output><input id="mixSharp" type="range" min="1" max="20" step="0.5" value="6"></div>
+      <div class="row"><label for="mixHeight">Taller parts come through first</label><output id="mixHeightOut"></output><input id="mixHeight" type="range" min="0" max="4" step="0.05" value="1.2"></div>
+      <div class="row"><label for="mixBreak">Roughness</label><output id="mixBreakOut"></output><input id="mixBreak" type="range" min="0" max="1" step="0.01" value="0.35"></div>
+      <div class="row"><label for="mixBreakSize">Roughness grain</label><output id="mixBreakSizeOut"></output><input id="mixBreakSize" type="range" min="0.5" max="20" step="0.1" value="4"></div>
+      <div class="row"><label for="steepFrom">Bare from a slope of</label><output id="steepFromOut"></output><input id="steepFrom" type="range" min="0.05" max="0.8" step="0.01" value="0.55"></div>
+      <p class="note"><b>The pictures</b> (the base is the Ground texture above)</p>
+      <div class="row"><label for="layDry">Dry</label><select id="layDry"></select></div><div class="row"><label for="layLush">Lush (part shade)</label><select id="layLush"></select></div><div class="row"><label for="layForest">Forest floor</label><select id="layForest"></select></div><div class="row"><label for="layWet">Wet</label><select id="layWet"></select></div><div class="row"><label for="layPath">Path</label><select id="layPath"></select></div><div class="row"><label for="laySteep">Steep</label><select id="laySteep"></select></div>
+    </details>
+
     <details class="sec" open><summary>1 · Hex-tiling</summary>
       <p class="note">The ground is cut into small hexagons. Each gets its own random shift and turn of the texture, and neighbours are blended where they meet, so no two patches line up and the grid of repeats disappears. <b>Cost:</b> three texture reads instead of one.</p>
       <label class="check" for="hexOn"><input id="hexOn" type="checkbox" checked> On</label>
@@ -97,7 +119,7 @@
     </details>
 
     <details class="sec"><summary>Coming next</summary>
-      <p class="note"><b>Blending by height:</b> two ground types meeting with pebbles poking through dirt instead of fading.<br><b>Slope painting:</b> rock where it is steep, grass where it is flat.<br><b>Ground cover:</b> cheap bushes, shrubs, rocks and grass meshes, and what they cost.</p>
+      <p class="note"><b>Ground cover:</b> cheap bushes, shrubs, rocks and grass meshes, and what they cost.</p>
     </details>
   </div>
 </div>
