@@ -602,7 +602,7 @@ const MAP = { glow: 29.1, tourEnd: 43.5, shipIn: 27.5, shipAt: 33.5,
 // hull only reaches out 0.7 m), climbs the side with the climb clip (climbLen) onto the rim, turns
 // to the nose and lowers into the seat (sitIn); the canopy closes behind him and it rolls out.
 const BOARD = { rimX: -0.2, rimY: 1.15, rimZ: -0.6, ladderZ: -1.0, climbLen: 1.5, sitIn: 1.0 };   // the ladder hangs from the sill at ladderZ (Jacob's spot, under the cockpit)
-const HANGAR = { walk: 14.0, from: [0.3, 0, -5.8], to: [0.0, 0, -1.05], speed: 1.15, climb: 18.6, sit: 21.1, canopy: 21.2, canopyLen: 1.7, roll: 23.5, accel: 2.5,
+const HANGAR = { walk: 14.0, from: [0.3, 0, -5.8], to: [0.0, 0, -1.5], speed: 1.15, climb: 18.6, sit: 21.1, canopy: 21.2, canopyLen: 1.7, roll: 23.5, accel: 2.5,
   // the fit in the seat: how far down from the measured seat pan he sits, how far back, and how far
   // he reclines (degrees); and how far the canopy turns to shut
   seatDown: 0.17, seatBack: 0, recline: 24, canopyDeg: -50, canopyDrop: 0.05, canopySlide: 0.02 };   // canopyDrop / canopySlide: metres the shut canopy is let down / slid toward the nose
@@ -1254,10 +1254,12 @@ function stepHangar(T, a, b, u, set = 'hangar') {
     const headBone = sitter.getObjectByName('Head'); if (headBone && headBone.userData.restQ) headBone.quaternion.copy(headBone.userData.restQ);
     sitterMixer.update(0);
     const model = sitter.children[0], rest = sitter.userData.hipRest, hipBone = model.getObjectByName('Hip');
-    if (board && (board.clip === 'walk' || board.clip === 'climb' || board.clip === 'ladder') && rest && hipBone) {
+    if (board && ['walk', 'stand', 'climb', 'ladder'].includes(board.clip) && rest && hipBone) {
       model.updateMatrixWorld(true);
       const now = model.worldToLocal(hipBone.getWorldPosition(new THREE.Vector3()));
-      model.position.set(rest.x - now.x, 0, rest.z - now.z);
+      // the ladder and climb clips carry their own rise (0.26 a rung loop, 0.6 over the ledge) and set the
+      // hips off to one side: all of it is cancelled there, and the timeline alone moves him
+      model.position.set(rest.x - now.x, board.clip === 'walk' || board.clip === 'stand' ? 0 : rest.y - now.y, rest.z - now.z);   // (the stand-up's last frame has the hips well forward, too)
     } else model.position.set(0, 0, 0);
   }
   camera.position.copy(cameraAt(T)).add(HANGAR_AT);
@@ -1328,10 +1330,12 @@ function boardingPose(T) {
   }
   // up the ladder under the sill (the ladder loop), then over the rim (the end of the climb clip)
   if (T < tSit) {
+    // on the room side of the ladder, which leans from its foot (about ladderZ - 0.08) to the sill:
+    // his body keeps 0.3 m behind the rungs as he goes up
     const k = (T - H.climb) / B.climbLen, onLadder = k < 0.65;
-    const ladderTop = new THREE.Vector3(foot.x, B.rimY - 0.55, B.ladderZ + 0.12);
-    const pos = onLadder ? new THREE.Vector3(foot.x, 0, B.ladderZ - 0.3).lerp(ladderTop, k / 0.65) : ladderTop.clone().lerp(rim, sm((k - 0.65) / 0.35, 0, 1));
-    return { pos, yaw: faceHull, recline: 0, clip: onLadder ? 'ladder' : 'climb', k: onLadder ? k : 0.7 + 0.3 * (k - 0.65) / 0.35 };
+    const bottom = new THREE.Vector3(foot.x, 0, B.ladderZ - 0.4), ladderTop = new THREE.Vector3(foot.x, B.rimY - 0.6, B.ladderZ - 0.22);
+    const pos = onLadder ? (k < 0.08 ? foot.clone().lerp(bottom, k / 0.08) : bottom.clone().lerp(ladderTop, (k - 0.08) / 0.57)) : ladderTop.clone().lerp(rim, sm((k - 0.65) / 0.35, 0, 1));
+    return { pos, yaw: faceHull + (onLadder ? Math.PI : 0), recline: 0, clip: onLadder ? 'ladder' : 'climb', k: onLadder ? k : 0.7 + 0.3 * (k - 0.65) / 0.35 };   // the Mixamo ladder clip faces the other way from the rest
   }
   const k = sm(T, tSit, H.sit);
   return { pos: rim.clone().lerp(seatAt, k), yaw: faceHull + (faceNose - faceHull) * sm(T, tSit, tSit + B.sitIn * 0.6), recline: THREE.MathUtils.degToRad(H.recline) * k, clip: 'sitDown', k: Math.min(1, (T - tSit) / B.sitIn) };
