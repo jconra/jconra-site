@@ -310,7 +310,7 @@ function loadRoom(name) {
   placeSitter();
   $('boot')?.remove();
   bootProgress('cabin', 1); loadSitter(); loadStation();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getProps: () => PROPS, total, getHangarSet: () => hangarSet, getMap: () => mapSet, getTown: () => town, TOWN_INPUT });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getProps: () => PROPS, total, getHangarSet: () => hangarSet, MAP_HANDOFF, hangarShipPos, getMap: () => mapSet, getTown: () => town, TOWN_INPUT });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; if (e.total) bootProgress('cabin', e.loaded / e.total); },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -541,10 +541,12 @@ const KEYS = [
   // from the roll-out the camera locks onto the fighter: `{ at: 'chase', back, up, side }` is
   // metres behind it, above it and to its right, wherever it has got to
   { t: 24,  set: 'hangar', cam: { at: 'chase', back: 9, up: 2.6, side: -4.5 }, look: 'ship' },
-  { t: 26.2,  set: 'hangar', cam: { at: 'chase', back: 13, up: 3.4, side: 3.0 }, look: 'ship' },
+  // behind it to the mouth, then the camera holds there and turns to Earth as the fighter climbs away
+  // to the top left; the map scene takes over at the same view (syncMapToHangar)
+  { t: 26.2,  set: 'hangar', cam: { at: 'chase', back: 11, up: 3.0, side: -2.0 }, look: 'ship' },
+  { t: 27.49, set: 'hangar', cam: { at: 'chase', freeze: 26.2, back: 11, up: 3.0, side: -2.0 }, look: 'earth' },   // held just past the mouth: the deck is out of frame
   // the camera stops where the chase had it at 45.2 s and looks away to the right, so the fighter
   // flies on out of the left of the frame; then the map
-  { t: 27.49, set: 'hangar', cam: { at: 'chase', freeze: 26.2, back: 13, up: 3.4, side: 3.0 }, look: { at: 'ship', freeze: 26.2, ahead: 30, side: -70 } },
   // THE MAP. Earth as the photograph, large, the fighter flying in over it toward the States;
   // the outline of the country glows on the picture, then the states of his story light up one
   // by one with a line each. Keys are in the picture's own units (pixels of the photograph,
@@ -602,7 +604,7 @@ const MAP = { glow: 29.1, tourEnd: 43.5, shipIn: 27.5, shipAt: 33.5,
 // hull only reaches out 0.7 m), climbs the side with the climb clip (climbLen) onto the rim, turns
 // to the nose and lowers into the seat (sitIn); the canopy closes behind him and it rolls out.
 const BOARD = { rimX: -0.2, rimY: 1.15, rimZ: -0.6, ladderZ: -1.0, climbLen: 1.5, sitIn: 1.0 };   // the ladder hangs from the sill at ladderZ (Jacob's spot, under the cockpit)
-const HANGAR = { walk: 14.0, from: [0.3, 0, -5.8], to: [0.0, 0, -1.5], speed: 1.15, climb: 18.6, sit: 21.1, canopy: 21.2, canopyLen: 1.7, roll: 23.5, accel: 2.5,
+const HANGAR = { walk: 14.0, from: [0.3, 0, -5.8], to: [0.0, 0, -1.5], speed: 1.15, climb: 18.6, sit: 21.1, canopy: 21.2, canopyLen: 1.7, roll: 23.5, accel: 5,
   // the fit in the seat: how far down from the measured seat pan he sits, how far back, and how far
   // he reclines (degrees); and how far the canopy turns to shut
   seatDown: 0.17, seatBack: 0, recline: 24, canopyDeg: -50, canopyDrop: 0.05, canopySlide: 0.02 };   // canopyDrop / canopySlide: metres the shut canopy is let down / slid toward the nose
@@ -655,8 +657,9 @@ function loadStation() {
     // far enough out that twenty seconds of flight hardly changes its size, and scaled to match
     earthOut.position.set(hangarSet.mouth.x + 12000, -3400, 0); earthOut.scale.setScalar(14);
     earthOut.rotation.set(0, -Math.PI / 2, 0); earthOut.rotateX(Math.atan2(3400, 12000));
-    hangarSet.floor.add(earthOut);
+    hangarSet.floor.add(earthOut); hangarSet.earthOut = earthOut;
     buildMapSet(parts);
+    syncMapToHangar();
     buildTownSet(parts);
     loader.load('/models/props/helmet.glb', (g) => {
       helmet = g.scene; helmet.traverse(o => { if (o.isMesh) { o.castShadow = true; if (o.material.map) o.material.map.colorSpace = THREE.SRGBColorSpace; } });
@@ -816,12 +819,34 @@ function applyMapFit() {
 }
 function stepMap(T, a, b, u, set = 'map') {
   const MS = mapSet; if (!MS) return;
+  if (T < MAP.shipIn + MAP_HANDOFF.len) { syncMapToHangar(); ({ a, b, u } = keysAround(T)); }   // keys may have been edited: the hand-over follows them
   // the fighter comes in from the top left and settles high over the country
   // a slow, steady drift across the top of the frame from the cut until the dive
   const w = THREE.MathUtils.clamp((T - MAP.shipIn) / (MAP.dive - MAP.shipIn), 0, 1);
   const from = new THREE.Vector3(-220, 186, 60), to = new THREE.Vector3(150, 172, 60);
   MS.ship.position.lerpVectors(from, to, w).add(new THREE.Vector3(0, Math.sin(T * 0.8) * 2, 0));
   let dir = to.clone().sub(from).normalize();
+  // the hand-over: it starts where and as big as the hangar's fighter was, flies out to the top left
+  // and turns right into the drift (its size eases up as it gets farther away, so it reads as flying on)
+  // Done in the camera's own view, because the map camera is already flying in fast: it starts at
+  // the hangar fighter's spot on screen, drifts up and left as it pulls away (smaller), and meets its
+  // own path, at its own size, as the hand-over ends
+  const H = MAP_HANDOFF, h = H.off ? THREE.MathUtils.clamp((T - MAP.shipIn) / H.len, 0, 1) : 1;
+  if (h < 1) {
+    const tEnd = MAP.shipIn + H.len, wEnd = THREE.MathUtils.clamp((tEnd - MAP.shipIn) / (MAP.dive - MAP.shipIn), 0, 1);
+    const pathEnd = from.clone().lerp(to, wEnd).add(new THREE.Vector3(0, Math.sin(tEnd * 0.8) * 2, 0));
+    const offEnd = mapCamFrame(tEnd).toLocal(MS.floor.localToWorld(pathEnd.clone()));
+    const e = THREE.MathUtils.smoothstep(h, 0, 1), cam = mapCamFrame(T);
+    const off = H.off.clone().lerp(offEnd, e), d = off.length();
+    off.addScaledVector(new THREE.Vector3(-0.35, 0.25, 0), d * Math.sin(Math.PI * e) * 0.2);   // bows out to the top left on the way
+    // never out of frame: held inside 78% of the view at its distance
+    const ty = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * off.z * 0.78, tx = ty * camera.aspect;
+    off.x = THREE.MathUtils.clamp(off.x, -tx, tx); off.y = THREE.MathUtils.clamp(off.y, -ty, ty);
+    MS.ship.position.copy(MS.floor.worldToLocal(cam.toWorld(off)));
+    const s0 = H.scale / H.off.length(), s1 = 1 / offEnd.length();
+    MS.ship.scale.setScalar(s0 * Math.pow(s1 / s0, e) * d);                              // its size on screen eases from one to the other
+    dir = H.dir.clone().lerp(dir, THREE.MathUtils.smoothstep(h, 0.2, 0.85)).normalize();
+  } else MS.ship.scale.setScalar(1);
   // the dive: it noses down and drops toward the ground, shaking as the air bites
   const d = THREE.MathUtils.smoothstep(T, MAP.dive, MAP.diveEnd);
   if (d > 0) {
@@ -1065,6 +1090,7 @@ const lookPoint = (l, set) => {
   if (l === 'ship') return set === 'map' ? (mapSet ? mapSet.ship.getWorldPosition(new THREE.Vector3()) : MAP_AT.clone())
                            : hangarSet ? hangarSet.ship.getWorldPosition(new THREE.Vector3()) : HANGAR_AT.clone();
   if (l === 'jet') return town ? town.lookAhead(26).add(TOWN_AT) : TOWN_AT.clone();
+  if (l === 'earth' && set === 'hangar' && hangarSet && hangarSet.earthOut) return hangarSet.earthOut.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 2600, 0));   // a little above the photo's middle, so the fighter climbing away stays in frame
   if (l === 'cockpit') return hangarSet ? hangarSet.ship.localToWorld(hangarSet.seat.clone().add(new THREE.Vector3(0, 0.7, 0))) : HANGAR_AT.clone();
   const p = new THREE.Vector3(...l); return set === 'station' ? p.add(STATION_AT) : set === 'hangar' ? p.add(HANGAR_AT) : set === 'map' ? p.add(MAP_AT) : set === 'town' ? p.add(TOWN_AT) : p;
 };
@@ -1108,8 +1134,40 @@ function camOf(key) {
 function shipAt(freeze) {
   if (!hangarSet) return new THREE.Vector3();
   if (freeze === undefined) return hangarSet.ship.position.clone();
-  const r = Math.max(0, freeze - HANGAR.roll); return new THREE.Vector3(0.5 * HANGAR.accel * r * r, 0, 0);
+  return hangarShipPos(freeze);
 }
+// OUT OF THE HANGAR: it accelerates out of the mouth, then climbs and veers left (the top left of
+// the frame, where the map's fighter picks up), still in front of the camera the whole way
+const OUT = { climb: 0.22, veer: 0.32 };      // metres up and to the left per metre past the mouth
+function hangarShipPos(T) {
+  const r = Math.max(0, T - HANGAR.roll), x = 0.5 * HANGAR.accel * r * r, e = Math.max(0, x - (hangarSet ? hangarSet.mouth.x : 0));
+  return new THREE.Vector3(x, OUT.climb * e * e / (e + 20), -OUT.veer * e * e / (e + 20));   // (eased in: level in the bay)
+}
+// The hangar's Earth is the map's photograph, 14 times as big: carrying the hangar's last camera
+// and the fighter through that ratio puts the map scene's first frame exactly where the hangar's
+// last one was, so the change of scene cannot be seen.
+function syncMapToHangar() {
+  if (!hangarSet || !hangarSet.earthOut || !mapSet) return;
+  const cut = KEYS.find(k => setOf(k) === 'map'), last = [...KEYS].reverse().find(k => setOf(k) === 'hangar');
+  scene.updateMatrixWorld(true);
+  const X = mapSet.pic.matrixWorld.clone().multiply(hangarSet.earthOut.matrixWorld.clone().invert());
+  const T = last.t, { a, b, u } = keysAround(T - 1e-4);
+  const cam = cameraAt(T - 1e-4).add(HANGAR_AT), look = lookPoint(a.look, 'hangar').lerp(lookPoint(b.look, 'hangar'), u);
+  cut.cam = cam.applyMatrix4(X).sub(MAP_AT).toArray().map(v => +v.toFixed(3));
+  cut.look = look.applyMatrix4(X).sub(MAP_AT).toArray().map(v => +v.toFixed(3));
+  const shipW = hangarSet.floor.localToWorld(hangarShipPos(T)), aheadW = hangarSet.floor.localToWorld(hangarShipPos(T + 0.1));
+  MAP_HANDOFF.pos = mapSet.floor.worldToLocal(shipW.applyMatrix4(X)); MAP_HANDOFF.dir = mapSet.floor.worldToLocal(aheadW.applyMatrix4(X)).sub(MAP_HANDOFF.pos).normalize();
+  MAP_HANDOFF.scale = (6 / 14) / 26;                                  // the hangar's 6 m fighter at the photo's scale, against the map's 26
+  MAP_HANDOFF.off = mapCamFrame(cut.t + 1e-4).toLocal(mapSet.floor.localToWorld(MAP_HANDOFF.pos.clone()));   // where it sits in the camera's view
+}
+const MAP_HANDOFF = { pos: null, dir: null, scale: 1, len: 4.0, off: null };
+// the map camera's frame at T (world position, and its right / up / forward), from the keys
+function mapCamFrame(T) {
+  const { a, b, u } = keysAround(T), p = cameraAt(T).add(MAP_AT), t = lookPoint(a.look, 'map').lerp(lookPoint(b.look, 'map'), u);
+  const f = t.sub(p).normalize(), r = f.clone().cross(new THREE.Vector3(0, 1, 0)).normalize(), up = r.clone().cross(f);
+  return { p, r, up, f, toLocal: (w) => { const d = w.clone().sub(p); return new THREE.Vector3(d.dot(r), d.dot(up), d.dot(f)); }, toWorld: (o) => p.clone().addScaledVector(r, o.x).addScaledVector(up, o.y).addScaledVector(f, o.z) };
+}   // len: seconds to reach the map's own path and size
+function hangarShipYaw(T) { const a = hangarShipPos(T), b = hangarShipPos(T + 0.05); return Math.atan2(-(b.z - a.z), b.x - a.x); }
 function cameraAt(T) {
   const { a, b, u, k, ks } = keysAround(T);
   const P = (i) => camOf(ks[Math.min(ks.length - 1, Math.max(0, i))]);
@@ -1222,7 +1280,7 @@ function stepHangar(T, a, b, u, set = 'hangar') {
   const seated = T >= HANGAR.sit;
   HS.setCanopy((T - HANGAR.canopy) / HANGAR.canopyLen, HANGAR.canopyDeg, HANGAR.canopyDrop, HANGAR.canopySlide);
   const roll = Math.max(0, T - HANGAR.roll);
-  HS.ship.position.set(0.5 * HANGAR.accel * roll * roll, 0, 0);
+  HS.ship.position.copy(hangarShipPos(T)); HS.ship.rotation.y = hangarShipYaw(T);
   // the burner lights as he rolls: a flicker first, full burn as it clears the mouth
   if (HS.burner) { HS.burner.setThrust(roll <= 0 ? 0 : THREE.MathUtils.clamp(0.2 + roll * 0.35, 0, 1)); if (roll <= 0) HS.burner.thrust = 0; HS.burner.update(1 / 60); }   // cold (not easing down) until the roll-out, however the timeline got here
   if (twin) for (const sp of twin.spinners) sp.turntable.rotation.y = sp.sign * (Math.PI * 2 / StationKit.period(sp.radius)) * T;   // the station outside keeps turning
