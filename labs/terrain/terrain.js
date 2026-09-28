@@ -55,7 +55,12 @@ const U = {
   hexOn: { value: 1 }, hexSize: { value: 0.8 }, hexRot: { value: Math.PI }, hexSharp: { value: 7 }, hexBright: { value: 0.6 },
   macroOn: { value: 1 }, macroStr: { value: 0.55 }, macroSize: { value: 60 }, macroHue: { value: 0.5 },
   farOn: { value: 0 }, farFrom: { value: 40 }, grid: { value: 0 },
+  // stamps: one object at most in each cell of a world grid, its kind drawn by the weights
+  stampOn: { value: 1 }, stampAtlas: { value: null }, stampCell: { value: 0.55 }, stampDensity: { value: 0.55 }, stampSize: { value: 1 },
+  stampCum: { value: [0, 0, 0, 0, 0, 0, 0, 0] }, stampBase: { value: [0.13, 0.28, 0.13, 0.16, 0.34, 0.12, 0.26, 0.4] },
+  stampHue: { value: 0.35 }, stampShade: { value: 0.45 }, stampFar: { value: 30 },
 };
+{ const t = new THREE.TextureLoader().load('/textures/stamps/atlas.png'); t.colorSpace = THREE.SRGBColorSpace; t.premultiplyAlpha = true; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); U.stampAtlas.value = t; }
 const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0 });
 if (GL2) mat.defines = { HEX_GRAD: '' };        // WebGL 2 can give each turned read its own true gradients (no seams); WebGL 1 lets the blend hide them
 mat.onBeforeCompile = (sh) => {
@@ -64,6 +69,7 @@ mat.onBeforeCompile = (sh) => {
   sh.fragmentShader = `
     uniform sampler2D groundMap; uniform float tile, split; uniform vec2 res;
     uniform float hexOn, hexSize, hexRot, hexSharp, hexBright, macroOn, macroStr, macroSize, macroHue, farOn, farFrom, grid;
+    uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
     varying vec3 vW;
     float h1(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
     vec2 h2(vec2 p) { return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453); }
@@ -81,6 +87,56 @@ mat.onBeforeCompile = (sh) => {
     vec3 vertexRead(vec2 id, vec2 uv, vec2 dx, vec2 dy) {
       vec2 r = h2(id); float a = (r.x - 0.5) * 2.0 * hexRot; float c = cos(a), s = sin(a); mat2 R = mat2(c, -s, s, c);
       return readAt(R * uv + r * 17.0, R * dx, R * dy);
+    }
+    // a colour turned round the grey axis (YIQ), for leaves that come out redder, yellower or greener
+    vec3 hueTurn(vec3 c, float a) {
+      float Y = dot(c, vec3(0.299, 0.587, 0.114)), I = dot(c, vec3(0.596, -0.274, -0.322)), Qc = dot(c, vec3(0.211, -0.523, 0.312));
+      float cs = cos(a), sn = sin(a); float I2 = I * cs - Qc * sn, Q2 = I * sn + Qc * cs;
+      return vec3(Y + 0.956 * I2 + 0.621 * Q2, Y - 0.272 * I2 - 0.647 * Q2, Y - 1.106 * I2 + 1.703 * Q2);
+    }
+    vec4 stampRead(vec2 uv, vec2 dx, vec2 dy) {
+    #ifdef HEX_GRAD
+      return textureGrad(stampAtlas, uv, dx, dy);
+    #else
+      return texture2D(stampAtlas, uv);
+    #endif
+    }
+    // THE STAMPS: the four cells round this point each may hold one object; it is placed, turned,
+    // sized and tinted from the cell's own random numbers, and laid over the ground with a soft
+    // shadow a little down-light of it. The atlas is 8 x 8: a row is a kind.
+    vec3 stamps(vec3 g, vec2 w) {
+      vec2 dW = dFdx(w), dWy = dFdy(w);
+      vec2 c0 = floor(w / stampCell - 0.5);
+      vec3 col = g; float shade = 0.0;
+      for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) {
+        vec2 id = c0 + vec2(float(i), float(j));
+        vec2 r = h2(id * 1.37 + 5.1), r2 = h2(id * 2.71 + 9.3);
+        if (r.x > stampDensity) continue;
+        float pick = r.y, kind = 7.0;
+        for (int k = 7; k >= 0; k--) if (pick < stampCum[k]) kind = float(k);
+        float size = 0.0; for (int k = 0; k < 8; k++) if (float(k) == kind) size = stampBase[k];
+        size *= stampSize * (0.7 + 0.6 * r2.x);
+        size = min(size, stampCell * 1.9);
+        vec2 centre = (id + 0.5 + (h2(id + 3.3) - 0.5) * 0.9) * stampCell;
+        float a = r2.y * 6.2831853, cs = cos(a), sn = sin(a); mat2 R = mat2(cs, -sn, sn, cs);
+        vec2 p = R * (w - centre) / size;                                     // -0.5..0.5 inside the object's square
+        float sprite = floor(h1(id * 4.13 + 1.7) * 8.0);
+        vec2 cell = vec2(sprite, 7.0 - kind);
+        vec2 uv = (cell + vec2(p.x + 0.5, 0.5 - p.y)) / 8.0;
+        vec2 inside = step(abs(p), vec2(0.5));
+        vec2 ddx = R * dW / size / 8.0 * vec2(1.0, -1.0), ddy = R * dWy / size / 8.0 * vec2(1.0, -1.0);
+        vec4 s = stampRead(uv, ddx, ddy) * inside.x * inside.y;
+        // the shadow: the same shape a little way down-light, darkening the ground under it
+        vec2 ps = R * (w - centre + vec2(0.035, 0.03) * size / 0.2) / size, us = (cell + vec2(ps.x + 0.5, 0.5 - ps.y)) / 8.0;
+        vec2 ins = step(abs(ps), vec2(0.5));
+        shade = max(shade, stampRead(us, ddx, ddy).a * ins.x * ins.y);
+        // premultiplied: tint and turn only what is there
+        vec3 rgb = s.rgb;
+        if (kind < 0.5 || kind > 3.5) rgb = max(hueTurn(rgb, (h1(id * 7.7) - 0.5) * 2.0 * stampHue), 0.0);   // leaves, moss, plants: vary the hue
+        rgb *= 0.8 + 0.4 * h1(id * 3.9);
+        col = col * (1.0 - s.a) + rgb;
+      }
+      return mix(col, col * (1.0 - stampShade), shade * (1.0 - 0.0));
     }
     vec3 hexTile(vec2 uv) {
       vec2 dx = dFdx(uv), dy = dFdy(uv);
@@ -106,6 +162,10 @@ mat.onBeforeCompile = (sh) => {
         float k = smoothstep(farFrom, farFrom * 2.5, length(vW - cameraPosition));
         if (k > 0.001) { vec2 u2 = uv * 0.25 + vec2(0.37, 0.61); vec3 g2 = hexOn > 0.5 ? hexTile(u2) : texture2D(groundMap, u2).rgb; g = mix(g, mix(g, g2, 0.65), k); }
       }
+      if (stampOn > 0.5) {
+        float fade = 1.0 - smoothstep(stampFar * 0.7, stampFar, length(vW - cameraPosition));
+        if (fade > 0.001) g = mix(g, stamps(g, vW.xz), fade);
+      }
       if (macroOn > 0.5) {
         float n = fbm(vW.xz / macroSize), n2 = fbm(vW.xz / (macroSize * 1.7) + 31.0);
         vec3 tint = mix(vec3(1.12, 1.02, 0.78), vec3(0.82, 1.06, 0.84), smoothstep(0.3, 0.7, n2));   // dry and yellow to green and lush
@@ -116,7 +176,7 @@ mat.onBeforeCompile = (sh) => {
     diffuseColor.rgb *= g;
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-1' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-2' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground);
 
@@ -141,10 +201,33 @@ const SL = {
   macroSize: [v => { U.macroSize.value = v; }, v => v + ' m'],
   macroHue: [v => { U.macroHue.value = v; }, v => Math.round(v * 100) + '%'],
   farFrom: [v => { U.farFrom.value = v; }, v => v + ' m'],
+  stampDensity: [v => { U.stampDensity.value = v; }, v => Math.round(v * 100) + '% of cells'],
+  stampCell: [v => { U.stampCell.value = v; }, v => v.toFixed(2) + ' m'],
+  stampSize: [v => { U.stampSize.value = v; }, v => v.toFixed(2) + '×'],
+  stampHue: [v => { U.stampHue.value = v; }, v => Math.round(v * 57.3) + '°'],
+  stampShade: [v => { U.stampShade.value = v; }, v => Math.round(v * 100) + '%'],
+  stampFar: [v => { U.stampFar.value = v; }, v => v + ' m'],
 };
 for (const [id, [apply, fmt]] of Object.entries(SL)) { const el = $(id), go = () => { apply(+el.value); $(id + 'Out').textContent = fmt(+el.value); }; el.addEventListener('input', go); go(); }
-for (const [id, key] of [['hexOn', 'hexOn'], ['macroOn', 'macroOn'], ['farOn', 'farOn'], ['grid', 'grid']]) { const el = $(id), go = () => { U[key].value = el.checked ? 1 : 0; }; el.addEventListener('change', go); go(); }
+for (const [id, key] of [['hexOn', 'hexOn'], ['macroOn', 'macroOn'], ['farOn', 'farOn'], ['grid', 'grid'], ['stampOn', 'stampOn']]) { const el = $(id), go = () => { U[key].value = el.checked ? 1 : 0; }; el.addEventListener('change', go); go(); }
 $('tex').addEventListener('change', () => { U.groundMap.value = tex($('tex').value); });
+// the kinds' weights, as a running total for the shader to pick by
+const KINDS = ['Leaves', 'Twigs and bark', 'Cones and needles', 'Stones', 'Moss and lichen', 'Mushrooms', 'Small plants', 'Grass tufts'];
+const MIXES = {
+  'Forest floor': [5, 2, 3, 1, 2, 0.4, 1, 0.5], 'Pine forest': [0.5, 2, 5, 1, 2, 0.3, 0.5, 0.5],
+  'Meadow': [0.2, 0.2, 0, 1, 0.5, 0.1, 3, 6], 'Rocky': [0.3, 1, 0.3, 6, 3, 0, 0.3, 1],
+};
+const weights = [...MIXES['Forest floor']];
+function applyWeights() { const t = weights.reduce((a, b) => a + b, 0) || 1; let run = 0; for (let k = 0; k < 8; k++) { run += weights[k] / t; U.stampCum.value[k] = run; } U.stampCum.value[7] = 1.0001; }
+for (let k = 0; k < 8; k++) {
+  const d = document.createElement('div'); d.className = 'row';
+  d.innerHTML = `<label for="kind${k}">${KINDS[k]}</label><output id="kind${k}Out"></output><input id="kind${k}" type="range" min="0" max="6" step="0.1">`;
+  $('kinds').appendChild(d);
+  const el = d.querySelector('input'); el.addEventListener('input', () => { weights[k] = +el.value; $(`kind${k}Out`).textContent = weights[k].toFixed(1); applyWeights(); });
+}
+const showWeights = () => { for (let k = 0; k < 8; k++) { $(`kind${k}`).value = weights[k]; $(`kind${k}Out`).textContent = weights[k].toFixed(1); } applyWeights(); };
+for (const [n, w] of Object.entries(MIXES)) { const b = document.createElement('button'); b.type = 'button'; b.textContent = n; b.onclick = () => { weights.splice(0, 8, ...w); showWeights(); }; $('mixes').appendChild(b); }
+showWeights();
 $('min').onclick = () => { $('panel').classList.toggle('min'); $('min').textContent = $('panel').classList.contains('min') ? 'show' : 'hide'; };
 
 // the split line
@@ -164,4 +247,4 @@ renderer.setAnimationLoop(() => {
   if ((shown += dt) > 0.5) { shown = 0; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${(1000 / Math.max(1, fps)).toFixed(1)} ms · ${GL2 ? 'WebGL2' : 'WebGL1'}`; }
   controls.update(); renderer.render(scene, camera);
 });
-if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, U, VIEWS });
+if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, U, VIEWS, heightAt });

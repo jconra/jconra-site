@@ -1,0 +1,101 @@
+{
+ "grid": 4,
+ "sprites": [
+  {
+   "name": "moss mound",
+   "cell": 0,
+   "w": 0.891,
+   "h": 0.75
+  },
+  {
+   "name": "lichen rosette",
+   "cell": 1,
+   "w": 0.805,
+   "h": 0.855
+  },
+  {
+   "name": "moss cushion",
+   "cell": 2,
+   "w": 0.805,
+   "h": 0.781
+  },
+  {
+   "name": "lichen on bark",
+   "cell": 3,
+   "w": 0.891,
+   "h": 0.789
+  },
+  {
+   "name": "brown cap",
+   "cell": 4,
+   "w": 0.625,
+   "h": 0.648
+  },
+  {
+   "name": "fly agaric",
+   "cell": 5,
+   "w": 0.766,
+   "h": 0.781
+  },
+  {
+   "name": "chanterelle",
+   "cell": 6,
+   "w": 0.805,
+   "h": 0.758
+  },
+  {
+   "name": "white cap",
+   "cell": 7,
+   "w": 0.625,
+   "h": 0.633
+  },
+  {
+   "name": "acorns",
+   "cell": 8,
+   "w": 0.691,
+   "h": 0.684
+  },
+  {
+   "name": "fern fronds",
+   "cell": 9,
+   "w": 0.84,
+   "h": 0.844
+  },
+  {
+   "name": "clover patch",
+   "cell": 10,
+   "w": 0.824,
+   "h": 0.766
+  },
+  {
+   "name": "dandelion plant",
+   "cell": 11,
+   "w": 0.84,
+   "h": 0.918
+  },
+  {
+   "name": "grass tuft",
+   "cell": 12,
+   "w": 0.895,
+   "h": 0.891
+  },
+  {
+   "name": "grass and leaf",
+   "cell": 13,
+   "w": 0.883,
+   "h": 0.867
+  },
+  {
+   "name": "dry grass",
+   "cell": 14,
+   "w": 0.836,
+   "h": 0.824
+  },
+  {
+   "name": "grass and leaf 2",
+   "cell": 15,
+   "w": 0.883,
+   "h": 0.887
+  }
+ ]
+}

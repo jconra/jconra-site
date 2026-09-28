@@ -1,0 +1,101 @@
+{
+ "grid": 4,
+ "sprites": [
+  {
+   "name": "moss clump",
+   "cell": 0,
+   "w": 0.793,
+   "h": 0.82
+  },
+  {
+   "name": "lichen",
+   "cell": 1,
+   "w": 0.773,
+   "h": 0.832
+  },
+  {
+   "name": "moss with spore stalks",
+   "cell": 2,
+   "w": 0.848,
+   "h": 0.809
+  },
+  {
+   "name": "reindeer lichen",
+   "cell": 3,
+   "w": 0.859,
+   "h": 0.836
+  },
+  {
+   "name": "fly agaric",
+   "cell": 4,
+   "w": 0.703,
+   "h": 0.703
+  },
+  {
+   "name": "brown cap",
+   "cell": 5,
+   "w": 0.641,
+   "h": 0.59
+  },
+  {
+   "name": "orange caps",
+   "cell": 6,
+   "w": 0.738,
+   "h": 0.711
+  },
+  {
+   "name": "pale cap",
+   "cell": 7,
+   "w": 0.691,
+   "h": 0.676
+  },
+  {
+   "name": "acorns",
+   "cell": 8,
+   "w": 0.75,
+   "h": 0.703
+  },
+  {
+   "name": "fern frond",
+   "cell": 9,
+   "w": 0.824,
+   "h": 0.809
+  },
+  {
+   "name": "clover",
+   "cell": 10,
+   "w": 0.871,
+   "h": 0.875
+  },
+  {
+   "name": "dandelion",
+   "cell": 11,
+   "w": 0.727,
+   "h": 0.734
+  },
+  {
+   "name": "dry grass and leaf",
+   "cell": 12,
+   "w": 0.84,
+   "h": 0.922
+  },
+  {
+   "name": "dry grass tuft",
+   "cell": 13,
+   "w": 0.859,
+   "h": 0.918
+  },
+  {
+   "name": "grass and needles",
+   "cell": 14,
+   "w": 0.84,
+   "h": 0.883
+  },
+  {
+   "name": "grass tuft",
+   "cell": 15,
+   "w": 0.871,
+   "h": 0.895
+  }
+ ]
+}

@@ -1,0 +1,95 @@
+{
+ "grid": 8,
+ "kinds": [
+  "leaves",
+  "twigs and bark",
+  "cones and needles",
+  "stones",
+  "moss and lichen",
+  "mushrooms",
+  "small plants",
+  "grass tufts"
+ ],
+ "names": [
+  [
+   "maple leaf",
+   "oak leaf",
+   "aspen leaf",
+   "alder leaf",
+   "maple leaf",
+   "oak leaf",
+   "aspen leaf",
+   "birch leaf"
+  ],
+  [
+   "forked twig",
+   "broken stick",
+   "bark chip",
+   "crooked twig",
+   "forked twig",
+   "budded twig",
+   "bark chips",
+   "bark slab"
+  ],
+  [
+   "pine cone",
+   "round cone",
+   "needle cluster",
+   "needle bundle",
+   "pine cone",
+   "round cone",
+   "needle spray",
+   "needle spray 2"
+  ],
+  [
+   "granite pebble",
+   "flat stone",
+   "grey pebble",
+   "slate",
+   "granite rock",
+   "sandstone pebble",
+   "slate",
+   "river stone"
+  ],
+  [
+   "moss clump",
+   "lichen",
+   "moss with spore stalks",
+   "reindeer lichen",
+   "moss mound",
+   "lichen rosette",
+   "moss cushion",
+   "lichen on bark"
+  ],
+  [
+   "fly agaric",
+   "brown cap",
+   "orange caps",
+   "pale cap",
+   "brown cap",
+   "fly agaric",
+   "chanterelle",
+   "white cap"
+  ],
+  [
+   "acorns",
+   "fern frond",
+   "clover",
+   "dandelion",
+   "acorns",
+   "fern fronds",
+   "clover patch",
+   "dandelion plant"
+  ],
+  [
+   "dry grass and leaf",
+   "dry grass tuft",
+   "grass and needles",
+   "grass tuft",
+   "grass tuft",
+   "grass and leaf",
+   "dry grass",
+   "grass and leaf 2"
+  ]
+ ]
+}

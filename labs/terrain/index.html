@@ -77,6 +77,19 @@
       <div class="row"><label for="macroHue">Colour shift (dry to green)</label><output id="macroHueOut"></output><input id="macroHue" type="range" min="0" max="1" step="0.01" value="0.5"></div>
     </details>
 
+    <details class="sec" open><summary>4 · Stamps</summary>
+      <p class="note">Single leaves, twigs, cones, stones, moss, mushrooms, small plants and grass tufts from your sprite sheets, scattered by the shader: the ground is a grid of cells, and each cell may hold one object at a random spot, turn, size and tint, with a soft shadow. <b>Cost:</b> eight reads of the sprite atlas near the camera; none past the fade distance, and no extra draws.</p>
+      <label class="check" for="stampOn"><input id="stampOn" type="checkbox" checked> On</label>
+      <div class="btns" id="mixes"></div>
+      <div id="kinds"></div>
+      <div class="row"><label for="stampDensity">How many</label><output id="stampDensityOut"></output><input id="stampDensity" type="range" min="0" max="1" step="0.01" value="0.55"></div>
+      <div class="row"><label for="stampCell">Spacing</label><output id="stampCellOut"></output><input id="stampCell" type="range" min="0.15" max="2" step="0.01" value="0.55"></div>
+      <div class="row"><label for="stampSize">Size</label><output id="stampSizeOut"></output><input id="stampSize" type="range" min="0.3" max="3" step="0.05" value="1"></div>
+      <div class="row"><label for="stampHue">Colour variety (leaves, moss, plants)</label><output id="stampHueOut"></output><input id="stampHue" type="range" min="0" max="1.5" step="0.01" value="0.35"></div>
+      <div class="row"><label for="stampShade">Shadow</label><output id="stampShadeOut"></output><input id="stampShade" type="range" min="0" max="0.9" step="0.01" value="0.45"></div>
+      <div class="row"><label for="stampFar">Fade out by</label><output id="stampFarOut"></output><input id="stampFar" type="range" min="5" max="120" step="1" value="30"></div>
+    </details>
+
     <details class="sec"><summary>3 · Far-away second scale</summary>
       <p class="note">In the distance the same texture is also read at four times the size and blended in, so far ground shows big shapes instead of a fine repeating grain. <b>Cost:</b> one more read (three more with hex-tiling on).</p>
       <label class="check" for="farOn"><input id="farOn" type="checkbox"> On</label>
@@ -84,7 +97,7 @@
     </details>
 
     <details class="sec"><summary>Coming next</summary>
-      <p class="note"><b>Blending by height:</b> two ground types meeting with pebbles poking through dirt instead of fading.<br><b>Stamps:</b> single leaves, cones and stones from a sprite sheet, scattered by the shader.<br><b>Slope painting:</b> rock where it is steep, grass where it is flat.<br><b>Ground cover:</b> cheap bushes, shrubs, rocks and grass meshes, and what they cost.</p>
+      <p class="note"><b>Blending by height:</b> two ground types meeting with pebbles poking through dirt instead of fading.<br><b>Slope painting:</b> rock where it is steep, grass where it is flat.<br><b>Ground cover:</b> cheap bushes, shrubs, rocks and grass meshes, and what they cost.</p>
     </details>
   </div>
 </div>
