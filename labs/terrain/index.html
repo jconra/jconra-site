@@ -118,8 +118,20 @@
       <div class="row"><label for="farFrom">Starts at</label><output id="farFromOut"></output><input id="farFrom" type="range" min="5" max="200" step="1" value="40"></div>
     </details>
 
+    <details class="sec" open><summary>6 · Ground cover</summary>
+      <p class="note">Your Tripo sheet of 16 plants, split into its plants and scattered by the land's maps: grasses in the open and in part shade, shrubs along the forest's edge and a few inside it, nothing on paths, steep or muddy ground. Each plant is one instanced mesh, so all of them are 16 draws. <b>Cost:</b> triangles (see the readout) and overdraw where they are dense.</p>
+      <label class="check" for="coverOn"><input id="coverOn" type="checkbox" checked> Grasses and shrubs (Tripo, 16 kinds)</label>
+      <label class="check" for="longOn"><input id="longOn" type="checkbox" checked> Long grasses (Tripo, 9 kinds; in the open and on dry rises)</label>
+      <p class="note" id="coverInfo">loading…</p>
+      <div class="row"><label for="coverCount">How many</label><output id="coverCountOut"></output><input id="coverCount" type="range" min="0" max="60000" step="500"></div>
+      <div class="row"><label for="coverRadius">Out to</label><output id="coverRadiusOut"></output><input id="coverRadius" type="range" min="20" max="600" step="10"></div>
+      <div class="row"><label for="longCount">How many long grasses</label><output id="longCountOut"></output><input id="longCount" type="range" min="0" max="40000" step="500"></div>
+      <div class="row"><label for="longSize">Long grass size</label><output id="longSizeOut"></output><input id="longSize" type="range" min="0.3" max="5" step="0.1"></div>
+      <div class="row"><label for="coverSize">Size</label><output id="coverSizeOut"></output><input id="coverSize" type="range" min="0.5" max="8" step="0.1"></div>
+    </details>
+
     <details class="sec"><summary>Coming next</summary>
-      <p class="note"><b>Ground cover:</b> cheap bushes, shrubs, rocks and grass meshes, and what they cost.</p>
+      <p class="note"><b>Crossed cards:</b> the same plants as two or three crossed pictures, to compare against the meshes for looks and cost. <b>Rocks, logs and stumps</b> as instanced meshes. <b>Imposters</b> for the far bushes and real trees in place of the cones.</p>
     </details>
   </div>
 </div>

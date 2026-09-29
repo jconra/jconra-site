@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const $ = (id) => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
@@ -64,7 +65,7 @@ function blur(src, r) {                             // two passes of a box blur,
 const LAND = { wetDepth: 4.5, dryHeight: 6.0, forest: 0.55, shadeReach: 4, pathWidth: 2.2 };
 const Hb = blur(Hg, 12);                             // the ground's height averaged over about 40 m
 const slopeAt = (i, j) => { const a = Hg[j * N + Math.min(N - 1, i + 1)] - Hg[j * N + Math.max(0, i - 1)], b = Hg[Math.min(N - 1, j + 1) * N + i] - Hg[Math.max(0, j - 1) * N + i]; return Math.hypot(a, b) / (2 * TEX); };
-let trees = [], maskA = null, pathCanvas = null;
+let trees = [], maskA = null, pathCanvas = null; const MAPS = {};
 function buildLand() {
   // wet and dry: how far below or above its surroundings each spot is
   const wet = new Float32Array(N * N), dry = new Float32Array(N * N), steep = new Float32Array(N * N);
@@ -81,6 +82,7 @@ function buildLand() {
   }
   const canopy = blur(tree, 1), wide = blur(tree, LAND.shadeReach);
   for (let k = 0; k < N * N; k++) canopy[k] = Math.min(1, canopy[k] * 3.2);
+  MAPS.wet = wet; MAPS.dry = dry; MAPS.canopy = canopy; MAPS.wide = wide; MAPS.steep = steep;
   // paths: cheapest routes over the grid, where steep, wet and thick forest cost more
   const cost = new Float32Array(N * N); for (let k = 0; k < N * N; k++) cost[k] = 1 + 60 * steep[k] + 8 * wet[k] + 2 * canopy[k];
   const route = (ax, az, bx, bz) => {
@@ -113,7 +115,8 @@ function buildLand() {
   maskA.needsUpdate = true;
   if (!U.pathMap.value) { const t = new THREE.CanvasTexture(pathCanvas); t.flipY = false; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; U.pathMap.value = t; }
   U.pathMap.value.needsUpdate = true; U.maskA.value = maskA;
-  placeTrees();
+  MAPS.path = pathCanvas.getContext('2d').getImageData(0, 0, P, P).data; MAPS.P = P;
+  placeTrees(); if (COVER.parts) placeCover();
 }
 
 // ── textures ────────────────────────────────────────────────────────────────────
@@ -316,6 +319,91 @@ function placeTrees() {
   treeMesh.count = trees.length; treeMesh.visible = $('treesOn').checked; scene.add(treeMesh);
   $('landInfo').textContent = `${trees.length.toLocaleString()} trees, 4 paths`;
 }
+// ── GROUND COVER: Jacob's Tripo sheet of 16 plants, split into its plants and scattered by the maps ──
+// The model stands the plants in a 4 x 4 wall (x across, y up); each triangle goes to the plant whose
+// cell its middle is in, and each plant becomes one instanced mesh (16 draws for all of them).
+// Grasses go in the open and in part shade, shrubs along the forest's edge and a few inside it,
+// nothing on paths, steep or muddy ground.
+const COVER = { on: true, count: 8000, radius: 140, size: 3.2, parts: null, meshes: [], longOn: true, longCount: 3000, longSize: 3.0, long: null };   // ~5 M triangles to start: the readout says what more costs
+const GRASSES = [0, 1, 4, 8, 10, 12, 14];
+// a Tripo sheet: its plants stand in a grid x grid wall (x across, y up); each triangle goes to the plant
+// whose cell its middle is in, and each plant is stood on its own base. Lit like the ground: every
+// normal points up, and the back of a card keeps it (so no plant is black from behind).
+function loadSheet(url, grid, done) {
+  new GLTFLoader().load(url, (g) => {
+    let src = null; g.scene.traverse(o => { if (o.isMesh && !src) src = o; }); if (!src) return;
+    src.updateMatrixWorld(true);
+    const geo0 = src.geometry.index ? src.geometry.toNonIndexed() : src.geometry.clone(); geo0.applyMatrix4(src.matrixWorld);
+    geo0.computeBoundingBox(); const bb = geo0.boundingBox, pos = geo0.attributes.position, cw = (bb.max.x - bb.min.x) / grid, ch = (bb.max.y - bb.min.y) / grid;
+    const buckets = Array.from({ length: grid * grid }, () => []);
+    for (let t = 0; t < pos.count; t += 3) {
+      const cx = (pos.getX(t) + pos.getX(t + 1) + pos.getX(t + 2)) / 3, cy = (pos.getY(t) + pos.getY(t + 1) + pos.getY(t + 2)) / 3;
+      buckets[Math.min(grid - 1, Math.floor((bb.max.y - cy) / ch)) * grid + Math.min(grid - 1, Math.floor((cx - bb.min.x) / cw))].push(t);
+    }
+    const attrs = Object.keys(geo0.attributes);
+    const parts = buckets.map(tris => {
+      const gg = new THREE.BufferGeometry();
+      for (const a of attrs) { const A = geo0.attributes[a], n = A.itemSize, arr = new Float32Array(tris.length * 3 * n); tris.forEach((t, q) => { for (let v = 0; v < 3; v++) for (let c = 0; c < n; c++) arr[(q * 3 + v) * n + c] = A.array[(t + v) * n + c]; }); gg.setAttribute(a, new THREE.BufferAttribute(arr, n)); }
+      gg.computeBoundingBox(); const b = gg.boundingBox; gg.translate(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2);
+      const nr = gg.attributes.normal; if (nr) { for (let q = 0; q < nr.count; q++) nr.setXYZ(q, 0, 1, 0); }
+      return gg;
+    });
+    const m = new THREE.MeshStandardMaterial({ map: src.material.map, side: THREE.DoubleSide, roughness: 0.9, metalness: 0, alphaTest: src.material.alphaTest || 0 });
+    if (m.map) { m.map.colorSpace = THREE.SRGBColorSpace; m.map.anisotropy = 4; }
+    m.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('gl_FrontFacing ? 1.0 : - 1.0', '1.0')); };
+    m.customProgramCacheKey = () => 'cover-up-2';
+    done(parts, m);
+  });
+}
+loadSheet('/models/props/grassBushes.glb', 4, (parts, m) => { COVER.parts = parts; COVER.material = m; placeCover(); });
+loadSheet('/models/props/longGrass.glb', 3, (parts, m) => { COVER.long = { parts, material: m }; placeCover(); });
+function placeCover() {
+  for (const im of COVER.meshes) { scene.remove(im); im.dispose(); }
+  COVER.meshes = [];
+  if (!COVER.parts || !MAPS.wet) return;
+  const r = (a, b) => { const x = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return x - Math.floor(x); };
+  const spots = Array.from({ length: 16 }, () => []), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+  let tries = 0, placed = 0;
+  while (placed < COVER.count && tries < COVER.count * 12) {
+    tries++;
+    const ang = r(tries, 1.7) * Math.PI * 2, dist = Math.sqrt(r(tries, 3.1)) * COVER.radius, x = Math.cos(ang) * dist, z = Math.sin(ang) * dist;
+    const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
+    const pi = Math.floor((x + SIZE / 2) / SIZE * MAPS.P), pj = Math.floor((z + SIZE / 2) / SIZE * MAPS.P), path = MAPS.path[(pj * MAPS.P + pi) * 4] / 255 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 510;
+    const canopy = MAPS.canopy[k], shade = Math.min(1, Math.max(0, MAPS.wide[k] * 2.2 - canopy * 0.8)), open = 1 - Math.min(1, canopy + shade);
+    const blocked = path + MAPS.steep[k] + Math.max(0, MAPS.wet[k] - 0.6) * 2;
+    const wantGrass = (0.55 * open + 1.0 * shade + 0.15 * canopy) * (1 - MAPS.dry[k] * 0.4), wantShrub = 0.08 * open + 0.9 * shade + 0.35 * canopy;
+    const total = wantGrass + wantShrub; if (r(tries, 5.3) > total * 0.9 * (1 - Math.min(1, blocked))) continue;
+    const grass = r(tries, 7.7) < wantGrass / total;
+    const pool = grass ? GRASSES : [...Array(16).keys()].filter(n => !GRASSES.includes(n)), kind = pool[Math.floor(r(tries, 9.1) * pool.length)];
+    const s = COVER.size * (grass ? 0.8 : 1.1) * (0.7 + 0.6 * r(tries, 11.3));
+    spots[kind].push(m4.compose(new THREE.Vector3(x, heightAt(x, z) - 0.02, z), q.setFromAxisAngle(up, r(tries, 13.7) * 6.283), new THREE.Vector3(s, s * (0.85 + 0.3 * r(tries, 15.1)), s)).clone());
+    placed++;
+  }
+  spots.forEach((list, kind) => {
+    if (!list.length) return;
+    const im = new THREE.InstancedMesh(COVER.parts[kind], COVER.material, list.length);
+    list.forEach((mm, n) => im.setMatrixAt(n, mm)); im.frustumCulled = false; im.visible = COVER.on; scene.add(im); COVER.meshes.push(im);
+  });
+  // the long grasses: out in the open and on dry rises, thinning at the forest and gone in it
+  let longPlaced = 0;
+  if (COVER.long) {
+    const L = COVER.long, ls = Array.from({ length: L.parts.length }, () => []);
+    for (let t2 = 1; longPlaced < COVER.longCount && t2 < COVER.longCount * 12; t2++) {
+      const ang = r(t2, 21.7) * Math.PI * 2, dist = Math.sqrt(r(t2, 23.1)) * COVER.radius, x = Math.cos(ang) * dist, z = Math.sin(ang) * dist;
+      const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
+      const pi = Math.floor((x + SIZE / 2) / SIZE * MAPS.P), pj = Math.floor((z + SIZE / 2) / SIZE * MAPS.P), path = MAPS.path[(pj * MAPS.P + pi) * 4] / 255 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 510;
+      const want = (0.35 + 0.65 * MAPS.dry[k]) * (1 - Math.min(1, MAPS.canopy[k] * 1.5 + MAPS.wide[k])) * (1 - Math.min(1, path + MAPS.steep[k] + MAPS.wet[k]));
+      if (r(t2, 25.3) > want) continue;
+      // clumps: a few together
+      const kind = Math.floor(r(Math.floor(x / 9), Math.floor(z / 9) + 31.1) * L.parts.length) % L.parts.length, sc = COVER.longSize * (0.75 + 0.5 * r(t2, 27.9));
+      ls[kind].push(m4.compose(new THREE.Vector3(x, heightAt(x, z) - 0.03, z), q.setFromAxisAngle(up, r(t2, 29.3) * 6.283), new THREE.Vector3(sc, sc * (0.85 + 0.3 * r(t2, 31.7)), sc)).clone());
+      longPlaced++;
+    }
+    ls.forEach((list, kind) => { if (!list.length) return; const im = new THREE.InstancedMesh(L.parts[kind], L.material, list.length); list.forEach((mm, n) => im.setMatrixAt(n, mm)); im.frustumCulled = false; im.visible = COVER.longOn; im.userData.long = true; scene.add(im); COVER.meshes.push(im); });
+  }
+  const tris = COVER.meshes.reduce((a, im) => a + im.count * im.geometry.attributes.position.count / 3, 0);
+  $('coverInfo').textContent = `${placed.toLocaleString()} plants and ${longPlaced.toLocaleString()} long grasses in ${COVER.meshes.length} draws, ${(tris / 1e6).toFixed(2)} M triangles`;
+}
 buildLand();
 
 // ── views ─────────────────────────────────────────────────────────────────────
@@ -364,6 +452,13 @@ for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'],
 }
 $('mixView').addEventListener('change', e => { U.view.value = +e.target.value; });
 $('treesOn').addEventListener('change', e => { if (treeMesh) treeMesh.visible = e.target.checked; });
+$('coverOn').addEventListener('change', e => { COVER.on = e.target.checked; for (const im of COVER.meshes) if (!im.userData.long) im.visible = COVER.on; });
+$('longOn').addEventListener('change', e => { COVER.longOn = e.target.checked; for (const im of COVER.meshes) if (im.userData.long) im.visible = COVER.longOn; });
+for (const [id, key, fmt] of [['coverCount', 'count', v => v.toLocaleString()], ['coverRadius', 'radius', v => v + ' m'], ['coverSize', 'size', v => v.toFixed(1) + '×'], ['longCount', 'longCount', v => v.toLocaleString()], ['longSize', 'longSize', v => v.toFixed(1) + '×']]) {
+  const el = $(id); el.value = COVER[key]; $(id + 'Out').textContent = fmt(+el.value);
+  el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
+  el.addEventListener('change', () => { COVER[key] = +el.value; placeCover(); });
+}
 // the kinds' weights, as a running total for the shader to pick by
 const KINDS = ['Leaves', 'Twigs and bark', 'Cones and needles', 'Stones', 'Moss and lichen', 'Mushrooms', 'Small plants', 'Grass tufts'];
 const MIXES = {
@@ -397,7 +492,7 @@ const clock = new THREE.Clock(); let fps = 60, shown = 0;
 renderer.setAnimationLoop(() => {
   const dt = clock.getDelta();
   if (dt > 0) fps += (1 / dt - fps) * Math.min(1, dt * 2);
-  if ((shown += dt) > 0.5) { shown = 0; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${(1000 / Math.max(1, fps)).toFixed(1)} ms · ${GL2 ? 'WebGL2' : 'WebGL1'}`; }
+  if ((shown += dt) > 0.5) { shown = 0; const inf = renderer.info.render; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${(1000 / Math.max(1, fps)).toFixed(1)} ms · ${inf.calls} draws · ${(inf.triangles / 1e6).toFixed(2)} M triangles · ${GL2 ? 'WebGL2' : 'WebGL1'}`; }
   controls.update(); renderer.render(scene, camera);
 });
-if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees });
+if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover });
