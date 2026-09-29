@@ -250,9 +250,9 @@
   {
    "id": "trees",
    "group": "labs",
-   "name": "Tree Lab",
-   "text": "A forest drawn two ways: real meshes near the camera, octahedral imposters beyond a line you set, crossfading through a band. The imposter atlases are baked in the page from the same trees. Sliders for how many trees, the atlas grid and the blend; readouts for the cost.",
-   "href": "/labs/trees/",
+   "name": "Terrain Lab",
+   "text": "Ground and forest the way games build them: hex-tiling, stamped leaves and stones, textures mixed by maps worked out from the land, ground cover, and a forest of real trees near you and octahedral imposters beyond.",
+   "href": "/labs/terrain/",
    "img": "shots/trees"
   },
   {

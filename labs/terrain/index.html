@@ -118,6 +118,22 @@
       <div class="row"><label for="farFrom">Starts at</label><output id="farFromOut"></output><input id="farFrom" type="range" min="5" max="200" step="1" value="40"></div>
     </details>
 
+    <details class="sec"><summary>7 · Forest (from the Tree Lab)</summary>
+      <p class="note">The trees are real meshes near you and octahedral imposters beyond a line, crossfading through a band: an imposter is one quad showing the tree as baked from the nearest of many views round it. The atlases are baked in the page from the same trees.</p>
+      <div class="row"><label for="fImp">Imposters from</label><output id="fImpOut"></output><input id="fImp" type="range" min="20" max="600" step="10"></div>
+      <div class="row"><label for="fBand">Crossfade band</label><output id="fBandOut"></output><input id="fBand" type="range" min="0" max="300" step="5"></div>
+      <div class="row"><label for="fAhead">Mesh circle pushed ahead</label><output id="fAheadOut"></output><input id="fAhead" type="range" min="0" max="1" step="0.05"></div>
+      <div class="row"><label for="fDetail">Leaf detail</label><select id="fDetail"><option value="fine">fine</option><option value="coarse">coarse</option><option value="sparse">sparse</option></select></div>
+      <div class="row"><label for="fGrid">Views across (re-bakes)</label><output id="fGridOut"></output><input id="fGrid" type="range" min="4" max="24" step="2"></div>
+      <div class="row"><label for="fCell">View size (re-bakes)</label><output id="fCellOut"></output><input id="fCell" type="range" min="64" max="256" step="32"></div>
+      <p class="note" id="fAtlasInfo"></p>
+      <label class="check" for="fAtlasOn"><input id="fAtlasOn" type="checkbox"> Show an atlas</label>
+      <div class="row"><label for="fAtlasOf">Of</label><select id="fAtlasOf"></select></div>
+      <p class="note"><b>What costs what:</b> a second of frames with each part switched off in turn, from where you are looking.</p>
+      <div class="btns"><button id="profile" type="button">Profile</button></div>
+      <div id="profileOut" class="note"></div>
+    </details>
+
     <details class="sec" open><summary>6 · Ground cover</summary>
       <p class="note">Your Tripo sheet of 16 plants, split into its plants and scattered by the land's maps: grasses in the open and in part shade, shrubs along the forest's edge and a few inside it, nothing on paths, steep or muddy ground. Near the camera each plant is its real mesh; beyond, an octahedral imposter (8 × 8 views of 128 px over the top half: one quad each), crossfaded, the same system as the trees. <b>Cost:</b> the meshes' triangles near you, a quad each far away.</p>
       <label class="check" for="coverOn"><input id="coverOn" type="checkbox" checked> Grasses and shrubs (Tripo, 16 kinds)</label>

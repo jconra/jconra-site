@@ -311,11 +311,14 @@ const ground = new THREE.Mesh(geo, mat); scene.add(ground);
 // dithered crossfade between), planted where the canopy map grew them instead of on tiles
 const SUN_DIR = sun.position.clone().normalize();
 const TREE_SPECIES = FOREST_SPECIES.filter(sp => sp.name !== 'bush');
+// the Tree Lab's settings, now here (Jacob's defaults, 2026-09-23)
+const FOREST = { imposterAt: 150, band: 120, ahead: 0.6, grid: 12, cell: 192, detail: 'sparse', rebake: false };
 let treeForest = null;
 function placeTrees() {
   if (treeForest) { scene.remove(treeForest.group); for (const b of treeForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
-  const species = treeForest ? treeForest.species : TREE_SPECIES;                     // (keeps the baked atlases)
-  treeForest = new Forest(renderer, scene, { species, detail: 'sparse', grid: 12, cell: 192, imposterAt: 150, band: 120, ahead: 0.6, sunDir: SUN_DIR, heightAt, nearCap: 600,
+  const species = treeForest && !FOREST.rebake ? treeForest.species : TREE_SPECIES.map(sp => ({ ...sp }));   // keeps the baked atlases unless the atlas settings changed
+  FOREST.rebake = false;
+  treeForest = new Forest(renderer, scene, { species, detail: FOREST.detail, grid: FOREST.grid, cell: FOREST.cell, imposterAt: FOREST.imposterAt, band: FOREST.band, ahead: FOREST.ahead, sunDir: SUN_DIR, heightAt, nearCap: 600,
     fixed: trees.map(([x, , z, s]) => ({ x, z, sp: Math.floor(hash(x * 0.37, z * 0.71) * species.length), scale: s })) });
   treeForest.group.visible = $('treesOn').checked;
   $('landInfo').textContent = `${trees.length.toLocaleString()} trees, 4 paths`;
@@ -467,6 +470,46 @@ for (const [id, key, fmt] of [['coverCount', 'count', v => v.toLocaleString()], 
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { COVER[key] = +el.value; placeCover(); });
 }
+// ── the forest's settings: distances apply at once, the atlas and leaf detail re-bake ──
+for (const [id, key, fmt, live] of [['fImp', 'imposterAt', v => v + ' m', true], ['fBand', 'band', v => v + ' m', true], ['fAhead', 'ahead', v => Math.round(v * 100) + '% ahead', true], ['fGrid', 'grid', v => v + ' × ' + v, false], ['fCell', 'cell', v => v + ' px', false]]) {
+  const el = $(id); el.value = FOREST[key]; $(id + 'Out').textContent = fmt(+el.value);
+  el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); if (live) { FOREST[key] = +el.value; if (treeForest) { treeForest[key] = FOREST[key]; treeForest.assignDirty = true; } } });
+  if (!live) el.addEventListener('change', () => { FOREST[key] = +el.value; FOREST.rebake = true; placeTrees(); atlasInfo(); });
+}
+$('fDetail').value = FOREST.detail; $('fDetail').addEventListener('change', e => { FOREST.detail = e.target.value; FOREST.rebake = true; placeTrees(); });
+function atlasInfo() { const e = FOREST.grid * FOREST.cell, mb = e * e * 4 / 1048576; $('fAtlasInfo').textContent = `each species: a ${e} × ${e} atlas, ${mb.toFixed(0)} MB colour + ${mb.toFixed(0)} MB normal and depth; ${TREE_SPECIES.length} species = ${(mb * 2 * TREE_SPECIES.length).toFixed(0)} MB. Plants: 8 × 8 of 128 px, 8 MB each.`; }
+atlasInfo();
+// the atlas viewer: one species' colour atlas in the corner
+const atlasCam = new THREE.OrthographicCamera(-0.5, 0.5, 0.5, -0.5, 0, 1), atlasScene = new THREE.Scene(), atlasQuad = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ toneMapped: false }));
+atlasQuad.position.z = -0.5; atlasScene.add(atlasQuad);
+function atlasChoices() { const el = $('fAtlasOf'), v = el.value; el.innerHTML = ''; for (const f of [treeForest, coverForest]) if (f) for (const sp of f.species) el.add(new Option(sp.name, sp.name)); if (v) el.value = v; }
+$('fAtlasOf').addEventListener('focus', atlasChoices);
+function drawAtlas() {
+  if (!$('fAtlasOn').checked) return;
+  const name = $('fAtlasOf').value; let sp = null; for (const f of [treeForest, coverForest]) if (f) for (const x of f.species) if (x.name === name) sp = x;
+  if (!sp || !sp.bake) return;
+  atlasQuad.material.map = sp.bake.colour; atlasQuad.material.needsUpdate = true;
+  const S = Math.min(innerWidth, innerHeight) * 0.42, px = renderer.getPixelRatio();
+  renderer.setScissorTest(true); const y = innerHeight - S - 64; renderer.setViewport(12, y, S, S); renderer.setScissor(12, y, S, S);   // top left, under the readout renderer.autoClear = false; renderer.clearDepth();
+  renderer.render(atlasScene, atlasCam); renderer.autoClear = true; renderer.setScissorTest(false); renderer.setViewport(0, 0, innerWidth, innerHeight);
+}
+$('fAtlasOn').addEventListener('change', atlasChoices);
+// WHAT COSTS WHAT: a second of frames with each part switched off in turn, from where you are looking
+$('profile').onclick = async () => {
+  const out = $('profileOut'); out.innerHTML = 'measuring…';
+  const second = () => new Promise(res => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 1000) requestAnimationFrame(f); else res(n * 1000 / (performance.now() - t0)); }; requestAnimationFrame(() => requestAnimationFrame(f)); });
+  const toggles = [['everything on', () => {}, () => {}],
+    ['no trees', () => treeForest && (treeForest.group.visible = false), () => treeForest && (treeForest.group.visible = $('treesOn').checked)],
+    ['no plants', () => coverForest && (coverForest.group.visible = false), () => coverForest && (coverForest.group.visible = true)],
+    ['no stamps', () => { U.stampOn.value = 0; }, () => { U.stampOn.value = $('stampOn').checked ? 1 : 0; }],
+    ['no mixing', () => { U.mixOn.value = 0; }, () => { U.mixOn.value = $('mixOn').checked ? 1 : 0; }],
+    ['no hex-tiling', () => { U.hexOn.value = 0; }, () => { U.hexOn.value = $('hexOn').checked ? 1 : 0; }],
+    ['bare ground', () => { for (const k of ['stampOn', 'mixOn', 'hexOn', 'macroOn', 'farOn']) U[k].value = 0; if (treeForest) treeForest.group.visible = false; if (coverForest) coverForest.group.visible = false; },
+                    () => { for (const k of ['stampOn', 'mixOn', 'hexOn', 'macroOn', 'farOn']) U[k].value = $(k).checked ? 1 : 0; if (treeForest) treeForest.group.visible = $('treesOn').checked; if (coverForest) coverForest.group.visible = true; }]];
+  const rows = [];
+  for (const [name, off, on] of toggles) { off(); const f = await second(); on(); rows.push(`<div><b>${f.toFixed(0)} fps</b> ${name} <span style="color:#6d7a85">(${(1000 / Math.max(1, f)).toFixed(1)} ms)</span></div>`); }
+  out.innerHTML = rows.join('');
+};
 // the kinds' weights, as a running total for the shader to pick by
 const KINDS = ['Leaves', 'Twigs and bark', 'Cones and needles', 'Stones', 'Moss and lichen', 'Mushrooms', 'Small plants', 'Grass tufts'];
 const MIXES = {
@@ -496,13 +539,13 @@ $('splitOn').addEventListener('change', placeSplit); placeSplit();
 
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); renderer.getDrawingBufferSize(U.res.value); });
 renderer.getDrawingBufferSize(U.res.value);
-const clock = new THREE.Clock(); let fps = 60, shown = 0;
+const clock = new THREE.Clock(); let fps = 60, shown = 0; renderer.info.autoReset = false;   // the readout counts the scene, not the atlas viewer
 renderer.setAnimationLoop(() => {
   const dt = clock.getDelta();
   if (dt > 0) fps += (1 / dt - fps) * Math.min(1, dt * 2);
   if ((shown += dt) > 0.5) { shown = 0; const inf = renderer.info.render; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${(1000 / Math.max(1, fps)).toFixed(1)} ms · ${inf.calls} draws · ${(inf.triangles / 1e6).toFixed(2)} M triangles · ${GL2 ? 'WebGL2' : 'WebGL1'}`; }
-  controls.update();
+  renderer.info.reset(); controls.update();
   for (const f of [treeForest, coverForest]) if (f) f.update(camera, controls.target, camera.position, dt);
-  renderer.render(scene, camera);
+  renderer.render(scene, camera); drawAtlas();
 });
 if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest] });
