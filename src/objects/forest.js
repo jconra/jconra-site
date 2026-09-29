@@ -11,11 +11,12 @@ import { bakeImposterSteps, imposterMaterial } from './imposter.js';
 function rnd(seed) { let s = seed >>> 0 || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
 
 export const FOREST_SPECIES = [
-  { name: 'ash',   file: 'ash',   height: 20, weight: 1 },
-  { name: 'aspen', file: 'aspen', height: 17, weight: 1 },
-  { name: 'oak',   file: 'oak',   height: 18, weight: 1.2 },
-  { name: 'pine',  file: 'pine',  height: 22, weight: 1.4 },
-  { name: 'bush',  file: 'bush',  height: 5,  weight: 0.5 },
+  // soften: the foliage's normals bent this far toward up (both the meshes and the imposters)
+  { name: 'ash',   file: 'ash',   height: 20, weight: 1, soften: 0.5 },
+  { name: 'aspen', file: 'aspen', height: 17, weight: 1, soften: 0.5 },
+  { name: 'oak',   file: 'oak',   height: 18, weight: 1.2, soften: 0.5 },
+  { name: 'pine',  file: 'pine',  height: 22, weight: 1.4, soften: 0.5 },
+  { name: 'bush',  file: 'bush',  height: 5,  weight: 0.5, soften: 0.5 },
 ];
 
 export class Forest {
@@ -48,7 +49,7 @@ export class Forest {
     const todo = this.species.slice();
     const self = this;
     const steps = (function* () { for (const sp of todo) { if (sp.bake) continue;   // brought already baked
- const it = bakeImposterSteps(self.renderer, sp.root, { grid: self.light ? Math.min(8, sp.grid || self.grid) : (sp.grid || self.grid), cell: sp.cell || self.cell, hemi: true, upNormals: !!sp.upNormals }); for (;;) { const s = it.next(); if (s.done) { sp.bake = s.value; break; } yield; } } })();
+ const it = bakeImposterSteps(self.renderer, sp.root, { grid: self.light ? Math.min(8, sp.grid || self.grid) : (sp.grid || self.grid), cell: sp.cell || self.cell, hemi: true, upNormals: !!(sp.upNormals || sp.soften) }); for (;;) { const s = it.next(); if (s.done) { sp.bake = s.value; break; } yield; } } })();
     this.baking = steps;
   }
   get progress() { return this.species.filter(s => s.bake).length / this.species.length; }
@@ -105,7 +106,7 @@ export class Forest {
       const n = cap;
       for (const [name, size] of [['iPos', 3], ['iYaw', 1], ['iScale', 1], ['iTint', 3], ['iFade', 1]]) { const a = new THREE.InstancedBufferAttribute(new Float32Array(n * size), size); a.setUsage(THREE.DynamicDrawUsage); geo.setAttribute(name, a); }
       geo.instanceCount = 0;
-      const mat = imposterMaterial(sp.bake, { sunDir: this.sunDir, blend: true, depth: !this.light, shadows: this.shadows });
+      const mat = imposterMaterial(sp.bake, { sunDir: this.sunDir, blend: true, depth: !this.light, shadows: this.shadows, soften: sp.soften || 0 });
       mat.uniforms.blendDist.value = 300;
       const imposter = new THREE.Mesh(geo, mat); imposter.frustumCulled = false; imposter.castShadow = this.shadows; imposter.customDepthMaterial = mat.userData.depthMaterial;
       this.group.add(imposter);
@@ -119,10 +120,11 @@ export class Forest {
         for (const mat of [].concat(m.material)) {
           mat.onBeforeCompile = (sh) => {
             sh.vertexShader = 'attribute float iFade; varying float vFade;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvFade = iFade;');
-            if (sp.upNormals) sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('gl_FrontFacing ? 1.0 : - 1.0', '1.0'));
+            if (sp.upNormals || sp.soften) sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('gl_FrontFacing ? 1.0 : - 1.0', '1.0')
+              + (sp.soften ? `\nnormal = normalize(mix(normal, normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz), ${sp.soften.toFixed(2)}));` : ''));
             sh.fragmentShader = 'varying float vFade;\n' + sh.fragmentShader.replace('#include <alphatest_fragment>', '#include <alphatest_fragment>\n{ float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))); if (vFade < dither) discard; }');
           };
-          mat.customProgramCacheKey = () => 'forest-mesh' + (sp.upNormals ? '-up' : ''); mat.needsUpdate = true;
+          mat.customProgramCacheKey = () => 'forest-mesh' + (sp.upNormals ? '-up' : '') + (sp.soften ? '-s' + sp.soften : ''); mat.needsUpdate = true;
         }
         m.userData.local = o.matrixWorld.clone(); m.userData.fade = mf;
         this.group.add(m); meshes.push(m);

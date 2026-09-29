@@ -97,6 +97,7 @@ const VERTEX = `
       #include <common>
       #include <logdepthbuf_pars_vertex>
       #include <shadowmap_pars_vertex>
+      #include <fog_pars_vertex>
       attribute vec3 iPos; attribute float iYaw; attribute float iScale; attribute vec3 iTint; attribute float iFade;
       uniform float radius; uniform float halfW; uniform float halfH; uniform vec3 centre; uniform float grid; uniform float hemi;
       uniform vec3 viewDirOverride; uniform float useOverride; uniform float blendDist; uniform float blend; uniform float parallax;
@@ -158,6 +159,9 @@ const VERTEX = `
         vec4 mv = viewMatrix * vec4(world, 1.0); vViewPos = mv.xyz; vToCamView = (viewMatrix * vec4(toCam, 0.0)).xyz;
         gl_Position = projectionMatrix * mv;
         #include <logdepthbuf_vertex>
+        #ifdef USE_FOG
+        vFogDepth = - mv.z;
+        #endif
         vec4 worldPosition = vec4(world, 1.0); vec3 transformedNormal = vToCamView;
         #include <shadowmap_vertex>
         #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
@@ -203,8 +207,10 @@ const LOOKUP = `
 
 // The imposter material for an InstancedBufferGeometry of quads with per-instance `iPos` (vec3),
 // `iYaw` (radians), `iScale`, `iTint` (vec3) and `iFade` (0 gone .. 1 solid, dithered).
-export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3), blend = true, depth = true, shadows = true } = {}) {
-  const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, {
+// `soften` (0..1) bends the foliage's normals toward straight up, the usual trick for leaves (cards
+// facing every way, half of them 'away' from the sun, read as black otherwise)
+export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3), blend = true, depth = true, shadows = true, soften = 0 } = {}) {
+  const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, THREE.UniformsLib.fog, { soften: { value: soften },
     atlas: { value: null }, atlasN: { value: null }, grid: { value: bake.grid }, hemi: { value: bake.hemi ? 1 : 0 },
     radius: { value: bake.radius }, halfW: { value: bake.halfW }, halfH: { value: bake.halfH }, centre: { value: bake.centre.clone() }, sunDir: { value: sunDir.clone().normalize() },
     blend: { value: blend ? 1 : 0 }, blendDist: { value: 400 }, parallax: { value: 0 }, halfWc: { value: bake.halfW }, halfHc: { value: bake.halfH }, ambient: { value: 0.45 }, useDepth: { value: depth ? 1 : 0 }, useShadow: { value: shadows ? 1 : 0 },
@@ -212,7 +218,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
   }]);
   uniforms.atlas.value = bake.colour; uniforms.atlasN.value = bake.normal;
   const mat = new THREE.ShaderMaterial({
-    uniforms, transparent: false, side: THREE.DoubleSide, lights: true, extensions: { fragDepth: true },
+    uniforms, transparent: false, side: THREE.DoubleSide, lights: true, fog: true, extensions: { fragDepth: true },
     vertexShader: VERTEX,
     fragmentShader: `
       #include <common>
@@ -220,7 +226,8 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
       #include <logdepthbuf_pars_fragment>
       #include <shadowmap_pars_fragment>
       #include <lights_pars_begin>
-      uniform vec3 sunDir; uniform float ambient; uniform float useShadow;
+      #include <fog_pars_fragment>
+      uniform vec3 sunDir; uniform float ambient; uniform float useShadow; uniform float soften;
       ` + LOOKUP + `
       void main() {
         #include <logdepthbuf_fragment>
@@ -235,6 +242,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
         nrm /= max(col.a, 0.001); vec3 n = normalize(nrm.rgb * 2.0 - 1.0);   // read through the colour's coverage: filtered against the empty background otherwise
         float c = cos(vYaw), s = sin(vYaw);
         vec3 nw = vec3(c * n.x + s * n.z, n.y, -s * n.x + c * n.z);          // the tree's normal, turned as the instance is
+        nw = normalize(mix(nw, vec3(0.0, 1.0, 0.0), soften));
         vec3 nv = normalize((viewMatrix * vec4(nw, 0.0)).xyz);              // in view space, where three keeps its lights
         float off = (0.5 - nrm.a) * 2.0 * vRadius;
         // lit the way MeshStandardMaterial's diffuse is: the sun (shadowed) and the sky/ground light,
@@ -256,6 +264,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
         gl_FragColor = vec4(albedo * irradiance * RECIPROCAL_PI, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
+        #include <fog_fragment>
       }`,
   });
   // the shadow pass: the same quad, turned to the light, its depth from the atlas, packed the way
