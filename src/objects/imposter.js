@@ -68,7 +68,7 @@ export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, he
     renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear();
     for (let j = 0; j < grid; j++) {
     // one row of views per step: the caller can yield to the browser between rows
-    if (j) { renderer.setRenderTarget(oldTarget); yield null; }
+    if (j) { renderer.setRenderTarget(oldTarget); yield null; renderer.setClearColor(0x000000, 0); }   // a scene drawn in the pause (with a background) leaves an opaque clear colour: each new cell must clear to nothing
     for (let i = 0; i < grid; i++) {
       const d = octDecode((i + 0.5) / grid, (j + 0.5) / grid, hemi);
       cam.position.copy(d).multiplyScalar(radius * 2);

@@ -59,11 +59,26 @@
       <label class="check" for="grid"><input id="grid" type="checkbox"> Show where each repeat starts</label>
     </details>
 
+    <details class="sec" open><summary>0 · The land's shape</summary>
+      <p class="note"><b>Terraces:</b> the height is stepped, a flat top then a short steep riser, in the parts of the land a slow noise picks, each ledge's level nudged so they wander. <b>Erosion:</b> tens of thousands of raindrops run downhill, picking up soil where they speed up and laying it down where they slow, carving gullies and leaving fans of soil at their feet. The steep risers get bare dirt from the mixing, gullies worn dirt, fans damp grass. Changing these rebuilds everything (a second or two).</p>
+      <label class="check" for="terraceOn"><input id="terraceOn" type="checkbox"> Terraces and ledges</label>
+      <div class="row"><label for="tStep">Step height</label><output id="tStepOut"></output><input id="tStep" type="range" min="1" max="20" step="0.5"></div>
+      <div class="row"><label for="tRiser">Riser (the steep part)</label><output id="tRiserOut"></output><input id="tRiser" type="range" min="0.03" max="0.6" step="0.01"></div>
+      <div class="row"><label for="tAmount">Strength</label><output id="tAmountOut"></output><input id="tAmount" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="tSpread">How much of the land</label><output id="tSpreadOut"></output><input id="tSpread" type="range" min="0.05" max="1" step="0.01"></div>
+      <label class="check" for="erodeOn"><input id="erodeOn" type="checkbox"> Erosion</label>
+      <div class="row"><label for="eDrops">Raindrops</label><output id="eDropsOut"></output><input id="eDrops" type="range" min="10000" max="400000" step="10000"></div>
+      <div class="row"><label for="eStr">How much each takes</label><output id="eStrOut"></output><input id="eStr" type="range" min="0.05" max="1" step="0.01"></div>
+      <div class="row"><label for="gullyStr">Dirt in the gullies</label><output id="gullyStrOut"></output><input id="gullyStr" type="range" min="0" max="2" step="0.05" value="0.8"></div>
+      <div class="row"><label for="fanStr">Damp grass on the fans</label><output id="fanStrOut"></output><input id="fanStr" type="range" min="0" max="2" step="0.05" value="0.45"></div>
+      <p class="note" id="shapeInfo"></p>
+    </details>
+
     <details class="sec" open><summary>5 · Mixing by the land</summary>
       <p class="note">Several ground pictures laid over each other by maps worked out from the land itself, the way terrain tools do it: <b>wet</b> hollows lower than their surroundings, <b>dry</b> rises, <b>forest</b> floor under clumps of trees, <b>lusher</b> grass in the part shade round them, worn <b>paths</b> routed across gentle dry ground, bare <b>steep</b> slopes. Where two meet, the brighter (taller) parts of a picture come through first, so the edge follows the pictures. Noise only roughens the edges. <b>Cost:</b> about a dozen texture reads.</p>
       <label class="check" for="mixOn"><input id="mixOn" type="checkbox" checked> On</label>
       <label class="check" for="treesOn"><input id="treesOn" type="checkbox" checked> Show the trees</label>
-      <div class="row"><label for="mixView">Show</label><select id="mixView"><option value="0">the ground</option><option value="1">all the maps, in colour</option><option value="2">wet</option><option value="3">dry</option><option value="4">canopy</option><option value="5">part shade</option><option value="6">paths</option><option value="7">steep</option></select></div>
+      <div class="row"><label for="mixView">Show</label><select id="mixView"><option value="0">the ground</option><option value="1">all the maps, in colour</option><option value="2">wet</option><option value="3">dry</option><option value="4">canopy</option><option value="5">part shade</option><option value="6">paths</option><option value="7">steep</option><option value="8">gullies (where water ran)</option><option value="9">fans (where soil settled)</option></select></div>
       <p class="note" id="landInfo"></p>
       <p class="note"><b>The land</b> (these redraw the maps)</p>
       <div class="row"><label for="landWet">Wet: how deep a hollow is fully wet</label><output id="landWetOut"></output><input id="landWet" type="range" min="0.5" max="8" step="0.1"></div>
@@ -76,7 +91,7 @@
       <div class="row"><label for="mixHeight">Taller parts come through first</label><output id="mixHeightOut"></output><input id="mixHeight" type="range" min="0" max="4" step="0.05" value="1.2"></div>
       <div class="row"><label for="mixBreak">Roughness</label><output id="mixBreakOut"></output><input id="mixBreak" type="range" min="0" max="1" step="0.01" value="0.35"></div>
       <div class="row"><label for="mixBreakSize">Roughness grain</label><output id="mixBreakSizeOut"></output><input id="mixBreakSize" type="range" min="0.5" max="20" step="0.1" value="4"></div>
-      <div class="row"><label for="steepFrom">Bare from a slope of</label><output id="steepFromOut"></output><input id="steepFrom" type="range" min="0.05" max="0.8" step="0.01" value="0.55"></div>
+      <div class="row"><label for="steepFrom">Bare from a slope of</label><output id="steepFromOut"></output><input id="steepFrom" type="range" min="0.05" max="0.8" step="0.01" value="0.35"></div>
       <p class="note"><b>The pictures</b> (the base is the Ground texture above)</p>
       <div class="row"><label for="layDry">Dry</label><select id="layDry"></select></div><div class="row"><label for="layLush">Lush (part shade)</label><select id="layLush"></select></div><div class="row"><label for="layForest">Forest floor</label><select id="layForest"></select></div><div class="row"><label for="layWet">Wet</label><select id="layWet"></select></div><div class="row"><label for="layPath">Path</label><select id="layPath"></select></div><div class="row"><label for="laySteep">Steep</label><select id="laySteep"></select></div>
     </details>

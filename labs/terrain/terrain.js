@@ -28,19 +28,81 @@ const controls = new OrbitControls(camera, renderer.domElement); controls.enable
 scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x6b5a44, 0.9));
 const sun = new THREE.DirectionalLight(0xfff1dc, 2.4); sun.position.set(-300, 400, -200); scene.add(sun);
 
-// ── the land: gentle hills, a flatter middle ──────────────────────────────────
-const SIZE = 1600, SEG = 320;
+// ── the land: hills from noise, then terraces, then erosion, on a 512 x 512 grid ──────────
+// The grid (3.1 m a cell, the same cells the maps use) is the land: the mesh, the maps, the trees,
+// the plants and the camera all read it through heightAt.
+const SIZE = 1600, SEG = 511, N = 512, TEX = SIZE / N;
 function hash(x, z) { const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453; return s - Math.floor(s); }
 function vnoise(x, z) { const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz, u = fx * fx * (3 - 2 * fx), v = fz * fz * (3 - 2 * fz);
   const a = hash(ix, iz), b = hash(ix + 1, iz), c = hash(ix, iz + 1), d = hash(ix + 1, iz + 1); return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v; }
-function heightAt(x, z) {
+function baseHeight(x, z) {
   let h = 0, amp = 1, f = 1 / 260;
   for (let i = 0; i < 5; i++) { h += (vnoise(x * f, z * f) - 0.5) * amp; amp *= 0.45; f *= 2.1; }
   const r = Math.hypot(x, z);
   return h * 55 * THREE.MathUtils.smoothstep(r, 60, 500) + h * 6;
 }
-const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG); geo.rotateX(-Math.PI / 2);
-{ const p = geo.attributes.position; for (let i = 0; i < p.count; i++) p.setY(i, heightAt(p.getX(i), p.getZ(i))); geo.computeVertexNormals(); }
+const SHAPE = { terraceOn: true, step: 5, riser: 0.18, terraceAmount: 0.8, terraceSpread: 0.55, erodeOn: true, drops: 90000, erodeStrength: 0.35 };
+const Hg = new Float32Array(N * N), FLOW = new Float32Array(N * N), SETTLE = new Float32Array(N * N);
+const cellX = (i) => (i + 0.5) * TEX - SIZE / 2;
+// TERRACES: the height is stepped - a flat top, then a short steep riser - where a slow noise says
+// so (terraceSpread of the land), each step's level nudged by noise so the ledges wander
+function terrace(h, x, z) {
+  const where = THREE.MathUtils.smoothstep(vnoise(x / 190 + 70, z / 190 + 30), 1 - SHAPE.terraceSpread, 1.12 - SHAPE.terraceSpread);
+  if (where <= 0) return h;
+  const S = SHAPE.step, o = (vnoise(x / 45 + 11, z / 45 + 5) - 0.5) * S * 0.9, t = (h + o) / S, k = Math.floor(t), f = t - k;
+  const stepped = (k + THREE.MathUtils.smoothstep(f, 1 - SHAPE.riser, 1)) * S - o;
+  return h + (stepped - h) * where * SHAPE.terraceAmount;
+}
+// HYDRAULIC EROSION (after Hans Beyer's particle method): raindrops run downhill with a little
+// inertia; each picks up soil while it speeds up and can carry more, and drops it where it slows or
+// fills a pit. Carves gullies down the slopes and leaves fans of soil at their feet. FLOW records
+// where water ran, SETTLE where soil was laid down.
+function erode(H, drops) {
+  const inertia = 0.05, capacityK = 4, minSlope = 0.01, depositK = 0.3, erodeK = SHAPE.erodeStrength, evap = 0.02, gravity = 4, maxSteps = 64, R = 2;
+  const brush = []; let bw = 0; for (let dj = -R; dj <= R; dj++) for (let di = -R; di <= R; di++) { const d = Math.hypot(di, dj); if (d <= R) { const w = 1 - d / (R + 0.001); brush.push([di, dj, w]); bw += w; } }
+  for (const b of brush) b[2] /= bw;
+  let seed = 12345; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const grad = (x, y) => { const i = x | 0, j = y | 0, u = x - i, v = y - j, k = j * N + i;
+    const a = H[k], b = H[k + 1], c = H[k + N], d = H[k + N + 1];
+    return [(b - a) * (1 - v) + (d - c) * v, (c - a) * (1 - u) + (d - b) * u, a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v]; };
+  for (let n = 0; n < drops; n++) {
+    let x = rnd() * (N - 2), y = rnd() * (N - 2), dx = 0, dy = 0, speed = 1, water = 1, sed = 0;
+    for (let step = 0; step < maxSteps; step++) {
+      const i = x | 0, j = y | 0, u = x - i, v = y - j, k = j * N + i;
+      const [gx, gy, h0] = grad(x, y);
+      dx = dx * inertia - gx * (1 - inertia); dy = dy * inertia - gy * (1 - inertia);
+      const len = Math.hypot(dx, dy); if (len < 1e-6) break; dx /= len; dy /= len;
+      x += dx; y += dy;
+      if (x < 1 || y < 1 || x >= N - 2 || y >= N - 2) break;
+      FLOW[k] += water;
+      const h1 = grad(x, y)[2], dh = h1 - h0;
+      const cap = Math.max(-dh * speed * water * capacityK, minSlope);
+      if (sed > cap || dh > 0) {                                        // lay soil down (uphill: fill the pit)
+        const amt = dh > 0 ? Math.min(dh, sed) : (sed - cap) * depositK; sed -= amt;
+        H[k] += amt * (1 - u) * (1 - v); H[k + 1] += amt * u * (1 - v); H[k + N] += amt * (1 - u) * v; H[k + N + 1] += amt * u * v;
+        SETTLE[k] += amt;
+      } else {                                                          // pick soil up, spread over the brush
+        const amt = Math.min((cap - sed) * erodeK, -dh);
+        for (const [di, dj, w] of brush) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= N || jj >= N) continue; const q = jj * N + ii, take = Math.min(H[q], amt * w); H[q] -= amt * w; sed += amt * w; }
+      }
+      speed = Math.sqrt(Math.max(0, speed * speed + dh * gravity)); water *= 1 - evap;
+    }
+  }
+}
+function buildHeights() {
+  FLOW.fill(0); SETTLE.fill(0);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const x = cellX(i), z = cellX(j); let h = baseHeight(x, z); if (SHAPE.terraceOn) h = terrace(h, x, z); Hg[j * N + i] = h; }
+  if (SHAPE.erodeOn) erode(Hg, SHAPE.drops);
+}
+function heightAt(x, z) {
+  const fx = Math.min(N - 1.001, Math.max(0, (x + SIZE / 2) / TEX - 0.5)), fz = Math.min(N - 1.001, Math.max(0, (z + SIZE / 2) / TEX - 0.5));
+  const i = fx | 0, j = fz | 0, u = fx - i, v = fz - j, k = j * N + i;
+  return (Hg[k] * (1 - u) + Hg[k + 1] * u) * (1 - v) + (Hg[k + N] * (1 - u) + Hg[k + N + 1] * u) * v;
+}
+buildHeights();
+const geo = new THREE.PlaneGeometry(SIZE - TEX, SIZE - TEX, SEG, SEG); geo.rotateX(-Math.PI / 2);   // a vertex on each cell's middle
+function shapeMesh() { const p = geo.attributes.position; for (let i = 0; i < p.count; i++) p.setY(i, heightAt(p.getX(i), p.getZ(i))); p.needsUpdate = true; geo.computeVertexNormals(); }
+shapeMesh();
 
 // ── THE LAND'S OWN MAPS ─────────────────────────────────────────────────────────
 // Worked out once from the terrain, the way terrain tools do it, instead of from random noise:
@@ -50,9 +112,6 @@ const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG); geo.rotateX(-Math.PI 
 //   shade   - the band of part shade round each clump
 //   paths   - routes found across the land that prefer gentle, dry ground, drawn as worn strips
 // Stored in two textures the shader reads; noise only roughens their edges.
-const N = 512, TEX = SIZE / N;                       // 3.1 m a texel
-const Hg = new Float32Array(N * N);
-for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) Hg[j * N + i] = heightAt((i + 0.5) * TEX - SIZE / 2, (j + 0.5) * TEX - SIZE / 2);
 function blur(src, r) {                             // two passes of a box blur, each way: close to a Gaussian
   let a = src.slice(), b = new Float32Array(N * N);
   for (let pass = 0; pass < 2; pass++) {
@@ -63,11 +122,12 @@ function blur(src, r) {                             // two passes of a box blur,
   }
   return a;
 }
-const LAND = { wetDepth: 4.5, dryHeight: 6.0, forest: 0.55, shadeReach: 4, pathWidth: 2.2 };
-const Hb = blur(Hg, 12);                             // the ground's height averaged over about 40 m
+const LAND = { wetDepth: 7, dryHeight: 6.0, forest: 0.55, shadeReach: 4, pathWidth: 2.2 };
+let Hb = null;                                        // the ground's height averaged over about 40 m (per buildLand)
 const slopeAt = (i, j) => { const a = Hg[j * N + Math.min(N - 1, i + 1)] - Hg[j * N + Math.max(0, i - 1)], b = Hg[Math.min(N - 1, j + 1) * N + i] - Hg[Math.max(0, j - 1) * N + i]; return Math.hypot(a, b) / (2 * TEX); };
 let trees = [], maskA = null, pathCanvas = null; const MAPS = {};
 function buildLand() {
+  Hb = blur(Hg, 12);
   // wet and dry: how far below or above its surroundings each spot is
   const wet = new Float32Array(N * N), dry = new Float32Array(N * N), steep = new Float32Array(N * N);
   for (let k = 0; k < N * N; k++) { const d = Hb[k] - Hg[k]; wet[k] = Math.min(1, Math.max(0, d / LAND.wetDepth)); dry[k] = Math.min(1, Math.max(0, -d / LAND.dryHeight)); }
@@ -84,6 +144,13 @@ function buildLand() {
   const canopy = blur(tree, 1), wide = blur(tree, LAND.shadeReach);
   for (let k = 0; k < N * N; k++) canopy[k] = Math.min(1, canopy[k] * 3.2);
   MAPS.wet = wet; MAPS.dry = dry; MAPS.canopy = canopy; MAPS.wide = wide; MAPS.steep = steep;
+  // where the water ran (gullies) and where it laid soil down (fans), from the erosion, softened
+  const fl = new Float32Array(N * N), se = new Float32Array(N * N);
+  for (let q = 0; q < N * N; q++) { fl[q] = Math.min(1, Math.max(0, (Math.log(1 + FLOW[q]) - 2.2) / 2.5)); se[q] = Math.min(1, SETTLE[q] * 4); }
+  const gully = blur(fl, 1), fan = blur(se, 2), dataB = new Uint8Array(N * N * 4);
+  for (let q = 0; q < N * N; q++) { dataB[q * 4] = gully[q] * 255; dataB[q * 4 + 1] = Math.min(1, fan[q] * 2) * 255; dataB[q * 4 + 3] = 255; }
+  if (!U.maskB.value) { const t = new THREE.DataTexture(dataB, N, N, THREE.RGBAFormat); t.magFilter = t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; U.maskB.value = t; } else U.maskB.value.image.data.set(dataB);
+  U.maskB.value.needsUpdate = true;
   // paths: cheapest routes over the grid, where steep, wet and thick forest cost more
   const cost = new Float32Array(N * N); for (let k = 0; k < N * N; k++) cost[k] = 1 + 60 * steep[k] + 8 * wet[k] + 2 * canopy[k];
   const route = (ax, az, bx, bz) => {
@@ -141,9 +208,9 @@ const U = {
   stampCum: { value: [0, 0, 0, 0, 0, 0, 0, 0] }, stampBase: { value: [0.13, 0.28, 0.13, 0.16, 0.34, 0.12, 0.26, 0.4] },
   stampHue: { value: 0.35 }, stampShade: { value: 0.45 }, stampFar: { value: 30 },
   // mixing by the land: the masks, the layers' pictures, and how they meet
-  mixOn: { value: 1 }, maskA: { value: null }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
+  mixOn: { value: 1 }, maskA: { value: null }, maskB: { value: null }, gullyStr: { value: 0.8 }, fanStr: { value: 0.45 }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
   layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layWet: { value: null }, layPath: { value: null }, laySteep: { value: null },
-  mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.55 },
+  mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.35 },
 };
 { const t = new THREE.TextureLoader().load('/textures/stamps/atlas.png'); t.colorSpace = THREE.SRGBColorSpace; t.premultiplyAlpha = true; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); U.stampAtlas.value = t; }
 const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0 });
@@ -155,7 +222,7 @@ mat.onBeforeCompile = (sh) => {
     uniform sampler2D groundMap; uniform float tile, split; uniform vec2 res;
     uniform float hexOn, hexSize, hexRot, hexSharp, hexBright, macroOn, macroStr, macroSize, macroHue, farOn, farFrom, grid;
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
-    uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D pathMap;
+    uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr; uniform sampler2D pathMap;
     uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layWet; uniform sampler2D layPath; uniform sampler2D laySteep;
     varying vec3 vWN;
     varying vec3 vW;
@@ -256,7 +323,7 @@ mat.onBeforeCompile = (sh) => {
     if (!plain && mixOn > 0.5) {
       // the land's maps here, each edge roughened by a little noise
       vec2 luv = vW.xz / landSize + 0.5;
-      vec4 m = texture2D(maskA, luv); vec2 pth = texture2D(pathMap, luv).rg;
+      vec4 m = texture2D(maskA, luv); vec2 pth = texture2D(pathMap, luv).rg; vec2 er = texture2D(maskB, luv).rg;
       float bn = (fbm(vW.xz / mixBreakSize) - 0.5) * mixBreak, bn2 = (fbm(vW.xz / (mixBreakSize * 3.1) + 13.0) - 0.5) * mixBreak;
       float steep = smoothstep(steepFrom, steepFrom + 0.2, 1.0 - vWN.y);
       float wWet = clamp(m.r * 1.5 + bn, 0.0, 1.0), wMud = clamp(m.r * 2.2 - 1.3 + bn, 0.0, 1.0), wDry = clamp(m.g * 1.3 - 0.15 - m.b - m.a * 0.6 + bn2, 0.0, 1.0);
@@ -268,7 +335,9 @@ mat.onBeforeCompile = (sh) => {
       g = over(g, lushC, wLush);
       g = over(g, lushC * vec3(0.9, 0.95, 0.88), wWet);                     // damp: heavier, slightly darker grass round a hollow
       g = over(g, wetC, wMud * 0.85);                                        // mud only in the deepest middle
+      g = over(g, lushC, clamp(er.g * fanStr - 0.2 + bn, 0.0, 1.0) * (1.0 - m.b));   // fans of settled soil: heavier grass
       g = over(g, forC, wForest);
+      g = over(g, pathC, clamp(er.r * gullyStr + bn * 0.6, 0.0, 1.0) * (1.0 - wForest * 0.6));       // gullies: worn dirt where the water ran
       g = over(g, mix(g, pathC, 0.5), wShoulder * (1.0 - wForest * 0.5));     // trampled edge: half-worn
       g = over(g, pathC, wPath);
       g = over(g, steepC, steep);
@@ -281,7 +350,9 @@ mat.onBeforeCompile = (sh) => {
         else if (view < 4.5) v = vec3(m.b);
         else if (view < 5.5) v = vec3(m.a);
         else if (view < 6.5) v = vec3(pth.r, pth.g, 0.0);
-        else v = vec3(steep);
+        else if (view < 7.5) v = vec3(steep);
+        else if (view < 8.5) v = vec3(er.r);
+        else v = vec3(er.g);
         g = v;
       }
     }
@@ -470,6 +541,15 @@ for (const [id, key, fmt] of [['coverCount', 'count', v => v.toLocaleString()], 
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { COVER[key] = +el.value; placeCover(); });
 }
+// ── the land's shape: terraces and erosion (these rebuild the land, the maps, trees and plants) ──
+function reshape() { $('shapeInfo').textContent = 'shaping…'; setTimeout(() => { const t0 = performance.now(); buildHeights(); shapeMesh(); buildLand(); $('shapeInfo').textContent = `shaped in ${((performance.now() - t0) / 1000).toFixed(1)} s`; }, 30); }
+for (const [id, key] of [['terraceOn', 'terraceOn'], ['erodeOn', 'erodeOn']]) { $(id).checked = SHAPE[key]; $(id).addEventListener('change', e => { SHAPE[key] = e.target.checked; reshape(); }); }
+for (const [id, key, fmt] of [['tStep', 'step', v => v.toFixed(1) + ' m'], ['tRiser', 'riser', v => Math.round(v * 100) + '% of a step'], ['tAmount', 'terraceAmount', v => Math.round(v * 100) + '%'], ['tSpread', 'terraceSpread', v => Math.round(v * 100) + '% of the land'], ['eDrops', 'drops', v => v.toLocaleString()], ['eStr', 'erodeStrength', v => v.toFixed(2)]]) {
+  const el = $(id); el.value = SHAPE[key]; $(id + 'Out').textContent = fmt(+el.value);
+  el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
+  el.addEventListener('change', () => { SHAPE[key] = +el.value; reshape(); });
+}
+for (const [id, key] of [['gullyStr', 'gullyStr'], ['fanStr', 'fanStr']]) { const el = $(id), go = () => { U[key].value = +el.value; $(id + 'Out').textContent = Math.round(+el.value * 100) + '%'; }; el.addEventListener('input', go); go(); }
 // ── the forest's settings: distances apply at once, the atlas and leaf detail re-bake ──
 for (const [id, key, fmt, live] of [['fImp', 'imposterAt', v => v + ' m', true], ['fBand', 'band', v => v + ' m', true], ['fAhead', 'ahead', v => Math.round(v * 100) + '% ahead', true], ['fGrid', 'grid', v => v + ' × ' + v, false], ['fCell', 'cell', v => v + ' px', false]]) {
   const el = $(id); el.value = FOREST[key]; $(id + 'Out').textContent = fmt(+el.value);
