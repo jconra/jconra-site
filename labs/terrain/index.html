@@ -69,8 +69,14 @@
       <label class="check" for="erodeOn"><input id="erodeOn" type="checkbox"> Erosion</label>
       <div class="row"><label for="eDrops">Raindrops</label><output id="eDropsOut"></output><input id="eDrops" type="range" min="10000" max="400000" step="10000"></div>
       <div class="row"><label for="eStr">How much each takes</label><output id="eStrOut"></output><input id="eStr" type="range" min="0.05" max="1" step="0.01"></div>
+      <div class="btns"><button id="rainGo" type="button">Watch it rain</button><button id="rainPause" type="button">pause</button><button id="rainStop" type="button">finish now</button></div>
+      <div class="row"><label for="rainSpeed">Rain speed</label><output id="rainSpeedOut"></output><input id="rainSpeed" type="range" min="50" max="6000" step="50" value="1500"></div>
+      <p class="note">Watching starts from the land before erosion; blue lines are this frame's drops running downhill. The trees and plants come back when it stops.</p>
       <div class="row"><label for="gullyStr">Dirt in the gullies</label><output id="gullyStrOut"></output><input id="gullyStr" type="range" min="0" max="2" step="0.05" value="0.8"></div>
       <div class="row"><label for="fanStr">Damp grass on the fans</label><output id="fanStrOut"></output><input id="fanStr" type="range" min="0" max="2" step="0.05" value="0.45"></div>
+      <p class="note"><b>Cliff faces:</b> steep ground reads its picture from the side (triplanar, so it is not smeared down the face) and is banded into rock strata.</p>
+      <div class="row"><label for="strataStr">Strata</label><output id="strataStrOut"></output><input id="strataStr" type="range" min="0" max="1.5" step="0.05" value="0.8"></div>
+      <div class="row"><label for="strataSize">Strata thickness</label><output id="strataSizeOut"></output><input id="strataSize" type="range" min="0.3" max="6" step="0.1" value="1.6"></div>
       <p class="note" id="shapeInfo"></p>
     </details>
 

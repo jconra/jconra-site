@@ -41,7 +41,7 @@ function baseHeight(x, z) {
   const r = Math.hypot(x, z);
   return h * 55 * THREE.MathUtils.smoothstep(r, 60, 500) + h * 6;
 }
-const SHAPE = { terraceOn: true, step: 5, riser: 0.18, terraceAmount: 0.8, terraceSpread: 0.55, erodeOn: true, drops: 90000, erodeStrength: 0.35 };
+const SHAPE = { terraceOn: true, step: 8, riser: 0.1, terraceAmount: 0.8, terraceSpread: 0.55, erodeOn: true, drops: 90000, erodeStrength: 0.35 };
 const Hg = new Float32Array(N * N), FLOW = new Float32Array(N * N), SETTLE = new Float32Array(N * N);
 const cellX = (i) => (i + 0.5) * TEX - SIZE / 2;
 // TERRACES: the height is stepped - a flat top, then a short steep riser - where a slow noise says
@@ -57,7 +57,10 @@ function terrace(h, x, z) {
 // inertia; each picks up soil while it speeds up and can carry more, and drops it where it slows or
 // fills a pit. Carves gullies down the slopes and leaves fans of soil at their feet. FLOW records
 // where water ran, SETTLE where soil was laid down.
-function erode(H, drops) {
+function erode(H, drops) { const it = erodeSteps(H, drops, drops + 1); while (!it.next().done); }
+// the same, a chunk of drops at a time (`chunk` a number, or a function read at each pause);
+// `trail` (when given) gets each drop's path as line segments in grid units [x0, y0, h0, x1, y1, h1, ...]
+function* erodeSteps(H, drops, chunk, trail = null) {
   const inertia = 0.05, capacityK = 4, minSlope = 0.01, depositK = 0.3, erodeK = SHAPE.erodeStrength, evap = 0.02, gravity = 4, maxSteps = 64, R = 2;
   const brush = []; let bw = 0; for (let dj = -R; dj <= R; dj++) for (let di = -R; di <= R; di++) { const d = Math.hypot(di, dj); if (d <= R) { const w = 1 - d / (R + 0.001); brush.push([di, dj, w]); bw += w; } }
   for (const b of brush) b[2] /= bw;
@@ -65,15 +68,19 @@ function erode(H, drops) {
   const grad = (x, y) => { const i = x | 0, j = y | 0, u = x - i, v = y - j, k = j * N + i;
     const a = H[k], b = H[k + 1], c = H[k + N], d = H[k + N + 1];
     return [(b - a) * (1 - v) + (d - c) * v, (c - a) * (1 - u) + (d - b) * u, a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v]; };
+  let since = 0;
   for (let n = 0; n < drops; n++) {
+    if (++since > (typeof chunk === 'function' ? chunk() : chunk)) { since = 1; yield n; if (trail) trail.length = 0; }
     let x = rnd() * (N - 2), y = rnd() * (N - 2), dx = 0, dy = 0, speed = 1, water = 1, sed = 0;
     for (let step = 0; step < maxSteps; step++) {
       const i = x | 0, j = y | 0, u = x - i, v = y - j, k = j * N + i;
       const [gx, gy, h0] = grad(x, y);
       dx = dx * inertia - gx * (1 - inertia); dy = dy * inertia - gy * (1 - inertia);
       const len = Math.hypot(dx, dy); if (len < 1e-6) break; dx /= len; dy /= len;
+      const px = x, py = y;
       x += dx; y += dy;
       if (x < 1 || y < 1 || x >= N - 2 || y >= N - 2) break;
+      if (trail) trail.push(px, py, h0, x, y, h0);
       FLOW[k] += water;
       const h1 = grad(x, y)[2], dh = h1 - h0;
       const cap = Math.max(-dh * speed * water * capacityK, minSlope);
@@ -208,7 +215,7 @@ const U = {
   stampCum: { value: [0, 0, 0, 0, 0, 0, 0, 0] }, stampBase: { value: [0.13, 0.28, 0.13, 0.16, 0.34, 0.12, 0.26, 0.4] },
   stampHue: { value: 0.35 }, stampShade: { value: 0.45 }, stampFar: { value: 30 },
   // mixing by the land: the masks, the layers' pictures, and how they meet
-  mixOn: { value: 1 }, maskA: { value: null }, maskB: { value: null }, gullyStr: { value: 0.8 }, fanStr: { value: 0.45 }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
+  mixOn: { value: 1 }, maskA: { value: null }, maskB: { value: null }, gullyStr: { value: 0.8 }, fanStr: { value: 0.45 }, strataStr: { value: 0.8 }, strataSize: { value: 1.6 }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
   layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layWet: { value: null }, layPath: { value: null }, laySteep: { value: null },
   mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.35 },
 };
@@ -222,7 +229,7 @@ mat.onBeforeCompile = (sh) => {
     uniform sampler2D groundMap; uniform float tile, split; uniform vec2 res;
     uniform float hexOn, hexSize, hexRot, hexSharp, hexBright, macroOn, macroStr, macroSize, macroHue, farOn, farFrom, grid;
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
-    uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr; uniform sampler2D pathMap;
+    uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize; uniform sampler2D pathMap;
     uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layWet; uniform sampler2D layPath; uniform sampler2D laySteep;
     varying vec3 vWN;
     varying vec3 vW;
@@ -295,6 +302,12 @@ mat.onBeforeCompile = (sh) => {
     }
     // a layer's picture, read twice at two scales so its own repeat is softened
     vec3 lay(sampler2D t, vec2 uv, vec2 off) { return mix(texture2D(t, uv + off).rgb, texture2D(t, uv * 0.31 + off * 1.7).rgb, 0.35); }
+    // TRIPLANAR: on a steep face a texture laid from above is smeared down it; this reads it from the
+    // side as well (along x and along z) and blends by which way the ground faces
+    vec3 lay3(sampler2D t, vec3 p, vec3 n, float scale) {
+      vec3 w = pow(abs(n), vec3(4.0)); w /= (w.x + w.y + w.z);
+      return texture2D(t, p.zy / scale).rgb * w.x + texture2D(t, p.xz / scale).rgb * w.y + texture2D(t, p.xy / scale).rgb * w.z;
+    }
     // HEIGHT BLENDING: b comes in where its weight says, but its brighter (taller) parts arrive first
     // and a's brighter parts hold out longest, so the edge follows the pictures instead of fading
     vec3 over(vec3 a, vec3 b, float w) {
@@ -330,7 +343,13 @@ mat.onBeforeCompile = (sh) => {
       float wLush = clamp(m.a * 1.4 + bn, 0.0, 1.0), wForest = clamp(m.b * 1.3 + bn2 * 0.7, 0.0, 1.0);
       float wPath = clamp(pth.r + bn * 0.5, 0.0, 1.0), wShoulder = clamp(pth.g * 1.5 + bn, 0.0, 1.0);
       vec3 dryC = lay(layDry, uv, vec2(0.13, 0.71)), lushC = lay(layLush, uv, vec2(0.61, 0.27)), forC = lay(layForest, uv * 1.3, vec2(0.37, 0.93));
-      vec3 wetC = lay(layWet, uv, vec2(0.83, 0.41)), pathC = lay(layPath, uv * 1.6, vec2(0.29, 0.17)), steepC = lay(laySteep, uv, vec2(0.53, 0.11));
+      vec3 wetC = lay(layWet, uv, vec2(0.83, 0.41)), pathC = lay(layPath, uv * 1.6, vec2(0.29, 0.17));
+      // the rock of a steep face: read from the side, in horizontal strata (bands of lighter and
+      // darker, warmer and greyer layers that wander a little), darker in the overhanging parts
+      vec3 steepC = lay3(laySteep, vW, normalize(vWN), tile * 0.8);
+      float band = vW.y / strataSize + (fbm(vW.xz / 30.0) - 0.5) * 2.5;
+      float layer = fbm(vec2(band * 1.7, 3.1)), fine = vn(vec2(band * 9.0, 1.3));
+      steepC *= mix(vec3(1.0), mix(vec3(0.78, 0.74, 0.7), vec3(1.12, 1.05, 0.95), layer) * (0.85 + 0.3 * fine), strataStr);
       g = over(g, dryC, wDry);
       g = over(g, lushC, wLush);
       g = over(g, lushC * vec3(0.9, 0.95, 0.88), wWet);                     // damp: heavier, slightly darker grass round a hollow
@@ -375,7 +394,7 @@ mat.onBeforeCompile = (sh) => {
     diffuseColor.rgb *= g;
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-3' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-4' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground);
 // THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
@@ -525,7 +544,7 @@ for (const [id, [apply, fmt]] of Object.entries(SL)) { const el = $(id), go = ()
 for (const [id, key] of [['hexOn', 'hexOn'], ['macroOn', 'macroOn'], ['farOn', 'farOn'], ['grid', 'grid'], ['stampOn', 'stampOn'], ['mixOn', 'mixOn']]) { const el = $(id), go = () => { U[key].value = el.checked ? 1 : 0; }; el.addEventListener('change', go); go(); }
 $('tex').addEventListener('change', () => { U.groundMap.value = tex($('tex').value); });
 // the layers' pictures, and the land's settings (these rebuild the maps)
-const LAYERS = { layDry: 'grassDry', layLush: 'grassDark', layForest: 'forest', layWet: 'darkDirt', layPath: 'dirt', laySteep: 'dirt' };
+const LAYERS = { layDry: 'grassDry', layLush: 'grassDark', layForest: 'forest', layWet: 'darkDirt', layPath: 'dirt', laySteep: 'concrete' };
 for (const [id, def] of Object.entries(LAYERS)) { const el = $(id); for (const n of TEXTURES) el.add(new Option(n, n)); el.value = def; const go = () => { U[id].value = tex(el.value); }; el.addEventListener('change', go); go(); }
 for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'], ['landDry', 'dryHeight', v => v.toFixed(1) + ' m'], ['landForest', 'forest', v => Math.round(v * 100) + '%'], ['landShade', 'shadeReach', v => Math.round(v * TEX) + ' m'], ['landPath', 'pathWidth', v => v.toFixed(1) + ' m']]) {
   const el = $(id); el.value = LAND[key]; $(id + 'Out').textContent = fmt(+el.value);
@@ -542,6 +561,32 @@ for (const [id, key, fmt] of [['coverCount', 'count', v => v.toLocaleString()], 
   el.addEventListener('change', () => { COVER[key] = +el.value; placeCover(); });
 }
 // ── the land's shape: terraces and erosion (these rebuild the land, the maps, trees and plants) ──
+// WATCH IT RAIN: the land without erosion, then drops a chunk a frame with their trails drawn and the
+// mesh reshaped as they go; when the rain stops the maps, trees and plants are rebuilt on the result
+const RAIN = { gen: null, paused: false, perFrame: 1500, done: 0, trail: [], frame: 0 };
+const trailGeo = new THREE.BufferGeometry(), trailLines = new THREE.LineSegments(trailGeo, new THREE.LineBasicMaterial({ color: 0x5fb4ff, transparent: true, opacity: 0.55 }));
+trailLines.frustumCulled = false; trailLines.visible = false; scene.add(trailLines);
+function fastMesh() { const p = geo.attributes.position; for (let k = 0; k < p.count; k++) p.setY(k, Hg[k]); p.needsUpdate = true; geo.computeVertexNormals(); }
+function endRain(msg) { RAIN.gen = null; trailLines.visible = false; fastMesh(); buildLand(); if (treeForest) treeForest.group.visible = $('treesOn').checked; $('shapeInfo').textContent = msg; }
+function startRain() {
+  FLOW.fill(0); SETTLE.fill(0);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const x = cellX(i), z = cellX(j); let h = baseHeight(x, z); if (SHAPE.terraceOn) h = terrace(h, x, z); Hg[j * N + i] = h; }
+  fastMesh();
+  for (const f of [treeForest, coverForest]) if (f) f.group.visible = false;
+  RAIN.trail = []; RAIN.done = 0; RAIN.paused = false; RAIN.gen = erodeSteps(Hg, SHAPE.drops, () => RAIN.perFrame, RAIN.trail); trailLines.visible = true;
+  $('rainPause').textContent = 'pause';
+}
+function stepRain() {
+  if (!RAIN.gen || RAIN.paused) return;
+  const r = RAIN.gen.next();
+  if (r.done) { endRain(`rained ${SHAPE.drops.toLocaleString()} drops`); return; }
+  RAIN.done = r.value;
+  const T = RAIN.trail, n = T.length / 3, pos = new Float32Array(n * 3);          // this chunk's trails, just above the ground
+  for (let q = 0; q < n; q++) { pos[q * 3] = T[q * 3] * TEX - SIZE / 2 + TEX / 2; pos[q * 3 + 1] = T[q * 3 + 2] + 0.6; pos[q * 3 + 2] = T[q * 3 + 1] * TEX - SIZE / 2 + TEX / 2; }
+  trailGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); trailGeo.computeBoundingSphere();
+  if (++RAIN.frame % 6 === 0) fastMesh();
+  $('shapeInfo').textContent = `raining: ${RAIN.done.toLocaleString()} of ${SHAPE.drops.toLocaleString()} drops`;
+}
 function reshape() { $('shapeInfo').textContent = 'shaping…'; setTimeout(() => { const t0 = performance.now(); buildHeights(); shapeMesh(); buildLand(); $('shapeInfo').textContent = `shaped in ${((performance.now() - t0) / 1000).toFixed(1)} s`; }, 30); }
 for (const [id, key] of [['terraceOn', 'terraceOn'], ['erodeOn', 'erodeOn']]) { $(id).checked = SHAPE[key]; $(id).addEventListener('change', e => { SHAPE[key] = e.target.checked; reshape(); }); }
 for (const [id, key, fmt] of [['tStep', 'step', v => v.toFixed(1) + ' m'], ['tRiser', 'riser', v => Math.round(v * 100) + '% of a step'], ['tAmount', 'terraceAmount', v => Math.round(v * 100) + '%'], ['tSpread', 'terraceSpread', v => Math.round(v * 100) + '% of the land'], ['eDrops', 'drops', v => v.toLocaleString()], ['eStr', 'erodeStrength', v => v.toFixed(2)]]) {
@@ -549,7 +594,12 @@ for (const [id, key, fmt] of [['tStep', 'step', v => v.toFixed(1) + ' m'], ['tRi
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { SHAPE[key] = +el.value; reshape(); });
 }
-for (const [id, key] of [['gullyStr', 'gullyStr'], ['fanStr', 'fanStr']]) { const el = $(id), go = () => { U[key].value = +el.value; $(id + 'Out').textContent = Math.round(+el.value * 100) + '%'; }; el.addEventListener('input', go); go(); }
+$('rainGo').onclick = () => { camera.position.set(0, 520, 420); controls.target.set(0, 0, 0); controls.update(); startRain(); };
+$('rainPause').onclick = () => { if (!RAIN.gen) return; RAIN.paused = !RAIN.paused; $('rainPause').textContent = RAIN.paused ? 'go on' : 'pause'; };
+$('rainStop').onclick = () => { if (!RAIN.gen) return; while (!RAIN.gen.next().done); endRain('finished'); };
+{ const el = $('rainSpeed'), go = () => { RAIN.perFrame = +el.value; $('rainSpeedOut').textContent = (+el.value).toLocaleString() + ' drops a frame'; }; el.addEventListener('input', go); go(); }
+for (const [id, key] of [['gullyStr', 'gullyStr'], ['fanStr', 'fanStr'], ['strataStr', 'strataStr']]) { const el = $(id), go = () => { U[key].value = +el.value; $(id + 'Out').textContent = Math.round(+el.value * 100) + '%'; }; el.addEventListener('input', go); go(); }
+{ const el = $('strataSize'), go = () => { U.strataSize.value = +el.value; $('strataSizeOut').textContent = (+el.value).toFixed(1) + ' m'; }; el.addEventListener('input', go); go(); }
 // ── the forest's settings: distances apply at once, the atlas and leaf detail re-bake ──
 for (const [id, key, fmt, live] of [['fImp', 'imposterAt', v => v + ' m', true], ['fBand', 'band', v => v + ' m', true], ['fAhead', 'ahead', v => Math.round(v * 100) + '% ahead', true], ['fGrid', 'grid', v => v + ' × ' + v, false], ['fCell', 'cell', v => v + ' px', false]]) {
   const el = $(id); el.value = FOREST[key]; $(id + 'Out').textContent = fmt(+el.value);
@@ -624,7 +674,7 @@ renderer.setAnimationLoop(() => {
   const dt = clock.getDelta();
   if (dt > 0) fps += (1 / dt - fps) * Math.min(1, dt * 2);
   if ((shown += dt) > 0.5) { shown = 0; const inf = renderer.info.render; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${(1000 / Math.max(1, fps)).toFixed(1)} ms · ${inf.calls} draws · ${(inf.triangles / 1e6).toFixed(2)} M triangles · ${GL2 ? 'WebGL2' : 'WebGL1'}`; }
-  renderer.info.reset(); controls.update();
+  renderer.info.reset(); stepRain(); controls.update();
   for (const f of [treeForest, coverForest]) if (f) f.update(camera, controls.target, camera.position, dt);
   renderer.render(scene, camera); drawAtlas();
 });
