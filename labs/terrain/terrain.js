@@ -262,8 +262,8 @@ mat.onBeforeCompile = (sh) => {
       vec3 wetC = lay(layWet, uv, vec2(0.83, 0.41)), pathC = lay(layPath, uv * 1.6, vec2(0.29, 0.17)), steepC = lay(laySteep, uv, vec2(0.53, 0.11));
       g = over(g, dryC, wDry);
       g = over(g, lushC, wLush);
-      g = over(g, lushC * vec3(0.72, 0.8, 0.7), wWet);                      // damp: dark, heavy grass round a hollow
-      g = over(g, wetC * vec3(0.9, 0.92, 0.88), wMud);                      // mud only in the deepest middle
+      g = over(g, lushC * vec3(0.9, 0.95, 0.88), wWet);                     // damp: heavier, slightly darker grass round a hollow
+      g = over(g, wetC, wMud * 0.85);                                        // mud only in the deepest middle
       g = over(g, forC, wForest);
       g = over(g, mix(g, pathC, 0.5), wShoulder * (1.0 - wForest * 0.5));     // trampled edge: half-worn
       g = over(g, pathC, wPath);
