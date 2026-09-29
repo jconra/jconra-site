@@ -20,11 +20,16 @@ export const FOREST_SPECIES = [
 
 export class Forest {
   // `clear(x, z)` says whether a spot is kept free of trees (the town); `light` is the weak-GPU mode
+  // `species`: a list like FOREST_SPECIES; an entry may bring its own `root` (an Object3D, already
+  // loaded) instead of a file, its own `grid` / `cell` for a cheaper atlas, `upNormals` (lit like the
+  // ground, both sides of every card) and `tint: false`. `fixed`: a list of { x, z, sp (index), scale,
+  // yaw } to plant instead of the endless tiles; `heightAt(x, z)` stands them on uneven ground.
   constructor(renderer, scene, { base = '/models/trees/', tile = 420, tiles = 7, perTile = 90, imposterAt = 140, band = 40, ahead = 0.75,
-                                 grid = 12, cell = 192, light = false, detail = 'coarse', clear = null, sunDir = new THREE.Vector3(0.5, 1, 0.3), shadows = false } = {}) {
-    Object.assign(this, { renderer, scene, base, tile, tiles, perTile, imposterAt: light ? 0 : imposterAt, band, ahead, grid: light ? 8 : grid, cell, detail, clear, sunDir, shadows: shadows && !light, light });
+                                 grid = 12, cell = 192, light = false, detail = 'coarse', clear = null, sunDir = new THREE.Vector3(0.5, 1, 0.3), shadows = false,
+                                 species = null, fixed = null, heightAt = null, nearCap = 400 } = {}) {
+    Object.assign(this, { renderer, scene, base, tile, tiles, perTile, imposterAt: light ? 0 : imposterAt, band, ahead, grid: light ? 8 : grid, cell, detail, clear, sunDir, shadows: shadows && !light, light, fixed, heightAt, nearCap });
     this.group = new THREE.Group(); scene.add(this.group);
-    this.species = FOREST_SPECIES.map(s => ({ ...s }));
+    this.species = (species || FOREST_SPECIES).map(s => ({ ...s }));
     this.tilesLaid = new Map();          // "tx,tz" -> [{ pos, yaw, scale, tint, sp }]
     this.built = [];
     this.ready = false; this.baking = null;
@@ -34,8 +39,7 @@ export class Forest {
   async load() {
     const loader = new GLTFLoader();
     for (const sp of this.species) {
-      const gltf = await loader.loadAsync(`${this.base}${sp.file}${this.detail === 'fine' ? '' : '_' + this.detail}.glb`);
-      const root = gltf.scene; root.updateMatrixWorld(true);
+      const root = sp.root || (await loader.loadAsync(`${this.base}${sp.file}${this.detail === 'fine' ? '' : '_' + this.detail}.glb`)).scene; root.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(root), size = box.getSize(new THREE.Vector3());
       sp.unit = sp.height / size.y; sp.baseY = box.min.y; sp.root = root;
       root.traverse(o => { if (o.isMesh && !Array.isArray(o.material)) { o.material.side = THREE.DoubleSide; if (o.material.map) o.material.map.anisotropy = 4; if (o.material.transparent) { o.material.alphaTest = 0.5; o.material.transparent = false; } } });
@@ -43,7 +47,8 @@ export class Forest {
     // the atlases, a row of views per frame
     const todo = this.species.slice();
     const self = this;
-    const steps = (function* () { for (const sp of todo) { const it = bakeImposterSteps(self.renderer, sp.root, { grid: self.grid, cell: self.cell, hemi: true }); for (;;) { const s = it.next(); if (s.done) { sp.bake = s.value; break; } yield; } } })();
+    const steps = (function* () { for (const sp of todo) { if (sp.bake) continue;   // brought already baked
+ const it = bakeImposterSteps(self.renderer, sp.root, { grid: self.light ? Math.min(8, sp.grid || self.grid) : (sp.grid || self.grid), cell: sp.cell || self.cell, hemi: true, upNormals: !!sp.upNormals }); for (;;) { const s = it.next(); if (s.done) { sp.bake = s.value; break; } yield; } } })();
     this.baking = steps;
   }
   get progress() { return this.species.filter(s => s.bake).length / this.species.length; }
@@ -62,6 +67,13 @@ export class Forest {
 
   // which tiles exist around `at`; new ones are laid out from their own seed, so they come back the same
   relay(at) {
+    if (this.fixed) {                                       // a set list: laid once
+      if (this.tilesLaid.size) return false;
+      this.tilesLaid.set('fixed', this.fixed.map((f, i) => { const r = rnd(i * 2654435761 + 7), sp = this.species[f.sp];
+        return { pos: new THREE.Vector3(f.x, this.heightAt ? this.heightAt(f.x, f.z) : 0, f.z), yaw: f.yaw ?? r() * Math.PI * 2, scale: f.scale ?? 0.7 + r() * 0.6,
+          tint: sp.tint === false ? new THREE.Color(1, 1, 1).multiplyScalar(0.85 + r() * 0.3) : new THREE.Color().setHSL(0.26 + r() * 0.08, 0.35 + r() * 0.25, 0.62 + r() * 0.18), sp }; }));
+      return true;
+    }
     const T = this.tile, half = (this.tiles - 1) / 2, cx = Math.round(at.x / T), cz = Math.round(at.z / T);
     const want = new Set(); let changed = false;
     for (let i = -half; i <= half; i++) for (let j = -half; j <= half; j++) {
@@ -79,14 +91,14 @@ export class Forest {
       let pick = r() * total, sp = this.species[0]; for (const s of this.species) { pick -= s.weight; if (pick <= 0) { sp = s; break; } }
       const yaw = r() * Math.PI * 2, scale = 0.7 + r() * 0.6, tint = new THREE.Color().setHSL(0.26 + r() * 0.08, 0.35 + r() * 0.25, 0.62 + r() * 0.18);
       if (this.clear && this.clear(x, z)) continue;
-      out.push({ pos: new THREE.Vector3(x, 0, z), yaw, scale, tint, sp });
+      out.push({ pos: new THREE.Vector3(x, this.heightAt ? this.heightAt(x, z) : 0, z), yaw, scale, tint, sp });
     }
     return out;
   }
 
   // the draws: per species, an imposter draw with room for every tree of that species, and mesh draws for the near ring
   buildDraws() {
-    const cap = this.tiles * this.tiles * this.perTile;
+    const cap = this.fixed ? Math.max(1, this.fixed.length) : this.tiles * this.tiles * this.perTile;
     for (const sp of this.species) {
       const geo = new THREE.InstancedBufferGeometry();
       const quad = new THREE.PlaneGeometry(1, 1); geo.index = quad.index; geo.setAttribute('position', quad.attributes.position); geo.setAttribute('uv', quad.attributes.uv);
@@ -100,16 +112,17 @@ export class Forest {
       const meshes = [];
       if (!this.light) sp.root.traverse(o => {
         if (!o.isMesh) return;
-        const m = new THREE.InstancedMesh(o.geometry.clone(), Array.isArray(o.material) ? o.material.map(x => x.clone()) : o.material.clone(), 400);
+        const NC = this.nearCap, m = new THREE.InstancedMesh(o.geometry.clone(), Array.isArray(o.material) ? o.material.map(x => x.clone()) : o.material.clone(), NC);
         m.count = 0; m.frustumCulled = false; m.castShadow = this.shadows; m.receiveShadow = this.shadows;
-        const mf = new THREE.InstancedBufferAttribute(new Float32Array(400), 1); mf.setUsage(THREE.DynamicDrawUsage); m.geometry.setAttribute('iFade', mf);
-        m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(400 * 3), 3); m.instanceColor.setUsage(THREE.DynamicDrawUsage);
+        const mf = new THREE.InstancedBufferAttribute(new Float32Array(NC), 1); mf.setUsage(THREE.DynamicDrawUsage); m.geometry.setAttribute('iFade', mf);
+        m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(NC * 3), 3); m.instanceColor.setUsage(THREE.DynamicDrawUsage);
         for (const mat of [].concat(m.material)) {
           mat.onBeforeCompile = (sh) => {
             sh.vertexShader = 'attribute float iFade; varying float vFade;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvFade = iFade;');
+            if (sp.upNormals) sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('gl_FrontFacing ? 1.0 : - 1.0', '1.0'));
             sh.fragmentShader = 'varying float vFade;\n' + sh.fragmentShader.replace('#include <alphatest_fragment>', '#include <alphatest_fragment>\n{ float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))); if (vFade < dither) discard; }');
           };
-          mat.needsUpdate = true;
+          mat.customProgramCacheKey = () => 'forest-mesh' + (sp.upNormals ? '-up' : ''); mat.needsUpdate = true;
         }
         m.userData.local = o.matrixWorld.clone(); m.userData.fade = mf;
         this.group.add(m); meshes.push(m);

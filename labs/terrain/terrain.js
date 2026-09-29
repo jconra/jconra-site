@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { Forest, FOREST_SPECIES } from '../../src/objects/forest.js';
 
 const $ = (id) => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
@@ -306,17 +307,17 @@ mat.onBeforeCompile = (sh) => {
 mat.customProgramCacheKey = () => 'terrain-lab-3' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground);
-// stand-in trees where the canopy map says (a cone and a trunk each, one draw for all of them)
-const treeGeo = (() => { const c = new THREE.ConeGeometry(2.6, 9, 7); c.translate(0, 7.5, 0); const t = new THREE.CylinderGeometry(0.25, 0.35, 3.5, 6); t.translate(0, 1.75, 0);
-  const col = (gg, r, gr, b) => { const a = new Float32Array(gg.attributes.position.count * 3); for (let q = 0; q < a.length; q += 3) { a[q] = r; a[q + 1] = gr; a[q + 2] = b; } gg.setAttribute('color', new THREE.BufferAttribute(a, 3)); return gg; };
-  return mergeGeometries([col(c.toNonIndexed(), 0.16, 0.3, 0.14), col(t.toNonIndexed(), 0.3, 0.22, 0.15)]); })();
-let treeMesh = null;
+// THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
+// dithered crossfade between), planted where the canopy map grew them instead of on tiles
+const SUN_DIR = sun.position.clone().normalize();
+const TREE_SPECIES = FOREST_SPECIES.filter(sp => sp.name !== 'bush');
+let treeForest = null;
 function placeTrees() {
-  if (treeMesh) { scene.remove(treeMesh); treeMesh.dispose(); }
-  treeMesh = new THREE.InstancedMesh(treeGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), Math.max(1, trees.length));
-  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion();
-  trees.forEach(([x, y, z, s], i) => treeMesh.setMatrixAt(i, m4.compose(new THREE.Vector3(x, y - 0.3, z), q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), hash(x, z) * 6.28), new THREE.Vector3(s, s * (0.85 + hash(z, x) * 0.4), s))));
-  treeMesh.count = trees.length; treeMesh.visible = $('treesOn').checked; scene.add(treeMesh);
+  if (treeForest) { scene.remove(treeForest.group); for (const b of treeForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
+  const species = treeForest ? treeForest.species : TREE_SPECIES;                     // (keeps the baked atlases)
+  treeForest = new Forest(renderer, scene, { species, detail: 'sparse', grid: 12, cell: 192, imposterAt: 150, band: 120, ahead: 0.6, sunDir: SUN_DIR, heightAt, nearCap: 600,
+    fixed: trees.map(([x, , z, s]) => ({ x, z, sp: Math.floor(hash(x * 0.37, z * 0.71) * species.length), scale: s })) });
+  treeForest.group.visible = $('treesOn').checked;
   $('landInfo').textContent = `${trees.length.toLocaleString()} trees, 4 paths`;
 }
 // ── GROUND COVER: Jacob's Tripo sheet of 16 plants, split into its plants and scattered by the maps ──
@@ -324,7 +325,7 @@ function placeTrees() {
 // cell its middle is in, and each plant becomes one instanced mesh (16 draws for all of them).
 // Grasses go in the open and in part shade, shrubs along the forest's edge and a few inside it,
 // nothing on paths, steep or muddy ground.
-const COVER = { on: true, count: 8000, radius: 140, size: 3.2, parts: null, meshes: [], longOn: true, longCount: 3000, longSize: 3.0, long: null };   // ~5 M triangles to start: the readout says what more costs
+const COVER = { on: true, count: 8000, radius: 140, size: 3.2, near: 35, parts: null, meshes: [], longOn: true, longCount: 3000, longSize: 3.0, long: null };   // ~5 M triangles to start: the readout says what more costs
 const GRASSES = [0, 1, 4, 8, 10, 12, 14];
 // a Tripo sheet: its plants stand in a grid x grid wall (x across, y up); each triangle goes to the plant
 // whose cell its middle is in, and each plant is stood on its own base. Lit like the ground: every
@@ -355,12 +356,20 @@ function loadSheet(url, grid, done) {
     done(parts, m);
   });
 }
-loadSheet('/models/props/grassBushes.glb', 4, (parts, m) => { COVER.parts = parts; COVER.material = m; placeCover(); });
-loadSheet('/models/props/longGrass.glb', 3, (parts, m) => { COVER.long = { parts, material: m }; placeCover(); });
+// the plants as Forest species: each its own root, lit like the ground, a cheap atlas (8 x 8 views
+// of 128 px over the top half: 1024 px, 4 MB colour + 4 MB normal and depth) and no green tint
+const PLANT_HEIGHT = (sheet, k) => sheet === 'long' ? 1.1 : GRASSES.includes(k) ? 0.55 : 0.85;
+function plantSpecies(parts, material, sheet) {
+  return parts.map((g, k) => { const root = new THREE.Group(); root.add(new THREE.Mesh(g, material)); return { name: sheet + k, root, height: PLANT_HEIGHT(sheet, k), weight: 1, grid: 8, cell: 128, upNormals: true, tint: false }; });
+}
+loadSheet('/models/props/grassBushes.glb', 4, (parts, m) => { COVER.parts = parts; COVER.material = m; COVER.plantSp = plantSpecies(parts, m, 'plant'); placeCover(); });
+loadSheet('/models/props/longGrass.glb', 3, (parts, m) => { COVER.long = { parts, material: m }; COVER.longSp = plantSpecies(parts, m, 'long'); placeCover(); });
+let coverForest = null;
 function placeCover() {
   for (const im of COVER.meshes) { scene.remove(im); im.dispose(); }
   COVER.meshes = [];
-  if (!COVER.parts || !MAPS.wet) return;
+  if (!COVER.parts || !COVER.long || !MAPS.wet) return;
+  const fixed = [];
   const r = (a, b) => { const x = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return x - Math.floor(x); };
   const spots = Array.from({ length: 16 }, () => []), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
   let tries = 0, placed = 0;
@@ -376,14 +385,10 @@ function placeCover() {
     const grass = r(tries, 7.7) < wantGrass / total;
     const pool = grass ? GRASSES : [...Array(16).keys()].filter(n => !GRASSES.includes(n)), kind = pool[Math.floor(r(tries, 9.1) * pool.length)];
     const s = COVER.size * (grass ? 0.8 : 1.1) * (0.7 + 0.6 * r(tries, 11.3));
-    spots[kind].push(m4.compose(new THREE.Vector3(x, heightAt(x, z) - 0.02, z), q.setFromAxisAngle(up, r(tries, 13.7) * 6.283), new THREE.Vector3(s, s * (0.85 + 0.3 * r(tries, 15.1)), s)).clone());
+    fixed.push({ x, z, sp: kind, scale: s / (COVER.size * (grass ? 0.8 : 1.1)) * COVER.size / 3.2, yaw: r(tries, 13.7) * 6.283 });
     placed++;
   }
-  spots.forEach((list, kind) => {
-    if (!list.length) return;
-    const im = new THREE.InstancedMesh(COVER.parts[kind], COVER.material, list.length);
-    list.forEach((mm, n) => im.setMatrixAt(n, mm)); im.frustumCulled = false; im.visible = COVER.on; scene.add(im); COVER.meshes.push(im);
-  });
+
   // the long grasses: out in the open and on dry rises, thinning at the forest and gone in it
   let longPlaced = 0;
   if (COVER.long) {
@@ -396,13 +401,16 @@ function placeCover() {
       if (r(t2, 25.3) > want) continue;
       // clumps: a few together
       const kind = Math.floor(r(Math.floor(x / 9), Math.floor(z / 9) + 31.1) * L.parts.length) % L.parts.length, sc = COVER.longSize * (0.75 + 0.5 * r(t2, 27.9));
-      ls[kind].push(m4.compose(new THREE.Vector3(x, heightAt(x, z) - 0.03, z), q.setFromAxisAngle(up, r(t2, 29.3) * 6.283), new THREE.Vector3(sc, sc * (0.85 + 0.3 * r(t2, 31.7)), sc)).clone());
+      fixed.push({ x, z, sp: 16 + kind, scale: sc / 3.0, yaw: r(t2, 29.3) * 6.283 });
       longPlaced++;
     }
-    ls.forEach((list, kind) => { if (!list.length) return; const im = new THREE.InstancedMesh(L.parts[kind], L.material, list.length); list.forEach((mm, n) => im.setMatrixAt(n, mm)); im.frustumCulled = false; im.visible = COVER.longOn; im.userData.long = true; scene.add(im); COVER.meshes.push(im); });
   }
-  const tris = COVER.meshes.reduce((a, im) => a + im.count * im.geometry.attributes.position.count / 3, 0);
-  $('coverInfo').textContent = `${placed.toLocaleString()} plants and ${longPlaced.toLocaleString()} long grasses in ${COVER.meshes.length} draws, ${(tris / 1e6).toFixed(2)} M triangles`;
+  // one Forest for all of them: meshes out to COVER.near, imposters beyond, crossfaded
+  if (coverForest) { scene.remove(coverForest.group); for (const b of coverForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
+  const species = coverForest ? coverForest.species : [...COVER.plantSp, ...COVER.longSp];
+  const use = fixed.filter(f => (f.sp < 16 ? COVER.on : COVER.longOn));
+  coverForest = new Forest(renderer, scene, { species, fixed: use, heightAt, imposterAt: COVER.near, band: COVER.near * 0.5, ahead: 0.5, sunDir: SUN_DIR, nearCap: 3000 });
+  $('coverInfo').textContent = `${placed.toLocaleString()} plants and ${longPlaced.toLocaleString()} long grasses: meshes to ${COVER.near} m, imposters beyond (atlases bake over the first seconds)`;
 }
 buildLand();
 
@@ -451,10 +459,10 @@ for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'],
   el.addEventListener('change', () => { LAND[key] = +el.value; buildLand(); });
 }
 $('mixView').addEventListener('change', e => { U.view.value = +e.target.value; });
-$('treesOn').addEventListener('change', e => { if (treeMesh) treeMesh.visible = e.target.checked; });
-$('coverOn').addEventListener('change', e => { COVER.on = e.target.checked; for (const im of COVER.meshes) if (!im.userData.long) im.visible = COVER.on; });
-$('longOn').addEventListener('change', e => { COVER.longOn = e.target.checked; for (const im of COVER.meshes) if (im.userData.long) im.visible = COVER.longOn; });
-for (const [id, key, fmt] of [['coverCount', 'count', v => v.toLocaleString()], ['coverRadius', 'radius', v => v + ' m'], ['coverSize', 'size', v => v.toFixed(1) + '×'], ['longCount', 'longCount', v => v.toLocaleString()], ['longSize', 'longSize', v => v.toFixed(1) + '×']]) {
+$('treesOn').addEventListener('change', e => { if (treeForest) treeForest.group.visible = e.target.checked; });
+$('coverOn').addEventListener('change', e => { COVER.on = e.target.checked; placeCover(); });
+$('longOn').addEventListener('change', e => { COVER.longOn = e.target.checked; placeCover(); });
+for (const [id, key, fmt] of [['coverCount', 'count', v => v.toLocaleString()], ['coverRadius', 'radius', v => v + ' m'], ['coverSize', 'size', v => v.toFixed(1) + '×'], ['longCount', 'longCount', v => v.toLocaleString()], ['longSize', 'longSize', v => v.toFixed(1) + '×'], ['coverNear', 'near', v => v + ' m']]) {
   const el = $(id); el.value = COVER[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { COVER[key] = +el.value; placeCover(); });
@@ -493,6 +501,8 @@ renderer.setAnimationLoop(() => {
   const dt = clock.getDelta();
   if (dt > 0) fps += (1 / dt - fps) * Math.min(1, dt * 2);
   if ((shown += dt) > 0.5) { shown = 0; const inf = renderer.info.render; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${(1000 / Math.max(1, fps)).toFixed(1)} ms · ${inf.calls} draws · ${(inf.triangles / 1e6).toFixed(2)} M triangles · ${GL2 ? 'WebGL2' : 'WebGL1'}`; }
-  controls.update(); renderer.render(scene, camera);
+  controls.update();
+  for (const f of [treeForest, coverForest]) if (f) f.update(camera, controls.target, camera.position, dt);
+  renderer.render(scene, camera);
 });
-if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover });
+if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest] });

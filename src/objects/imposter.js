@@ -30,7 +30,7 @@ export function octDecode(u, v, hemi) {
 // cells, each `cell` pixels. Returns { colour, normal, radius, centre, grid, hemi }. Done in one go;
 // bakeImposterSteps below does the same a row of views at a time, for baking across frames.
 export function bakeImposter(renderer, object, opts) { const it = bakeImposterSteps(renderer, object, opts); for (;;) { const s = it.next(); if (s.done) return s.value; } }   // (for..of drops a generator's return value)
-export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, hemi = true } = {}) {
+export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, hemi = true, upNormals = false } = {}) {   // upNormals: foliage lit like the ground, both sides of a card
   object.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(object), centre = box.getCenter(new THREE.Vector3()), ext = box.getSize(new THREE.Vector3());
   const radius = ext.length() / 2;
@@ -55,10 +55,11 @@ export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, he
   // the normal in the tree's frame, and in alpha the depth: 0 at the near face of the tree's sphere,
   // 0.5 at its centre plane (where the quad is drawn), 1 at the far face
   const normalMat = (m) => new THREE.ShaderMaterial({
+    defines: { UP_NORMALS: upNormals ? 'true' : 'false' },
     uniforms: { map: { value: m.map || null }, useMap: { value: m.map ? 1 : 0 }, alphaTest: { value: m.alphaTest || (m.transparent ? 0.5 : 0) }, radius: { value: radius } },
     vertexShader: `varying vec3 vN; varying vec2 vUv; varying float vZ; void main(){ vN = normalize(mat3(modelMatrix) * normal); vUv = uv; vec4 mv = modelViewMatrix * vec4(position, 1.0); vZ = -mv.z; gl_Position = projectionMatrix * mv; }`,
     fragmentShader: `uniform sampler2D map; uniform float useMap; uniform float alphaTest; uniform float radius; varying vec3 vN; varying vec2 vUv; varying float vZ;
-      void main(){ if (useMap > 0.5 && texture2D(map, vUv).a < alphaTest) discard; vec3 n = normalize(gl_FrontFacing ? vN : -vN); gl_FragColor = vec4(n * 0.5 + 0.5, clamp((vZ - radius) / (2.0 * radius), 0.0, 1.0)); }`,
+      void main(){ if (useMap > 0.5 && texture2D(map, vUv).a < alphaTest) discard; vec3 n = normalize(gl_FrontFacing || UP_NORMALS ? vN : -vN); gl_FragColor = vec4(n * 0.5 + 0.5, clamp((vZ - radius) / (2.0 * radius), 0.0, 1.0)); }`,
     side: THREE.DoubleSide });
   const oldTarget = renderer.getRenderTarget(), oldClear = renderer.getClearColor(new THREE.Color()), oldAlpha = renderer.getClearAlpha();
   for (const [rt, mkMat] of [[colourRT, colourMat], [normalRT, normalMat]]) {

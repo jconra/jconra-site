@@ -62,7 +62,7 @@
     <details class="sec" open><summary>5 · Mixing by the land</summary>
       <p class="note">Several ground pictures laid over each other by maps worked out from the land itself, the way terrain tools do it: <b>wet</b> hollows lower than their surroundings, <b>dry</b> rises, <b>forest</b> floor under clumps of trees, <b>lusher</b> grass in the part shade round them, worn <b>paths</b> routed across gentle dry ground, bare <b>steep</b> slopes. Where two meet, the brighter (taller) parts of a picture come through first, so the edge follows the pictures. Noise only roughens the edges. <b>Cost:</b> about a dozen texture reads.</p>
       <label class="check" for="mixOn"><input id="mixOn" type="checkbox" checked> On</label>
-      <label class="check" for="treesOn"><input id="treesOn" type="checkbox" checked> Show the (stand-in) trees</label>
+      <label class="check" for="treesOn"><input id="treesOn" type="checkbox" checked> Show the trees</label>
       <div class="row"><label for="mixView">Show</label><select id="mixView"><option value="0">the ground</option><option value="1">all the maps, in colour</option><option value="2">wet</option><option value="3">dry</option><option value="4">canopy</option><option value="5">part shade</option><option value="6">paths</option><option value="7">steep</option></select></div>
       <p class="note" id="landInfo"></p>
       <p class="note"><b>The land</b> (these redraw the maps)</p>
@@ -119,19 +119,20 @@
     </details>
 
     <details class="sec" open><summary>6 · Ground cover</summary>
-      <p class="note">Your Tripo sheet of 16 plants, split into its plants and scattered by the land's maps: grasses in the open and in part shade, shrubs along the forest's edge and a few inside it, nothing on paths, steep or muddy ground. Each plant is one instanced mesh, so all of them are 16 draws. <b>Cost:</b> triangles (see the readout) and overdraw where they are dense.</p>
+      <p class="note">Your Tripo sheet of 16 plants, split into its plants and scattered by the land's maps: grasses in the open and in part shade, shrubs along the forest's edge and a few inside it, nothing on paths, steep or muddy ground. Near the camera each plant is its real mesh; beyond, an octahedral imposter (8 × 8 views of 128 px over the top half: one quad each), crossfaded, the same system as the trees. <b>Cost:</b> the meshes' triangles near you, a quad each far away.</p>
       <label class="check" for="coverOn"><input id="coverOn" type="checkbox" checked> Grasses and shrubs (Tripo, 16 kinds)</label>
       <label class="check" for="longOn"><input id="longOn" type="checkbox" checked> Long grasses (Tripo, 9 kinds; in the open and on dry rises)</label>
       <p class="note" id="coverInfo">loading…</p>
       <div class="row"><label for="coverCount">How many</label><output id="coverCountOut"></output><input id="coverCount" type="range" min="0" max="60000" step="500"></div>
       <div class="row"><label for="coverRadius">Out to</label><output id="coverRadiusOut"></output><input id="coverRadius" type="range" min="20" max="600" step="10"></div>
+      <div class="row"><label for="coverNear">Real meshes out to (imposters beyond)</label><output id="coverNearOut"></output><input id="coverNear" type="range" min="5" max="150" step="5"></div>
       <div class="row"><label for="longCount">How many long grasses</label><output id="longCountOut"></output><input id="longCount" type="range" min="0" max="40000" step="500"></div>
       <div class="row"><label for="longSize">Long grass size</label><output id="longSizeOut"></output><input id="longSize" type="range" min="0.3" max="5" step="0.1"></div>
       <div class="row"><label for="coverSize">Size</label><output id="coverSizeOut"></output><input id="coverSize" type="range" min="0.5" max="8" step="0.1"></div>
     </details>
 
     <details class="sec"><summary>Coming next</summary>
-      <p class="note"><b>Crossed cards:</b> the same plants as two or three crossed pictures, to compare against the meshes for looks and cost. <b>Rocks, logs and stumps</b> as instanced meshes. <b>Imposters</b> for the far bushes and real trees in place of the cones.</p>
+      <p class="note"><b>Crossed cards:</b> the same plants as two or three crossed pictures, to compare against the meshes for looks and cost. <b>Rocks, logs and stumps</b> as instanced meshes. </p>
     </details>
   </div>
 </div>
