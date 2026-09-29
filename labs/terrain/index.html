@@ -15,6 +15,7 @@
   #panel.min { bottom:auto; } #panel.min .body { display:none; }
   h1 { font:400 17px/1 nasa, ui-sans-serif, sans-serif; letter-spacing:.05em; color:#e8f1f5; display:flex; justify-content:space-between; align-items:center; }
   h1 button { font:600 11px ui-monospace,monospace; background:none; border:1px solid #212a34; color:#8494a0; border-radius:3px; padding:3px 7px; cursor:pointer; }
+  details.sec details.sec { margin-left:8px; }
   details.sec { margin:8px 0 0; border-top:1px solid #1a2129; padding-top:4px; }
   details.sec summary { font:600 10.5px/1 ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase; color:#8494a0; cursor:pointer; list-style:none; padding:7px 0; user-select:none; }
   details.sec summary::before { content:"\25B8  "; color:#35e07d; }
@@ -50,6 +51,8 @@
   <h1>Terrain Lab <button id="min" type="button">hide</button></h1>
   <div class="body">
     <p class="note">Ways games hide that a ground texture repeats. Drag the white line: left of it is the plain texture, right of it everything switched on below. Drag the scene to look around.</p>
+    <div class="row"><label for="qTier">Quality</label><select id="qTier"><option value="auto">automatic</option><option value="potato">potato</option><option value="normal">normal</option><option value="gaming">gaming</option></select></div>
+    <p class="note" id="qWhy"></p>
     <label class="check" for="splitOn"><input id="splitOn" type="checkbox" checked> Split screen</label>
     <div class="btns" id="views"></div>
 
@@ -60,12 +63,27 @@
     </details>
 
     <details class="sec" open><summary>0 · The land's shape</summary>
+      <p class="note">Changing the shape rebuilds everything (a second or two).</p>
+      <details class="sec" open><summary>Mountain valley</summary>
+      <p class="note">Mountains on either side of a winding valley floor, with ridged peaks and spurs; the floor falls gently along the valley, so its water runs one way.</p>
+      <label class="check" for="vOn"><input id="vOn" type="checkbox"> Mountain valley</label>
+      <div class="row"><label for="vHeight">Mountain height</label><output id="vHeightOut"></output><input id="vHeight" type="range" min="0" max="600" step="10"></div>
+      <div class="row"><label for="vWidth">Valley floor width</label><output id="vWidthOut"></output><input id="vWidth" type="range" min="60" max="900" step="10"></div>
+      <div class="row"><label for="vSlope">Mountainside width</label><output id="vSlopeOut"></output><input id="vSlope" type="range" min="80" max="900" step="10"></div>
+      <div class="row"><label for="vSteep">Steepness (curve)</label><output id="vSteepOut"></output><input id="vSteep" type="range" min="0.5" max="4" step="0.05"></div>
+      <div class="row"><label for="vAngle">Valley direction</label><output id="vAngleOut"></output><input id="vAngle" type="range" min="-90" max="90" step="1"></div>
+      <div class="row"><label for="vMeander">How much it winds</label><output id="vMeanderOut"></output><input id="vMeander" type="range" min="0" max="400" step="5"></div>
+      <div class="row"><label for="vRidges">Ridges and peaks</label><output id="vRidgesOut"></output><input id="vRidges" type="range" min="0" max="1" step="0.01"></div>
+      </details>
+      <details class="sec"><summary>Terraces and ledges</summary>
       <p class="note"><b>Terraces:</b> the height is stepped, a flat top then a short steep riser, in the parts of the land a slow noise picks, each ledge's level nudged so they wander. <b>Erosion:</b> tens of thousands of raindrops run downhill, picking up soil where they speed up and laying it down where they slow, carving gullies and leaving fans of soil at their feet. The steep risers get bare dirt from the mixing, gullies worn dirt, fans damp grass. Changing these rebuilds everything (a second or two).</p>
       <label class="check" for="terraceOn"><input id="terraceOn" type="checkbox"> Terraces and ledges</label>
       <div class="row"><label for="tStep">Step height</label><output id="tStepOut"></output><input id="tStep" type="range" min="1" max="20" step="0.5"></div>
       <div class="row"><label for="tRiser">Riser (the steep part)</label><output id="tRiserOut"></output><input id="tRiser" type="range" min="0.03" max="0.6" step="0.01"></div>
       <div class="row"><label for="tAmount">Strength</label><output id="tAmountOut"></output><input id="tAmount" type="range" min="0" max="1" step="0.01"></div>
       <div class="row"><label for="tSpread">How much of the land</label><output id="tSpreadOut"></output><input id="tSpread" type="range" min="0.05" max="1" step="0.01"></div>
+      </details>
+      <details class="sec"><summary>Erosion and rain</summary>
       <label class="check" for="erodeOn"><input id="erodeOn" type="checkbox"> Erosion</label>
       <div class="row"><label for="eDrops">Raindrops</label><output id="eDropsOut"></output><input id="eDrops" type="range" min="10000" max="400000" step="10000"></div>
       <div class="row"><label for="eStr">How much each takes</label><output id="eStrOut"></output><input id="eStr" type="range" min="0.05" max="1" step="0.01"></div>
@@ -74,17 +92,41 @@
       <p class="note">Watching starts from the land before erosion; blue lines are this frame's drops running downhill. The trees and plants come back when it stops.</p>
       <div class="row"><label for="gullyStr">Dirt in the gullies</label><output id="gullyStrOut"></output><input id="gullyStr" type="range" min="0" max="2" step="0.05" value="0.8"></div>
       <div class="row"><label for="fanStr">Damp grass on the fans</label><output id="fanStrOut"></output><input id="fanStr" type="range" min="0" max="2" step="0.05" value="0.45"></div>
+      </details>
+      <details class="sec"><summary>Cliff faces</summary>
       <p class="note"><b>Cliff faces:</b> steep ground reads its picture from the side (triplanar, so it is not smeared down the face) and is banded into rock strata.</p>
       <div class="row"><label for="strataStr">Strata</label><output id="strataStrOut"></output><input id="strataStr" type="range" min="0" max="1.5" step="0.05" value="0.8"></div>
       <div class="row"><label for="strataSize">Strata thickness</label><output id="strataSizeOut"></output><input id="strataSize" type="range" min="0.3" max="6" step="0.1" value="1.6"></div>
+      </details>
       <p class="note" id="shapeInfo"></p>
+    </details>
+
+    <details class="sec" open><summary>0b · Water</summary>
+      <p class="note">Found from the land: hollows are filled to the level they would spill at (ponds), and water runs downhill cell by cell, adding up, so rivers form where enough gathers and run into the ponds and out over their spill. Pond ground is flattened to its surface, river channels carved a little; the water is painted on the ground (no see-through mesh) with moving waves, sun glints and the sky reflected.</p>
+      <label class="check" for="wOn"><input id="wOn" type="checkbox"> Water</label>
+      <details class="sec" open><summary>Rivers and ponds (rebuild)</summary>
+      <div class="row"><label for="wRiver">A river starts where it has gathered</label><output id="wRiverOut"></output><input id="wRiver" type="range" min="200" max="12000" step="100"></div>
+      <div class="row"><label for="wWidth">River width</label><output id="wWidthOut"></output><input id="wWidth" type="range" min="0.3" max="4" step="0.1"></div>
+      <div class="row"><label for="wCarve">Channel depth</label><output id="wCarveOut"></output><input id="wCarve" type="range" min="0" max="3" step="0.1"></div>
+      <div class="row"><label for="wPondDepth">A pond is deeper than</label><output id="wPondDepthOut"></output><input id="wPondDepth" type="range" min="0.05" max="3" step="0.05"></div>
+      <div class="row"><label for="wPondMin">Smallest pond</label><output id="wPondMinOut"></output><input id="wPondMin" type="range" min="4" max="400" step="2"></div>
+      </details>
+      <details class="sec"><summary>Surface</summary>
+      <label class="check" for="wWaveOn"><input id="wWaveOn" type="checkbox" checked> Moving waves and glints</label>
+      <div class="row"><label for="wWave">Wave size</label><output id="wWaveOut"></output><input id="wWave" type="range" min="0.3" max="8" step="0.1"></div>
+      <div class="row"><label for="wSpeed">Wave speed</label><output id="wSpeedOut"></output><input id="wSpeed" type="range" min="0" max="2" step="0.05"></div>
+      <div class="row"><label for="wSpec">Sun glints</label><output id="wSpecOut"></output><input id="wSpec" type="range" min="0" max="4" step="0.05"></div>
+      <div class="row"><label for="wReflect">Sky reflection</label><output id="wReflectOut"></output><input id="wReflect" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="wDeepC">Deep</label><input id="wDeepC" type="color" style="grid-column:2;width:48px;height:22px;border:0;background:none"></div>
+      <div class="row"><label for="wShallowC">Shallow</label><input id="wShallowC" type="color" style="grid-column:2;width:48px;height:22px;border:0;background:none"></div>
+      </details>
     </details>
 
     <details class="sec" open><summary>5 · Mixing by the land</summary>
       <p class="note">Several ground pictures laid over each other by maps worked out from the land itself, the way terrain tools do it: <b>wet</b> hollows lower than their surroundings, <b>dry</b> rises, <b>forest</b> floor under clumps of trees, <b>lusher</b> grass in the part shade round them, worn <b>paths</b> routed across gentle dry ground, bare <b>steep</b> slopes. Where two meet, the brighter (taller) parts of a picture come through first, so the edge follows the pictures. Noise only roughens the edges. <b>Cost:</b> about a dozen texture reads.</p>
       <label class="check" for="mixOn"><input id="mixOn" type="checkbox" checked> On</label>
       <label class="check" for="treesOn"><input id="treesOn" type="checkbox" checked> Show the trees</label>
-      <div class="row"><label for="mixView">Show</label><select id="mixView"><option value="0">the ground</option><option value="1">all the maps, in colour</option><option value="2">wet</option><option value="3">dry</option><option value="4">canopy</option><option value="5">part shade</option><option value="6">paths</option><option value="7">steep</option><option value="8">gullies (where water ran)</option><option value="9">fans (where soil settled)</option></select></div>
+      <div class="row"><label for="mixView">Show</label><select id="mixView"><option value="0">the ground</option><option value="1">all the maps, in colour</option><option value="2">wet</option><option value="3">dry</option><option value="4">canopy</option><option value="5">part shade</option><option value="6">paths</option><option value="7">steep</option><option value="8">gullies (where water ran)</option><option value="9">fans (where soil settled)</option><option value="10">water</option></select></div>
       <p class="note" id="landInfo"></p>
       <p class="note"><b>The land</b> (these redraw the maps)</p>
       <div class="row"><label for="landWet">Wet: how deep a hollow is fully wet</label><output id="landWetOut"></output><input id="landWet" type="range" min="0.5" max="8" step="0.1"></div>
