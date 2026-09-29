@@ -215,7 +215,7 @@ const U = {
   stampCum: { value: [0, 0, 0, 0, 0, 0, 0, 0] }, stampBase: { value: [0.13, 0.28, 0.13, 0.16, 0.34, 0.12, 0.26, 0.4] },
   stampHue: { value: 0.35 }, stampShade: { value: 0.45 }, stampFar: { value: 30 },
   // mixing by the land: the masks, the layers' pictures, and how they meet
-  mixOn: { value: 1 }, maskA: { value: null }, maskB: { value: null }, gullyStr: { value: 0.8 }, fanStr: { value: 0.45 }, strataStr: { value: 0.8 }, strataSize: { value: 1.6 }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
+  mixOn: { value: 1 }, maskA: { value: null }, maskB: { value: null }, gullyStr: { value: 0.8 }, fanStr: { value: 0.45 }, strataStr: { value: 0.8 }, strataSize: { value: 1.6 }, lushTint: { value: new THREE.Color(0.86, 1.0, 0.8) }, dampTint: { value: new THREE.Color(0.78, 0.92, 0.76) }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
   layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layWet: { value: null }, layPath: { value: null }, laySteep: { value: null },
   mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.35 },
 };
@@ -229,7 +229,7 @@ mat.onBeforeCompile = (sh) => {
     uniform sampler2D groundMap; uniform float tile, split; uniform vec2 res;
     uniform float hexOn, hexSize, hexRot, hexSharp, hexBright, macroOn, macroStr, macroSize, macroHue, farOn, farFrom, grid;
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
-    uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize; uniform sampler2D pathMap;
+    uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize; uniform vec3 lushTint, dampTint; uniform sampler2D pathMap;
     uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layWet; uniform sampler2D layPath; uniform sampler2D laySteep;
     varying vec3 vWN;
     varying vec3 vW;
@@ -351,10 +351,10 @@ mat.onBeforeCompile = (sh) => {
       float layer = fbm(vec2(band * 1.7, 3.1)), fine = vn(vec2(band * 9.0, 1.3));
       steepC *= mix(vec3(1.0), mix(vec3(0.78, 0.74, 0.7), vec3(1.12, 1.05, 0.95), layer) * (0.85 + 0.3 * fine), strataStr);
       g = over(g, dryC, wDry);
-      g = over(g, lushC, wLush);
-      g = over(g, lushC * vec3(0.9, 0.95, 0.88), wWet);                     // damp: heavier, slightly darker grass round a hollow
+      g = over(g, lushC * lushTint, wLush);                                  // the ordinary grass, tinted deeper: one multiply, no extra texture
+      g = over(g, lushC * dampTint, wWet);                                   // damp: heavier grass round a hollow
       g = over(g, wetC, wMud * 0.85);                                        // mud only in the deepest middle
-      g = over(g, lushC, clamp(er.g * fanStr - 0.2 + bn, 0.0, 1.0) * (1.0 - m.b));   // fans of settled soil: heavier grass
+      g = over(g, lushC * lushTint, clamp(er.g * fanStr - 0.2 + bn, 0.0, 1.0) * (1.0 - m.b));   // fans of settled soil: heavier grass
       g = over(g, forC, wForest);
       g = over(g, pathC, clamp(er.r * gullyStr + bn * 0.6, 0.0, 1.0) * (1.0 - wForest * 0.6));       // gullies: worn dirt where the water ran
       g = over(g, mix(g, pathC, 0.5), wShoulder * (1.0 - wForest * 0.5));     // trampled edge: half-worn
@@ -394,7 +394,7 @@ mat.onBeforeCompile = (sh) => {
     diffuseColor.rgb *= g;
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-4' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-5' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground);
 // THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
@@ -544,7 +544,7 @@ for (const [id, [apply, fmt]] of Object.entries(SL)) { const el = $(id), go = ()
 for (const [id, key] of [['hexOn', 'hexOn'], ['macroOn', 'macroOn'], ['farOn', 'farOn'], ['grid', 'grid'], ['stampOn', 'stampOn'], ['mixOn', 'mixOn']]) { const el = $(id), go = () => { U[key].value = el.checked ? 1 : 0; }; el.addEventListener('change', go); go(); }
 $('tex').addEventListener('change', () => { U.groundMap.value = tex($('tex').value); });
 // the layers' pictures, and the land's settings (these rebuild the maps)
-const LAYERS = { layDry: 'grassDry', layLush: 'grassDark', layForest: 'forest', layWet: 'darkDirt', layPath: 'dirt', laySteep: 'concrete' };
+const LAYERS = { layDry: 'grassDry', layLush: 'grassMed', layForest: 'forest', layWet: 'darkDirt', layPath: 'dirt', laySteep: 'concrete' };
 for (const [id, def] of Object.entries(LAYERS)) { const el = $(id); for (const n of TEXTURES) el.add(new Option(n, n)); el.value = def; const go = () => { U[id].value = tex(el.value); }; el.addEventListener('change', go); go(); }
 for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'], ['landDry', 'dryHeight', v => v.toFixed(1) + ' m'], ['landForest', 'forest', v => Math.round(v * 100) + '%'], ['landShade', 'shadeReach', v => Math.round(v * TEX) + ' m'], ['landPath', 'pathWidth', v => v.toFixed(1) + ' m']]) {
   const el = $(id); el.value = LAND[key]; $(id + 'Out').textContent = fmt(+el.value);
@@ -599,6 +599,7 @@ $('rainPause').onclick = () => { if (!RAIN.gen) return; RAIN.paused = !RAIN.paus
 $('rainStop').onclick = () => { if (!RAIN.gen) return; while (!RAIN.gen.next().done); endRain('finished'); };
 { const el = $('rainSpeed'), go = () => { RAIN.perFrame = +el.value; $('rainSpeedOut').textContent = (+el.value).toLocaleString() + ' drops a frame'; }; el.addEventListener('input', go); go(); }
 for (const [id, key] of [['gullyStr', 'gullyStr'], ['fanStr', 'fanStr'], ['strataStr', 'strataStr']]) { const el = $(id), go = () => { U[key].value = +el.value; $(id + 'Out').textContent = Math.round(+el.value * 100) + '%'; }; el.addEventListener('input', go); go(); }
+for (const [id, key] of [['lushTint', 'lushTint'], ['dampTint', 'dampTint']]) { const el = $(id); el.value = '#' + U[key].value.clone().convertLinearToSRGB().getHexString(); el.addEventListener('input', () => { U[key].value.set(el.value).convertSRGBToLinear(); }); }
 { const el = $('strataSize'), go = () => { U.strataSize.value = +el.value; $('strataSizeOut').textContent = (+el.value).toFixed(1) + ' m'; }; el.addEventListener('input', go); go(); }
 // ── the forest's settings: distances apply at once, the atlas and leaf detail re-bake ──
 for (const [id, key, fmt, live] of [['fImp', 'imposterAt', v => v + ' m', true], ['fBand', 'band', v => v + ' m', true], ['fAhead', 'ahead', v => Math.round(v * 100) + '% ahead', true], ['fGrid', 'grid', v => v + ' × ' + v, false], ['fCell', 'cell', v => v + ' px', false]]) {
