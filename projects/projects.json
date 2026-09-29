@@ -56,6 +56,13 @@
    "img": "shots/boxing"
   },
   {
+   "id": "4hex",
+   "group": "main",
+   "name": "4HEX — Gem Defense",
+   "text": "Build a hex maze, combine elemental gems, and defend six checkpoints against crawling enemies, flying swarms, and bosses.",
+   "href": "/projects/4hex/"
+  },
+  {
    "id": "td",
    "group": "main",
    "name": "Gem Tower Defense",
