@@ -13,6 +13,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Forest, FOREST_SPECIES } from '../../src/objects/forest.js';
 import { chooseTier, saveTier, watchFrames, TIERS } from '../../src/quality.js';
+import { makeCloudSky, SKY_GLSL } from '../../src/objects/cloudSky.js';
 
 const $ = (id) => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
@@ -25,11 +26,11 @@ const Q = new URLSearchParams(location.search);
 // there were four.
 const TIER_SET = {
   potato: { ratio: 0.5, lite: true, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 2500, longCount: 800, near: 0, radius: 90 },
-            u: { wWaveOn: 0, stampFar: 12 }, checks: { stampOn: false, hexOn: false, farOn: false, wWaveOn: false } },
+            u: { wWaveOn: 0, stampFar: 12 }, checks: { stampOn: false, hexOn: false, farOn: false, wWaveOn: false, cloudsOn: false } },
   normal: { ratio: 1.5, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 8000, longCount: 3000, near: 35, radius: 140 },
-            u: { wWaveOn: 1, stampFar: 30 }, checks: { stampOn: true, hexOn: true, farOn: false, wWaveOn: true } },
+            u: { wWaveOn: 1, stampFar: 30 }, checks: { stampOn: true, hexOn: true, farOn: false, wWaveOn: true, cloudsOn: true } },
   gaming: { ratio: 2, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 16000, longCount: 6000, near: 60, radius: 220 },
-            u: { wWaveOn: 1, stampFar: 45 }, checks: { stampOn: true, hexOn: true, farOn: true, wWaveOn: true } },
+            u: { wWaveOn: 1, stampFar: 45 }, checks: { stampOn: true, hexOn: true, farOn: true, wWaveOn: true, cloudsOn: true } },
 };
 // the tier is picked on a throwaway context first, so the real one can be made without smoothing
 // (multisampling) on potato; smoothing can't be changed after a context exists, so a tier switch
@@ -44,6 +45,8 @@ const GL2 = renderer.capabilities.isWebGL2;
 
 const scene = new THREE.Scene();
 const SKY = new THREE.Color(0xa9c8e4); scene.background = SKY; scene.fog = new THREE.Fog(SKY, 150, 1400);   // the haze does its share of hiding the repeat far off
+// the sky: blue deepening overhead, clouds drifting; the water reflects the same sky (potato: plain colour)
+const sky = makeCloudSky({ horizon: SKY }); scene.add(sky.mesh);
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 5000);
 const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
 scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x6b5a44, 0.9));
@@ -398,9 +401,9 @@ for (const [k, v] of Object.entries(TS.u)) if (U[k]) U[k].value = v;
 const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0 });
 mat.defines = {}; if (GL2) mat.defines.HEX_GRAD = ''; if (TS.lite) mat.defines.LITE = '';        // WebGL 2 can give each turned read its own true gradients (no seams); WebGL 1 lets the blend hide them
 mat.onBeforeCompile = (sh) => {
-  Object.assign(sh.uniforms, U);
+  Object.assign(sh.uniforms, U, sky.uniforms);
   sh.vertexShader = 'varying vec3 vW; varying vec3 vWN;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvW = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);');
-  sh.fragmentShader = `
+  sh.fragmentShader = SKY_GLSL + `
     uniform sampler2D groundMap; uniform float tile, split; uniform vec2 res;
     uniform float hexOn, hexSize, hexRot, hexSharp, hexBright, macroOn, macroStr, macroSize, macroHue, farOn, farFrom, grid;
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
@@ -633,14 +636,14 @@ mat.onBeforeCompile = (sh) => {
       vec3 V = normalize(cameraPosition - vW), R = reflect(-V, gWaterN);
       float fres0 = 0.04 + 0.96 * pow(1.0 - max(dot(V, gWaterN), 0.0), 5.0);
       float fres = fres0 * (1.0 - gFoam);                                                 // froth doesn't mirror the sky
-      vec3 refl = skyCol * (0.6 + 0.4 * R.y) * fres * wReflect;
+      vec3 refl = skyAt(vW, vec3(R.x, max(R.y, 0.02), R.z)) * fres * wReflect;          // the sky and its clouds, mirrored
       float glint = pow(max(dot(R, normalize(sunDirW)), 0.0), 600.0) * wSpec * 3.0 * (1.0 - gFoam) * smoothstep(400.0, 30.0, length(cameraPosition - vW));   // fine sparkle, fading with distance
       gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * (1.0 - fres * wReflect) + refl + vec3(glint), gWater);
     }
     #include <dithering_fragment>
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-10' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-11' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground);
 // THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
@@ -803,6 +806,10 @@ for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'],
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { LAND[key] = +el.value; buildLand(); });
 }
+// the sky's controls
+{ const on = () => { sky.uniforms.cloudOn.value = $('cloudsOn').checked ? 1 : 0; sky.mesh.visible = $('cloudsOn').checked; }; $('cloudsOn').addEventListener('change', on); on();
+  for (const [id, key, fmt] of [['cloudCover', 'cloudCover', v => Math.round(v * 100) + '%'], ['cloudSoft', 'cloudSoft', v => v.toFixed(2)], ['cloudScale', 'cloudScale', v => v + ' m'], ['cloudSpeed', 'cloudSpeed', v => v.toFixed(3)]]) {
+    const el = $(id), go = () => { sky.uniforms[key].value = +el.value; $(id + 'Out').textContent = fmt(+el.value); }; el.value = sky.uniforms[key].value; el.addEventListener('input', go); go(); } }
 $('mixView').addEventListener('change', e => { U.view.value = +e.target.value; });
 $('treesOn').addEventListener('change', e => { if (treeForest) treeForest.group.visible = e.target.checked; });
 $('coverOn').addEventListener('change', e => { COVER.on = e.target.checked; placeCover(); });
@@ -956,7 +963,7 @@ renderer.setAnimationLoop(() => {
   if (dt > 0) fps += (1 / dt - fps) * Math.min(1, dt * 2);
   watch();
   if ((shown += dt) > 0.5) { shown = 0; const inf = renderer.info.render; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${(1000 / Math.max(1, fps)).toFixed(1)} ms · ${inf.calls} draws · ${(inf.triangles / 1e6).toFixed(2)} M triangles · ${GL2 ? 'WebGL2' : 'WebGL1'}`; }
-  renderer.info.reset(); stepRain(); controls.update(); U.time.value += dt; U.sunDirW.value.copy(sun.position).normalize();
+  renderer.info.reset(); stepRain(); controls.update(); U.time.value += dt; sky.update(camera, dt); U.sunDirW.value.copy(sun.position).normalize();
   for (const f of [treeForest, coverForest]) if (f) f.update(camera, controls.target, camera.position, dt);
   renderer.render(scene, camera); drawAtlas();
 });

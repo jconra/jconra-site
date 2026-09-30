@@ -112,6 +112,13 @@
       <div class="row"><label for="wPondMin">Smallest pond</label><output id="wPondMinOut"></output><input id="wPondMin" type="range" min="4" max="400" step="2"></div>
       <div class="row"><label for="wOutlet">Outlet worn down (a canyon cut where each lake spills; the lake drops with it)</label><output id="wOutletOut"></output><input id="wOutlet" type="range" min="0" max="40" step="1"></div>
       </details>
+      <details class="sec"><summary>Sky and clouds (reflected in the water)</summary>
+      <label class="check" for="cloudsOn"><input id="cloudsOn" type="checkbox" checked> Clouds</label>
+      <div class="row"><label for="cloudCover">How cloudy</label><output id="cloudCoverOut"></output><input id="cloudCover" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="cloudSoft">Cloud edges (hard to wispy)</label><output id="cloudSoftOut"></output><input id="cloudSoft" type="range" min="0.02" max="0.5" step="0.01"></div>
+      <div class="row"><label for="cloudScale">Cloud size</label><output id="cloudScaleOut"></output><input id="cloudScale" type="range" min="200" max="3000" step="50"></div>
+      <div class="row"><label for="cloudSpeed">Drift speed</label><output id="cloudSpeedOut"></output><input id="cloudSpeed" type="range" min="0" max="0.1" step="0.001"></div>
+      </details>
       <details class="sec"><summary>Surface</summary>
       <label class="check" for="wWaveOn"><input id="wWaveOn" type="checkbox" checked> Moving waves and glints</label>
       <div class="row"><label for="wWave">Wave size</label><output id="wWaveOut"></output><input id="wWave" type="range" min="0.3" max="8" step="0.1"></div>
