@@ -19,17 +19,19 @@ const $ = (id) => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
 // QUALITY: what each tier means here. `forest`, `cover` and `u` seed the defaults before anything is
 // built; `controls` are the panel's own controls, set (and fired) when the tier changes while running.
+// `shadow`: real sun shadows (a shadow map) from trees, stones and, on gaming, the plants, over
+// `range` m round where you look; past it (and on potato) the baked shade does the job.
 // Potato is aimed at a machine with no graphics card (a thin client: every pixel drawn by the
 // processor), so it cuts pixels first: half resolution, every tree and plant an imposter, and `lite`,
 // fixed at load: no smoothing, a land mesh with a quarter of the points, and the ground painted in
 // flat colours (each picture's average) instead of read from the pictures, one noise read where
 // there were four.
 const TIER_SET = {
-  potato: { ratio: 0.5, lite: true, stones: 1500, treeShare: 0.45, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 2500, longCount: 800, near: 0, radius: 90 },
+  potato: { ratio: 0.5, lite: true, stones: 1500, treeShare: 0.45, shadow: null, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 2500, longCount: 800, near: 0, radius: 90 },
             u: { wWaveOn: 0, stampFar: 12 }, checks: { stampOn: false, hexOn: false, farOn: false, wWaveOn: false, cloudsOn: false } },
-  normal: { ratio: 1.5, stones: 14000, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 8000, longCount: 3000, near: 35, radius: 140 },
+  normal: { ratio: 1.5, stones: 14000, shadow: { range: 80, size: 1024, cover: false }, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 8000, longCount: 3000, near: 35, radius: 140 },
             u: { wWaveOn: 1, stampFar: 30 }, checks: { stampOn: true, hexOn: true, farOn: false, wWaveOn: true, cloudsOn: true } },
-  gaming: { ratio: 2, stones: 26000, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 16000, longCount: 6000, near: 60, radius: 220 },
+  gaming: { ratio: 2, stones: 26000, shadow: { range: 150, size: 2048, cover: true }, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 16000, longCount: 6000, near: 60, radius: 220 },
             u: { wWaveOn: 1, stampFar: 45 }, checks: { stampOn: true, hexOn: true, farOn: true, wWaveOn: true, cloudsOn: true } },
 };
 // the tier is picked on a throwaway context first, so the real one can be made without smoothing
@@ -51,6 +53,22 @@ const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 50
 const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
 scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x6b5a44, 0.9));
 const sun = new THREE.DirectionalLight(0xfff1dc, 2.4); sun.position.set(-300, 400, -200); scene.add(sun);
+const SHADOW = { on: !!TS.shadow, range: TS.shadow ? TS.shadow.range : 0 };
+if (TS.shadow) {
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  sun.castShadow = true; sun.shadow.mapSize.set(TS.shadow.size, TS.shadow.size); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.4;
+  scene.add(sun.target);
+}
+// the shadow map's square follows where you look, stepped a texel at a time so the edges don't crawl
+function followShadow() {
+  if (!SHADOW.on) return;
+  const R = SHADOW.range, c = sun.shadow.camera, t = controls.target, fwd = new THREE.Vector3().subVectors(t, camera.position).setY(0);
+  const at = camera.position.clone().addScaledVector(fwd.lengthSq() > 1e-6 ? fwd.normalize() : fwd, R * 0.5);
+  const texel = 2 * R / sun.shadow.mapSize.x; at.x = Math.round(at.x / texel) * texel; at.z = Math.round(at.z / texel) * texel; at.y = heightAt(at.x, at.z);
+  c.left = -R; c.right = R; c.top = R; c.bottom = -R; c.near = 1; c.far = 2000; c.updateProjectionMatrix();
+  sun.target.position.copy(at); sun.position.copy(at).addScaledVector(SUN_DIR, 900);
+  U.shadowRange.value = R; U.shadowAt.value.copy(at);
+}
 
 // ── the land: hills from noise, then terraces, then erosion, on a 512 x 512 grid ──────────
 // The grid (3.1 m a cell, the same cells the maps use) is the land: the mesh, the maps, the trees,
@@ -79,7 +97,7 @@ function baseHeight(x, z) {
   }
   return out;
 }
-const SHAPE = { terraceOn: true, step: 8, riser: 0.1, terraceAmount: 0.8, terraceSpread: 0.55, erodeOn: true, drops: 90000, erodeStrength: 0.35 };
+const SHAPE = { terraceOn: true, step: 8, riser: 0.1, terraceAmount: 0.8, terraceSpread: 0.55, erodeOn: true, drops: 90000, erodeStrength: 0.35, ravines: 10, ravineStrength: 1.6 };
 const Hg = new Float32Array(N * N), FLOW = new Float32Array(N * N), SETTLE = new Float32Array(N * N);
 const cellX = (i) => (i + 0.5) * TEX - SIZE / 2;
 // TERRACES: the height is stepped - a flat top, then a short steep riser - where a slow noise says
@@ -210,6 +228,25 @@ function carveOutlets(H, F, pools) {
     }
   }
 }
+// RAVINES: where water gathers it cuts down, more where more of it gathers and the slope is steeper
+// (the stream-power rule of landscape models). Repeated, the cuts reach up the slopes, branch, and
+// deepen into ravines, cutting through the terrace ledges, so the streams run down them instead of
+// pouring over the ledges. Each cut spreads to the cells beside it, so ravines come out V-shaped,
+// not slots. `ravines` passes, `ravineStrength` about how many metres a big stream cuts a pass.
+function cutRavines(H) {
+  for (let pass = 0; pass < SHAPE.ravines; pass++) {
+    const { order } = flood(H), acc = new Float32Array(N * N).fill(1), cut = new Float32Array(N * N);
+    for (let q = order.length - 1; q >= 0; q--) { const c = order[q]; if (DOWN[c] >= 0) acc[DOWN[c]] += acc[c]; }
+    for (let k = 0; k < N * N; k++) {
+      const d = DOWN[k]; if (d < 0 || acc[k] < 8) continue;
+      const drop = H[k] - H[d]; if (drop <= 0) continue;
+      const run = ((d % N) !== (k % N) && ((d / N) | 0) !== ((k / N) | 0) ? 1.414 : 1) * TEX;
+      cut[k] = Math.min(drop * 0.9, SHAPE.ravineStrength * 1.5 * Math.min(1, Math.sqrt(acc[k] / 300)) * Math.min(1.2, drop / run));
+    }
+    const side = blur(cut, 1);
+    for (let k = 0; k < N * N; k++) H[k] -= Math.max(cut[k], side[k] * 1.4);
+  }
+}
 function findWater(H) {
   WDEPTH.fill(0); ACC.fill(0);
   let { F, order } = flood(H);
@@ -255,6 +292,7 @@ function buildHeights() {
   FLOW.fill(0); SETTLE.fill(0);
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const x = cellX(i), z = cellX(j); let h = baseHeight(x, z); if (SHAPE.terraceOn) h = terrace(h, x, z); Hg[j * N + i] = h; }
   if (SHAPE.erodeOn) erode(Hg, SHAPE.drops);
+  cutRavines(Hg);
   findWater(Hg);
 }
 function heightAt(x, z) {
@@ -288,6 +326,35 @@ function blur(src, r) {                             // two passes of a box blur,
 const LAND = { wetDepth: 7, dryHeight: 6.0, forest: 0.55, shadeReach: 4, pathWidth: 2.2, treeline: 280, hillForest: 0.3 };
 let Hb = null;                                        // the ground's height averaged over about 40 m (per buildLand)
 const slopeAt = (i, j) => { const a = Hg[j * N + Math.min(N - 1, i + 1)] - Hg[j * N + Math.max(0, i - 1)], b = Hg[Math.min(N - 1, j + 1) * N + i] - Hg[Math.max(0, j - 1) * N + i]; return Math.hypot(a, b) / (2 * TEX); };
+// LIGHT AND SHADE, worked out once from the height grid (so it costs one texture read a frame, on
+// every tier): R, where the sun reaches (a ray from each cell toward the sun, over the land, soft at
+// the edge); G, how open each spot is to the sky (the horizon looked for in 8 directions: gullies,
+// ravines and hollows come out low); B, the shade the trees throw (the canopy, moved away from the sun)
+let shadeTex = null;
+function bakeShade(canopy, wide) {
+  const S = SUN_DIR, flat = Math.hypot(S.x, S.z), dx = S.x / flat, dz = S.z / flat, rise = S.y / flat * TEX;   // per cell toward the sun
+  const out = new Uint8Array(N * N * 4), H = Hg;
+  const hAt = (x, z) => { const i = Math.min(N - 1, Math.max(0, x | 0)), j = Math.min(N - 1, Math.max(0, z | 0)); return H[j * N + i]; };
+  const dirs = Array.from({ length: 8 }, (_, a) => [Math.cos(a * Math.PI / 4), Math.sin(a * Math.PI / 4)]), reach = [1, 2, 4, 7, 12, 20, 32];
+  const tree = Math.round(9 / S.y * flat / TEX);                    // a ~9 m tree's shadow falls this many cells away from the sun
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const k = j * N + i, h0 = H[k] + 0.5;
+    let vis = 1;
+    for (let t = 1, step = 1; t < 260; t += step, step = Math.min(8, step + (t > 16 ? 1 : 0))) {
+      const x = i + dx * t, z = j + dz * t; if (x < 0 || z < 0 || x >= N || z >= N) break;
+      const above = h0 + rise * t - hAt(x, z), pen = 1 + t * TEX * 0.04;            // soft edge, wider further off
+      vis = Math.min(vis, Math.max(0, Math.min(1, above / pen * 0.5 + 0.5))); if (vis <= 0) break;
+    }
+    let open = 0;
+    for (const [ax, az] of dirs) { let m = 0; for (const r of reach) { const e = (hAt(i + ax * r, j + az * r) - h0) / (r * TEX); if (e > m) m = e; } open += m / Math.sqrt(1 + m * m); }   // sin of the horizon's angle
+    const ti = Math.min(N - 1, Math.max(0, Math.round(i + dx * tree))), tj = Math.min(N - 1, Math.max(0, Math.round(j + dz * tree)));
+    out[k * 4] = vis * 255; out[k * 4 + 1] = Math.max(0, 1 - open / 8 * 1.6) * 255;
+    out[k * 4 + 2] = Math.min(1, Math.max(canopy[k] * 0.6, wide[tj * N + ti] * 2.5 + canopy[tj * N + ti] * 0.5)) * 255; out[k * 4 + 3] = 255;
+  }
+  if (!shadeTex) { shadeTex = new THREE.DataTexture(out, N, N, THREE.RGBAFormat); shadeTex.magFilter = shadeTex.minFilter = THREE.LinearFilter; shadeTex.generateMipmaps = false; U.shadeMap.value = shadeTex; }
+  else shadeTex.image.data.set(out);
+  shadeTex.needsUpdate = true;
+}
 function buildLand() {
   Hb = blur(Hg, 12);
   // wet and dry: how far below or above its surroundings each spot is
@@ -322,6 +389,7 @@ function buildLand() {
   }
   if (!U.maskB.value) { const t = new THREE.DataTexture(dataB, N, N, THREE.RGBAFormat); t.magFilter = t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; U.maskB.value = t; } else U.maskB.value.image.data.set(dataB);
   U.maskB.value.needsUpdate = true;
+  bakeShade(canopy, wide);
   // paths: cheapest routes over the grid, where steep, wet and thick forest cost more
   const cost = new Float32Array(N * N); for (let k = 0; k < N * N; k++) cost[k] = 1 + 60 * steep[k] + 8 * wet[k] + 2 * canopy[k] + (POND[k] ? 5000 : WDEPTH[k] > 0 ? 40 : 0);   // round the lakes; over a river only where it must
   const route = (ax, az, bx, bz) => {
@@ -399,6 +467,7 @@ const U = {
   coverR: { value: 140 }, coverFar: { value: 1 }, rockFrom: { value: 0.25 },
   gullyStr: { value: 0.8 }, fanStr: { value: 0.45 }, strataStr: { value: 0.8 }, strataSize: { value: 1.6 }, lushTint: { value: new THREE.Color(0.86, 1.0, 0.8) }, dampTint: { value: new THREE.Color(0.78, 0.92, 0.76) }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
   slopeTint: { value: new THREE.Color(0.5, 0.66, 0.4) },
+  shadeMap: { value: null }, shadowRange: { value: 0 }, shadowAt: { value: new THREE.Vector3() }, hillShade: { value: 1 }, aoShade: { value: 0.9 }, treeShade: { value: 0.5 },
   avgGround: { value: new THREE.Color(0x6b8a3a) }, avgDry: { value: new THREE.Color(0x8a8a4a) }, avgLush: { value: new THREE.Color(0x5b7a2a) }, avgForest: { value: new THREE.Color(0x4a4a2a) }, avgWet: { value: new THREE.Color(0x4a3a2a) }, avgPath: { value: new THREE.Color(0x6a5238) }, avgSteep: { value: new THREE.Color(0x7a7a7a) },
   layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layWet: { value: null }, layPath: { value: null }, laySteep: { value: null },
   mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.06 },
@@ -416,7 +485,7 @@ mat.onBeforeCompile = (sh) => {
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
     uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 lushTint, dampTint, slopeTint;
     uniform sampler2D waterMap; uniform float waterOn, wFroth, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow;
-    float gWater = 0.0, gFoam = 0.0; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathMap;
+    float gWater = 0.0, gFoam = 0.0; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathMap; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange; uniform vec3 shadowAt;
     uniform vec3 avgGround, avgDry, avgLush, avgForest, avgWet, avgPath, avgSteep; uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layWet; uniform sampler2D layPath; uniform sampler2D laySteep;
     varying vec3 vWN;
     varying vec3 vW;
@@ -615,6 +684,11 @@ mat.onBeforeCompile = (sh) => {
         vec3 tint = mix(vec3(1.12, 1.02, 0.78), vec3(0.82, 1.06, 0.84), smoothstep(0.3, 0.7, n2));   // dry and yellow to green and lush
         g *= mix(vec3(1.0), tint, macroHue * macroStr) * mix(1.0, 0.62 + 0.76 * n, macroStr);
       }
+      // LIGHT AND SHADE (baked): out of the sun behind a ridge, down in a ravine, under the trees
+      vec3 sd = texture2D(shadeMap, vW.xz / landSize + 0.5).rgb;
+      vec2 inSq = abs(vW.xz - shadowAt.xz) / max(shadowRange, 1.0);                  // inside the real shadows' square, they throw the trees' shade
+      float baked = shadowRange > 0.0 ? smoothstep(0.7, 0.95, max(inSq.x, inSq.y)) : 1.0;
+      g *= mix(1.0, 0.4 + 0.6 * sd.r, hillShade) * mix(1.0, 0.3 + 0.7 * sd.g, aoShade) * (1.0 - treeShade * sd.b * mix(0.35, 1.0, baked));
     }
     // WATER, painted on: its colour by depth over the bed, and the surface's wave normal kept for the
     // glints and sky reflection laid on after the lighting
@@ -651,9 +725,9 @@ mat.onBeforeCompile = (sh) => {
     #include <dithering_fragment>
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-13' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-15' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
-const ground = new THREE.Mesh(geo, mat); scene.add(ground);
+const ground = new THREE.Mesh(geo, mat); scene.add(ground); ground.receiveShadow = SHADOW.on;
 // THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
 // dithered crossfade between), planted where the canopy map grew them instead of on tiles
 const SUN_DIR = sun.position.clone().normalize();
@@ -662,12 +736,35 @@ const TREE_SPECIES = FOREST_SPECIES.filter(sp => sp.name !== 'bush');
 const FOREST = { imposterAt: 150, band: 120, ahead: 0.6, grid: 12, cell: 192, detail: 'sparse', rebake: false };
 Object.assign(FOREST, TS.forest);
 let treeForest = null;
+// WHICH TREE WHERE: each kind has the ground it likes, and each grows in families: a slow noise per
+// kind, so one kind holds a stretch of ground and gives way to the next at the edges.
+//   pine:  the slopes and the heights, darker; the hills' forest
+//   aspen: groves of one clone (one colour for the whole grove), on the lower slopes and damp ground
+//   ash:   the valley, the damper parts;  oak: the valley, the drier rises
+// `FAMILY.size` is how big a family's stretch is, `FAMILY.strength` how strictly one kind holds it.
+const FAMILY = { size: 90, strength: 0.7, pineFrom: 25 };
+function pickTree(x, z, species) {
+  const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
+  const S = THREE.MathUtils.smoothstep, sl = slopeAt(i, j), up = Math.max(S(Hg[k], FAMILY.pineFrom, FAMILY.pineFrom + 90), S(sl, 0.2, 0.6)), wet = MAPS.wet[k], dry = MAPS.dry[k];
+  const fam = (seed, size) => { let n = 0, a = 1, f = 1 / size; for (let o = 0; o < 2; o++) { n += (vnoise(x * f + seed, z * f - seed) - 0.5) * a; a *= 0.5; f *= 2.3; } return Math.min(1, Math.max(0, n * 1.6 + 0.5)); };
+  const want = { pine: 0.15 + 2.2 * up, aspen: 0.2 + 0.8 * S(sl, 0.1, 0.4) * (1 - S(Hg[k], FAMILY.pineFrom + 60, FAMILY.pineFrom + 160)) + 0.8 * wet, ash: (1 - up) * (0.4 + 1.2 * wet), oak: (1 - up) * (0.4 + 1.2 * dry) };
+  const seeds = { pine: 11, aspen: 37, ash: 73, oak: 101 }, sizes = { pine: 1.6, aspen: 0.45, ash: 1, oak: 1 };   // aspen groves are small, pine stands big
+  let total = 0; const w = species.map(sp => { const f = fam(seeds[sp.name] || 7, FAMILY.size * (sizes[sp.name] || 1)); const v = Math.pow(want[sp.name] ?? 0.2, 1.5) * Math.pow(f + 0.05, 1 + FAMILY.strength * 5); total += v; return v; });
+  let r = hash(x * 0.37, z * 0.71) * total, sp = species.length - 1; for (let n = 0; n < w.length; n++) { if ((r -= w[n]) <= 0) { sp = n; break; } }
+  const name = species[sp].name, h = hash(z * 1.3, x * 0.9);
+  // colour: a grove of aspen is one tree, so one colour (by where it is); pines dark
+  let tint;
+  if (name === 'aspen') { const g = vnoise(x / (FAMILY.size * 0.45) + 37, z / (FAMILY.size * 0.45) - 37); tint = new THREE.Color().setHSL(0.2 + g * 0.1, 0.45 + g * 0.2, 0.62 + 0.04 * h); }
+  else if (name === 'pine') tint = new THREE.Color().setHSL(0.3 + h * 0.04, 0.3 + h * 0.15, 0.36 + h * 0.08);
+  else tint = new THREE.Color().setHSL(0.26 + h * 0.08, 0.35 + h * 0.2, 0.55 + h * 0.15);
+  return [sp, tint];
+}
 function placeTrees() {
   if (treeForest) { scene.remove(treeForest.group); for (const b of treeForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
   const species = treeForest && !FOREST.rebake ? treeForest.species : TREE_SPECIES.map(sp => ({ ...sp }));   // keeps the baked atlases unless the atlas settings changed
   FOREST.rebake = false;
-  treeForest = new Forest(renderer, scene, { species, detail: FOREST.detail, grid: FOREST.grid, cell: FOREST.cell, imposterAt: FOREST.imposterAt, band: FOREST.band, ahead: FOREST.ahead, sunDir: SUN_DIR, heightAt, nearCap: 600,
-    fixed: trees.map(([x, , z, s]) => ({ x, z, sp: Math.floor(hash(x * 0.37, z * 0.71) * species.length), scale: s })) });
+  treeForest = new Forest(renderer, scene, { species, shadows: SHADOW.on, detail: FOREST.detail, grid: FOREST.grid, cell: FOREST.cell, imposterAt: FOREST.imposterAt, band: FOREST.band, ahead: FOREST.ahead, sunDir: SUN_DIR, heightAt, nearCap: 600,
+    fixed: trees.map(([x, , z, s]) => { const [sp, tint] = pickTree(x, z, species); return { x, z, sp, scale: s, tint }; }) });
   treeForest.group.visible = $('treesOn').checked;
   $('landInfo').textContent = `${trees.length.toLocaleString()} trees, 4 paths`;
 }
@@ -769,7 +866,7 @@ function placeStones() {
       e.set((tone - 0.5) * 0.3, yaw, (tone - 0.5) * 0.2); q.setFromEuler(e); m4.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(sc, sc, sc)); mesh.setMatrixAt(n, m4);
       mesh.setColorAt(n, c.copy(base).multiplyScalar(0.72 + 0.4 * tone).lerp(new THREE.Color(0x9a8f78), (tone * 7.3) % 1 * 0.35));   // greys, some warmer
     });
-    mesh.frustumCulled = false; mesh.castShadow = mesh.receiveShadow = false; scene.add(mesh); STONES.meshes.push(mesh);
+    mesh.frustumCulled = false; mesh.castShadow = mesh.receiveShadow = SHADOW.on; scene.add(mesh); STONES.meshes.push(mesh);
   });
   if ($('stoneInfo')) $('stoneInfo').textContent = `${placed.toLocaleString()} stones`;
 }
@@ -819,7 +916,7 @@ function placeCover() {
   if (coverForest) { scene.remove(coverForest.group); for (const b of coverForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
   const species = coverForest ? coverForest.species : [...COVER.plantSp, ...COVER.longSp];
   const use = fixed.filter(f => (f.sp < 16 ? COVER.on : COVER.longOn));
-  coverForest = new Forest(renderer, scene, { species, fixed: use, heightAt, imposterAt: COVER.near, band: COVER.near * 0.5, ahead: 0.5, sunDir: SUN_DIR, nearCap: 3000 });
+  coverForest = new Forest(renderer, scene, { species, shadows: SHADOW.on && TS.shadow.cover, fixed: use, heightAt, imposterAt: COVER.near, band: COVER.near * 0.5, ahead: 0.5, sunDir: SUN_DIR, nearCap: 3000 });
   calmCover();
   $('coverInfo').textContent = `${placed.toLocaleString()} plants and ${longPlaced.toLocaleString()} long grasses: meshes to ${COVER.near} m, imposters beyond (atlases bake over the first seconds)`;
 }
@@ -871,6 +968,10 @@ for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'],
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { LAND[key] = +el.value; buildLand(); });
 }
+// light and shade
+for (const [id, key] of [['hillShade', 'hillShade'], ['aoShade', 'aoShade'], ['treeShade', 'treeShade']]) {
+  const el = $(id), go = () => { U[key].value = +el.value; $(id + 'Out').textContent = Math.round(+el.value * 100) + '%'; }; el.value = U[key].value; el.addEventListener('input', go); go();
+}
 // the sky's controls
 { const on = () => { sky.uniforms.cloudOn.value = $('cloudsOn').checked ? 1 : 0; sky.mesh.visible = $('cloudsOn').checked; }; $('cloudsOn').addEventListener('change', on); on();
   for (const [id, key, fmt] of [['cloudCover', 'cloudCover', v => Math.round(v * 100) + '%'], ['cloudSoft', 'cloudSoft', v => v.toFixed(2)], ['cloudScale', 'cloudScale', v => v + ' m'], ['cloudSpeed', 'cloudSpeed', v => v.toFixed(3)]]) {
@@ -899,7 +1000,7 @@ const RAIN = { gen: null, paused: false, perFrame: 1500, done: 0, trail: [], fra
 const trailGeo = new THREE.BufferGeometry(), trailLines = new THREE.LineSegments(trailGeo, new THREE.LineBasicMaterial({ color: 0x5fb4ff, transparent: true, opacity: 0.55 }));
 trailLines.frustumCulled = false; trailLines.visible = false; scene.add(trailLines);
 function fastMesh() { if (SEG !== N - 1) { shapeMesh(); return; } const p = geo.attributes.position; for (let k = 0; k < p.count; k++) p.setY(k, Hg[k]); p.needsUpdate = true; geo.computeVertexNormals(); }
-function endRain(msg) { RAIN.gen = null; trailLines.visible = false; findWater(Hg); fastMesh(); buildLand(); if (treeForest) treeForest.group.visible = $('treesOn').checked; $('shapeInfo').textContent = msg; }
+function endRain(msg) { RAIN.gen = null; trailLines.visible = false; cutRavines(Hg); findWater(Hg); fastMesh(); buildLand(); if (treeForest) treeForest.group.visible = $('treesOn').checked; $('shapeInfo').textContent = msg; }
 function startRain() {
   FLOW.fill(0); SETTLE.fill(0);
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const x = cellX(i), z = cellX(j); let h = baseHeight(x, z); if (SHAPE.terraceOn) h = terrace(h, x, z); Hg[j * N + i] = h; }
@@ -936,7 +1037,7 @@ for (const [id, key, fmt] of [['wWave', 'wWave', v => v.toFixed(1) + ' m'], ['wS
 for (const [id, key] of [['wDeepC', 'wDeep'], ['wShallowC', 'wShallow']]) { const el = $(id); el.value = '#' + U[key].value.clone().convertLinearToSRGB().getHexString(); el.addEventListener('input', () => { U[key].value.set(el.value).convertSRGBToLinear(); }); }
 function reshape() { $('shapeInfo').textContent = 'shaping…'; setTimeout(() => { const t0 = performance.now(); buildHeights(); shapeMesh(); buildLand(); $('shapeInfo').textContent = `shaped in ${((performance.now() - t0) / 1000).toFixed(1)} s`; }, 30); }
 for (const [id, key] of [['terraceOn', 'terraceOn'], ['erodeOn', 'erodeOn']]) { $(id).checked = SHAPE[key]; $(id).addEventListener('change', e => { SHAPE[key] = e.target.checked; reshape(); }); }
-for (const [id, key, fmt] of [['tStep', 'step', v => v.toFixed(1) + ' m'], ['tRiser', 'riser', v => Math.round(v * 100) + '% of a step'], ['tAmount', 'terraceAmount', v => Math.round(v * 100) + '%'], ['tSpread', 'terraceSpread', v => Math.round(v * 100) + '% of the land'], ['eDrops', 'drops', v => v.toLocaleString()], ['eStr', 'erodeStrength', v => v.toFixed(2)]]) {
+for (const [id, key, fmt] of [['tStep', 'step', v => v.toFixed(1) + ' m'], ['tRiser', 'riser', v => Math.round(v * 100) + '% of a step'], ['tAmount', 'terraceAmount', v => Math.round(v * 100) + '%'], ['tSpread', 'terraceSpread', v => Math.round(v * 100) + '% of the land'], ['eDrops', 'drops', v => v.toLocaleString()], ['eStr', 'erodeStrength', v => v.toFixed(2)], ['rPasses', 'ravines', v => v + (v === 1 ? ' pass' : ' passes')], ['rStr', 'ravineStrength', v => v.toFixed(1) + '×']]) {
   const el = $(id); el.value = SHAPE[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { SHAPE[key] = +el.value; reshape(); });
@@ -1036,7 +1137,7 @@ renderer.setAnimationLoop(() => {
   if (dt > 0) fps += (1 / dt - fps) * Math.min(1, dt * 2);
   watch();
   if ((shown += dt) > 0.5) { shown = 0; const inf = renderer.info.render; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${(1000 / Math.max(1, fps)).toFixed(1)} ms · ${inf.calls} draws · ${(inf.triangles / 1e6).toFixed(2)} M triangles · ${GL2 ? 'WebGL2' : 'WebGL1'}`; }
-  renderer.info.reset(); stepRain(); controls.update(); U.time.value += dt; sky.update(camera, dt); U.sunDirW.value.copy(sun.position).normalize();
+  renderer.info.reset(); stepRain(); controls.update(); U.time.value += dt; sky.update(camera, dt); U.sunDirW.value.copy(SUN_DIR); followShadow();
   for (const f of [treeForest, coverForest]) if (f) f.update(camera, controls.target, camera.position, dt);
   renderer.render(scene, camera); drawAtlas();
 });

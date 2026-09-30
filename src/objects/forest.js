@@ -24,7 +24,7 @@ export class Forest {
   // `species`: a list like FOREST_SPECIES; an entry may bring its own `root` (an Object3D, already
   // loaded) instead of a file, its own `grid` / `cell` for a cheaper atlas, `upNormals` (lit like the
   // ground, both sides of every card) and `tint: false`. `fixed`: a list of { x, z, sp (index), scale,
-  // yaw } to plant instead of the endless tiles; `heightAt(x, z)` stands them on uneven ground.
+  // yaw, tint (optional THREE.Color) } to plant instead of the endless tiles; `heightAt(x, z)` stands them on uneven ground.
   constructor(renderer, scene, { base = '/models/trees/', tile = 420, tiles = 7, perTile = 90, imposterAt = 140, band = 40, ahead = 0.75,
                                  grid = 12, cell = 192, light = false, detail = 'coarse', clear = null, sunDir = new THREE.Vector3(0.5, 1, 0.3), shadows = false,
                                  species = null, fixed = null, heightAt = null, nearCap = 400 } = {}) {
@@ -72,7 +72,7 @@ export class Forest {
       if (this.tilesLaid.size) return false;
       this.tilesLaid.set('fixed', this.fixed.map((f, i) => { const r = rnd(i * 2654435761 + 7), sp = this.species[f.sp];
         return { pos: new THREE.Vector3(f.x, this.heightAt ? this.heightAt(f.x, f.z) : 0, f.z), yaw: f.yaw ?? r() * Math.PI * 2, scale: f.scale ?? 0.7 + r() * 0.6,
-          tint: sp.tint === false ? new THREE.Color(1, 1, 1).multiplyScalar(0.85 + r() * 0.3) : new THREE.Color().setHSL(0.26 + r() * 0.08, 0.35 + r() * 0.25, 0.62 + r() * 0.18), sp }; }));
+          tint: f.tint ? f.tint.clone() : sp.tint === false ? new THREE.Color(1, 1, 1).multiplyScalar(0.85 + r() * 0.3) : new THREE.Color().setHSL(0.26 + r() * 0.08, 0.35 + r() * 0.25, 0.62 + r() * 0.18), sp }; }));
       return true;
     }
     const T = this.tile, half = (this.tiles - 1) / 2, cx = Math.round(at.x / T), cz = Math.round(at.z / T);

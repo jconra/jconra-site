@@ -85,6 +85,8 @@
       </details>
       <details class="sec"><summary>Erosion and rain</summary>
       <label class="check" for="erodeOn"><input id="erodeOn" type="checkbox"> Erosion</label>
+      <div class="row"><label for="rPasses">Ravines: passes of streams cutting down (more reach further up the slopes and branch)</label><output id="rPassesOut"></output><input id="rPasses" type="range" min="0" max="16" step="1"></div>
+      <div class="row"><label for="rStr">Ravines: how hard they cut</label><output id="rStrOut"></output><input id="rStr" type="range" min="0" max="4" step="0.1"></div>
       <div class="row"><label for="eDrops">Raindrops</label><output id="eDropsOut"></output><input id="eDrops" type="range" min="10000" max="400000" step="10000"></div>
       <div class="row"><label for="eStr">How much each takes</label><output id="eStrOut"></output><input id="eStr" type="range" min="0.05" max="1" step="0.01"></div>
       <div class="btns"><button id="rainGo" type="button">Watch it rain</button><button id="rainPause" type="button">pause</button><button id="rainStop" type="button">finish now</button></div>
@@ -129,6 +131,13 @@
       <div class="row"><label for="wDeepC">Deep</label><input id="wDeepC" type="color" style="grid-column:2;width:48px;height:22px;border:0;background:none"></div>
       <div class="row"><label for="wShallowC">Shallow</label><input id="wShallowC" type="color" style="grid-column:2;width:48px;height:22px;border:0;background:none"></div>
       </details>
+    </details>
+
+    <details class="sec" open><summary>Light and shade</summary>
+      <p class="note">Worked out once from the land's shape, so it costs almost nothing a frame on any setting: where the ridges keep the sun off, how shut-in a spot is (ravines, gullies and hollows darker), and the shade under the trees, thrown away from the sun.</p>
+      <div class="row"><label for="hillShade">Hill shadows</label><output id="hillShadeOut"></output><input id="hillShade" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="aoShade">Ravines and hollows</label><output id="aoShadeOut"></output><input id="aoShade" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="treeShade">Shade under trees</label><output id="treeShadeOut"></output><input id="treeShade" type="range" min="0" max="0.9" step="0.01"></div>
     </details>
 
     <details class="sec" open><summary>5 · Mixing by the land</summary>
