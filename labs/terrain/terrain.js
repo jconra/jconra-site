@@ -100,13 +100,16 @@ function baseHeight(x, z) {
   }
   return out;
 }
-const SHAPE = { terraceOn: true, step: 8, riser: 0.1, terraceAmount: 0.5, terraceSpread: 0.55, erodeOn: true, drops: 90000, erodeStrength: 0.35, ravines: 16, ravineStrength: 1.6, ravineScale: 4, ravineRound: 0.35 };
+const SHAPE = { terraceOn: true, step: 15, riser: 0.1, terraceAmount: 0.6, terraceFrom: 0.7, terraceSpread: 0.55, erodeOn: true, drops: 90000, erodeStrength: 0.35, ravines: 16, ravineStrength: 1.6, ravineScale: 4, ravineRound: 0.35 };
 const Hg = new Float32Array(N * N), FLOW = new Float32Array(N * N), SETTLE = new Float32Array(N * N);
 const cellX = (i) => (i + 0.5) * TEX - SIZE / 2;
-// TERRACES: the height is stepped - a flat top, then a short steep riser - where a slow noise says
-// so (terraceSpread of the land), each step's level nudged by noise so the ledges wander
-function terrace(h, x, z) {
-  const where = THREE.MathUtils.smoothstep(vnoise(x / 190 + 70, z / 190 + 30), 1 - SHAPE.terraceSpread, 1.12 - SHAPE.terraceSpread);
+// TERRACES: the height is stepped - a flat top, then a short steep riser - the way rock bands break a
+// steep face into ledges: only where the land is steep (`sl`, the slope's rise over run, against
+// `terraceFrom`), and where a slow noise says so (terraceSpread of it); each step's level nudged by
+// noise so the ledges wander. Gentle ground is never stepped (that's rice paddies, not mountains).
+function terrace(h, x, z, sl) {
+  const where = THREE.MathUtils.smoothstep(vnoise(x / 190 + 70, z / 190 + 30), 1 - SHAPE.terraceSpread, 1.12 - SHAPE.terraceSpread)
+    * THREE.MathUtils.smoothstep(sl, SHAPE.terraceFrom, SHAPE.terraceFrom + 0.35);
   if (where <= 0) return h;
   const S = SHAPE.step, o = (vnoise(x / 45 + 11, z / 45 + 5) - 0.5) * S * 0.9, t = (h + o) / S, k = Math.floor(t), f = t - k;
   const stepped = (k + THREE.MathUtils.smoothstep(f, 1 - SHAPE.riser, 1)) * S - o;
@@ -322,9 +325,17 @@ function paintWater(pond) {
   MAPS.water = g.getImageData(0, 0, P, P).data; MAPS.WP = P;
 }
 const waterAt = (x, z) => { if (!MAPS.water) return 0; const P = MAPS.WP, i = Math.min(P - 1, Math.max(0, Math.floor((x + SIZE / 2) / SIZE * P))), j = Math.min(P - 1, Math.max(0, Math.floor((z + SIZE / 2) / SIZE * P))); return MAPS.water[(j * P + i) * 4] / 255; };
+// the land before erosion: the noise, then the terraces (the slope read over ~12 m, so the noise's
+// small wobbles don't count as steep)
+function baseGrid() {
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) Hg[j * N + i] = baseHeight(cellX(i), cellX(j));
+  if (!SHAPE.terraceOn) return;
+  const B = Float32Array.from(Hg), at = (i, j) => B[Math.min(N - 1, Math.max(0, j)) * N + Math.min(N - 1, Math.max(0, i))];
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const sl = Math.hypot(at(i + 2, j) - at(i - 2, j), at(i, j + 2) - at(i, j - 2)) / (4 * TEX); Hg[j * N + i] = terrace(B[j * N + i], cellX(i), cellX(j), sl); }
+}
 function buildHeights() {
   FLOW.fill(0); SETTLE.fill(0);
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const x = cellX(i), z = cellX(j); let h = baseHeight(x, z); if (SHAPE.terraceOn) h = terrace(h, x, z); Hg[j * N + i] = h; }
+  baseGrid();
   if (SHAPE.erodeOn) erode(Hg, SHAPE.drops);
   cutRavines(Hg);
   findWater(Hg);
@@ -1037,7 +1048,7 @@ function fastMesh() { if (SEG !== N - 1) { shapeMesh(); return; } const p = geo.
 function endRain(msg) { RAIN.gen = null; trailLines.visible = false; cutRavines(Hg); findWater(Hg); fastMesh(); buildLand(); if (treeForest) treeForest.group.visible = $('treesOn').checked; $('shapeInfo').textContent = msg; }
 function startRain() {
   FLOW.fill(0); SETTLE.fill(0);
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const x = cellX(i), z = cellX(j); let h = baseHeight(x, z); if (SHAPE.terraceOn) h = terrace(h, x, z); Hg[j * N + i] = h; }
+  baseGrid();
   WDEPTH.fill(0); paintWater(new Uint8Array(N * N)); fastMesh();
   for (const f of [treeForest, coverForest]) if (f) f.group.visible = false;
   RAIN.trail = []; RAIN.done = 0; RAIN.paused = false; RAIN.gen = erodeSteps(Hg, SHAPE.drops, () => RAIN.perFrame, RAIN.trail); trailLines.visible = true;
@@ -1071,7 +1082,7 @@ for (const [id, key, fmt] of [['wWave', 'wWave', v => v.toFixed(1) + ' m'], ['wS
 for (const [id, key] of [['wDeepC', 'wDeep'], ['wShallowC', 'wShallow']]) { const el = $(id); el.value = '#' + U[key].value.clone().convertLinearToSRGB().getHexString(); el.addEventListener('input', () => { U[key].value.set(el.value).convertSRGBToLinear(); }); }
 function reshape() { $('shapeInfo').textContent = 'shaping…'; setTimeout(() => { const t0 = performance.now(); buildHeights(); shapeMesh(); buildLand(); $('shapeInfo').textContent = `shaped in ${((performance.now() - t0) / 1000).toFixed(1)} s`; }, 30); }
 for (const [id, key] of [['terraceOn', 'terraceOn'], ['erodeOn', 'erodeOn']]) { $(id).checked = SHAPE[key]; $(id).addEventListener('change', e => { SHAPE[key] = e.target.checked; reshape(); }); }
-for (const [id, key, fmt] of [['tStep', 'step', v => v.toFixed(1) + ' m'], ['tRiser', 'riser', v => Math.round(v * 100) + '% of a step'], ['tAmount', 'terraceAmount', v => Math.round(v * 100) + '%'], ['tSpread', 'terraceSpread', v => Math.round(v * 100) + '% of the land'], ['eDrops', 'drops', v => v.toLocaleString()], ['eStr', 'erodeStrength', v => v.toFixed(2)], ['rPasses', 'ravines', v => v + (v === 1 ? ' pass' : ' passes')], ['rStr', 'ravineStrength', v => v.toFixed(1) + '×'], ['rScale', 'ravineScale', v => 'water gathers on ' + (v * TEX).toFixed(1) + ' m cells'], ['rRound', 'ravineRound', v => Math.round(v * 100) + '%']]) {
+for (const [id, key, fmt] of [['tStep', 'step', v => v.toFixed(1) + ' m'], ['tRiser', 'riser', v => Math.round(v * 100) + '% of a step'], ['tAmount', 'terraceAmount', v => Math.round(v * 100) + '%'], ['tSpread', 'terraceSpread', v => Math.round(v * 100) + '% of the land'], ['tFrom', 'terraceFrom', v => 'steeper than ' + Math.round(Math.atan(v) * 180 / Math.PI) + '°'], ['eDrops', 'drops', v => v.toLocaleString()], ['eStr', 'erodeStrength', v => v.toFixed(2)], ['rPasses', 'ravines', v => v + (v === 1 ? ' pass' : ' passes')], ['rStr', 'ravineStrength', v => v.toFixed(1) + '×'], ['rScale', 'ravineScale', v => 'water gathers on ' + (v * TEX).toFixed(1) + ' m cells'], ['rRound', 'ravineRound', v => Math.round(v * 100) + '%']]) {
   const el = $(id); el.value = SHAPE[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { SHAPE[key] = +el.value; reshape(); });
