@@ -83,7 +83,10 @@
 
   // surface console.error too (your own logs)
   var ce = console.error.bind(console);
-  console.error = function () { try { add('log', Array.prototype.map.call(arguments, String).join(' ')); } catch (e) {} return ce.apply(null, arguments); };
+  // (three.js logs a refused WebGL2 context before falling back to WebGL1, which works; a real
+  // failure also throws, and that still shows, so the log line itself stays out of the box)
+  var QUIET = /WebGL context could not be created/;
+  console.error = function () { try { var m = Array.prototype.map.call(arguments, String).join(' '); if (!QUIET.test(m)) add('log', m); } catch (e) {} return ce.apply(null, arguments); };
 
   // manual logging: oops('msg') or oops(errorObject)
   window.oops = function (x) { add(typeof x === 'string' ? 'note' : 'caught', x); };
