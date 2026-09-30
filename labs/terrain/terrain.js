@@ -100,7 +100,7 @@ function baseHeight(x, z) {
   }
   return out;
 }
-const SHAPE = { terraceOn: true, step: 15, riser: 0.1, terraceAmount: 0.6, terraceFrom: 0.7, terraceSpread: 0.55, erodeOn: true, drops: 90000, erodeStrength: 0.35, ravines: 16, ravineStrength: 1.6, ravineScale: 4, ravineRound: 0.35 };
+const SHAPE = { terraceOn: true, step: 15, riser: 0.1, terraceAmount: 0.6, terraceFrom: 0.7, terraceSpread: 0.35, erodeOn: true, erodeSmooth: 3, drops: 90000, erodeStrength: 0.35, ravines: 16, ravineStrength: 1.6, ravineScale: 4, ravineRound: 0.35 };
 const Hg = new Float32Array(N * N), FLOW = new Float32Array(N * N), SETTLE = new Float32Array(N * N);
 const cellX = (i) => (i + 0.5) * TEX - SIZE / 2;
 // TERRACES: the height is stepped - a flat top, then a short steep riser - the way rock bands break a
@@ -333,10 +333,17 @@ function baseGrid() {
   const B = Float32Array.from(Hg), at = (i, j) => B[Math.min(N - 1, Math.max(0, j)) * N + Math.min(N - 1, Math.max(0, i))];
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const sl = Math.hypot(at(i + 2, j) - at(i - 2, j), at(i, j + 2) - at(i, j - 2)) / (4 * TEX); Hg[j * N + i] = terrace(B[j * N + i], cellX(i), cellX(j), sl); }
 }
+// the raindrops dig a small round pit wherever they speed up, which on a steep face reads as a rash;
+// what they did is softened (over `erodeSmooth` cells) so the grooves they wore stay and the pits go
+function smoothErosion(before) {
+  if (!SHAPE.erodeSmooth) return;
+  const d = new Float32Array(N * N); for (let k = 0; k < N * N; k++) d[k] = Hg[k] - before[k];
+  const soft = blur(d, SHAPE.erodeSmooth); for (let k = 0; k < N * N; k++) Hg[k] = before[k] + soft[k];
+}
 function buildHeights() {
   FLOW.fill(0); SETTLE.fill(0);
   baseGrid();
-  if (SHAPE.erodeOn) erode(Hg, SHAPE.drops);
+  if (SHAPE.erodeOn) { const before = Float32Array.from(Hg); erode(Hg, SHAPE.drops); smoothErosion(before); }
   cutRavines(Hg);
   findWater(Hg);
 }
@@ -1045,10 +1052,10 @@ const RAIN = { gen: null, paused: false, perFrame: 1500, done: 0, trail: [], fra
 const trailGeo = new THREE.BufferGeometry(), trailLines = new THREE.LineSegments(trailGeo, new THREE.LineBasicMaterial({ color: 0x5fb4ff, transparent: true, opacity: 0.55 }));
 trailLines.frustumCulled = false; trailLines.visible = false; scene.add(trailLines);
 function fastMesh() { if (SEG !== N - 1) { shapeMesh(); return; } const p = geo.attributes.position; for (let k = 0; k < p.count; k++) p.setY(k, Hg[k]); p.needsUpdate = true; geo.computeVertexNormals(); }
-function endRain(msg) { RAIN.gen = null; trailLines.visible = false; cutRavines(Hg); findWater(Hg); fastMesh(); buildLand(); if (treeForest) treeForest.group.visible = $('treesOn').checked; $('shapeInfo').textContent = msg; }
+function endRain(msg) { RAIN.gen = null; trailLines.visible = false; if (RAIN.before) smoothErosion(RAIN.before); cutRavines(Hg); findWater(Hg); fastMesh(); buildLand(); if (treeForest) treeForest.group.visible = $('treesOn').checked; $('shapeInfo').textContent = msg; }
 function startRain() {
   FLOW.fill(0); SETTLE.fill(0);
-  baseGrid();
+  baseGrid(); RAIN.before = Float32Array.from(Hg);
   WDEPTH.fill(0); paintWater(new Uint8Array(N * N)); fastMesh();
   for (const f of [treeForest, coverForest]) if (f) f.group.visible = false;
   RAIN.trail = []; RAIN.done = 0; RAIN.paused = false; RAIN.gen = erodeSteps(Hg, SHAPE.drops, () => RAIN.perFrame, RAIN.trail); trailLines.visible = true;
