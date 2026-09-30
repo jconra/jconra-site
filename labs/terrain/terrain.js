@@ -80,11 +80,14 @@ function vnoise(x, z) { const ix = Math.floor(x), iz = Math.floor(z), fx = x - i
 // THE VALLEY: mountains rise on either side of a winding valley floor. The distance from the valley's
 // line (which meanders by noise) sets how far up the mountainside a point is; the mountains carry
 // ridged noise for peaks and spurs. The old rolling hills stay on top as small detail.
-const VALLEY = { on: true, height: 260, width: 360, slope: 380, steep: 1.6, angle: 20, meander: 140, ridges: 0.55 };
-function ridged(x, z) { let h = 0, a = 1, f = 1 / 420, n = 0; for (let o = 0; o < 5; o++) { h += (1 - Math.abs(vnoise(x * f + 9, z * f + 3) * 2 - 1)) * a; n += a; a *= 0.5; f *= 2.05; } return h / n; }
+const VALLEY = { on: true, height: 260, width: 360, slope: 380, steep: 1.6, angle: 20, meander: 140, ridges: 0.55, fine: 0.35 };
+// the mountains' ridged noise in five layers, the big peaks first; `VALLEY.fine` turns down the last
+// three (bumps ~25-100 m across), which otherwise wobble every slope; it also turns down the rolling
+// hills' fine layers below
+function ridged(x, z) { let h = 0, a = 1, f = 1 / 420, n = 0; for (let o = 0; o < 5; o++) { const w = a * (o >= 2 ? VALLEY.fine : 1); h += (1 - Math.abs(vnoise(x * f + 9, z * f + 3) * 2 - 1)) * w; n += w; a *= 0.5; f *= 2.05; } return h / n; }
 function baseHeight(x, z) {
   let h = 0, amp = 1, f = 1 / 260;
-  for (let i = 0; i < 5; i++) { h += (vnoise(x * f, z * f) - 0.5) * amp; amp *= 0.45; f *= 2.1; }
+  for (let i = 0; i < 5; i++) { h += (vnoise(x * f, z * f) - 0.5) * amp * (i >= 2 ? VALLEY.fine : 1); amp *= 0.45; f *= 2.1; }   // the fine layers (under ~60 m) on the same slider
   const r = Math.hypot(x, z);
   let out = h * 55 * THREE.MathUtils.smoothstep(r, 60, 500) + h * 6;
   if (VALLEY.on) {
@@ -97,7 +100,7 @@ function baseHeight(x, z) {
   }
   return out;
 }
-const SHAPE = { terraceOn: true, step: 8, riser: 0.1, terraceAmount: 0.8, terraceSpread: 0.55, erodeOn: true, drops: 90000, erodeStrength: 0.35, ravines: 16, ravineStrength: 1.6, ravineScale: 4, ravineRound: 0.35 };
+const SHAPE = { terraceOn: true, step: 8, riser: 0.1, terraceAmount: 0.5, terraceSpread: 0.55, erodeOn: true, drops: 90000, erodeStrength: 0.35, ravines: 16, ravineStrength: 1.6, ravineScale: 4, ravineRound: 0.35 };
 const Hg = new Float32Array(N * N), FLOW = new Float32Array(N * N), SETTLE = new Float32Array(N * N);
 const cellX = (i) => (i + 0.5) * TEX - SIZE / 2;
 // TERRACES: the height is stepped - a flat top, then a short steep riser - where a slow noise says
@@ -1052,7 +1055,7 @@ function stepRain() {
   $('shapeInfo').textContent = `raining: ${RAIN.done.toLocaleString()} of ${SHAPE.drops.toLocaleString()} drops`;
 }
 // the valley's and water's controls: the shape ones rebuild everything, the look ones are live
-for (const [id, key, fmt] of [['vHeight', 'height', v => v + ' m'], ['vWidth', 'width', v => v + ' m'], ['vSlope', 'slope', v => v + ' m'], ['vSteep', 'steep', v => v.toFixed(2)], ['vAngle', 'angle', v => v + '°'], ['vMeander', 'meander', v => v + ' m'], ['vRidges', 'ridges', v => Math.round(v * 100) + '%']]) {
+for (const [id, key, fmt] of [['vHeight', 'height', v => v + ' m'], ['vWidth', 'width', v => v + ' m'], ['vSlope', 'slope', v => v + ' m'], ['vSteep', 'steep', v => v.toFixed(2)], ['vAngle', 'angle', v => v + '°'], ['vMeander', 'meander', v => v + ' m'], ['vFine', 'fine', v => Math.round(v * 100) + '%'], ['vRidges', 'ridges', v => Math.round(v * 100) + '%']]) {
   const el = $(id); el.value = VALLEY[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); }); el.addEventListener('change', () => { VALLEY[key] = +el.value; reshape(); });
 }
