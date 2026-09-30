@@ -134,11 +134,13 @@ function* erodeSteps(H, drops, chunk, trail = null) {
 // they run into the ponds and out over the spill. Pond ground is flattened to its surface and river
 // channels are carved a little; the shader paints the water on (no see-through mesh).
 let trees = [], maskA = null, pathCanvas = null; const MAPS = {};
-const WATER = { on: true, river: 1800, width: 1.6, carve: 0.8, pondDepth: 0.35, pondMin: 30 };
+const WATER = { on: true, river: 1800, width: 1.6, carve: 0.8, pondDepth: 0.35, pondMin: 30, outlet: 5 };
 const POND = new Uint8Array(N * N), WDEPTH = new Float32Array(N * N), ACC = new Float32Array(N * N), DOWN = new Int32Array(N * N);
 let waterCanvas = null, waterTex = null;          // (the shader's uniforms are made later; they pick waterTex up)
-function findWater(H) {
-  WDEPTH.fill(0); ACC.fill(0); DOWN.fill(-1);
+// the priority flood: F is the land with every hollow filled to its spill level, DOWN the cell each
+// cell drains to, `order` the cells from lowest to highest on that filled surface
+function flood(H) {
+  DOWN.fill(-1);
   const F = Float32Array.from(H), done = new Uint8Array(N * N), heap = [];
   const push = (k) => { heap.push(k); let c = heap.length - 1; while (c > 0) { const p = (c - 1) >> 1; if (F[heap[p]] <= F[heap[c]]) break; [heap[p], heap[c]] = [heap[c], heap[p]]; c = p; } };
   const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let c = 0; for (;;) { const l = 2 * c + 1, r = l + 1; let m = c; if (l < heap.length && F[heap[l]] < F[heap[m]]) m = l; if (r < heap.length && F[heap[r]] < F[heap[m]]) m = r; if (m === c) break; [heap[m], heap[c]] = [heap[c], heap[m]]; c = m; } } return top; };
@@ -149,16 +151,69 @@ function findWater(H) {
     for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { if (!di && !dj) continue; const ni = i + di, nj = j + dj; if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue;
       const n = nj * N + ni; if (done[n]) continue; done[n] = 1; F[n] = Math.max(H[n], F[c] + 1e-4); DOWN[n] = c; push(n); }
   }
-  // flow: from the highest cell down, each gives what it has gathered to the cell it drains to
-  for (let q = 0; q < N * N; q++) ACC[q] = 1;
-  for (let q = order.length - 1; q >= 0; q--) { const c = order[q]; if (DOWN[c] >= 0) ACC[DOWN[c]] += ACC[c]; }
-  // ponds: filled more than pondDepth, in pools of at least pondMin cells
-  const pond = new Uint8Array(N * N), seen = new Uint8Array(N * N);
+  return { F, order };
+}
+// the pools: filled more than pondDepth, in pools of at least pondMin cells
+function findPools(H, F) {
+  const pools = [], seen = new Uint8Array(N * N);
   for (let k = 0; k < N * N; k++) if (F[k] - H[k] > WATER.pondDepth && !seen[k]) {
     const pool = [k], st = [k]; seen[k] = 1;
     while (st.length) { const c = st.pop(), i = c % N, j = (c / N) | 0; for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ni = i + di, nj = j + dj; if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue; const n = nj * N + ni; if (!seen[n] && F[n] - H[n] > WATER.pondDepth * 0.3) { seen[n] = 1; st.push(n); pool.push(n); } } }
-    if (pool.length >= WATER.pondMin) for (const c of pool) pond[c] = 1;
+    if (pool.length >= WATER.pondMin) pools.push(pool);
   }
+  return pools;
+}
+// THE OUTLET WORN DOWN: a lake spills over the lowest point of its rim, and over time the overflow
+// wears that notch into a gorge and the lake drops with it. For each pool the spill point is found,
+// and a canyon is cut through it: its floor at the spill level less `outlet` (never more than 70% of
+// the pool's depth, so ponds shrink but stay), walls rising steeply either side. Inward it follows the
+// real ground down into the lake; outward it follows the overflow downhill, its floor falling gently,
+// and ends where the land falls away below it by itself.
+function carveOutlets(H, F, pools) {
+  const R = 5, wall = 1.2, fall = 0.03;
+  const cut = (c, floor, r) => { const i = c % N, j = (c / N) | 0;
+    for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= N || jj >= N) continue;
+      const q = jj * N + ii, h = floor + Math.max(0, Math.hypot(di, dj) - 1) * TEX * wall; if (H[q] > h) H[q] = h; } };
+  const step = (a, b) => ((a % N) !== (b % N) && ((a / N) | 0) !== ((b / N) | 0) ? 1.414 : 1) * TEX;
+  for (const pool of pools) {
+    let S = -Infinity, low = pool[0];
+    for (const c of pool) { if (F[c] > S) S = F[c]; if (H[c] < H[low]) low = c; }
+    const level = S - Math.min(WATER.outlet, (S - H[low]) * 0.7);
+    let rim = low; while (rim >= 0 && F[rim] - H[rim] >= 0.01) rim = DOWN[rim];   // the spill point on the rim
+    if (rim < 0) continue;
+    // the gorge's head: from the rim into the lake, the path that needs the least digging to reach
+    // below the new water line (a cheapest-path search over the lake bed), so it bends with the land
+    // and always gets through; cut to the new level
+    const cost = new Float32Array(N * N).fill(Infinity), from = new Int32Array(N * N).fill(-1), heap = [];
+    const hpush = (k) => { heap.push(k); let c = heap.length - 1; while (c > 0) { const p = (c - 1) >> 1; if (cost[heap[p]] <= cost[heap[c]]) break; [heap[p], heap[c]] = [heap[c], heap[p]]; c = p; } };
+    const hpop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let c = 0; for (;;) { const l = 2 * c + 1, r = l + 1; let m = c; if (l < heap.length && cost[heap[l]] < cost[heap[m]]) m = l; if (r < heap.length && cost[heap[r]] < cost[heap[m]]) m = r; if (m === c) break; [heap[m], heap[c]] = [heap[c], heap[m]]; c = m; } } return top; };
+    cost[rim] = 0; hpush(rim); let end = -1;
+    while (heap.length) {
+      const c = hpop(); if (c !== rim && H[c] <= level) { end = c; break; }
+      const i = c % N, j = (c / N) | 0;
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if ((!di && !dj) || ii < 0 || jj < 0 || ii >= N || jj >= N) continue;
+        const q = jj * N + ii; if (F[q] - H[q] < 0.01) continue;                // stay in the lake
+        const w = cost[c] + (Math.max(0, H[q] - level) + 0.5) * (di && dj ? 1.414 : 1);
+        if (w < cost[q]) { cost[q] = w; from[q] = c; hpush(q); } }
+    }
+    for (let c = end; c >= 0; c = from[c]) cut(c, level, 3);
+    // the gorge: from the rim along the overflow's path downhill, until the land falls away below it
+    for (let c = rim, s = 0, past = 0; c >= 0 && past < 12; ) {
+      const floor = level - s * fall; past = H[c] <= floor ? past + 1 : 0;
+      cut(c, floor, R); const d = DOWN[c]; if (d >= 0) s += step(c, d); c = d;
+    }
+  }
+}
+function findWater(H) {
+  WDEPTH.fill(0); ACC.fill(0);
+  let { F, order } = flood(H);
+  if (WATER.outlet > 0) { carveOutlets(H, F, findPools(H, F)); ({ F, order } = flood(H)); }
+  // flow: from the highest cell down, each gives what it has gathered to the cell it drains to
+  for (let q = 0; q < N * N; q++) ACC[q] = 1;
+  for (let q = order.length - 1; q >= 0; q--) { const c = order[q]; if (DOWN[c] >= 0) ACC[DOWN[c]] += ACC[c]; }
+  // ponds: the pools, as a mask
+  const pond = new Uint8Array(N * N);
+  for (const pool of findPools(H, F)) for (const c of pool) pond[c] = 1;
   POND.set(pond);
   for (let k = 0; k < N * N; k++) if (pond[k]) { WDEPTH[k] = F[k] - H[k]; H[k] = F[k]; }       // the pond's ground is its surface
   // rivers: carved a little where enough water gathers (not in the ponds)
@@ -166,7 +221,7 @@ function findWater(H) {
   paintWater(pond);
 }
 // the water picture, 0.8 m a pixel: ponds as their cells, rivers as lines from each cell to the one it
-// drains to, wider as more water gathers; R = water, G = depth
+// drains to, wider as more water gathers; R = water, G = depth, B = froth (where a river falls steeply)
 function paintWater(pond) {
   const P = 2048, k = P / SIZE; waterCanvas = waterCanvas || document.createElement('canvas'); waterCanvas.width = waterCanvas.height = P;
   const g = waterCanvas.getContext('2d', { willReadFrequently: true }); g.fillStyle = '#000'; g.fillRect(0, 0, P, P);
@@ -177,7 +232,9 @@ function paintWater(pond) {
     for (let q = 0; q < N * N; q++) {
       if (pond[q] || ACC[q] <= WATER.river || DOWN[q] < 0) continue;
       const t = Math.min(1, Math.log(ACC[q] / WATER.river) / 3), d = DOWN[q];
-      g.strokeStyle = `rgb(255,${Math.round(60 + 60 * t)},0)`; g.lineWidth = (1.2 + 4.5 * t) * WATER.width * k;
+      const drop = (Hg[q] - Hg[d]) / (((d % N) !== (q % N) && ((d / N) | 0) !== ((q / N) | 0) ? 1.414 : 1) * TEX);   // how steeply this stretch falls
+      const froth = Math.min(1, Math.max(0, (drop - 0.25) / 0.5));                                          // white water from about 14°, all froth by 37°
+      g.strokeStyle = `rgb(255,${Math.round(60 + 60 * t)},${Math.round(255 * froth)})`; g.lineWidth = (1.2 + 4.5 * t) * WATER.width * k;
       g.beginPath(); g.moveTo(px(q % N), px((q / N) | 0)); g.lineTo(px(d % N), px((d / N) | 0)); g.stroke();
     }
     // softened once, the whole picture (a blur per shape was far too slow)
@@ -315,7 +372,7 @@ const U = {
   // mixing by the land: the masks, the layers' pictures, and how they meet
   mixOn: { value: 1 }, maskA: { value: null }, maskB: { value: null },
   waterMap: { value: waterTex }, waterOn: { value: 1 }, time: { value: 0 }, sunDirW: { value: new THREE.Vector3() }, skyCol: { value: SKY.clone() },
-  wDeep: { value: new THREE.Color('#123a4a') }, wShallow: { value: new THREE.Color('#3f7f86') }, wWave: { value: 2.2 }, wSpeed: { value: 0.6 }, wSpec: { value: 0.8 }, wReflect: { value: 0.55 }, wWaveOn: { value: 1 },
+  wDeep: { value: new THREE.Color('#123a4a') }, wShallow: { value: new THREE.Color('#3f7f86') }, wWave: { value: 2.2 }, wSpeed: { value: 0.6 }, wSpec: { value: 0.8 }, wReflect: { value: 0.55 }, wFroth: { value: 1 }, wWaveOn: { value: 1 },
   coverR: { value: 140 }, coverFar: { value: 1 }, rockFrom: { value: 0.25 },
   gullyStr: { value: 0.8 }, fanStr: { value: 0.45 }, strataStr: { value: 0.8 }, strataSize: { value: 1.6 }, lushTint: { value: new THREE.Color(0.86, 1.0, 0.8) }, dampTint: { value: new THREE.Color(0.78, 0.92, 0.76) }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
   layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layWet: { value: null }, layPath: { value: null }, laySteep: { value: null },
@@ -333,8 +390,8 @@ mat.onBeforeCompile = (sh) => {
     uniform float hexOn, hexSize, hexRot, hexSharp, hexBright, macroOn, macroStr, macroSize, macroHue, farOn, farFrom, grid;
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
     uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 lushTint, dampTint;
-    uniform sampler2D waterMap; uniform float waterOn, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow;
-    float gWater = 0.0; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathMap;
+    uniform sampler2D waterMap; uniform float waterOn, wFroth, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow;
+    float gWater = 0.0, gFoam = 0.0; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathMap;
     uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layWet; uniform sampler2D layPath; uniform sampler2D laySteep;
     varying vec3 vWN;
     varying vec3 vW;
@@ -524,12 +581,18 @@ mat.onBeforeCompile = (sh) => {
     // WATER, painted on: its colour by depth over the bed, and the surface's wave normal kept for the
     // glints and sky reflection laid on after the lighting
     if (!plain && waterOn > 0.5 && view < 0.5) {
-      vec2 wuv = vW.xz / landSize + 0.5; vec2 wd = texture2D(waterMap, wuv).rg;
+      vec2 wuv = vW.xz / landSize + 0.5; vec3 wd = texture2D(waterMap, wuv).rgb;
       float edge = (fbm(vW.xz / 1.5) - 0.5) * 0.35;
       gWater = smoothstep(0.35, 0.6, wd.r + edge);
       if (gWater > 0.0) {
         vec3 wc = mix(wShallow, wDeep, smoothstep(0.2, 0.9, wd.g));
-        g = mix(g, mix(g * wc * 2.2, wc, 0.75), gWater);
+        g = mix(g, mix(g * wc * 2.2, wc, mix(0.35, 0.75, smoothstep(0.2, 0.55, wd.g))), gWater);   // shallow streams let their bed show
+        // WHITE WATER: where a river falls steeply, froth in streaks that run downhill
+        gFoam = smoothstep(0.1, 0.6, wd.b) * wFroth * gWater;
+        if (gFoam > 0.0) {
+          float st = vn(vec2((vW.x + vW.z) * 0.9, vW.y * 0.8 + time * 3.0)) * 0.6 + vn(vec2((vW.x - vW.z) * 2.1, vW.y * 2.0 + time * 5.0)) * 0.4;
+          g = mix(g, vec3(0.86, 0.92, 0.95) * (0.78 + 0.32 * st), clamp(gFoam * (0.6 + 0.5 * st), 0.0, 1.0));
+        }
         vec2 p = vW.xz / wWave, t = vec2(time * wSpeed, time * wSpeed * 0.7) * wWaveOn;
         float e = 0.15, hA = vn(p + t) + 0.5 * vn(p * 2.3 - t * 1.3);
         float hX = vn(p + t + vec2(e, 0.0)) + 0.5 * vn((p + vec2(e, 0.0)) * 2.3 - t * 1.3), hZ = vn(p + t + vec2(0.0, e)) + 0.5 * vn((p + vec2(0.0, e)) * 2.3 - t * 1.3);
@@ -541,15 +604,16 @@ mat.onBeforeCompile = (sh) => {
   `).replace('#include <dithering_fragment>', `
     if (gWater > 0.0) {
       vec3 V = normalize(cameraPosition - vW), R = reflect(-V, gWaterN);
-      float fres = 0.04 + 0.96 * pow(1.0 - max(dot(V, gWaterN), 0.0), 5.0);
+      float fres0 = 0.04 + 0.96 * pow(1.0 - max(dot(V, gWaterN), 0.0), 5.0);
+      float fres = fres0 * (1.0 - gFoam);                                                 // froth doesn't mirror the sky
       vec3 refl = skyCol * (0.6 + 0.4 * R.y) * fres * wReflect;
-      float glint = pow(max(dot(R, normalize(sunDirW)), 0.0), 600.0) * wSpec * 3.0 * smoothstep(400.0, 30.0, length(cameraPosition - vW));   // fine sparkle, fading with distance
+      float glint = pow(max(dot(R, normalize(sunDirW)), 0.0), 600.0) * wSpec * 3.0 * (1.0 - gFoam) * smoothstep(400.0, 30.0, length(cameraPosition - vW));   // fine sparkle, fading with distance
       gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * (1.0 - fres * wReflect) + refl + vec3(glint), gWater);
     }
     #include <dithering_fragment>
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-8' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-9' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground);
 // THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
@@ -754,12 +818,12 @@ for (const [id, key, fmt] of [['vHeight', 'height', v => v + ' m'], ['vWidth', '
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); }); el.addEventListener('change', () => { VALLEY[key] = +el.value; reshape(); });
 }
 $('vOn').checked = VALLEY.on; $('vOn').addEventListener('change', e => { VALLEY.on = e.target.checked; reshape(); });
-for (const [id, key, fmt] of [['wRiver', 'river', v => Math.round(v * TEX * TEX / 1000).toLocaleString() + ',000 m² gathered'], ['wWidth', 'width', v => v.toFixed(1) + '×'], ['wCarve', 'carve', v => v.toFixed(1) + ' m'], ['wPondDepth', 'pondDepth', v => v.toFixed(2) + ' m'], ['wPondMin', 'pondMin', v => Math.round(v * TEX * TEX) + ' m²']]) {
+for (const [id, key, fmt] of [['wRiver', 'river', v => Math.round(v * TEX * TEX / 1000).toLocaleString() + ',000 m² gathered'], ['wWidth', 'width', v => v.toFixed(1) + '×'], ['wCarve', 'carve', v => v.toFixed(1) + ' m'], ['wPondDepth', 'pondDepth', v => v.toFixed(2) + ' m'], ['wPondMin', 'pondMin', v => Math.round(v * TEX * TEX) + ' m²'], ['wOutlet', 'outlet', v => v.toFixed(0) + ' m']]) {
   const el = $(id); el.value = WATER[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); }); el.addEventListener('change', () => { WATER[key] = +el.value; reshape(); });
 }
 $('wOn').checked = WATER.on; $('wOn').addEventListener('change', e => { WATER.on = e.target.checked; U.waterOn.value = WATER.on ? 1 : 0; reshape(); });
-for (const [id, key, fmt] of [['wWave', 'wWave', v => v.toFixed(1) + ' m'], ['wSpeed', 'wSpeed', v => v.toFixed(2)], ['wSpec', 'wSpec', v => v.toFixed(2)], ['wReflect', 'wReflect', v => Math.round(v * 100) + '%']]) {
+for (const [id, key, fmt] of [['wWave', 'wWave', v => v.toFixed(1) + ' m'], ['wSpeed', 'wSpeed', v => v.toFixed(2)], ['wSpec', 'wSpec', v => v.toFixed(2)], ['wReflect', 'wReflect', v => Math.round(v * 100) + '%'], ['wFroth', 'wFroth', v => Math.round(v * 100) + '%']]) {
   const el = $(id), go = () => { U[key].value = +el.value; $(id + 'Out').textContent = fmt(+el.value); }; el.value = U[key].value; el.addEventListener('input', go); go();
 }
 for (const [id, key] of [['wDeepC', 'wDeep'], ['wShallowC', 'wShallow']]) { const el = $(id); el.value = '#' + U[key].value.clone().convertLinearToSRGB().getHexString(); el.addEventListener('input', () => { U[key].value.set(el.value).convertSRGBToLinear(); }); }
@@ -869,4 +933,4 @@ renderer.setAnimationLoop(() => {
   for (const f of [treeForest, coverForest]) if (f) f.update(camera, controls.target, camera.position, dt);
   renderer.render(scene, camera); drawAtlas();
 });
-if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest] });
+if (Q.has('probe')) Object.assign(window, { WATER, POND, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest] });
