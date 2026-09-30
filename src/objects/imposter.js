@@ -215,6 +215,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
     radius: { value: bake.radius }, halfW: { value: bake.halfW }, halfH: { value: bake.halfH }, centre: { value: bake.centre.clone() }, sunDir: { value: sunDir.clone().normalize() },
     blend: { value: blend ? 1 : 0 }, blendDist: { value: 400 }, parallax: { value: 0 }, halfWc: { value: bake.halfW }, halfHc: { value: bake.halfH }, ambient: { value: 0.45 }, useDepth: { value: depth ? 1 : 0 }, useShadow: { value: shadows ? 1 : 0 },
     viewDirOverride: { value: new THREE.Vector3(0, 1, 0) }, useOverride: { value: 0 },
+    calmCol: { value: new THREE.Color(0.3, 0.4, 0.15) }, calmFrom: { value: 60 }, calmTo: { value: 250 }, calmAmt: { value: 0 },
   }]);
   uniforms.atlas.value = bake.colour; uniforms.atlasN.value = bake.normal;
   const mat = new THREE.ShaderMaterial({
@@ -228,6 +229,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
       #include <lights_pars_begin>
       #include <fog_pars_fragment>
       uniform vec3 sunDir; uniform float ambient; uniform float useShadow; uniform float soften;
+      uniform vec3 calmCol; uniform float calmFrom, calmTo, calmAmt;
       ` + LOOKUP + `
       void main() {
         #include <logdepthbuf_fragment>
@@ -242,7 +244,10 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
         nrm /= max(col.a, 0.001); vec3 n = normalize(nrm.rgb * 2.0 - 1.0);   // read through the colour's coverage: filtered against the empty background otherwise
         float c = cos(vYaw), s = sin(vYaw);
         vec3 nw = vec3(c * n.x + s * n.z, n.y, -s * n.x + c * n.z);          // the tree's normal, turned as the instance is
-        nw = normalize(mix(nw, vec3(0.0, 1.0, 0.0), soften));
+        // CALM WITH DISTANCE: far off, a plant's own colour and shading give way to a shared colour lit
+        // like the ground, so a far field of them reads as one tone instead of speckle
+        float calm = calmAmt * smoothstep(calmFrom, calmTo, length(vViewPos));
+        nw = normalize(mix(nw, vec3(0.0, 1.0, 0.0), max(soften, calm)));
         vec3 nv = normalize((viewMatrix * vec4(nw, 0.0)).xyz);              // in view space, where three keeps its lights
         float off = (0.5 - nrm.a) * 2.0 * vRadius;
         // lit the way MeshStandardMaterial's diffuse is: the sun (shadowed) and the sky/ground light,
@@ -260,7 +265,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
         #if NUM_HEMI_LIGHTS > 0
         irradiance += mix(hemisphereLights[0].groundColor, hemisphereLights[0].skyColor, dot(nv, hemisphereLights[0].direction) * 0.5 + 0.5);
         #endif
-        vec3 albedo = col.rgb / max(col.a, 0.001) * vTint;
+        vec3 albedo = mix(col.rgb / max(col.a, 0.001) * vTint, calmCol, calm);
         gl_FragColor = vec4(albedo * irradiance * RECIPROCAL_PI, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>

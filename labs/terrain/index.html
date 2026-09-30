@@ -141,6 +141,8 @@
       <div class="row"><label for="landWet">Wet: how deep a hollow is fully wet</label><output id="landWetOut"></output><input id="landWet" type="range" min="0.5" max="8" step="0.1"></div>
       <div class="row"><label for="landDry">Dry: how high a rise is fully dry</label><output id="landDryOut"></output><input id="landDry" type="range" min="0.5" max="10" step="0.1"></div>
       <div class="row"><label for="landForest">Forest cover</label><output id="landForestOut"></output><input id="landForest" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="landHill">Extra forest up the slopes</label><output id="landHillOut"></output><input id="landHill" type="range" min="0" max="0.6" step="0.01"></div>
+      <div class="row"><label for="landTreeline">Treeline (height where the trees stop)</label><output id="landTreelineOut"></output><input id="landTreeline" type="range" min="0" max="300" step="5"></div>
       <div class="row"><label for="landShade">Part shade reaches</label><output id="landShadeOut"></output><input id="landShade" type="range" min="1" max="10" step="1"></div>
       <div class="row"><label for="landPath">Path width</label><output id="landPathOut"></output><input id="landPath" type="range" min="0.8" max="6" step="0.1"></div>
       <p class="note"><b>The edges</b></p>
@@ -152,6 +154,7 @@
       <div class="row"><label for="steepFrom">Bare dirt from a slope of</label><output id="steepFromOut"></output><input id="steepFrom" type="range" min="0.01" max="0.5" step="0.005" value="0.06"></div>
       <p class="note"><b>Tints</b> (multiplied onto the lush picture: no extra texture)</p>
       <div class="row"><label for="lushTint">Lush grass, fans</label><input id="lushTint" type="color" style="grid-column:2;width:48px;height:22px;border:0;background:none"></div>
+      <div class="row"><label for="slopeTint">Slopes (dark green scrub)</label><input id="slopeTint" type="color" style="grid-column:2;width:48px;height:22px;border:0;background:none"></div>
       <div class="row"><label for="dampTint">Damp grass round hollows</label><input id="dampTint" type="color" style="grid-column:2;width:48px;height:22px;border:0;background:none"></div>
       <p class="note"><b>The pictures</b> (the base is the Ground texture above)</p>
       <div class="row"><label for="layDry">Dry</label><select id="layDry"></select></div><div class="row"><label for="layLush">Lush (part shade)</label><select id="layLush"></select></div><div class="row"><label for="layForest">Forest floor</label><select id="layForest"></select></div><div class="row"><label for="layWet">Wet</label><select id="layWet"></select></div><div class="row"><label for="layPath">Path</label><select id="layPath"></select></div><div class="row"><label for="laySteep">Steep</label><select id="laySteep"></select></div>
@@ -218,6 +221,14 @@
       <label class="check" for="coverFar"><input id="coverFar" type="checkbox" checked> Far cover: clumps painted on past the plants' reach</label>
       <div class="row"><label for="coverCount">How many</label><output id="coverCountOut"></output><input id="coverCount" type="range" min="0" max="60000" step="500"></div>
       <div class="row"><label for="coverRadius">Out to</label><output id="coverRadiusOut"></output><input id="coverRadius" type="range" min="20" max="600" step="10"></div>
+      <p class="note"><b>Far off</b>, plants blend toward one colour (the grass's, darker), so a far field reads as one tone instead of speckle</p>
+      <div class="row"><label for="calmAmount">How much they blend</label><output id="calmAmountOut"></output><input id="calmAmount" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="calmFrom">Starting at</label><output id="calmFromOut"></output><input id="calmFrom" type="range" min="0" max="300" step="5"></div>
+      <div class="row"><label for="calmTo">Fully by</label><output id="calmToOut"></output><input id="calmTo" type="range" min="20" max="600" step="10"></div>
+      <label class="check" for="stonesOn"><input id="stonesOn" type="checkbox" checked> Stones (thick on slopes and in the scree below cliffs, a few in the meadows)</label>
+      <div class="row"><label for="stoneCount">How many</label><output id="stoneCountOut"></output><input id="stoneCount" type="range" min="0" max="30000" step="500"></div>
+      <div class="row"><label for="stoneSize">Size</label><output id="stoneSizeOut"></output><input id="stoneSize" type="range" min="0.3" max="3" step="0.1"></div>
+      <p class="note" id="stoneInfo"></p>
       <div class="row"><label for="coverNear">Real meshes out to (imposters beyond)</label><output id="coverNearOut"></output><input id="coverNear" type="range" min="0" max="150" step="5"></div>
       <div class="row"><label for="longCount">How many long grasses</label><output id="longCountOut"></output><input id="longCount" type="range" min="0" max="40000" step="500"></div>
       <div class="row"><label for="longSize">Long grass size</label><output id="longSizeOut"></output><input id="longSize" type="range" min="0.3" max="5" step="0.1"></div>

@@ -25,11 +25,11 @@ const Q = new URLSearchParams(location.search);
 // flat colours (each picture's average) instead of read from the pictures, one noise read where
 // there were four.
 const TIER_SET = {
-  potato: { ratio: 0.5, lite: true, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 2500, longCount: 800, near: 0, radius: 90 },
+  potato: { ratio: 0.5, lite: true, stones: 1500, treeShare: 0.45, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 2500, longCount: 800, near: 0, radius: 90 },
             u: { wWaveOn: 0, stampFar: 12 }, checks: { stampOn: false, hexOn: false, farOn: false, wWaveOn: false, cloudsOn: false } },
-  normal: { ratio: 1.5, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 8000, longCount: 3000, near: 35, radius: 140 },
+  normal: { ratio: 1.5, stones: 14000, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 8000, longCount: 3000, near: 35, radius: 140 },
             u: { wWaveOn: 1, stampFar: 30 }, checks: { stampOn: true, hexOn: true, farOn: false, wWaveOn: true, cloudsOn: true } },
-  gaming: { ratio: 2, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 16000, longCount: 6000, near: 60, radius: 220 },
+  gaming: { ratio: 2, stones: 26000, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 16000, longCount: 6000, near: 60, radius: 220 },
             u: { wWaveOn: 1, stampFar: 45 }, checks: { stampOn: true, hexOn: true, farOn: true, wWaveOn: true, cloudsOn: true } },
 };
 // the tier is picked on a throwaway context first, so the real one can be made without smoothing
@@ -285,7 +285,7 @@ function blur(src, r) {                             // two passes of a box blur,
   }
   return a;
 }
-const LAND = { wetDepth: 7, dryHeight: 6.0, forest: 0.55, shadeReach: 4, pathWidth: 2.2 };
+const LAND = { wetDepth: 7, dryHeight: 6.0, forest: 0.55, shadeReach: 4, pathWidth: 2.2, treeline: 280, hillForest: 0.3 };
 let Hb = null;                                        // the ground's height averaged over about 40 m (per buildLand)
 const slopeAt = (i, j) => { const a = Hg[j * N + Math.min(N - 1, i + 1)] - Hg[j * N + Math.max(0, i - 1)], b = Hg[Math.min(N - 1, j + 1) * N + i] - Hg[Math.max(0, j - 1) * N + i]; return Math.hypot(a, b) / (2 * TEX); };
 function buildLand() {
@@ -300,8 +300,13 @@ function buildLand() {
   for (let z = -SIZE / 2 + 3; z < SIZE / 2; z += 6) for (let x = -SIZE / 2 + 3; x < SIZE / 2; x += 6) {
     const jx = x + (hash(x, z) - 0.5) * 5, jz = z + (hash(z, x) - 0.5) * 5;
     const i = Math.min(N - 1, Math.max(0, Math.floor((jx + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((jz + SIZE / 2) / TEX))), k = j * N + i;
-    const F = THREE.MathUtils.smoothstep(clump(jx, jz), 1 - LAND.forest * 0.6, 1.05 - LAND.forest * 0.6) * (1 - wet[k] * 0.9) * (1 - steep[k]);
-    if (waterAt(jx, jz) < 0.05 && hash(jx * 1.3, jz * 0.7) < F * 0.85) { trees.push([jx, heightAt(jx, jz), jz, 0.8 + hash(jx, jz * 2) * 0.5]); tree[k] = 1; }
+    // on the hills: groves up the slopes (more of them on a slope than on the flat), none past ~40 deg,
+    // thinning out over the last 40 m below the treeline
+    const sl = slopeAt(i, j), hill = THREE.MathUtils.smoothstep(sl, 0.15, 0.55) * LAND.hillForest;
+    const F = THREE.MathUtils.smoothstep(clump(jx, jz) + hill, 1 - LAND.forest * 0.6, 1.05 - LAND.forest * 0.6) * (1 - wet[k] * 0.9)
+      * (1 - THREE.MathUtils.smoothstep(sl, 0.75, 1.0)) * (1 - THREE.MathUtils.smoothstep(Hg[k], LAND.treeline - 40, LAND.treeline));
+    // (potato keeps under half of them: treeShare)
+    if (waterAt(jx, jz) < 0.05 && hash(jx * 1.3, jz * 0.7) < F * 0.85 * (TS.treeShare || 1)) { trees.push([jx, heightAt(jx, jz), jz, 0.8 + hash(jx, jz * 2) * 0.5]); tree[k] = 1; }
   }
   const canopy = blur(tree, 1), wide = blur(tree, LAND.shadeReach);
   for (let k = 0; k < N * N; k++) canopy[k] = Math.min(1, canopy[k] * 3.2);
@@ -352,7 +357,7 @@ function buildLand() {
   if (!U.pathMap.value) { const t = new THREE.CanvasTexture(pathCanvas); t.flipY = false; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; U.pathMap.value = t; }
   U.pathMap.value.needsUpdate = true; U.maskA.value = maskA;
   MAPS.path = pathCanvas.getContext('2d').getImageData(0, 0, P, P).data; MAPS.P = P;
-  placeTrees(); if (COVER.parts) placeCover();
+  placeTrees(); placeStones(); if (COVER.parts) placeCover();
 }
 
 // ── textures ────────────────────────────────────────────────────────────────────
@@ -365,6 +370,7 @@ function avgColour(img) {
   const n = 255 * d.length / 4; return new THREE.Color().setRGB(r / n, gg / n, b / n, THREE.SRGBColorSpace);
 }
 function setAverages() {
+  if (typeof calmCover === 'function') calmCover();
   if (!TS.lite) return;
   for (const [id, a] of [['groundMap', 'avgGround'], ['layDry', 'avgDry'], ['layLush', 'avgLush'], ['layForest', 'avgForest'], ['layWet', 'avgWet'], ['layPath', 'avgPath'], ['laySteep', 'avgSteep']]) {
     const t = U[id].value; if (t && t.userData.avg) U[a].value.copy(t.userData.avg); }
@@ -392,6 +398,7 @@ const U = {
   wDeep: { value: new THREE.Color('#123a4a') }, wShallow: { value: new THREE.Color('#3f7f86') }, wWave: { value: 2.2 }, wSpeed: { value: 0.6 }, wSpec: { value: 0.8 }, wReflect: { value: 0.55 }, wFroth: { value: 1 }, wWaveOn: { value: 1 },
   coverR: { value: 140 }, coverFar: { value: 1 }, rockFrom: { value: 0.25 },
   gullyStr: { value: 0.8 }, fanStr: { value: 0.45 }, strataStr: { value: 0.8 }, strataSize: { value: 1.6 }, lushTint: { value: new THREE.Color(0.86, 1.0, 0.8) }, dampTint: { value: new THREE.Color(0.78, 0.92, 0.76) }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
+  slopeTint: { value: new THREE.Color(0.5, 0.66, 0.4) },
   avgGround: { value: new THREE.Color(0x6b8a3a) }, avgDry: { value: new THREE.Color(0x8a8a4a) }, avgLush: { value: new THREE.Color(0x5b7a2a) }, avgForest: { value: new THREE.Color(0x4a4a2a) }, avgWet: { value: new THREE.Color(0x4a3a2a) }, avgPath: { value: new THREE.Color(0x6a5238) }, avgSteep: { value: new THREE.Color(0x7a7a7a) },
   layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layWet: { value: null }, layPath: { value: null }, laySteep: { value: null },
   mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.06 },
@@ -407,7 +414,7 @@ mat.onBeforeCompile = (sh) => {
     uniform sampler2D groundMap; uniform float tile, split; uniform vec2 res;
     uniform float hexOn, hexSize, hexRot, hexSharp, hexBright, macroOn, macroStr, macroSize, macroHue, farOn, farFrom, grid;
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
-    uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 lushTint, dampTint;
+    uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 lushTint, dampTint, slopeTint;
     uniform sampler2D waterMap; uniform float waterOn, wFroth, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow;
     float gWater = 0.0, gFoam = 0.0; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathMap;
     uniform vec3 avgGround, avgDry, avgLush, avgForest, avgWet, avgPath, avgSteep; uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layWet; uniform sampler2D layPath; uniform sampler2D laySteep;
@@ -564,7 +571,8 @@ mat.onBeforeCompile = (sh) => {
       g = over(g, pathC, clamp(er.r * gullyStr + bn * 0.6, 0.0, 1.0) * (1.0 - wForest * 0.6));       // gullies: worn dirt where the water ran
       g = over(g, mix(g, pathC, 0.5), wShoulder * (1.0 - wForest * 0.5));     // trampled edge: half-worn
       g = over(g, pathC, wPath);
-      g = over(g, pathC * vec3(0.95, 0.9, 0.85), steep);                      // slopes: bare dirt
+      vec3 scrubC = mix(lushC * slopeTint, pathC * vec3(0.95, 0.9, 0.85), smoothstep(0.62, 0.8, vn(vW.xz / 7.0)) * 0.8);   // slopes: dark green scrub, bare dirt showing in patches
+      g = over(g, scrubC, steep);
       float rock = smoothstep(rockFrom, rockFrom + 0.1, 1.0 - vWN.y + (fbm(vW.xz / 9.0) - 0.5) * 0.1);
       g = over(g, steepC, rock);                                                 // cliffs: rock in strata
       // FAR COVER: past where the real plants stop, the ground carries clumps and specks where they
@@ -573,7 +581,7 @@ mat.onBeforeCompile = (sh) => {
       if (far > 0.001 && coverFar > 0.5) {
         float clump = fbm(vW.xz / 7.0), speck = vn(vW.xz / 0.9) * 0.6 + vn(vW.xz / 0.35 + 7.0) * 0.4;
         float c = er.b * far * smoothstep(0.55, 0.85, speck + (clump - 0.5) * 0.9);
-        vec3 shrub = mix(g * vec3(0.55, 0.72, 0.45), g * vec3(1.08, 1.02, 0.78), step(0.72, vn(vW.xz / 2.3 + 3.0)));   // mostly dark green clumps, some dry tufts
+        vec3 shrub = mix(g * vec3(0.78, 0.88, 0.72), g * vec3(1.04, 1.01, 0.88), step(0.72, vn(vW.xz / 2.3 + 3.0)));   // mostly darker green clumps, some dry tufts, kept close to the ground's tone
         g = mix(g, shrub, c * 0.8 * (1.0 - steep));
       }
       // the maps themselves, in false colour
@@ -643,7 +651,7 @@ mat.onBeforeCompile = (sh) => {
     #include <dithering_fragment>
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-11' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-13' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground);
 // THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
@@ -709,6 +717,62 @@ function plantSpecies(parts, material, sheet) {
 loadSheet('/models/props/grassBushes.glb', 4, (parts, m) => { COVER.parts = parts; COVER.material = m; COVER.plantSp = plantSpecies(parts, m, 'plant'); placeCover(); });
 loadSheet('/models/props/longGrass.glb', 3, (parts, m) => { COVER.long = { parts, material: m }; COVER.longSp = plantSpecies(parts, m, 'long'); placeCover(); });
 let coverForest = null;
+// far plants blend toward the grass's own colour (its picture's average, tinted as the ground is),
+// darkened a little: bushes are darker than the grass they stand in
+function calmCover() {
+  if (!coverForest) return;
+  const a = U.layLush.value && U.layLush.value.userData.avg, col = (a ? a.clone() : new THREE.Color(0.25, 0.33, 0.1)).multiply(U.lushTint.value).multiplyScalar(0.9);
+  coverForest.setCalm({ calmCol: col, calmFrom: CALM.from, calmTo: CALM.to, calmAmt: CALM.amount });
+}
+const CALM = { from: 25, to: 120, amount: 0.9 };
+// STONES: simple rocks (a lumpy, flattened ball in four shapes, drawn faceted) scattered by the land:
+// thick on steep and rocky ground and in the scree at the foot of the cliffs, a few out in the
+// meadows, none in the water or on the paths. Mostly small, the odd boulder. 20 faces each (80 on gaming).
+const STONES = { on: true, count: TS.stones, size: 1, meshes: [], shapes: null };
+function stoneShapes() {
+  const out = [];
+  for (let v = 0; v < 4; v++) {
+    const g = new THREE.IcosahedronGeometry(1, QUAL.tier === 'gaming' ? 1 : 0), p = g.attributes.position, seen = new Map();
+    for (let k = 0; k < p.count; k++) {
+      const key = p.getX(k).toFixed(3) + ',' + p.getY(k).toFixed(3) + ',' + p.getZ(k).toFixed(3);   // shared corners move together, so the rock stays closed
+      if (!seen.has(key)) seen.set(key, 0.72 + 0.5 * hash(k * 1.7 + v * 13.1, seen.size * 0.37 + v));
+      const f = seen.get(key); p.setXYZ(k, p.getX(k) * f * (1 + 0.25 * v / 3), p.getY(k) * f * (0.5 + 0.08 * v), p.getZ(k) * f);
+    }
+    g.computeVertexNormals(); out.push(g);
+  }
+  return out;
+}
+function placeStones() {
+  for (const m of STONES.meshes) { scene.remove(m); m.dispose(); }
+  STONES.meshes = [];
+  if (!STONES.on || !MAPS.steep) return;
+  STONES.shapes = STONES.shapes || stoneShapes();
+  const r = (a, b) => { const x = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return x - Math.floor(x); };
+  const scree = blur(MAPS.steep, 3), per = [[], [], [], []];
+  let placed = 0;
+  for (let t = 1; placed < STONES.count && t < STONES.count * 30; t++) {
+    const x = (r(t, 41.3) - 0.5) * SIZE * 0.98, z = (r(t, 43.7) - 0.5) * SIZE * 0.98;
+    const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
+    if (waterAt(x, z) > 0.05) continue;
+    const pi = Math.floor((x + SIZE / 2) / SIZE * MAPS.P), pj = Math.floor((z + SIZE / 2) / SIZE * MAPS.P); if (MAPS.path[(pj * MAPS.P + pi) * 4] > 60) continue;
+    const sl = slopeAt(i, j), want = 0.14 + 0.8 * THREE.MathUtils.smoothstep(sl, 0.45, 0.9) + 0.9 * Math.max(0, scree[k] - MAPS.steep[k]) * 2;
+    if (r(t, 47.1) > want) continue;
+    const u = r(t, 49.9), size = STONES.size * (0.22 + 1.7 * u * u * u) * (1 + 0.6 * Math.max(0, scree[k] - MAPS.steep[k]));
+    per[Math.floor(r(t, 51.7) * 4) % 4].push([x, heightAt(x, z) - size * 0.22, z, size, r(t, 53.3) * 6.283, r(t, 57.1)]);
+    placed++;
+  }
+  const base = new THREE.Color(0x8d8a84), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), c = new THREE.Color();
+  per.forEach((list, v) => {
+    if (!list.length) return;
+    const mesh = new THREE.InstancedMesh(STONES.shapes[v], new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, flatShading: true }), list.length);
+    list.forEach(([x, y, z, sc, yaw, tone], n) => {
+      e.set((tone - 0.5) * 0.3, yaw, (tone - 0.5) * 0.2); q.setFromEuler(e); m4.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(sc, sc, sc)); mesh.setMatrixAt(n, m4);
+      mesh.setColorAt(n, c.copy(base).multiplyScalar(0.72 + 0.4 * tone).lerp(new THREE.Color(0x9a8f78), (tone * 7.3) % 1 * 0.35));   // greys, some warmer
+    });
+    mesh.frustumCulled = false; mesh.castShadow = mesh.receiveShadow = false; scene.add(mesh); STONES.meshes.push(mesh);
+  });
+  if ($('stoneInfo')) $('stoneInfo').textContent = `${placed.toLocaleString()} stones`;
+}
 function placeCover() {
   U.coverR.value = COVER.radius;
   for (const im of COVER.meshes) { scene.remove(im); im.dispose(); }
@@ -756,6 +820,7 @@ function placeCover() {
   const species = coverForest ? coverForest.species : [...COVER.plantSp, ...COVER.longSp];
   const use = fixed.filter(f => (f.sp < 16 ? COVER.on : COVER.longOn));
   coverForest = new Forest(renderer, scene, { species, fixed: use, heightAt, imposterAt: COVER.near, band: COVER.near * 0.5, ahead: 0.5, sunDir: SUN_DIR, nearCap: 3000 });
+  calmCover();
   $('coverInfo').textContent = `${placed.toLocaleString()} plants and ${longPlaced.toLocaleString()} long grasses: meshes to ${COVER.near} m, imposters beyond (atlases bake over the first seconds)`;
 }
 buildLand();
@@ -801,7 +866,7 @@ $('tex').addEventListener('change', () => { U.groundMap.value = tex($('tex').val
 // the layers' pictures, and the land's settings (these rebuild the maps)
 const LAYERS = { layDry: 'grassDry', layLush: 'grassMed', layForest: 'forest', layWet: 'darkDirt', layPath: 'dirt', laySteep: 'concrete' };
 for (const [id, def] of Object.entries(LAYERS)) { const el = $(id); for (const n of TEXTURES) el.add(new Option(n, n)); el.value = def; const go = () => { U[id].value = tex(el.value); setAverages(); }; el.addEventListener('change', go); go(); }
-for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'], ['landDry', 'dryHeight', v => v.toFixed(1) + ' m'], ['landForest', 'forest', v => Math.round(v * 100) + '%'], ['landShade', 'shadeReach', v => Math.round(v * TEX) + ' m'], ['landPath', 'pathWidth', v => v.toFixed(1) + ' m']]) {
+for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'], ['landDry', 'dryHeight', v => v.toFixed(1) + ' m'], ['landForest', 'forest', v => Math.round(v * 100) + '%'], ['landShade', 'shadeReach', v => Math.round(v * TEX) + ' m'], ['landPath', 'pathWidth', v => v.toFixed(1) + ' m'], ['landTreeline', 'treeline', v => v + ' m'], ['landHill', 'hillForest', v => Math.round(v * 100) + '%']]) {
   const el = $(id); el.value = LAND[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { LAND[key] = +el.value; buildLand(); });
@@ -813,6 +878,14 @@ for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'],
 $('mixView').addEventListener('change', e => { U.view.value = +e.target.value; });
 $('treesOn').addEventListener('change', e => { if (treeForest) treeForest.group.visible = e.target.checked; });
 $('coverOn').addEventListener('change', e => { COVER.on = e.target.checked; placeCover(); });
+$('stonesOn').checked = STONES.on; $('stonesOn').addEventListener('change', e => { STONES.on = e.target.checked; placeStones(); });
+for (const [id, key, fmt] of [['stoneCount', 'count', v => v.toLocaleString()], ['stoneSize', 'size', v => v.toFixed(1) + '×']]) {
+  const el = $(id); el.value = STONES[key]; $(id + 'Out').textContent = fmt(+el.value);
+  el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); }); el.addEventListener('change', () => { STONES[key] = +el.value; placeStones(); });
+}
+for (const [id, key, fmt] of [['calmAmount', 'amount', v => Math.round(v * 100) + '%'], ['calmFrom', 'from', v => v + ' m'], ['calmTo', 'to', v => v + ' m']]) {
+  const el = $(id); el.value = CALM[key]; const go = () => { CALM[key] = +el.value; $(id + 'Out').textContent = fmt(+el.value); calmCover(); }; el.addEventListener('input', go); go();
+}
 $('longOn').addEventListener('change', e => { COVER.longOn = e.target.checked; placeCover(); });
 for (const [id, key, fmt] of [['coverCount', 'count', v => v.toLocaleString()], ['coverRadius', 'radius', v => v + ' m'], ['coverSize', 'size', v => v.toFixed(1) + '×'], ['longCount', 'longCount', v => v.toLocaleString()], ['longSize', 'longSize', v => v.toFixed(1) + '×'], ['coverNear', 'near', v => v + ' m']]) {
   const el = $(id); el.value = COVER[key]; $(id + 'Out').textContent = fmt(+el.value);
@@ -873,7 +946,7 @@ $('rainPause').onclick = () => { if (!RAIN.gen) return; RAIN.paused = !RAIN.paus
 $('rainStop').onclick = () => { if (!RAIN.gen) return; while (!RAIN.gen.next().done); endRain('finished'); };
 { const el = $('rainSpeed'), go = () => { RAIN.perFrame = +el.value; $('rainSpeedOut').textContent = (+el.value).toLocaleString() + ' drops a frame'; }; el.addEventListener('input', go); go(); }
 for (const [id, key] of [['gullyStr', 'gullyStr'], ['fanStr', 'fanStr'], ['strataStr', 'strataStr']]) { const el = $(id), go = () => { U[key].value = +el.value; $(id + 'Out').textContent = Math.round(+el.value * 100) + '%'; }; el.addEventListener('input', go); go(); }
-for (const [id, key] of [['lushTint', 'lushTint'], ['dampTint', 'dampTint']]) { const el = $(id); el.value = '#' + U[key].value.clone().convertLinearToSRGB().getHexString(); el.addEventListener('input', () => { U[key].value.set(el.value).convertSRGBToLinear(); }); }
+for (const [id, key] of [['lushTint', 'lushTint'], ['dampTint', 'dampTint'], ['slopeTint', 'slopeTint']]) { const el = $(id); el.value = '#' + U[key].value.clone().convertLinearToSRGB().getHexString(); el.addEventListener('input', () => { U[key].value.set(el.value).convertSRGBToLinear(); calmCover(); }); }
 { const el = $('strataSize'), go = () => { U.strataSize.value = +el.value; $('strataSizeOut').textContent = (+el.value).toFixed(1) + ' m'; }; el.addEventListener('input', go); go(); }
 // ── the forest's settings: distances apply at once, the atlas and leaf detail re-bake ──
 for (const [id, key, fmt, live] of [['fImp', 'imposterAt', v => v + ' m', true], ['fBand', 'band', v => v + ' m', true], ['fAhead', 'ahead', v => Math.round(v * 100) + '% ahead', true], ['fGrid', 'grid', v => v + ' × ' + v, false], ['fCell', 'cell', v => v + ' px', false]]) {

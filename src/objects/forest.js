@@ -107,6 +107,7 @@ export class Forest {
       for (const [name, size] of [['iPos', 3], ['iYaw', 1], ['iScale', 1], ['iTint', 3], ['iFade', 1]]) { const a = new THREE.InstancedBufferAttribute(new Float32Array(n * size), size); a.setUsage(THREE.DynamicDrawUsage); geo.setAttribute(name, a); }
       geo.instanceCount = 0;
       const mat = imposterMaterial(sp.bake, { sunDir: this.sunDir, blend: true, depth: !this.light, shadows: this.shadows, soften: sp.soften || 0 });
+      if (this.calm) for (const [k, v] of Object.entries(this.calm)) mat.uniforms[k].value = v;
       mat.uniforms.blendDist.value = 300;
       const imposter = new THREE.Mesh(geo, mat); imposter.frustumCulled = false; imposter.castShadow = this.shadows; imposter.customDepthMaterial = mat.userData.depthMaterial;
       this.group.add(imposter);
@@ -138,6 +139,13 @@ export class Forest {
     for (const b of this.built) b.trees = [];
     for (const list of this.tilesLaid.values()) for (const t of list) this.built.find(b => b.sp === t.sp).trees.push(t);
     this.assignDirty = true;
+  }
+
+  // far plants calmed toward one colour: { calmCol (THREE.Color), calmFrom, calmTo (m), calmAmt (0..1) };
+  // kept for species not built yet
+  setCalm(c) {
+    this.calm = { ...(this.calm || {}), ...c };
+    for (const b of this.built) { const u = b.imposter.material.uniforms; for (const [k, v] of Object.entries(this.calm)) if (u[k]) u[k].value = v; }
   }
 
   assign(camera, target) {
