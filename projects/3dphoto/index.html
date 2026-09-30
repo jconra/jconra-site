@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Photo</title>
+<script src="/src/oops.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; background:#101418; color:#ccd6de; font:13px/1.45 ui-sans-serif, system-ui, sans-serif; }
+  canvas { display:block; touch-action:none; }
+  #ui { position:fixed; left:12px; bottom:12px; z-index:2; background:rgba(10,13,17,.8); border:1px solid #212a34; border-radius:6px; padding:10px 12px; width:min(300px, calc(100vw - 24px)); }
+  #ui.min .body { display:none; }
+  #ui h1 { font:600 11px ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase; color:#e8f1f5; display:flex; justify-content:space-between; align-items:center; }
+  #ui h1 button { font:600 11px ui-monospace,monospace; background:none; border:1px solid #212a34; color:#8494a0; border-radius:3px; padding:2px 7px; cursor:pointer; }
+  .row { display:grid; grid-template-columns:1fr auto; gap:2px 8px; margin:8px 0 0; }
+  .row output { font:12px ui-monospace,monospace; color:#e8f1f5; }
+  .row input { grid-column:1 / -1; width:100%; accent-color:#35e07d; }
+  .check { display:flex; gap:8px; align-items:center; margin-top:8px; cursor:pointer; }
+  .check input { accent-color:#35e07d; }
+  #loading { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; font:12px ui-monospace,monospace; letter-spacing:.2em; color:#8494a0; }
+  #back { position:fixed; top:14px; left:16px; z-index:2; font:11px ui-monospace,monospace; letter-spacing:.14em; color:#8494a0; text-decoration:none; text-transform:uppercase; }
+</style>
+</head>
+<body>
+<a id="back" href="/projects/">&larr; projects</a>
+<div id="loading">LOADING</div>
+<div id="ui" class="min">
+  <h1>Settings <button id="min" type="button">show</button></h1>
+  <div class="body">
+    <label class="check" for="spin"><input id="spin" type="checkbox" checked> Turn slowly</label>
+    <div class="row"><label for="photo">Photo light / scene light</label><output id="photoOut"></output><input id="photo" type="range" min="0" max="1" step="0.01" value="0.65"></div>
+    <div class="row"><label for="exposure">Brightness</label><output id="exposureOut"></output><input id="exposure" type="range" min="0.5" max="1.6" step="0.01" value="1"></div>
+    <div class="row"><label for="warmth">Warmth</label><output id="warmthOut"></output><input id="warmth" type="range" min="-1" max="1" step="0.01" value="0.15"></div>
+  </div>
+</div>
+<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+<script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.158.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/" } }</script>
+<script type="module">
+// A 3D photo (a Tripo model made from a photograph). Such a model's texture already holds the real
+// light and shading from the photo; lit again as a normal surface it doubles up and shines, which is
+// what makes people look plastic. So the texture mostly shows as it was photographed (emissive),
+// with only a little soft scene light for shape, and no shine at all.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+const $ = (id) => document.getElementById(id);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.NeutralToneMapping || THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x101418);
+const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.01, 100);
+const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
+const hemi = new THREE.HemisphereLight(0xfff4e8, 0x3a3630, 1.2); scene.add(hemi);
+const key = new THREE.DirectionalLight(0xffffff, 1.0); key.position.set(1, 1.5, 2); scene.add(key);
+const holder = new THREE.Group(); scene.add(holder);
+let mats = [];
+function look() {
+  const k = +$('photo').value, w = +$('warmth').value;
+  const tint = new THREE.Color(1 + 0.08 * w, 1, 1 - 0.1 * w);
+  for (const m of mats) { m.emissive.copy(tint).multiplyScalar(k); m.color.copy(tint).multiplyScalar(1 - k * 0.85); }
+  renderer.toneMappingExposure = +$('exposure').value;
+  $('photoOut').textContent = Math.round(k * 100) + '% photo'; $('exposureOut').textContent = (+$('exposure').value).toFixed(2); $('warmthOut').textContent = w > 0 ? 'warmer' : w < 0 ? 'cooler' : 'neutral';
+}
+new GLTFLoader().load('spin.glb', (g) => {
+  const m = g.scene; holder.add(m);
+  m.traverse(o => { if (!o.isMesh) return;
+    const src = o.material, map = src.map; if (map) { map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = renderer.capabilities.getMaxAnisotropy(); }
+    o.material = new THREE.MeshStandardMaterial({ map, emissiveMap: map, roughness: 1, metalness: 0, side: THREE.DoubleSide });   // no shine
+    mats.push(o.material); });
+  const box = new THREE.Box3().setFromObject(m), c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+  m.position.sub(c);
+  const r = size.length() / 2, d = r / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) * 0.9;
+  camera.position.set(0, size.y * 0.1, d); camera.near = d / 100; camera.far = d * 20; camera.updateProjectionMatrix();
+  controls.minDistance = r * 0.4; controls.maxDistance = d * 3;
+  look(); $('loading').remove();
+}, (e) => { if (e.total) $('loading').textContent = 'LOADING ' + Math.round(e.loaded / e.total * 100) + '%'; });
+for (const id of ['photo', 'exposure', 'warmth']) $(id).addEventListener('input', look);
+$('min').onclick = () => { $('ui').classList.toggle('min'); $('min').textContent = $('ui').classList.contains('min') ? 'show' : 'hide'; };
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => { const dt = clock.getDelta(); if ($('spin').checked) holder.rotation.y += dt * 0.25; controls.update(); renderer.render(scene, camera); });
+</script>
+</body>
+</html>
