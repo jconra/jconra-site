@@ -16,19 +16,24 @@ import { chooseTier, saveTier, watchFrames, TIERS } from '../../src/quality.js';
 
 const $ = (id) => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(innerWidth, innerHeight);
 // QUALITY: what each tier means here. `forest`, `cover` and `u` seed the defaults before anything is
 // built; `controls` are the panel's own controls, set (and fired) when the tier changes while running.
+// `lite` (potato) is fixed at load: no smoothing, a land mesh with a quarter of the points, and the
+// ground shader's cheap path (one read per layer, one noise read where there were four).
 const TIER_SET = {
-  potato: { ratio: 1, forest: { imposterAt: 60, band: 30, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 2500, longCount: 800, near: 10, radius: 90 },
+  potato: { ratio: 1, lite: true, forest: { imposterAt: 60, band: 30, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 2500, longCount: 800, near: 10, radius: 90 },
             u: { wWaveOn: 0, stampFar: 12 }, checks: { stampOn: false, hexOn: false, farOn: false, wWaveOn: false } },
   normal: { ratio: 1.5, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 8000, longCount: 3000, near: 35, radius: 140 },
             u: { wWaveOn: 1, stampFar: 30 }, checks: { stampOn: true, hexOn: true, farOn: false, wWaveOn: true } },
   gaming: { ratio: 2, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 16000, longCount: 6000, near: 60, radius: 220 },
             u: { wWaveOn: 1, stampFar: 45 }, checks: { stampOn: true, hexOn: true, farOn: true, wWaveOn: true } },
 };
-const QUAL = chooseTier(renderer), TS = TIER_SET[QUAL.tier];
+// the tier is picked on a throwaway context first, so the real one can be made without smoothing
+// (multisampling) on potato; smoothing can't be changed after a context exists, so a tier switch
+// while running keeps whatever the page started with
+const QUAL = (() => { const probe = new THREE.WebGLRenderer(); const q = chooseTier(probe); probe.dispose(); probe.forceContextLoss(); return q; })(), TS = TIER_SET[QUAL.tier];
+const renderer = new THREE.WebGLRenderer({ antialias: !TS.lite });
+renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, TS.ratio));
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
 document.body.appendChild(renderer.domElement);
@@ -44,7 +49,7 @@ const sun = new THREE.DirectionalLight(0xfff1dc, 2.4); sun.position.set(-300, 40
 // ── the land: hills from noise, then terraces, then erosion, on a 512 x 512 grid ──────────
 // The grid (3.1 m a cell, the same cells the maps use) is the land: the mesh, the maps, the trees,
 // the plants and the camera all read it through heightAt.
-const SIZE = 1600, SEG = 511, N = 512, TEX = SIZE / N;
+const SIZE = 1600, N = 512, SEG = TS.lite ? 255 : N - 1, TEX = SIZE / N;   // the mesh: a vertex on each cell, or on every other one
 function hash(x, z) { const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453; return s - Math.floor(s); }
 function vnoise(x, z) { const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz, u = fx * fx * (3 - 2 * fx), v = fz * fz * (3 - 2 * fz);
   const a = hash(ix, iz), b = hash(ix + 1, iz), c = hash(ix, iz + 1), d = hash(ix + 1, iz + 1); return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v; }
@@ -319,7 +324,7 @@ const U = {
 for (const [k, v] of Object.entries(TS.u)) if (U[k]) U[k].value = v;
 { const t = new THREE.TextureLoader().load('/textures/stamps/atlas.png'); t.colorSpace = THREE.SRGBColorSpace; t.premultiplyAlpha = true; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); U.stampAtlas.value = t; }
 const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0 });
-if (GL2) mat.defines = { HEX_GRAD: '' };        // WebGL 2 can give each turned read its own true gradients (no seams); WebGL 1 lets the blend hide them
+mat.defines = {}; if (GL2) mat.defines.HEX_GRAD = ''; if (TS.lite) mat.defines.LITE = '';        // WebGL 2 can give each turned read its own true gradients (no seams); WebGL 1 lets the blend hide them
 mat.onBeforeCompile = (sh) => {
   Object.assign(sh.uniforms, U);
   sh.vertexShader = 'varying vec3 vW; varying vec3 vWN;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvW = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);');
@@ -337,7 +342,11 @@ mat.onBeforeCompile = (sh) => {
     vec2 h2(vec2 p) { return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453); }
     float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
       return mix(mix(h1(i), h1(i + vec2(1, 0)), f.x), mix(h1(i + vec2(0, 1)), h1(i + vec2(1, 1)), f.x), f.y); }
+    #ifdef LITE
+    float fbm(vec2 p) { return 0.06 + 0.88 * vn(p); }   // one read, about the same spread
+    #else
     float fbm(vec2 p) { return 0.5 * vn(p) + 0.25 * vn(p * 2.03 + 7.1) + 0.125 * vn(p * 4.1 + 3.3) + 0.0625 * vn(p * 8.3 + 1.7); }
+    #endif
     vec3 readAt(vec2 uv, vec2 dx, vec2 dy) {
     #ifdef HEX_GRAD
       return textureGrad(groundMap, uv, dx, dy).rgb;
@@ -401,12 +410,20 @@ mat.onBeforeCompile = (sh) => {
       return mix(col, col * (1.0 - stampShade), shade * (1.0 - 0.0));
     }
     // a layer's picture, read twice at two scales so its own repeat is softened
+    #ifdef LITE
+    vec3 lay(sampler2D t, vec2 uv, vec2 off) { return texture2D(t, uv + off).rgb; }
+    #else
     vec3 lay(sampler2D t, vec2 uv, vec2 off) { return mix(texture2D(t, uv + off).rgb, texture2D(t, uv * 0.31 + off * 1.7).rgb, 0.35); }
+    #endif
     // TRIPLANAR: on a steep face a texture laid from above is smeared down it; this reads it from the
     // side as well (along x and along z) and blends by which way the ground faces
     vec3 lay3(sampler2D t, vec3 p, vec3 n, float scale) {
       vec3 w = pow(abs(n), vec3(4.0)); w /= (w.x + w.y + w.z);
+    #ifdef LITE
+      return texture2D(t, (w.y > 0.5 ? p.xz : w.x > w.z ? p.zy : p.xy) / scale).rgb;   // the one side the face mostly looks along
+    #else
       return texture2D(t, p.zy / scale).rgb * w.x + texture2D(t, p.xz / scale).rgb * w.y + texture2D(t, p.xy / scale).rgb * w.z;
+    #endif
     }
     // HEIGHT BLENDING: b comes in where its weight says, but its brighter (taller) parts arrive first
     // and a's brighter parts hold out longest, so the edge follows the pictures instead of fading
@@ -710,7 +727,7 @@ for (const [id, key, fmt] of [['coverCount', 'count', v => v.toLocaleString()], 
 const RAIN = { gen: null, paused: false, perFrame: 1500, done: 0, trail: [], frame: 0 };
 const trailGeo = new THREE.BufferGeometry(), trailLines = new THREE.LineSegments(trailGeo, new THREE.LineBasicMaterial({ color: 0x5fb4ff, transparent: true, opacity: 0.55 }));
 trailLines.frustumCulled = false; trailLines.visible = false; scene.add(trailLines);
-function fastMesh() { const p = geo.attributes.position; for (let k = 0; k < p.count; k++) p.setY(k, Hg[k]); p.needsUpdate = true; geo.computeVertexNormals(); }
+function fastMesh() { if (SEG !== N - 1) { shapeMesh(); return; } const p = geo.attributes.position; for (let k = 0; k < p.count; k++) p.setY(k, Hg[k]); p.needsUpdate = true; geo.computeVertexNormals(); }
 function endRain(msg) { RAIN.gen = null; trailLines.visible = false; findWater(Hg); fastMesh(); buildLand(); if (treeForest) treeForest.group.visible = $('treesOn').checked; $('shapeInfo').textContent = msg; }
 function startRain() {
   FLOW.fill(0); SETTLE.fill(0);

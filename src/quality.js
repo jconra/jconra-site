@@ -4,8 +4,8 @@
 // a tier means for its own settings - this only decides the tier.
 //
 // Detection, in order:
-//   no WebGL2                                      -> potato (Jacob's work PC)
 //   a software renderer (SwiftShader, llvmpipe)    -> potato
+//   no WebGL2                                      -> potato (Jacob's work PC)
 //   under 4 GB of memory or 4 cores                -> potato
 //   a phone or tablet                              -> normal
 //   a known dedicated GPU (GeForce, Radeon RX/Pro, Apple M, Arc) -> gaming
@@ -23,8 +23,8 @@ export function gpuName(renderer) {
 export function detectTier(renderer) {
   const name = gpuName(renderer), mem = navigator.deviceMemory || 8, cores = navigator.hardwareConcurrency || 8;
   const mobile = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && Math.min(screen.width, screen.height) < 900);
-  if (!renderer.capabilities.isWebGL2) return { tier: 'potato', why: 'no WebGL2' };
-  if (/SwiftShader|llvmpipe|Software|Basic Render/i.test(name)) return { tier: 'potato', why: 'software rendering' };
+  if (/SwiftShader|llvmpipe|Software|Basic Render/i.test(name)) return { tier: 'potato', why: 'software rendering, no graphics card in use' };
+  if (!renderer.capabilities.isWebGL2) return { tier: 'potato', why: 'no WebGL2' + (name ? ' · ' + name : '') };
   if (mem < 4 || cores < 4) return { tier: 'potato', why: `${mem} GB, ${cores} cores` };
   if (mobile) return { tier: 'normal', why: 'phone or tablet' };
   if (/GeForce|RTX|GTX|Quadro|Radeon (RX|Pro)|Apple M\d|Arc\(TM\)|Arc A/i.test(name)) return { tier: 'gaming', why: name };
