@@ -18,10 +18,13 @@ const $ = (id) => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
 // QUALITY: what each tier means here. `forest`, `cover` and `u` seed the defaults before anything is
 // built; `controls` are the panel's own controls, set (and fired) when the tier changes while running.
-// `lite` (potato) is fixed at load: no smoothing, a land mesh with a quarter of the points, and the
-// ground shader's cheap path (one read per layer, one noise read where there were four).
+// Potato is aimed at a machine with no graphics card (a thin client: every pixel drawn by the
+// processor), so it cuts pixels first: half resolution, every tree and plant an imposter, and `lite`,
+// fixed at load: no smoothing, a land mesh with a quarter of the points, and the ground painted in
+// flat colours (each picture's average) instead of read from the pictures, one noise read where
+// there were four.
 const TIER_SET = {
-  potato: { ratio: 1, lite: true, forest: { imposterAt: 60, band: 30, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 2500, longCount: 800, near: 10, radius: 90 },
+  potato: { ratio: 0.5, lite: true, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 2500, longCount: 800, near: 0, radius: 90 },
             u: { wWaveOn: 0, stampFar: 12 }, checks: { stampOn: false, hexOn: false, farOn: false, wWaveOn: false } },
   normal: { ratio: 1.5, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 8000, longCount: 3000, near: 35, radius: 140 },
             u: { wWaveOn: 1, stampFar: 30 }, checks: { stampOn: true, hexOn: true, farOn: false, wWaveOn: true } },
@@ -352,8 +355,19 @@ function buildLand() {
 // ── textures ────────────────────────────────────────────────────────────────────
 const TEXTURES = ['forest', 'leaves', 'needles', 'moss', 'dirt', 'darkDirt', 'ferns', 'shrubs', 'grassMed', 'grassDry', 'grassDark', 'concrete', 'asphalt'];
 const loader = new THREE.TextureLoader(), cache = {};
+// a picture's average colour (potato paints each ground layer in this instead of reading the picture)
+function avgColour(img) {
+  const c = document.createElement('canvas'); c.width = c.height = 16; const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0, 16, 16);
+  const d = g.getImageData(0, 0, 16, 16).data; let r = 0, gg = 0, b = 0; for (let k = 0; k < d.length; k += 4) { r += d[k]; gg += d[k + 1]; b += d[k + 2]; }
+  const n = 255 * d.length / 4; return new THREE.Color().setRGB(r / n, gg / n, b / n, THREE.SRGBColorSpace);
+}
+function setAverages() {
+  if (!TS.lite) return;
+  for (const [id, a] of [['groundMap', 'avgGround'], ['layDry', 'avgDry'], ['layLush', 'avgLush'], ['layForest', 'avgForest'], ['layWet', 'avgWet'], ['layPath', 'avgPath'], ['laySteep', 'avgSteep']]) {
+    const t = U[id].value; if (t && t.userData.avg) U[a].value.copy(t.userData.avg); }
+}
 function tex(name) {
-  if (!cache[name]) { const t = loader.load(`/textures/ground/${name}.jpg`); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); cache[name] = t; }
+  if (!cache[name]) { const t = loader.load(`/textures/ground/${name}.jpg`, () => { t.userData.avg = avgColour(t.image); setAverages(); }); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); cache[name] = t; }
   return cache[name];
 }
 for (const n of TEXTURES) $('tex').add(new Option(n, n));
@@ -375,6 +389,7 @@ const U = {
   wDeep: { value: new THREE.Color('#123a4a') }, wShallow: { value: new THREE.Color('#3f7f86') }, wWave: { value: 2.2 }, wSpeed: { value: 0.6 }, wSpec: { value: 0.8 }, wReflect: { value: 0.55 }, wFroth: { value: 1 }, wWaveOn: { value: 1 },
   coverR: { value: 140 }, coverFar: { value: 1 }, rockFrom: { value: 0.25 },
   gullyStr: { value: 0.8 }, fanStr: { value: 0.45 }, strataStr: { value: 0.8 }, strataSize: { value: 1.6 }, lushTint: { value: new THREE.Color(0.86, 1.0, 0.8) }, dampTint: { value: new THREE.Color(0.78, 0.92, 0.76) }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
+  avgGround: { value: new THREE.Color(0x6b8a3a) }, avgDry: { value: new THREE.Color(0x8a8a4a) }, avgLush: { value: new THREE.Color(0x5b7a2a) }, avgForest: { value: new THREE.Color(0x4a4a2a) }, avgWet: { value: new THREE.Color(0x4a3a2a) }, avgPath: { value: new THREE.Color(0x6a5238) }, avgSteep: { value: new THREE.Color(0x7a7a7a) },
   layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layWet: { value: null }, layPath: { value: null }, laySteep: { value: null },
   mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.06 },
 };
@@ -392,7 +407,7 @@ mat.onBeforeCompile = (sh) => {
     uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 lushTint, dampTint;
     uniform sampler2D waterMap; uniform float waterOn, wFroth, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow;
     float gWater = 0.0, gFoam = 0.0; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathMap;
-    uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layWet; uniform sampler2D layPath; uniform sampler2D laySteep;
+    uniform vec3 avgGround, avgDry, avgLush, avgForest, avgWet, avgPath, avgSteep; uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layWet; uniform sampler2D layPath; uniform sampler2D laySteep;
     varying vec3 vWN;
     varying vec3 vW;
     float h1(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -506,7 +521,11 @@ mat.onBeforeCompile = (sh) => {
     vec2 uv = vW.xz / tile;
     bool plain = gl_FragCoord.x < split * res.x;
     vec3 g;
+    #ifdef LITE
+    g = avgGround * (0.9 + 0.2 * vn(vW.xz / 5.0));                       // flat colour, a little mottled
+    #else
     if (plain || hexOn < 0.5) g = texture2D(groundMap, uv).rgb; else g = hexTile(uv);
+    #endif
     if (!plain && mixOn > 0.5) {
       // the land's maps here, each edge roughened by a little noise
       vec2 luv = vW.xz / landSize + 0.5;
@@ -517,11 +536,19 @@ mat.onBeforeCompile = (sh) => {
       float wLush = clamp(m.a * 1.4 + bn, 0.0, 1.0), wForest = clamp(m.b * 1.3 + bn2 * 0.7, 0.0, 1.0);
       float dryLand = 1.0 - smoothstep(0.25, 0.45, wAt);                      // never paint path over water
       float wPath = clamp(pth.r + bn * 0.5, 0.0, 1.0) * dryLand, wShoulder = clamp(pth.g * 1.5 + bn, 0.0, 1.0) * dryLand;
+      #ifdef LITE
+      vec3 dryC = avgDry, lushC = avgLush, forC = avgForest, wetC = avgWet, pathC = avgPath;
+      #else
       vec3 dryC = lay(layDry, uv, vec2(0.13, 0.71)), lushC = lay(layLush, uv, vec2(0.61, 0.27)), forC = lay(layForest, uv * 1.3, vec2(0.37, 0.93));
       vec3 wetC = lay(layWet, uv, vec2(0.83, 0.41)), pathC = lay(layPath, uv * 1.6, vec2(0.29, 0.17));
+      #endif
       // the rock of a steep face: read from the side, in horizontal strata (bands of lighter and
       // darker, warmer and greyer layers that wander a little), darker in the overhanging parts
+      #ifdef LITE
+      vec3 steepC = avgSteep;
+      #else
       vec3 steepC = lay3(laySteep, vW, normalize(vWN), tile * 0.8);
+      #endif
       float band = vW.y / strataSize + (fbm(vW.xz / 30.0) - 0.5) * 2.5;
       float layer = fbm(vec2(band * 1.7, 3.1)), fine = vn(vec2(band * 9.0, 1.3));
       steepC *= mix(vec3(1.0), mix(vec3(0.78, 0.74, 0.7), vec3(1.12, 1.05, 0.95), layer) * (0.85 + 0.3 * fine), strataStr);
@@ -613,7 +640,7 @@ mat.onBeforeCompile = (sh) => {
     #include <dithering_fragment>
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-9' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-10' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground);
 // THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
@@ -767,10 +794,10 @@ const SL = {
 for (const [id, [apply, fmt]] of Object.entries(SL)) { const el = $(id), go = () => { apply(+el.value); $(id + 'Out').textContent = fmt(+el.value); }; el.addEventListener('input', go); go(); }
 for (const [id, on] of Object.entries(TS.checks)) if ($(id)) $(id).checked = on;
 for (const [id, key] of [['hexOn', 'hexOn'], ['macroOn', 'macroOn'], ['farOn', 'farOn'], ['grid', 'grid'], ['stampOn', 'stampOn'], ['mixOn', 'mixOn'], ['wWaveOn', 'wWaveOn'], ['coverFar', 'coverFar']]) { const el = $(id), go = () => { U[key].value = el.checked ? 1 : 0; }; el.addEventListener('change', go); go(); }
-$('tex').addEventListener('change', () => { U.groundMap.value = tex($('tex').value); });
+$('tex').addEventListener('change', () => { U.groundMap.value = tex($('tex').value); setAverages(); });
 // the layers' pictures, and the land's settings (these rebuild the maps)
 const LAYERS = { layDry: 'grassDry', layLush: 'grassMed', layForest: 'forest', layWet: 'darkDirt', layPath: 'dirt', laySteep: 'concrete' };
-for (const [id, def] of Object.entries(LAYERS)) { const el = $(id); for (const n of TEXTURES) el.add(new Option(n, n)); el.value = def; const go = () => { U[id].value = tex(el.value); }; el.addEventListener('change', go); go(); }
+for (const [id, def] of Object.entries(LAYERS)) { const el = $(id); for (const n of TEXTURES) el.add(new Option(n, n)); el.value = def; const go = () => { U[id].value = tex(el.value); setAverages(); }; el.addEventListener('change', go); go(); }
 for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'], ['landDry', 'dryHeight', v => v.toFixed(1) + ' m'], ['landForest', 'forest', v => Math.round(v * 100) + '%'], ['landShade', 'shadeReach', v => Math.round(v * TEX) + ' m'], ['landPath', 'pathWidth', v => v.toFixed(1) + ' m']]) {
   const el = $(id); el.value = LAND[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });

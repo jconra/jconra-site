@@ -155,7 +155,7 @@ export class Forest {
       const near = [];
       for (let k = 0; k < trees.length; k++) {
         const t = trees[k];
-        const meshFade = meshes.length ? THREE.MathUtils.clamp((D + B - t.d) / (2 * B), 0, 1) : 0;
+        const meshFade = meshes.length && D > 0 ? (B > 0 ? THREE.MathUtils.clamp((D + B - t.d) / (2 * B), 0, 1) : t.d < D ? 1 : 0) : 0;   // imposterAt 0: all imposters
         aFade[k] = 1 - meshFade;
         aPos[k * 3] = t.pos.x; aPos[k * 3 + 1] = t.pos.y - sp.baseY * t.scale * sp.unit; aPos[k * 3 + 2] = t.pos.z;
         aYaw[k] = t.yaw; aScl[k] = t.scale * sp.unit; aTint[k * 3] = t.tint.r; aTint[k * 3 + 1] = t.tint.g; aTint[k * 3 + 2] = t.tint.b;
