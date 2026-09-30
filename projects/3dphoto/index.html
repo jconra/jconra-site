@@ -19,12 +19,17 @@
   .check { display:flex; gap:8px; align-items:center; margin-top:8px; cursor:pointer; }
   .check input { accent-color:#35e07d; }
   #loading { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; font:12px ui-monospace,monospace; letter-spacing:.2em; color:#8494a0; }
+  #nogl { position:fixed; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:24px 16px; text-align:center; }
+  #nogl img { max-width:min(900px, 100%); max-height:70vh; object-fit:contain; }
+  #nogl p { max-width:52ch; color:#aeb9c2; }
+  #nogl b { color:#e8f1f5; }
   #back { position:fixed; top:14px; left:16px; z-index:2; font:11px ui-monospace,monospace; letter-spacing:.14em; color:#8494a0; text-decoration:none; text-transform:uppercase; }
 </style>
 </head>
 <body>
 <a id="back" href="/projects/">&larr; projects</a>
 <div id="loading">LOADING</div>
+<div id="nogl"><img src="still.jpg" alt="The 3D photo, as a still picture"><p><b>3D is turned off in this browser</b>, so here is a still picture instead. To see it in 3D: in Chrome, turn on Settings → System → "Use graphics acceleration when available" and restart Chrome, or open this page in Safari.</p></div>
 <div id="ui" class="min">
   <h1>Settings <button id="min" type="button">show</button></h1>
   <div class="body">
@@ -45,6 +50,10 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 const $ = (id) => document.getElementById(id);
+// WebGL switched off (or blocked): the still picture and how to turn 3D on, asked before three tries
+// (three logs an error of its own when it fails, which the error overlay would show)
+const hasGL = (() => { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; } })();
+if (!hasGL) { document.getElementById('loading').remove(); document.getElementById('ui').remove(); document.getElementById('nogl').style.display = 'flex'; await new Promise(() => {}); }   // (stops here, quietly)
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.NeutralToneMapping || THREE.ACESFilmicToneMapping;
