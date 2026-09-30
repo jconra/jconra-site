@@ -130,7 +130,7 @@ function* erodeSteps(H, drops, chunk, trail = null) {
 // channels are carved a little; the shader paints the water on (no see-through mesh).
 let trees = [], maskA = null, pathCanvas = null; const MAPS = {};
 const WATER = { on: true, river: 1800, width: 1.6, carve: 0.8, pondDepth: 0.35, pondMin: 30 };
-const WDEPTH = new Float32Array(N * N), ACC = new Float32Array(N * N), DOWN = new Int32Array(N * N);
+const POND = new Uint8Array(N * N), WDEPTH = new Float32Array(N * N), ACC = new Float32Array(N * N), DOWN = new Int32Array(N * N);
 let waterCanvas = null, waterTex = null;          // (the shader's uniforms are made later; they pick waterTex up)
 function findWater(H) {
   WDEPTH.fill(0); ACC.fill(0); DOWN.fill(-1);
@@ -154,6 +154,7 @@ function findWater(H) {
     while (st.length) { const c = st.pop(), i = c % N, j = (c / N) | 0; for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ni = i + di, nj = j + dj; if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue; const n = nj * N + ni; if (!seen[n] && F[n] - H[n] > WATER.pondDepth * 0.3) { seen[n] = 1; st.push(n); pool.push(n); } } }
     if (pool.length >= WATER.pondMin) for (const c of pool) pond[c] = 1;
   }
+  POND.set(pond);
   for (let k = 0; k < N * N; k++) if (pond[k]) { WDEPTH[k] = F[k] - H[k]; H[k] = F[k]; }       // the pond's ground is its surface
   // rivers: carved a little where enough water gathers (not in the ponds)
   for (let k = 0; k < N * N; k++) if (!pond[k] && ACC[k] > WATER.river) { const t = Math.min(1, Math.log(ACC[k] / WATER.river) / 3); H[k] -= WATER.carve * (0.5 + t); WDEPTH[k] = 0.3 + 0.5 * t; }
@@ -224,7 +225,7 @@ function buildLand() {
   // wet and dry: how far below or above its surroundings each spot is
   const wet = new Float32Array(N * N), dry = new Float32Array(N * N), steep = new Float32Array(N * N);
   for (let k = 0; k < N * N; k++) { const d = Hb[k] - Hg[k]; wet[k] = Math.min(1, Math.max(0, d / LAND.wetDepth)); dry[k] = Math.min(1, Math.max(0, -d / LAND.dryHeight)); }
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) steep[j * N + i] = THREE.MathUtils.smoothstep(slopeAt(i, j), 0.35, 0.7);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) steep[j * N + i] = THREE.MathUtils.smoothstep(slopeAt(i, j), 0.36, 0.7);   // bare from about 20 deg, fully by 35
   // trees: clumps from slow noise, thinned on wet and steep ground; one candidate every 6 m
   trees = []; const tree = new Float32Array(N * N);
   const clump = (x, z) => { let n = 0, a = 1, f = 1 / 230; for (let o = 0; o < 3; o++) { n += (vnoise(x * f + 40, z * f + 17) - 0.5) * a; a *= 0.5; f *= 2.2; } return n + 0.5; };
@@ -241,14 +242,20 @@ function buildLand() {
   const fl = new Float32Array(N * N), se = new Float32Array(N * N);
   for (let q = 0; q < N * N; q++) { fl[q] = Math.min(1, Math.max(0, (Math.log(1 + FLOW[q]) - 2.2) / 2.5)); se[q] = Math.min(1, SETTLE[q] * 4); }
   const gully = blur(fl, 1), fan = blur(se, 2), dataB = new Uint8Array(N * N * 4);
-  for (let q = 0; q < N * N; q++) { dataB[q * 4] = gully[q] * 255; dataB[q * 4 + 1] = Math.min(1, fan[q] * 2) * 255; dataB[q * 4 + 3] = 255; }
+  for (let q = 0; q < N * N; q++) {
+    const sh = Math.min(1, Math.max(0, wide[q] * 2.2 - canopy[q] * 0.8)), open = 1 - Math.min(1, canopy[q] + sh);
+    const cover = WDEPTH[q] > 0 ? 0 : Math.min(1, (0.55 * open + 1.0 * sh + 0.3 * canopy[q]) * (1 - steep[q]) * (1 - Math.max(0, wet[q] - 0.6) * 2));   // where plants would grow
+    dataB[q * 4] = gully[q] * 255; dataB[q * 4 + 1] = Math.min(1, fan[q] * 2) * 255; dataB[q * 4 + 2] = cover * 255; dataB[q * 4 + 3] = 255;
+  }
   if (!U.maskB.value) { const t = new THREE.DataTexture(dataB, N, N, THREE.RGBAFormat); t.magFilter = t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; U.maskB.value = t; } else U.maskB.value.image.data.set(dataB);
   U.maskB.value.needsUpdate = true;
   // paths: cheapest routes over the grid, where steep, wet and thick forest cost more
-  const cost = new Float32Array(N * N); for (let k = 0; k < N * N; k++) cost[k] = 1 + 60 * steep[k] + 8 * wet[k] + 2 * canopy[k] + (WDEPTH[k] > 0 ? 40 : 0);   // paths cross water only where they must
+  const cost = new Float32Array(N * N); for (let k = 0; k < N * N; k++) cost[k] = 1 + 60 * steep[k] + 8 * wet[k] + 2 * canopy[k] + (POND[k] ? 5000 : WDEPTH[k] > 0 ? 40 : 0);   // round the lakes; over a river only where it must
   const route = (ax, az, bx, bz) => {
     const S = N / 2, cell = (x, z) => [Math.round((x + SIZE / 2) / TEX), Math.round((z + SIZE / 2) / TEX)];
-    const [si, sj] = cell(ax, az), [ti, tj] = cell(bx, bz), g = new Float32Array(N * N).fill(Infinity), from = new Int32Array(N * N).fill(-1), heap = [];
+    // each end moved to the nearest dry cell
+    const dry = ([i, j]) => { for (let r = 0; r < 80; r++) for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) { if (Math.max(Math.abs(di), Math.abs(dj)) !== r) continue; const ii = Math.min(N - 1, Math.max(0, i + di)), jj = Math.min(N - 1, Math.max(0, j + dj)); if (!WDEPTH[jj * N + ii]) return [ii, jj]; } return [i, j]; };
+    const [si, sj] = dry(cell(ax, az)), [ti, tj] = dry(cell(bx, bz)), g = new Float32Array(N * N).fill(Infinity), from = new Int32Array(N * N).fill(-1), heap = [];
     const push = (k, f) => { heap.push([f, k]); let c = heap.length - 1; while (c > 0) { const p = (c - 1) >> 1; if (heap[p][0] <= heap[c][0]) break; [heap[p], heap[c]] = [heap[c], heap[p]]; c = p; } };
     const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let c = 0; for (;;) { const l = 2 * c + 1, r = l + 1; let m = c; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === c) break; [heap[m], heap[c]] = [heap[c], heap[m]]; c = m; } } return top; };
     const start = sj * N + si, goal = tj * N + ti; g[start] = 0; push(start, 0);
@@ -304,9 +311,10 @@ const U = {
   mixOn: { value: 1 }, maskA: { value: null }, maskB: { value: null },
   waterMap: { value: waterTex }, waterOn: { value: 1 }, time: { value: 0 }, sunDirW: { value: new THREE.Vector3() }, skyCol: { value: SKY.clone() },
   wDeep: { value: new THREE.Color('#123a4a') }, wShallow: { value: new THREE.Color('#3f7f86') }, wWave: { value: 2.2 }, wSpeed: { value: 0.6 }, wSpec: { value: 0.8 }, wReflect: { value: 0.55 }, wWaveOn: { value: 1 },
+  coverR: { value: 140 }, coverFar: { value: 1 }, rockFrom: { value: 0.25 },
   gullyStr: { value: 0.8 }, fanStr: { value: 0.45 }, strataStr: { value: 0.8 }, strataSize: { value: 1.6 }, lushTint: { value: new THREE.Color(0.86, 1.0, 0.8) }, dampTint: { value: new THREE.Color(0.78, 0.92, 0.76) }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
   layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layWet: { value: null }, layPath: { value: null }, laySteep: { value: null },
-  mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.35 },
+  mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.06 },
 };
 for (const [k, v] of Object.entries(TS.u)) if (U[k]) U[k].value = v;
 { const t = new THREE.TextureLoader().load('/textures/stamps/atlas.png'); t.colorSpace = THREE.SRGBColorSpace; t.premultiplyAlpha = true; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); U.stampAtlas.value = t; }
@@ -319,7 +327,7 @@ mat.onBeforeCompile = (sh) => {
     uniform sampler2D groundMap; uniform float tile, split; uniform vec2 res;
     uniform float hexOn, hexSize, hexRot, hexSharp, hexBright, macroOn, macroStr, macroSize, macroHue, farOn, farFrom, grid;
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
-    uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize; uniform vec3 lushTint, dampTint;
+    uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 lushTint, dampTint;
     uniform sampler2D waterMap; uniform float waterOn, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow;
     float gWater = 0.0; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathMap;
     uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layWet; uniform sampler2D layPath; uniform sampler2D laySteep;
@@ -428,12 +436,13 @@ mat.onBeforeCompile = (sh) => {
     if (!plain && mixOn > 0.5) {
       // the land's maps here, each edge roughened by a little noise
       vec2 luv = vW.xz / landSize + 0.5;
-      vec4 m = texture2D(maskA, luv); vec2 pth = texture2D(pathMap, luv).rg; vec2 er = texture2D(maskB, luv).rg;
+      vec4 m = texture2D(maskA, luv); vec2 pth = texture2D(pathMap, luv).rg; vec3 er = texture2D(maskB, luv).rgb; float wAt = texture2D(waterMap, luv).r;
       float bn = (fbm(vW.xz / mixBreakSize) - 0.5) * mixBreak, bn2 = (fbm(vW.xz / (mixBreakSize * 3.1) + 13.0) - 0.5) * mixBreak;
-      float steep = smoothstep(steepFrom, steepFrom + 0.2, 1.0 - vWN.y);
+      float steep = smoothstep(steepFrom, steepFrom + 0.12, 1.0 - vWN.y + (fbm(vW.xz / 6.0) - 0.5) * 0.08);   // patchy toward its edge
       float wWet = clamp(m.r * 1.5 + bn, 0.0, 1.0), wMud = clamp(m.r * 2.2 - 1.3 + bn, 0.0, 1.0), wDry = clamp(m.g * 1.3 - 0.15 - m.b - m.a * 0.6 + bn2, 0.0, 1.0);
       float wLush = clamp(m.a * 1.4 + bn, 0.0, 1.0), wForest = clamp(m.b * 1.3 + bn2 * 0.7, 0.0, 1.0);
-      float wPath = clamp(pth.r + bn * 0.5, 0.0, 1.0), wShoulder = clamp(pth.g * 1.5 + bn, 0.0, 1.0);
+      float dryLand = 1.0 - smoothstep(0.25, 0.45, wAt);                      // never paint path over water
+      float wPath = clamp(pth.r + bn * 0.5, 0.0, 1.0) * dryLand, wShoulder = clamp(pth.g * 1.5 + bn, 0.0, 1.0) * dryLand;
       vec3 dryC = lay(layDry, uv, vec2(0.13, 0.71)), lushC = lay(layLush, uv, vec2(0.61, 0.27)), forC = lay(layForest, uv * 1.3, vec2(0.37, 0.93));
       vec3 wetC = lay(layWet, uv, vec2(0.83, 0.41)), pathC = lay(layPath, uv * 1.6, vec2(0.29, 0.17));
       // the rock of a steep face: read from the side, in horizontal strata (bands of lighter and
@@ -451,7 +460,18 @@ mat.onBeforeCompile = (sh) => {
       g = over(g, pathC, clamp(er.r * gullyStr + bn * 0.6, 0.0, 1.0) * (1.0 - wForest * 0.6));       // gullies: worn dirt where the water ran
       g = over(g, mix(g, pathC, 0.5), wShoulder * (1.0 - wForest * 0.5));     // trampled edge: half-worn
       g = over(g, pathC, wPath);
-      g = over(g, steepC, steep);
+      g = over(g, pathC * vec3(0.95, 0.9, 0.85), steep);                      // slopes: bare dirt
+      float rock = smoothstep(rockFrom, rockFrom + 0.1, 1.0 - vWN.y + (fbm(vW.xz / 9.0) - 0.5) * 0.1);
+      g = over(g, steepC, rock);                                                 // cliffs: rock in strata
+      // FAR COVER: past where the real plants stop, the ground carries clumps and specks where they
+      // would grow (from the same map), so the plants thin into it instead of ending at a line
+      float far = smoothstep(coverR * 0.7, coverR * 1.05, length(vW.xz));
+      if (far > 0.001 && coverFar > 0.5) {
+        float clump = fbm(vW.xz / 7.0), speck = vn(vW.xz / 0.9) * 0.6 + vn(vW.xz / 0.35 + 7.0) * 0.4;
+        float c = er.b * far * smoothstep(0.55, 0.85, speck + (clump - 0.5) * 0.9);
+        vec3 shrub = mix(g * vec3(0.55, 0.72, 0.45), g * vec3(1.08, 1.02, 0.78), step(0.72, vn(vW.xz / 2.3 + 3.0)));   // mostly dark green clumps, some dry tufts
+        g = mix(g, shrub, c * 0.8 * (1.0 - steep));
+      }
       // the maps themselves, in false colour
       if (view > 0.5) {
         vec3 v = vec3(0.12);
@@ -464,6 +484,7 @@ mat.onBeforeCompile = (sh) => {
         else if (view < 7.5) v = vec3(steep);
         else if (view < 8.5) v = vec3(er.r);
         else if (view < 9.5) v = vec3(er.g);
+        else if (view > 10.5) v = vec3(er.b);
         else v = texture2D(waterMap, luv).rgb;
         g = v;
       }
@@ -511,7 +532,7 @@ mat.onBeforeCompile = (sh) => {
     #include <dithering_fragment>
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-6' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-8' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground);
 // THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
@@ -578,6 +599,7 @@ loadSheet('/models/props/grassBushes.glb', 4, (parts, m) => { COVER.parts = part
 loadSheet('/models/props/longGrass.glb', 3, (parts, m) => { COVER.long = { parts, material: m }; COVER.longSp = plantSpecies(parts, m, 'long'); placeCover(); });
 let coverForest = null;
 function placeCover() {
+  U.coverR.value = COVER.radius;
   for (const im of COVER.meshes) { scene.remove(im); im.dispose(); }
   COVER.meshes = [];
   if (!COVER.parts || !COVER.long || !MAPS.wet) return;
@@ -591,7 +613,7 @@ function placeCover() {
     const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
     const pi = Math.floor((x + SIZE / 2) / SIZE * MAPS.P), pj = Math.floor((z + SIZE / 2) / SIZE * MAPS.P), path = MAPS.path[(pj * MAPS.P + pi) * 4] / 255 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 510;
     const canopy = MAPS.canopy[k], shade = Math.min(1, Math.max(0, MAPS.wide[k] * 2.2 - canopy * 0.8)), open = 1 - Math.min(1, canopy + shade);
-    const blocked = path + MAPS.steep[k] + Math.max(0, MAPS.wet[k] - 0.6) * 2 + waterAt(x, z) * 4;
+    const blocked = path + MAPS.steep[k] * 1.5 + Math.max(0, MAPS.wet[k] - 0.6) * 2 + waterAt(x, z) * 4;
     const wantGrass = (0.55 * open + 1.0 * shade + 0.15 * canopy) * (1 - MAPS.dry[k] * 0.4), wantShrub = 0.08 * open + 0.9 * shade + 0.35 * canopy;
     const total = wantGrass + wantShrub; if (r(tries, 5.3) > total * 0.9 * (1 - Math.min(1, blocked))) continue;
     const grass = r(tries, 7.7) < wantGrass / total;
@@ -609,7 +631,7 @@ function placeCover() {
       const ang = r(t2, 21.7) * Math.PI * 2, dist = Math.sqrt(r(t2, 23.1)) * COVER.radius, x = Math.cos(ang) * dist, z = Math.sin(ang) * dist;
       const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
       const pi = Math.floor((x + SIZE / 2) / SIZE * MAPS.P), pj = Math.floor((z + SIZE / 2) / SIZE * MAPS.P), path = MAPS.path[(pj * MAPS.P + pi) * 4] / 255 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 510;
-      if (waterAt(x, z) > 0.05) continue;
+      if (waterAt(x, z) > 0.05 || MAPS.steep[k] > 0.4) continue;
       const want = (0.35 + 0.65 * MAPS.dry[k]) * (1 - Math.min(1, MAPS.canopy[k] * 1.5 + MAPS.wide[k])) * (1 - Math.min(1, path + MAPS.steep[k] + MAPS.wet[k]));
       if (r(t2, 25.3) > want) continue;
       // clumps: a few together
@@ -659,10 +681,11 @@ const SL = {
   mixBreak: [v => { U.mixBreak.value = v; }, v => Math.round(v * 100) + '%'],
   mixBreakSize: [v => { U.mixBreakSize.value = v; }, v => v.toFixed(1) + ' m'],
   steepFrom: [v => { U.steepFrom.value = v; }, v => Math.round(Math.acos(1 - v) * 57.3) + '°'],
+  rockFrom: [v => { U.rockFrom.value = v; }, v => Math.round(Math.acos(1 - v) * 57.3) + '°'],
 };
 for (const [id, [apply, fmt]] of Object.entries(SL)) { const el = $(id), go = () => { apply(+el.value); $(id + 'Out').textContent = fmt(+el.value); }; el.addEventListener('input', go); go(); }
 for (const [id, on] of Object.entries(TS.checks)) if ($(id)) $(id).checked = on;
-for (const [id, key] of [['hexOn', 'hexOn'], ['macroOn', 'macroOn'], ['farOn', 'farOn'], ['grid', 'grid'], ['stampOn', 'stampOn'], ['mixOn', 'mixOn'], ['wWaveOn', 'wWaveOn']]) { const el = $(id), go = () => { U[key].value = el.checked ? 1 : 0; }; el.addEventListener('change', go); go(); }
+for (const [id, key] of [['hexOn', 'hexOn'], ['macroOn', 'macroOn'], ['farOn', 'farOn'], ['grid', 'grid'], ['stampOn', 'stampOn'], ['mixOn', 'mixOn'], ['wWaveOn', 'wWaveOn'], ['coverFar', 'coverFar']]) { const el = $(id), go = () => { U[key].value = el.checked ? 1 : 0; }; el.addEventListener('change', go); go(); }
 $('tex').addEventListener('change', () => { U.groundMap.value = tex($('tex').value); });
 // the layers' pictures, and the land's settings (these rebuild the maps)
 const LAYERS = { layDry: 'grassDry', layLush: 'grassMed', layForest: 'forest', layWet: 'darkDirt', layPath: 'dirt', laySteep: 'concrete' };
