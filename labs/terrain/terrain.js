@@ -97,7 +97,7 @@ function baseHeight(x, z) {
   }
   return out;
 }
-const SHAPE = { terraceOn: true, step: 8, riser: 0.1, terraceAmount: 0.8, terraceSpread: 0.55, erodeOn: true, drops: 90000, erodeStrength: 0.35, ravines: 10, ravineStrength: 1.6 };
+const SHAPE = { terraceOn: true, step: 8, riser: 0.1, terraceAmount: 0.8, terraceSpread: 0.55, erodeOn: true, drops: 90000, erodeStrength: 0.35, ravines: 16, ravineStrength: 1.6, ravineScale: 4, ravineRound: 0.35 };
 const Hg = new Float32Array(N * N), FLOW = new Float32Array(N * N), SETTLE = new Float32Array(N * N);
 const cellX = (i) => (i + 0.5) * TEX - SIZE / 2;
 // TERRACES: the height is stepped - a flat top, then a short steep riser - where a slow noise says
@@ -229,22 +229,53 @@ function carveOutlets(H, F, pools) {
   }
 }
 // RAVINES: where water gathers it cuts down, more where more of it gathers and the slope is steeper
-// (the stream-power rule of landscape models). Repeated, the cuts reach up the slopes, branch, and
-// deepen into ravines, cutting through the terrace ledges, so the streams run down them instead of
-// pouring over the ledges. Each cut spreads to the cells beside it, so ravines come out V-shaped,
-// not slots. `ravines` passes, `ravineStrength` about how many metres a big stream cuts a pass.
+// (the stream-power rule of landscape models). It runs on a coarser grid than the land
+// (`ravineScale` cells to one), so the water gathers into a few big drainages instead of a ravine in
+// every dip: big hills with wide gullies between. Each pass cuts, spreads the cut to the cells beside
+// it (V-shaped, not slots), then eases the slopes a little (`ravineRound`: soil creeping downhill,
+// which rounds the hilltops and softens the valley sides). The change is scaled back up and added to
+// the fine land, so its small detail stays. `ravines` passes, `ravineStrength` how hard they cut.
+function floodGrid(H, M) {                                   // the priority flood on an M x M grid
+  const F = Float32Array.from(H), done = new Uint8Array(M * M), down = new Int32Array(M * M).fill(-1), heap = [], order = [];
+  const push = (k) => { heap.push(k); let c = heap.length - 1; while (c > 0) { const p = (c - 1) >> 1; if (F[heap[p]] <= F[heap[c]]) break; [heap[p], heap[c]] = [heap[c], heap[p]]; c = p; } };
+  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let c = 0; for (;;) { const l = 2 * c + 1, r = l + 1; let m = c; if (l < heap.length && F[heap[l]] < F[heap[m]]) m = l; if (r < heap.length && F[heap[r]] < F[heap[m]]) m = r; if (m === c) break; [heap[m], heap[c]] = [heap[c], heap[m]]; c = m; } } return top; };
+  for (let i = 0; i < M; i++) for (const k of [i, (M - 1) * M + i, i * M, i * M + M - 1]) if (!done[k]) { done[k] = 1; push(k); }
+  while (heap.length) {
+    const c = pop(); order.push(c); const i = c % M, j = (c / M) | 0;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { if (!di && !dj) continue; const ni = i + di, nj = j + dj; if (ni < 0 || nj < 0 || ni >= M || nj >= M) continue;
+      const n = nj * M + ni; if (done[n]) continue; done[n] = 1; F[n] = Math.max(H[n], F[c] + 1e-4); down[n] = c; push(n); }
+  }
+  return { order, down };
+}
+function blurGrid(src, M, r) {                              // a box blur each way, on an M x M grid
+  const tmp = new Float32Array(M * M), out = new Float32Array(M * M);
+  for (let j = 0; j < M; j++) for (let i = 0; i < M; i++) { let s = 0, n = 0; for (let d = -r; d <= r; d++) { const ii = i + d; if (ii >= 0 && ii < M) { s += src[j * M + ii]; n++; } } tmp[j * M + i] = s / n; }
+  for (let j = 0; j < M; j++) for (let i = 0; i < M; i++) { let s = 0, n = 0; for (let d = -r; d <= r; d++) { const jj = j + d; if (jj >= 0 && jj < M) { s += tmp[jj * M + i]; n++; } } out[j * M + i] = s / n; }
+  return out;
+}
 function cutRavines(H) {
+  if (!SHAPE.ravines) return;
+  const C = SHAPE.ravineScale, M = N / C, cell = TEX * C, Hc = new Float32Array(M * M);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) Hc[((j / C) | 0) * M + ((i / C) | 0)] += H[j * N + i] / (C * C);
+  const H0 = Float32Array.from(Hc), full = 240000 / (cell * cell);              // a stream cuts at full force once it drains ~24 hectares (in cells)
   for (let pass = 0; pass < SHAPE.ravines; pass++) {
-    const { order } = flood(H), acc = new Float32Array(N * N).fill(1), cut = new Float32Array(N * N);
-    for (let q = order.length - 1; q >= 0; q--) { const c = order[q]; if (DOWN[c] >= 0) acc[DOWN[c]] += acc[c]; }
-    for (let k = 0; k < N * N; k++) {
-      const d = DOWN[k]; if (d < 0 || acc[k] < 8) continue;
-      const drop = H[k] - H[d]; if (drop <= 0) continue;
-      const run = ((d % N) !== (k % N) && ((d / N) | 0) !== ((k / N) | 0) ? 1.414 : 1) * TEX;
-      cut[k] = Math.min(drop * 0.9, SHAPE.ravineStrength * 1.5 * Math.min(1, Math.sqrt(acc[k] / 300)) * Math.min(1.2, drop / run));
+    const { order, down } = floodGrid(Hc, M), acc = new Float32Array(M * M).fill(1), cut = new Float32Array(M * M);
+    for (let q = order.length - 1; q >= 0; q--) { const c = order[q]; if (down[c] >= 0) acc[down[c]] += acc[c]; }
+    for (let k = 0; k < M * M; k++) {
+      const d = down[k]; if (d < 0 || acc[k] < 3) continue;
+      const drop = Hc[k] - Hc[d]; if (drop <= 0) continue;
+      const run = ((d % M) !== (k % M) && ((d / M) | 0) !== ((k / M) | 0) ? 1.414 : 1) * cell;
+      cut[k] = Math.min(drop * 0.9, SHAPE.ravineStrength * 1.5 * Math.min(2, Math.sqrt(acc[k] / full)) * Math.min(1.2, drop / run));
     }
-    const side = blur(cut, 1);
-    for (let k = 0; k < N * N; k++) H[k] -= Math.max(cut[k], side[k] * 1.4);
+    const side = blurGrid(cut, M, 1);
+    for (let k = 0; k < M * M; k++) Hc[k] -= Math.max(cut[k], side[k] * 1.4);
+    if (SHAPE.ravineRound > 0) { const avg = blurGrid(Hc, M, 1); for (let k = 0; k < M * M; k++) Hc[k] += (avg[k] - Hc[k]) * SHAPE.ravineRound * 0.5; }
+  }
+  // back up to the fine grid: the change, spread smoothly between the coarse cells' middles
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const u = Math.min(M - 1.001, Math.max(0, (i + 0.5) / C - 0.5)), v = Math.min(M - 1.001, Math.max(0, (j + 0.5) / C - 0.5)), a = u | 0, b = v | 0, fu = u - a, fv = v - b, q = b * M + a;
+    const d = ((Hc[q] - H0[q]) * (1 - fu) + (Hc[q + 1] - H0[q + 1]) * fu) * (1 - fv) + ((Hc[q + M] - H0[q + M]) * (1 - fu) + (Hc[q + M + 1] - H0[q + M + 1]) * fu) * fv;
+    H[j * N + i] += d;
   }
 }
 function findWater(H) {
@@ -1037,7 +1068,7 @@ for (const [id, key, fmt] of [['wWave', 'wWave', v => v.toFixed(1) + ' m'], ['wS
 for (const [id, key] of [['wDeepC', 'wDeep'], ['wShallowC', 'wShallow']]) { const el = $(id); el.value = '#' + U[key].value.clone().convertLinearToSRGB().getHexString(); el.addEventListener('input', () => { U[key].value.set(el.value).convertSRGBToLinear(); }); }
 function reshape() { $('shapeInfo').textContent = 'shaping…'; setTimeout(() => { const t0 = performance.now(); buildHeights(); shapeMesh(); buildLand(); $('shapeInfo').textContent = `shaped in ${((performance.now() - t0) / 1000).toFixed(1)} s`; }, 30); }
 for (const [id, key] of [['terraceOn', 'terraceOn'], ['erodeOn', 'erodeOn']]) { $(id).checked = SHAPE[key]; $(id).addEventListener('change', e => { SHAPE[key] = e.target.checked; reshape(); }); }
-for (const [id, key, fmt] of [['tStep', 'step', v => v.toFixed(1) + ' m'], ['tRiser', 'riser', v => Math.round(v * 100) + '% of a step'], ['tAmount', 'terraceAmount', v => Math.round(v * 100) + '%'], ['tSpread', 'terraceSpread', v => Math.round(v * 100) + '% of the land'], ['eDrops', 'drops', v => v.toLocaleString()], ['eStr', 'erodeStrength', v => v.toFixed(2)], ['rPasses', 'ravines', v => v + (v === 1 ? ' pass' : ' passes')], ['rStr', 'ravineStrength', v => v.toFixed(1) + '×']]) {
+for (const [id, key, fmt] of [['tStep', 'step', v => v.toFixed(1) + ' m'], ['tRiser', 'riser', v => Math.round(v * 100) + '% of a step'], ['tAmount', 'terraceAmount', v => Math.round(v * 100) + '%'], ['tSpread', 'terraceSpread', v => Math.round(v * 100) + '% of the land'], ['eDrops', 'drops', v => v.toLocaleString()], ['eStr', 'erodeStrength', v => v.toFixed(2)], ['rPasses', 'ravines', v => v + (v === 1 ? ' pass' : ' passes')], ['rStr', 'ravineStrength', v => v.toFixed(1) + '×'], ['rScale', 'ravineScale', v => 'water gathers on ' + (v * TEX).toFixed(1) + ' m cells'], ['rRound', 'ravineRound', v => Math.round(v * 100) + '%']]) {
   const el = $(id); el.value = SHAPE[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { SHAPE[key] = +el.value; reshape(); });

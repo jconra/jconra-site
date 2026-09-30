@@ -85,7 +85,9 @@
       </details>
       <details class="sec"><summary>Erosion and rain</summary>
       <label class="check" for="erodeOn"><input id="erodeOn" type="checkbox"> Erosion</label>
-      <div class="row"><label for="rPasses">Ravines: passes of streams cutting down (more reach further up the slopes and branch)</label><output id="rPassesOut"></output><input id="rPasses" type="range" min="0" max="16" step="1"></div>
+      <div class="row"><label for="rPasses">Ravines: passes of streams cutting down (more reach further up the slopes and branch)</label><output id="rPassesOut"></output><input id="rPasses" type="range" min="0" max="40" step="1"></div>
+      <div class="row"><label for="rScale">Ravines: how big the drainages are (coarser: fewer, bigger ravines between big hills)</label><output id="rScaleOut"></output><select id="rScale"><option value="1">finest</option><option value="2">fine</option><option value="4">big</option><option value="8">biggest</option></select></div>
+      <div class="row"><label for="rRound">Rounding (soil creeping downhill: rounder hills, softer valley sides)</label><output id="rRoundOut"></output><input id="rRound" type="range" min="0" max="1" step="0.05"></div>
       <div class="row"><label for="rStr">Ravines: how hard they cut</label><output id="rStrOut"></output><input id="rStr" type="range" min="0" max="4" step="0.1"></div>
       <div class="row"><label for="eDrops">Raindrops</label><output id="eDropsOut"></output><input id="eDrops" type="range" min="10000" max="400000" step="10000"></div>
       <div class="row"><label for="eStr">How much each takes</label><output id="eStrOut"></output><input id="eStr" type="range" min="0.05" max="1" step="0.01"></div>
