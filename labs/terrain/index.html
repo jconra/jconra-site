@@ -210,7 +210,7 @@
     </details>
 
     <details class="sec"><summary>3 · Far-away second scale</summary>
-      <p class="note">In the distance the same texture is also read at four times the size and blended in, so far ground shows big shapes instead of a fine repeating grain. <b>Cost:</b> one more read (three more with hex-tiling on).</p>
+      <p class="note">In the distance the ground picture is also read at four times the size, and its light and dark vary the brightness of whatever is there (grass, path, rock), so far ground shows big shapes instead of a fine repeating grain, without hiding what it is. <b>Cost:</b> one more read (three more with hex-tiling on).</p>
       <label class="check" for="farOn"><input id="farOn" type="checkbox"> On</label>
       <div class="row"><label for="farFrom">Starts at</label><output id="farFromOut"></output><input id="farFrom" type="range" min="5" max="200" step="1" value="40"></div>
     </details>

@@ -758,7 +758,12 @@ mat.onBeforeCompile = (sh) => {
     if (!plain) {
       if (farOn > 0.5) {
         float k = smoothstep(farFrom, farFrom * 2.5, length(vW - cameraPosition));
-        if (k > 0.001) { vec2 u2 = uv * 0.25 + vec2(0.37, 0.61); vec3 g2 = hexOn > 0.5 ? hexTile(u2) : texture2D(groundMap, u2).rgb; g = mix(g, mix(g, g2, 0.65), k); }
+        // far off, a second, larger read of the picture varies the BRIGHTNESS of whatever is there (grass,
+        // path, rock...) to break up the repeat; it used to blend the base grass over it, so paths and
+        // dirt vanished into grass with distance
+        if (k > 0.001) { vec2 u2 = uv * 0.25 + vec2(0.37, 0.61); vec3 g2 = hexOn > 0.5 ? hexTile(u2) : texture2D(groundMap, u2).rgb;
+          vec3 L = vec3(0.299, 0.587, 0.114); float v = dot(g2, L) / max(0.02, dot(texture2D(groundMap, vec2(0.5), 16.0).rgb, L));   // against the picture's average
+          g *= mix(1.0, clamp(v, 0.6, 1.5), k * 0.65); }
       }
       if (stampOn > 0.5) {
         float fade = 1.0 - smoothstep(stampFar * 0.7, stampFar, length(vW - cameraPosition));
@@ -818,7 +823,7 @@ mat.onBeforeCompile = (sh) => {
     #include <dithering_fragment>
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-19' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-20' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground); ground.receiveShadow = SHADOW.on;
 // THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
