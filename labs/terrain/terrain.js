@@ -513,7 +513,7 @@ function buildLand() {
 }
 
 // ── textures ────────────────────────────────────────────────────────────────────
-const TEXTURES = ['forest', 'leaves', 'needles', 'moss', 'dirt', 'darkDirt', 'ferns', 'shrubs', 'grassMed', 'grassDry', 'grassDark', 'concrete', 'asphalt', 'pebbles'];
+const TEXTURES = ['forest', 'leaves', 'needles', 'moss', 'dirt', 'darkDirt', 'ferns', 'shrubs', 'grassMed', 'grassDry', 'grassDark', 'concrete', 'asphalt', 'pebbles', 'rocks'];
 const loader = new THREE.TextureLoader(), cache = {};
 // a picture's average colour (potato paints each ground layer in this instead of reading the picture)
 function avgColour(img) {
@@ -938,16 +938,27 @@ function stoneShapes() {
   return out;
 }
 // a material darkened by the land's baked shade where each instance stands, like the ground under it
-function landShaded(m) {
+// `rock` (optional): a rock picture laid on from three sides in the stone's own space (triplanar), so it
+// wraps a lumpy stone without stretching and stays put on it
+function landShaded(m, rock = null) {
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, { shadeMap: U.shadeMap, landSize: U.landSize, hillShade: U.hillShade, aoShade: U.aoShade, treeShade: U.treeShade });
+    if (rock) {
+      sh.uniforms.rockMap = { value: rock };
+      sh.vertexShader = 'varying vec3 vRockP; varying vec3 vRockN;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvRockP = position; vRockN = normal;');
+      sh.fragmentShader = 'uniform sampler2D rockMap; varying vec3 vRockP; varying vec3 vRockN;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+        { vec3 w = pow(abs(normalize(vRockN)), vec3(4.0)); w /= w.x + w.y + w.z; vec3 p = vRockP * 0.8;
+          diffuseColor.rgb *= texture2D(rockMap, p.zy).rgb * w.x + texture2D(rockMap, p.xz).rgb * w.y + texture2D(rockMap, p.xy).rgb * w.z; }`);
+    }
     sh.vertexShader = 'varying vec2 vLand;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n{ vec4 lw = vec4(0.0, 0.0, 0.0, 1.0);\n#ifdef USE_INSTANCING\nlw = instanceMatrix * lw;\n#endif\nvLand = (modelMatrix * lw).xz; }');
     sh.fragmentShader = 'uniform sampler2D shadeMap; uniform float landSize, hillShade, aoShade, treeShade; varying vec2 vLand;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
       { vec3 sd = texture2D(shadeMap, vLand / landSize + 0.5).rgb; diffuseColor.rgb *= mix(1.0, 0.4 + 0.6 * sd.r, hillShade) * mix(1.0, 0.3 + 0.7 * sd.g, aoShade) * (1.0 - treeShade * sd.b * 0.6); }`);
   };
-  m.customProgramCacheKey = () => 'land-shaded';
+  m.customProgramCacheKey = () => 'land-shaded' + (rock ? '-rock' : '');
   return m;
 }
+// the stones' pictures: granite and diorite, alternating by shape (none on potato: plain grey there)
+const ROCK_TEX = TS.lite ? null : ['diorite', 'granite'].map(n => { const t = new THREE.TextureLoader().load(`/textures/rock/${n}.jpg`); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; });
 function placeStones() {
   for (const m of STONES.meshes) { scene.remove(m); m.dispose(); }
   STONES.meshes = [];
@@ -971,10 +982,11 @@ function placeStones() {
   const base = new THREE.Color(0x8d8a84), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), c = new THREE.Color();
   per.forEach((list, v) => {
     if (!list.length) return;
-    const mesh = new THREE.InstancedMesh(STONES.shapes[v], landShaded(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, flatShading: true })), list.length);
+    const mesh = new THREE.InstancedMesh(STONES.shapes[v], landShaded(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, flatShading: true }), ROCK_TEX ? ROCK_TEX[v % 2] : null), list.length);
     list.forEach(([x, y, z, sc, yaw, tone], n) => {
       e.set((tone - 0.5) * 0.3, yaw, (tone - 0.5) * 0.2); q.setFromEuler(e); m4.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(sc, sc, sc)); mesh.setMatrixAt(n, m4);
-      mesh.setColorAt(n, c.copy(base).multiplyScalar(0.72 + 0.4 * tone).lerp(new THREE.Color(0x9a8f78), (tone * 7.3) % 1 * 0.35));   // greys, some warmer
+      if (ROCK_TEX) mesh.setColorAt(n, c.setScalar(0.8 + 0.35 * tone));   // the picture carries the colour; just lighter and darker stones
+      else mesh.setColorAt(n, c.copy(base).multiplyScalar(0.72 + 0.4 * tone).lerp(new THREE.Color(0x9a8f78), (tone * 7.3) % 1 * 0.35));   // greys, some warmer
     });
     mesh.frustumCulled = false; mesh.castShadow = mesh.receiveShadow = SHADOW.on; scene.add(mesh); STONES.meshes.push(mesh);
   });
@@ -1120,7 +1132,7 @@ for (const [id, on] of Object.entries(TS.checks)) if ($(id)) $(id).checked = on;
 for (const [id, key] of [['hexOn', 'hexOn'], ['macroOn', 'macroOn'], ['farOn', 'farOn'], ['grid', 'grid'], ['stampOn', 'stampOn'], ['mixOn', 'mixOn'], ['wWaveOn', 'wWaveOn'], ['coverFar', 'coverFar']]) { const el = $(id), go = () => { U[key].value = el.checked ? 1 : 0; }; el.addEventListener('change', go); go(); }
 $('tex').addEventListener('change', () => { U.groundMap.value = tex($('tex').value); setAverages(); });
 // the layers' pictures, and the land's settings (these rebuild the maps)
-const LAYERS = { layDry: 'grassDry', layLush: 'grassMed', layForest: 'forest', layWet: 'darkDirt', layPath: 'dirt', laySteep: 'concrete', layShore: 'pebbles' };
+const LAYERS = { layDry: 'grassDry', layLush: 'grassMed', layForest: 'forest', layWet: 'darkDirt', layPath: 'dirt', laySteep: 'concrete', layShore: 'rocks' };
 for (const [id, def] of Object.entries(LAYERS)) { const el = $(id); for (const n of TEXTURES) el.add(new Option(n, n)); el.value = def; const go = () => { U[id].value = tex(el.value); setAverages(); }; el.addEventListener('change', go); go(); }
 for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'], ['landDry', 'dryHeight', v => v.toFixed(1) + ' m'], ['landForest', 'forest', v => Math.round(v * 100) + '%'], ['landShade', 'shadeReach', v => Math.round(v * TEX) + ' m'], ['landPath', 'pathWidth', v => v.toFixed(1) + ' m'], ['landTreeline', 'treeline', v => v + ' m'], ['landShore', 'shore', v => Math.round(v * TEX) + ' m'], ['landHill', 'hillForest', v => Math.round(v * 100) + '%']]) {
   const el = $(id); el.value = LAND[key]; $(id + 'Out').textContent = fmt(+el.value);

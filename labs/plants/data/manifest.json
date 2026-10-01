@@ -1,0 +1,731 @@
+{
+ "grassesLow": {
+  "plants": [
+   "bunchgrass",
+   "reeds",
+   "dry grass",
+   "broad-leaf hosta",
+   "clover",
+   "wild strawberry",
+   "dandelion",
+   "plantain",
+   "purple-top grass"
+  ],
+  "counts": {
+   "raw": [
+    {
+     "tris": 1766,
+     "verts": 2428
+    },
+    {
+     "tris": 2603,
+     "verts": 3301
+    },
+    {
+     "tris": 1756,
+     "verts": 2404
+    },
+    {
+     "tris": 4353,
+     "verts": 5302
+    },
+    {
+     "tris": 6309,
+     "verts": 8960
+    },
+    {
+     "tris": 5029,
+     "verts": 7102
+    },
+    {
+     "tris": 6663,
+     "verts": 8709
+    },
+    {
+     "tris": 3187,
+     "verts": 3819
+    },
+    {
+     "tris": 8499,
+     "verts": 13459
+    }
+   ],
+   "weld": [
+    {
+     "tris": 1766,
+     "verts": 1850
+    },
+    {
+     "tris": 2603,
+     "verts": 2372
+    },
+    {
+     "tris": 1756,
+     "verts": 1835
+    },
+    {
+     "tris": 4353,
+     "verts": 2622
+    },
+    {
+     "tris": 6309,
+     "verts": 4114
+    },
+    {
+     "tris": 5029,
+     "verts": 3231
+    },
+    {
+     "tris": 6663,
+     "verts": 4079
+    },
+    {
+     "tris": 3187,
+     "verts": 2151
+    },
+    {
+     "tris": 8493,
+     "verts": 4895
+    }
+   ],
+   "fixed": [
+    {
+     "tris": 1766,
+     "verts": 1850
+    },
+    {
+     "tris": 2603,
+     "verts": 2372
+    },
+    {
+     "tris": 1756,
+     "verts": 1835
+    },
+    {
+     "tris": 4353,
+     "verts": 2622
+    },
+    {
+     "tris": 6309,
+     "verts": 4114
+    },
+    {
+     "tris": 5029,
+     "verts": 3231
+    },
+    {
+     "tris": 6663,
+     "verts": 4079
+    },
+    {
+     "tris": 3187,
+     "verts": 2151
+    },
+    {
+     "tris": 8493,
+     "verts": 4895
+    }
+   ],
+   "planar": [
+    {
+     "tris": 1486,
+     "verts": 1573
+    },
+    {
+     "tris": 2188,
+     "verts": 1980
+    },
+    {
+     "tris": 1462,
+     "verts": 1546
+    },
+    {
+     "tris": 4019,
+     "verts": 2424
+    },
+    {
+     "tris": 5950,
+     "verts": 3929
+    },
+    {
+     "tris": 4631,
+     "verts": 3028
+    },
+    {
+     "tris": 6297,
+     "verts": 3872
+    },
+    {
+     "tris": 2838,
+     "verts": 1942
+    },
+    {
+     "tris": 8365,
+     "verts": 4830
+    }
+   ],
+   "tri600": [
+    {
+     "tris": 600,
+     "verts": 768
+    },
+    {
+     "tris": 600,
+     "verts": 740
+    },
+    {
+     "tris": 600,
+     "verts": 769
+    },
+    {
+     "tris": 600,
+     "verts": 469
+    },
+    {
+     "tris": 600,
+     "verts": 630
+    },
+    {
+     "tris": 598,
+     "verts": 634
+    },
+    {
+     "tris": 600,
+     "verts": 524
+    },
+    {
+     "tris": 600,
+     "verts": 562
+    },
+    {
+     "tris": 1531,
+     "verts": 1039
+    }
+   ],
+   "tri300": [
+    {
+     "tris": 299,
+     "verts": 509
+    },
+    {
+     "tris": 300,
+     "verts": 481
+    },
+    {
+     "tris": 300,
+     "verts": 519
+    },
+    {
+     "tris": 300,
+     "verts": 278
+    },
+    {
+     "tris": 515,
+     "verts": 551
+    },
+    {
+     "tris": 411,
+     "verts": 460
+    },
+    {
+     "tris": 346,
+     "verts": 316
+    },
+    {
+     "tris": 299,
+     "verts": 300
+    },
+    {
+     "tris": 1531,
+     "verts": 1039
+    }
+   ]
+  }
+ },
+ "flowers": {
+  "plants": [
+   "lupine",
+   "paintbrush",
+   "yarrow",
+   "columbine",
+   "thistle",
+   "yucca",
+   "snowdrops",
+   "violets",
+   "marsh marigold"
+  ],
+  "counts": {
+   "raw": [
+    {
+     "tris": 6094,
+     "verts": 8848
+    },
+    {
+     "tris": 1832,
+     "verts": 2644
+    },
+    {
+     "tris": 8349,
+     "verts": 10412
+    },
+    {
+     "tris": 3386,
+     "verts": 4656
+    },
+    {
+     "tris": 3528,
+     "verts": 4920
+    },
+    {
+     "tris": 1342,
+     "verts": 1680
+    },
+    {
+     "tris": 5965,
+     "verts": 6860
+    },
+    {
+     "tris": 3938,
+     "verts": 5084
+    },
+    {
+     "tris": 7584,
+     "verts": 10450
+    }
+   ],
+   "weld": [
+    {
+     "tris": 6094,
+     "verts": 4258
+    },
+    {
+     "tris": 1832,
+     "verts": 1428
+    },
+    {
+     "tris": 8349,
+     "verts": 5206
+    },
+    {
+     "tris": 3386,
+     "verts": 2196
+    },
+    {
+     "tris": 3523,
+     "verts": 2489
+    },
+    {
+     "tris": 1342,
+     "verts": 702
+    },
+    {
+     "tris": 5965,
+     "verts": 3414
+    },
+    {
+     "tris": 3938,
+     "verts": 2449
+    },
+    {
+     "tris": 7584,
+     "verts": 4635
+    }
+   ],
+   "fixed": [
+    {
+     "tris": 6094,
+     "verts": 4258
+    },
+    {
+     "tris": 1832,
+     "verts": 1428
+    },
+    {
+     "tris": 8349,
+     "verts": 5206
+    },
+    {
+     "tris": 3386,
+     "verts": 2196
+    },
+    {
+     "tris": 3523,
+     "verts": 2489
+    },
+    {
+     "tris": 1342,
+     "verts": 702
+    },
+    {
+     "tris": 5965,
+     "verts": 3414
+    },
+    {
+     "tris": 3938,
+     "verts": 2449
+    },
+    {
+     "tris": 7584,
+     "verts": 4635
+    }
+   ],
+   "planar": [
+    {
+     "tris": 5902,
+     "verts": 4152
+    },
+    {
+     "tris": 1727,
+     "verts": 1368
+    },
+    {
+     "tris": 8021,
+     "verts": 5022
+    },
+    {
+     "tris": 3215,
+     "verts": 2094
+    },
+    {
+     "tris": 3394,
+     "verts": 2408
+    },
+    {
+     "tris": 1196,
+     "verts": 629
+    },
+    {
+     "tris": 5563,
+     "verts": 3184
+    },
+    {
+     "tris": 3793,
+     "verts": 2356
+    },
+    {
+     "tris": 7347,
+     "verts": 4492
+    }
+   ],
+   "tri600": [
+    {
+     "tris": 1082,
+     "verts": 825
+    },
+    {
+     "tris": 600,
+     "verts": 636
+    },
+    {
+     "tris": 598,
+     "verts": 607
+    },
+    {
+     "tris": 599,
+     "verts": 540
+    },
+    {
+     "tris": 598,
+     "verts": 597
+    },
+    {
+     "tris": 600,
+     "verts": 331
+    },
+    {
+     "tris": 600,
+     "verts": 489
+    },
+    {
+     "tris": 599,
+     "verts": 475
+    },
+    {
+     "tris": 600,
+     "verts": 542
+    }
+   ],
+   "tri300": [
+    {
+     "tris": 1082,
+     "verts": 825
+    },
+    {
+     "tris": 300,
+     "verts": 372
+    },
+    {
+     "tris": 413,
+     "verts": 459
+    },
+    {
+     "tris": 300,
+     "verts": 271
+    },
+    {
+     "tris": 454,
+     "verts": 471
+    },
+    {
+     "tris": 300,
+     "verts": 181
+    },
+    {
+     "tris": 300,
+     "verts": 303
+    },
+    {
+     "tris": 300,
+     "verts": 230
+    },
+    {
+     "tris": 426,
+     "verts": 385
+    }
+   ]
+  }
+ },
+ "shrubs": {
+  "plants": [
+   "sagebrush",
+   "low juniper",
+   "sprig shrub",
+   "wild rose",
+   "spruce sapling",
+   "cattails",
+   "flowering shrub",
+   "grass clump",
+   "leafy shrub"
+  ],
+  "counts": {
+   "raw": [
+    {
+     "tris": 5396,
+     "verts": 8182
+    },
+    {
+     "tris": 5379,
+     "verts": 8987
+    },
+    {
+     "tris": 4764,
+     "verts": 6919
+    },
+    {
+     "tris": 5858,
+     "verts": 8784
+    },
+    {
+     "tris": 2646,
+     "verts": 3871
+    },
+    {
+     "tris": 1507,
+     "verts": 2127
+    },
+    {
+     "tris": 7915,
+     "verts": 11766
+    },
+    {
+     "tris": 5718,
+     "verts": 8465
+    },
+    {
+     "tris": 4854,
+     "verts": 7281
+    }
+   ],
+   "weld": [
+    {
+     "tris": 5396,
+     "verts": 3495
+    },
+    {
+     "tris": 5376,
+     "verts": 3232
+    },
+    {
+     "tris": 4764,
+     "verts": 3272
+    },
+    {
+     "tris": 5858,
+     "verts": 4076
+    },
+    {
+     "tris": 2646,
+     "verts": 1457
+    },
+    {
+     "tris": 1507,
+     "verts": 931
+    },
+    {
+     "tris": 7915,
+     "verts": 5857
+    },
+    {
+     "tris": 5718,
+     "verts": 3149
+    },
+    {
+     "tris": 4854,
+     "verts": 3499
+    }
+   ],
+   "fixed": [
+    {
+     "tris": 5396,
+     "verts": 3495
+    },
+    {
+     "tris": 5376,
+     "verts": 3232
+    },
+    {
+     "tris": 4764,
+     "verts": 3272
+    },
+    {
+     "tris": 5858,
+     "verts": 4076
+    },
+    {
+     "tris": 2646,
+     "verts": 1457
+    },
+    {
+     "tris": 1507,
+     "verts": 931
+    },
+    {
+     "tris": 7915,
+     "verts": 5857
+    },
+    {
+     "tris": 5718,
+     "verts": 3149
+    },
+    {
+     "tris": 4854,
+     "verts": 3499
+    }
+   ],
+   "planar": [
+    {
+     "tris": 5284,
+     "verts": 3434
+    },
+    {
+     "tris": 5287,
+     "verts": 3178
+    },
+    {
+     "tris": 4419,
+     "verts": 3086
+    },
+    {
+     "tris": 5714,
+     "verts": 3998
+    },
+    {
+     "tris": 2600,
+     "verts": 1434
+    },
+    {
+     "tris": 1400,
+     "verts": 872
+    },
+    {
+     "tris": 7712,
+     "verts": 5737
+    },
+    {
+     "tris": 5358,
+     "verts": 2961
+    },
+    {
+     "tris": 4701,
+     "verts": 3410
+    }
+   ],
+   "tri600": [
+    {
+     "tris": 1155,
+     "verts": 763
+    },
+    {
+     "tris": 1528,
+     "verts": 857
+    },
+    {
+     "tris": 697,
+     "verts": 589
+    },
+    {
+     "tris": 1318,
+     "verts": 951
+    },
+    {
+     "tris": 599,
+     "verts": 412
+    },
+    {
+     "tris": 599,
+     "verts": 449
+    },
+    {
+     "tris": 1546,
+     "verts": 1221
+    },
+    {
+     "tris": 1449,
+     "verts": 919
+    },
+    {
+     "tris": 804,
+     "verts": 687
+    }
+   ],
+   "tri300": [
+    {
+     "tris": 1155,
+     "verts": 763
+    },
+    {
+     "tris": 1528,
+     "verts": 857
+    },
+    {
+     "tris": 697,
+     "verts": 589
+    },
+    {
+     "tris": 1318,
+     "verts": 951
+    },
+    {
+     "tris": 299,
+     "verts": 260
+    },
+    {
+     "tris": 300,
+     "verts": 279
+    },
+    {
+     "tris": 1546,
+     "verts": 1221
+    },
+    {
+     "tris": 1449,
+     "verts": 919
+    },
+    {
+     "tris": 804,
+     "verts": 687
+    }
+   ]
+  }
+ }
+}
