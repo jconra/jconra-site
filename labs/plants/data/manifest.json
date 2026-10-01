@@ -46,8 +46,8 @@
      "verts": 798
     },
     {
-     "tris": 1541,
-     "verts": 1043
+     "tris": 873,
+     "verts": 644
     }
    ],
    "raw": [
@@ -122,8 +122,8 @@
      "verts": 559
     },
     {
-     "tris": 1541,
-     "verts": 1043
+     "tris": 564,
+     "verts": 486
     }
    ],
    "tri300": [
@@ -144,24 +144,24 @@
      "verts": 280
     },
     {
-     "tris": 511,
-     "verts": 549
+     "tris": 291,
+     "verts": 378
     },
     {
-     "tris": 413,
-     "verts": 459
+     "tris": 284,
+     "verts": 351
     },
     {
-     "tris": 342,
-     "verts": 314
+     "tris": 294,
+     "verts": 276
     },
     {
      "tris": 300,
      "verts": 300
     },
     {
-     "tris": 1541,
-     "verts": 1043
+     "tris": 269,
+     "verts": 324
     }
    ]
   }
@@ -181,8 +181,8 @@
   "counts": {
    "tri900": [
     {
-     "tris": 1091,
-     "verts": 829
+     "tris": 898,
+     "verts": 694
     },
     {
      "tris": 900,
@@ -257,8 +257,8 @@
    ],
    "tri600": [
     {
-     "tris": 1091,
-     "verts": 829
+     "tris": 560,
+     "verts": 548
     },
     {
      "tris": 600,
@@ -295,24 +295,24 @@
    ],
    "tri300": [
     {
-     "tris": 1091,
-     "verts": 829
+     "tris": 271,
+     "verts": 437
     },
     {
      "tris": 300,
      "verts": 371
     },
     {
-     "tris": 406,
-     "verts": 450
+     "tris": 294,
+     "verts": 353
     },
     {
      "tris": 300,
      "verts": 282
     },
     {
-     "tris": 472,
-     "verts": 476
+     "tris": 265,
+     "verts": 354
     },
     {
      "tris": 300,
@@ -327,8 +327,8 @@
      "verts": 230
     },
     {
-     "tris": 428,
-     "verts": 386
+     "tris": 284,
+     "verts": 244
     }
    ]
   }
@@ -348,20 +348,20 @@
   "counts": {
    "tri900": [
     {
-     "tris": 1157,
-     "verts": 764
+     "tris": 836,
+     "verts": 573
     },
     {
-     "tris": 1541,
-     "verts": 860
+     "tris": 853,
+     "verts": 491
     },
     {
      "tris": 900,
      "verts": 775
     },
     {
-     "tris": 1325,
-     "verts": 955
+     "tris": 854,
+     "verts": 690
     },
     {
      "tris": 899,
@@ -372,12 +372,12 @@
      "verts": 611
     },
     {
-     "tris": 1555,
-     "verts": 1226
+     "tris": 832,
+     "verts": 861
     },
     {
-     "tris": 1460,
-     "verts": 923
+     "tris": 892,
+     "verts": 553
     },
     {
      "tris": 900,
@@ -424,20 +424,20 @@
    ],
    "tri600": [
     {
-     "tris": 1157,
-     "verts": 764
+     "tris": 535,
+     "verts": 415
     },
     {
-     "tris": 1541,
-     "verts": 860
+     "tris": 344,
+     "verts": 262
     },
     {
-     "tris": 684,
-     "verts": 582
+     "tris": 572,
+     "verts": 504
     },
     {
-     "tris": 1325,
-     "verts": 955
+     "tris": 598,
+     "verts": 551
     },
     {
      "tris": 600,
@@ -448,34 +448,34 @@
      "verts": 449
     },
     {
-     "tris": 1555,
-     "verts": 1226
+     "tris": 557,
+     "verts": 738
     },
     {
-     "tris": 1460,
-     "verts": 923
+     "tris": 588,
+     "verts": 385
     },
     {
-     "tris": 808,
-     "verts": 687
+     "tris": 571,
+     "verts": 529
     }
    ],
    "tri300": [
     {
-     "tris": 1157,
-     "verts": 764
+     "tris": 231,
+     "verts": 244
     },
     {
-     "tris": 1541,
-     "verts": 860
+     "tris": 220,
+     "verts": 204
     },
     {
-     "tris": 684,
-     "verts": 582
+     "tris": 242,
+     "verts": 330
     },
     {
-     "tris": 1325,
-     "verts": 955
+     "tris": 272,
+     "verts": 382
     },
     {
      "tris": 300,
@@ -486,16 +486,16 @@
      "verts": 278
     },
     {
-     "tris": 1555,
-     "verts": 1226
+     "tris": 156,
+     "verts": 534
     },
     {
-     "tris": 1460,
-     "verts": 923
+     "tris": 221,
+     "verts": 174
     },
     {
-     "tris": 808,
-     "verts": 687
+     "tris": 287,
+     "verts": 383
     }
    ]
   }

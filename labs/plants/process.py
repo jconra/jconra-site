@@ -6,7 +6,8 @@
 #   fixed     weld, then every face of a surface turned to face the same way (Tripo's aren't, which is
 #             what blackens a welded leaf), shading smoothed only across angles under 35 deg; two-sided
 #   planar    fixed, then faces lying flat together merged (Decimate Planar, 5 deg, keeping UV seams)
-#   tri600 / tri300   planar, then shrunk to ~600 / ~300 triangles (Decimate Collapse)
+#   tri900 / tri600 / tri300   planar, then shrunk toward 900 / 600 / 300 triangles (Decimate Collapse),
+#             then, if made of many little pieces and still over, thinned: smallest pieces removed first
 # Each version of a sheet is one .gltf (all 9 plants, named) sharing one 2K texture; counts go in
 # manifest.json.
 import bpy, bmesh, json, math, os, sys
@@ -83,6 +84,38 @@ for sheet, names in SHEETS.items():
                 target = int(ver[3:]); t = tris(ob)
                 if t > target:
                     m = ob.modifiers.new('collapse', 'DECIMATE'); m.ratio = target / t; m.use_collapse_triangulate = True; bpy.ops.object.modifier_apply(modifier='collapse')
+            # THINNING: a plant built from many separate little pieces (every needle cluster, leaf or flower
+            # head its own mesh) can't shrink below what its pieces need, so 300/600/900 all came out the
+            # same. Still over the target, its smallest pieces go (by how far they reach), smallest first (ties broken at random,
+            # so it thins evenly), until it fits; the big pieces (stems, branches, big leaves) stay.
+            target = int(ver[3:])
+            if tris(ob) > target * 1.08:
+                bm = bmesh.new(); bm.from_mesh(me); bm.faces.ensure_lookup_table()
+                seen, islands = set(), []
+                for f in bm.faces:
+                    if f.index in seen: continue
+                    stack, isl = [f], []
+                    seen.add(f.index)
+                    while stack:
+                        g = stack.pop(); isl.append(g)
+                        for e in g.edges:
+                            for h in e.link_faces:
+                                if h.index not in seen: seen.add(h.index); stack.append(h)
+                    islands.append(isl)
+                import random; random.seed(len(islands))
+                # size = how far the piece reaches (its box's diagonal), not its area: a long thin stem is
+                # small in area but holds the plant together; sorting by area took the stems first
+                def reach(isl):
+                    vs = [v.co for f in isl for v in f.verts]
+                    return (max(v.x for v in vs) - min(v.x for v in vs)) ** 2 + (max(v.y for v in vs) - min(v.y for v in vs)) ** 2 + (max(v.z for v in vs) - min(v.z for v in vs)) ** 2
+                islands.sort(key=lambda isl: (reach(isl), random.random()))
+                total = sum(len(f.verts) - 2 for f in bm.faces); gone = []
+                for isl in islands[:-1]:                      # the biggest piece always stays
+                    if total <= target: break
+                    gone.extend(isl); total -= sum(len(f.verts) - 2 for f in isl)
+                bmesh.ops.delete(bm, geom=gone, context='FACES')
+                bm.to_mesh(me); bm.free()
+                print('  thinned', ob.name, 'to', tris(ob), 'pieces left', len(islands) - len(gone and [1]), flush=True)
             # x spread so the sheet still reads as a row of plants in a viewer; the lab places them itself
             ob.location.x = n * 0.4
             counts.append({'tris': tris(ob), 'verts': len(me.vertices)})
