@@ -548,7 +548,7 @@ const U = {
   mixOn: { value: 1 }, maskA: { value: null }, maskB: { value: null },
   waterMap: { value: waterTex }, waterOn: { value: 1 }, time: { value: 0 }, sunDirW: { value: new THREE.Vector3() }, skyCol: { value: SKY.clone() },
   wDeep: { value: new THREE.Color('#123a4a') }, wShallow: { value: new THREE.Color('#3f7f86') }, wWave: { value: 2.2 }, wSpeed: { value: 0.6 }, wSpec: { value: 0.8 }, wReflect: { value: 0.55 }, wFroth: { value: 1 }, wWaveOn: { value: 1 },
-  coverR: { value: 140 }, coverFar: { value: 1 }, rockFrom: { value: 0.25 },
+  coverR: { value: 140 }, coverAt: { value: new THREE.Vector3() }, coverFar: { value: 1 }, rockFrom: { value: 0.25 },
   gullyStr: { value: 0.8 }, fanStr: { value: 0.45 }, strataStr: { value: 0.8 }, strataSize: { value: 1.6 }, lushTint: { value: new THREE.Color(0.86, 1.0, 0.8) }, dampTint: { value: new THREE.Color(0.78, 0.92, 0.76) }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
   slopeTint: { value: new THREE.Color(0.5, 0.66, 0.4) },
   shadeMap: { value: null }, shadowRange: { value: 0 }, shadowAt: { value: new THREE.Vector3() }, hillShade: { value: 1 }, aoShade: { value: 0.9 }, treeShade: { value: 0.5 },
@@ -567,7 +567,7 @@ mat.onBeforeCompile = (sh) => {
     uniform sampler2D groundMap; uniform float tile, split; uniform vec2 res;
     uniform float hexOn, hexSize, hexRot, hexSharp, hexBright, macroOn, macroStr, macroSize, macroHue, farOn, farFrom, grid;
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
-    uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 lushTint, dampTint, slopeTint;
+    uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 coverAt; uniform vec3 lushTint, dampTint, slopeTint;
     uniform sampler2D waterMap; uniform float waterOn, wFroth, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow;
     float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gShadowFade = 0.0; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathMap; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange; uniform vec3 shadowAt;
     uniform vec3 avgGround, avgDry, avgLush, avgForest, avgWet, avgPath, avgSteep, avgShore; uniform float shoreStr; uniform sampler2D layShore; uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layWet; uniform sampler2D layPath; uniform sampler2D laySteep;
@@ -731,7 +731,7 @@ mat.onBeforeCompile = (sh) => {
       g = over(g, steepC, rock);                                                 // cliffs: rock in strata
       // FAR COVER: past where the real plants stop, the ground carries clumps and specks where they
       // would grow (from the same map), so the plants thin into it instead of ending at a line
-      float far = smoothstep(coverR * 0.7, coverR * 1.05, length(vW.xz));
+      float far = smoothstep(coverR * 0.7, coverR * 1.05, length(vW.xz - coverAt.xz));
       if (far > 0.001 && coverFar > 0.5) {
         float clump = fbm(vW.xz / 7.0), speck = vn(vW.xz / 0.9) * 0.6 + vn(vW.xz / 0.35 + 7.0) * 0.4;
         float c = er.b * far * smoothstep(0.55, 0.85, speck + (clump - 0.5) * 0.9);
@@ -823,7 +823,7 @@ mat.onBeforeCompile = (sh) => {
     #include <dithering_fragment>
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-20' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-21' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground); ground.receiveShadow = SHADOW.on;
 // THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
@@ -871,7 +871,7 @@ function placeTrees() {
 // cell its middle is in, and each plant becomes one instanced mesh (16 draws for all of them).
 // Grasses go in the open and in part shade, shrubs along the forest's edge and a few inside it,
 // nothing on paths, steep or muddy ground.
-const COVER = { on: true, count: 8000, radius: 140, size: 3.2, near: 35, parts: null, meshes: [], longOn: true, longCount: 3000, longSize: 3.0, long: null };   // ~5 M triangles to start: the readout says what more costs
+const COVER = { at: new THREE.Vector3(), on: true, count: 8000, radius: 140, size: 3.2, near: 35, parts: null, meshes: [], longOn: true, longCount: 3000, longSize: 3.0, long: null };   // ~5 M triangles to start: the readout says what more costs
 Object.assign(COVER, TS.cover);
 const GRASSES = [0, 1, 4, 8, 10, 12, 14];
 // a Tripo sheet: its plants stand in a grid x grid wall (x across, y up); each triangle goes to the plant
@@ -992,8 +992,17 @@ function placeStones() {
 // meadows and thin ground. `clumpShare` and `lonerShare` split each sheet's count between the styles.
 const GROW = { patchSize: 30, patchSharp: 0.6, clumpShare: 0.3, clumpSize: 3, clumpCount: 6, lonerShare: 0.04, fertSize: 120, fert: 0.5 };
 const PLANT_KINDS = Array.from({ length: 25 }, (_, k) => ({ on: true, style: k >= 16 || GRASSES.includes(k) ? 'patch' : 'clump', size: 1, weight: 1 }));
+// the plants' circle follows where you look: once its centre (a little ahead of the camera, on the
+// ground) has moved a quarter of the circle, they are laid again round the new spot (the tiles that
+// stay keep their plants, so nothing near you shuffles)
+function followCover() {
+  if (!coverForest || RAIN.gen) return;
+  const fwd = new THREE.Vector3().subVectors(controls.target, camera.position).setY(0);
+  const at = camera.position.clone().addScaledVector(fwd.lengthSq() > 1e-6 ? fwd.normalize() : fwd, COVER.radius * 0.35); at.y = 0;
+  if (at.distanceTo(COVER.at) > COVER.radius * 0.25) { COVER.at.copy(at); placeCover(); }
+}
 function placeCover() {
-  U.coverR.value = COVER.radius;
+  U.coverR.value = COVER.radius; U.coverAt.value.copy(COVER.at);
   for (const im of COVER.meshes) { scene.remove(im); im.dispose(); }
   COVER.meshes = [];
   if (!COVER.parts || !COVER.long || !MAPS.wet) return;
@@ -1013,7 +1022,15 @@ function placeCover() {
   const scaleOf = (k, t) => k >= 16 ? COVER.longSize * (0.75 + 0.5 * r(t, 27.9)) / 3.0 * PLANT_KINDS[k].size : (0.7 + 0.6 * r(t, 11.3)) * COVER.size / 3.2 * PLANT_KINDS[k].size;
   const fertile = (x, z) => 1 - GROW.fert * (1 - THREE.MathUtils.smoothstep(vnoise(x / GROW.fertSize + 61, z / GROW.fertSize - 23), 0.3, 0.7));
   const patchN = (k, x, z) => { const s = GROW.patchSize; return vnoise(x / s + k * 37.1, z / s - k * 19.7) * 0.7 + vnoise(x / s * 2.3 + k * 11.3, z / s * 2.3 + k * 5.9) * 0.3; };
-  const disc = (t, seed) => { const ang = r(t, seed + 1.7) * Math.PI * 2, dist = Math.sqrt(r(t, seed + 3.1)) * COVER.radius; return [Math.cos(ang) * dist, Math.sin(ang) * dist]; };
+  // THE PLANTS FOLLOW THE CAMERA: the ground is cut into TILE m tiles; each tile always grows the same
+  // plants (its own seeds), and only the tiles round COVER.at are kept, so moving brings tiles in and
+  // drops others while every plant that stays keeps its spot
+  const TILE = 30, C = COVER.at, R = COVER.radius, tiles = [];
+  for (let tz = Math.floor((C.z - R) / TILE); tz <= Math.floor((C.z + R) / TILE); tz++) for (let tx = Math.floor((C.x - R) / TILE); tx <= Math.floor((C.x + R) / TILE); tx++)
+    if (Math.hypot((tx + 0.5) * TILE - C.x, (tz + 0.5) * TILE - C.z) < R + TILE * 0.72) tiles.push([tx, tz, ((tx + 200) * 1000 + tz + 200) * 37]);
+  const inTile = (tile, t, seed) => [(tile[0] + r(tile[2] + t, seed + 1.7)) * TILE, (tile[1] + r(tile[2] + t, seed + 3.1)) * TILE];
+  const inRange = (x, z) => Math.hypot(x - C.x, z - C.z) <= R;
+  const perTile = (n) => n / (Math.PI * R * R) * TILE * TILE;                       // a count over the circle, as a count per tile
   const plant = (k, x, z, t) => fixed.push({ x, z, sp: k, scale: scaleOf(k, t), yaw: r(t, 13.7) * 6.283 });
   function scatter(pool, count, seed) {
     const on = pool.filter(k => PLANT_KINDS[k].on); if (!on.length || !count) return 0;
@@ -1022,32 +1039,34 @@ function placeCover() {
     if (!pk.length) { if (ck.length) nC = count - nL; else nL = count; }
     const nP = pk.length ? count - nC - nL : 0, start = fixed.length;
     // patches
-    for (let t = 1, got = 0; got < nP && t < nP * 16; t++) {
-      const [x, z] = disc(t, seed), g = ground(x, z); if (g.blocked >= 1) continue;
+    for (const tile of tiles) for (let t = 1, got = 0, want_ = Math.round(perTile(nP)); got < want_ && t < want_ * 16; t++) {
+      const [x, z] = inTile(tile, t, seed), g = ground(x, z); if (g.blocked >= 1) continue;   // (a tile runs the same wherever the circle is; only the planting asks if it's in range)
       let total = 0, hab = 0; const w = pk.map(k => { const h = want(k, g) * PLANT_KINDS[k].weight; hab += h; const v = h * Math.pow(patchN(k, x, z), 1 + GROW.patchSharp * 8); total += v; return v; });
-      if (r(t, seed + 5.3) > hab / pk.length * 0.9 * (1 - g.blocked) * fertile(x, z) || total <= 0) continue;
-      let q = r(t, seed + 9.1) * total, k = pk[pk.length - 1]; for (let n = 0; n < pk.length; n++) if ((q -= w[n]) <= 0) { k = pk[n]; break; }
-      plant(k, x, z, t + seed * 1000); got++;
+      if (r(tile[2] + t, seed + 5.3) > hab / pk.length * 0.9 * (1 - g.blocked) * fertile(x, z) || total <= 0) continue;
+      let q = r(tile[2] + t, seed + 9.1) * total, k = pk[pk.length - 1]; for (let n = 0; n < pk.length; n++) if ((q -= w[n]) <= 0) { k = pk[n]; break; }
+      if (inRange(x, z)) plant(k, x, z, tile[2] + t + seed * 1000); got++;
     }
     // clumps: a centre where shrubs like it, a kind (families: nearby clumps lean the same way), then
     // its plants scattered round the centre
-    for (let c = 1, got = 0; got < nC && c < nC * 4; c++) {
-      const [cx, cz] = disc(c, seed + 40), g = ground(cx, cz); if (g.blocked >= 0.6) continue;
+    for (const tile of tiles) for (let c = 1, got = 0, want_ = Math.round(perTile(nC)); got < want_ && c < want_ * 4; c++) {
+      const [cx, cz] = inTile(tile, c, seed + 40), g = ground(cx, cz); if (g.blocked >= 0.6) continue;
       let total = 0, hab = 0; const w = ck.map(k => { const h = want(k, g) * PLANT_KINDS[k].weight; hab += h; const v = h * Math.pow(patchN(k + 50, cx * 0.5, cz * 0.5), 3); total += v; return v; });
-      if (r(c, seed + 41.3) > hab / ck.length * 1.2 * fertile(cx, cz) || total <= 0) continue;
-      let q = r(c, seed + 43.9) * total, k = ck[ck.length - 1]; for (let n = 0; n < ck.length; n++) if ((q -= w[n]) <= 0) { k = ck[n]; break; }
-      const n = Math.max(2, Math.round(GROW.clumpCount * (0.6 + 0.8 * r(c, seed + 47.1))));
-      for (let m = 0; m < n && got < nC; m++) {
-        const a = r(c * 31 + m, seed + 51.7) * Math.PI * 2, d = GROW.clumpSize * Math.sqrt(-2 * Math.log(Math.max(1e-4, r(c * 31 + m, seed + 53.3)))) * 0.5;   // gathered toward the middle
+      const cs = tile[2] + c;
+      if (r(cs, seed + 41.3) > hab / ck.length * 1.2 * fertile(cx, cz) || total <= 0) continue;
+      let q = r(cs, seed + 43.9) * total, k = ck[ck.length - 1]; for (let n = 0; n < ck.length; n++) if ((q -= w[n]) <= 0) { k = ck[n]; break; }
+      const n = Math.max(2, Math.round(GROW.clumpCount * (0.6 + 0.8 * r(cs, seed + 47.1))));
+      for (let m = 0; m < n && got < want_; m++) {
+        const a = r(cs * 31 + m, seed + 51.7) * Math.PI * 2, d = GROW.clumpSize * Math.sqrt(-2 * Math.log(Math.max(1e-4, r(cs * 31 + m, seed + 53.3)))) * 0.5;   // gathered toward the middle
         const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d; if (ground(x, z).blocked >= 0.8) continue;
-        plant(k, x, z, c * 31 + m + seed * 1000); got++;
+        if (inRange(x, z)) plant(k, x, z, tile[2] + c * 31 + m + seed * 1000); got++;
       }
     }
     // loners
-    for (let t = 1, got = 0; got < nL && t < nL * 20; t++) {
-      const [x, z] = disc(t, seed + 70), g = ground(x, z); if (g.blocked >= 0.6) continue;
-      const k = lk[Math.floor(r(t, seed + 71.9) * lk.length) % lk.length]; if (r(t, seed + 73.1) > want(k, g) + 0.1) continue;
-      plant(k, x, z, t + seed * 1000 + 500); got++;
+    for (const tile of tiles) for (let t = 1, got = 0, want_ = perTile(nL); got < want_ && t < Math.max(1, want_) * 20; t++) {
+      if (want_ < 1 && r(tile[2], seed + 77.7) > want_) break;                      // under one a tile: some tiles get one
+      const [x, z] = inTile(tile, t, seed + 70), g = ground(x, z); if (g.blocked >= 0.6) continue;
+      const k = lk[Math.floor(r(tile[2] + t, seed + 71.9) * lk.length) % lk.length]; if (r(tile[2] + t, seed + 73.1) > want(k, g) + 0.1) continue;
+      if (inRange(x, z)) plant(k, x, z, tile[2] + t + seed * 1000 + 500); got++;
     }
     return fixed.length - start;
   }
@@ -1320,7 +1339,7 @@ renderer.setAnimationLoop(() => {
   if (dt > 0) fps += (1 / dt - fps) * Math.min(1, dt * 2);
   watch();
   if ((shown += dt) > 0.5) { shown = 0; const inf = renderer.info.render; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${(1000 / Math.max(1, fps)).toFixed(1)} ms · ${inf.calls} draws · ${(inf.triangles / 1e6).toFixed(2)} M triangles · ${GL2 ? 'WebGL2' : 'WebGL1'}`; }
-  renderer.info.reset(); stepRain(); controls.update(); U.time.value += dt; sky.update(camera, dt); U.sunDirW.value.copy(SUN_DIR); followShadow();
+  renderer.info.reset(); stepRain(); controls.update(); followCover(); U.time.value += dt; sky.update(camera, dt); U.sunDirW.value.copy(SUN_DIR); followShadow();
   for (const f of [treeForest, coverForest]) if (f) {
     f.landU.landShade.value = U.shadeMap.value; f.landU.landShadeK.value.set(U.hillShade.value, U.aoShade.value, U.treeShade.value * 0.6, U.shadeMap.value ? 1 : 0);   // the land's baked shade, on the plants too
     f.update(camera, controls.target, camera.position, dt);
