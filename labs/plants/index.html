@@ -223,12 +223,12 @@ $('use').addEventListener('click', useIt); $('clear').addEventListener('click', 
 
 // the picks are kept in this browser between visits, and copied out as text for Claude
 function save() { try { localStorage.setItem(KEY, JSON.stringify(cells.map(c => c.pick))); } catch (e) { /* no storage */ } }
-// Jacob's picks (2026-09-30) to start from, when this browser has none of its own. The juniper was
-// picked at 1,541 triangles, before thinning; its nearest version now is 900
+// Jacob's picks (2026-09-30) to start from, when this browser has none of its own. The low juniper
+// was swapped for the sprig shrub at 900
 const DEFAULT_PICKS = [['longGrass', 4, 'tri300'], ['longGrass', 0, 'tri600'], ['longGrass', 1, 'tri300'], ['grassesLow', 0, 'tri300'],
   ['grassesLow', 3, 'tri300'], ['grassesLow', 5, 'tri600'], ['grassesLow', 6, 'tri600'], ['flowers', 5, 'tri300'],
   ['flowers', 1, 'tri600'], ['flowers', 6, 'tri300'], ['flowers', 3, 'tri600'], ['flowers', 7, 'tri600'],
-  ['shrubs', 5, 'tri600'], ['shrubs', 1, 'tri900'], ['shrubs', 4, 'tri600'], ['flowers', 8, 'tri600']].map(([sheet, n, ver]) => ({ sheet, n, ver }));
+  ['shrubs', 5, 'tri600'], ['shrubs', 2, 'tri900'], ['shrubs', 4, 'tri600'], ['flowers', 8, 'tri600']].map(([sheet, n, ver]) => ({ sheet, n, ver }));
 let start = DEFAULT_PICKS;
 try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (Array.isArray(saved) && saved.some(Boolean)) start = saved; } catch (e) { /* none */ }
 start.forEach((p, i) => { if (p && manifest[p.sheet] && cells[i]) { cells[i].pick = p; showInCell(i, p); } });
