@@ -16,15 +16,21 @@ SHEETS = {
   'grassesLow': ['bunchgrass', 'reeds', 'dry grass', 'broad-leaf hosta', 'clover', 'wild strawberry', 'dandelion', 'plantain', 'purple-top grass'],
   'flowers': ['lupine', 'paintbrush', 'yarrow', 'columbine', 'thistle', 'yucca', 'snowdrops', 'violets', 'marsh marigold'],
   'shrubs': ['sagebrush', 'low juniper', 'sprig shrub', 'wild rose', 'spruce sapling', 'cattails', 'flowering shrub', 'grass clump', 'leafy shrub'],
+  'longGrass': ['feather grass', 'broad-blade grass', 'golden wheatgrass', 'silver plume grass', 'tall seed grass', 'oat grass', 'purple plume grass', 'timothy grass', 'mixed plume grass'],
 }
-VERSIONS = ['raw', 'weld', 'fixed', 'planar', 'tri600', 'tri300']
+VERSIONS = ['tri900', 'tri600', 'tri300']   # every one: weld, fixed, planar, then shrunk toward its count
 def tris(ob):
     me = ob.data; return sum(len(p.vertices) - 2 for p in me.polygons)
 def clear():
     bpy.ops.object.select_all(action='SELECT'); bpy.ops.object.delete()
     for d in (bpy.data.meshes, bpy.data.materials, bpy.data.images): [d.remove(x) for x in list(d) if x.users == 0]
-manifest = {}
+# optional: only some sheets (blender ... -P process.py -- longGrass), merged into an existing manifest
+ONLY = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
+mpath = os.path.join(OUT, 'manifest.json')
+manifest = json.load(open(mpath)) if ONLY and os.path.exists(mpath) else {}
 for sheet, names in SHEETS.items():
+    if ONLY and sheet not in ONLY: continue
+    print('sheet', sheet, flush=True)
     manifest[sheet] = {'plants': names, 'counts': {}}
     for ver in VERSIONS:
         clear()
@@ -50,31 +56,37 @@ for sheet, names in SHEETS.items():
             if not any_: print('empty cell', sheet, n, flush=True); continue
             new = [o for o in bpy.context.selected_objects if o is not src][-1]; new.name = f'{n}:{names[n]}'; plants.append(new)
         bpy.data.objects.remove(src)
-        counts = []
+        counts = []; raw = []
         for ob in plants:
+            raw.append({'tris': tris(ob), 'verts': len(ob.data.vertices)})
             me = ob.data
             # stand it on the ground, centred
             xs = [v.co.x for v in me.vertices]; ys = [v.co.y for v in me.vertices]; zs = [v.co.z for v in me.vertices]
             cx, cy, zmin = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, min(zs)
             for v in me.vertices: v.co.x -= cx; v.co.y -= cy; v.co.z -= zmin
             bm = bmesh.new(); bm.from_mesh(me)
-            if ver != 'raw': bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.000001)
-            if ver not in ('raw', 'weld'):                    # every face of a surface facing the same way, shaded smooth
+            bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.000001)
+            if True:                    # every face of a surface facing the same way, shaded smooth
                 bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
                 for f in bm.faces: f.smooth = True
             bm.to_mesh(me); bm.free()
-            if ver not in ('raw', 'weld'): me.use_auto_smooth = True; me.auto_smooth_angle = math.radians(35)   # creases sharper than 35 deg stay crisp
+            me.use_auto_smooth = True; me.auto_smooth_angle = math.radians(35)   # creases sharper than 35 deg stay crisp
             bpy.context.view_layer.objects.active = ob
-            if ver in ('planar', 'tri600', 'tri300'):
+            print('  plant', ob.name, tris(ob), 'welded', flush=True)
+            if True:
                 m = ob.modifiers.new('planar', 'DECIMATE'); m.decimate_type = 'DISSOLVE'; m.angle_limit = math.radians(5); m.delimit = {'UV'}; bpy.ops.object.modifier_apply(modifier='planar')
-            if ver in ('tri600', 'tri300'):
-                target = 600 if ver == 'tri600' else 300; t = tris(ob)
+            # back to triangles before shrinking: the flattening leaves big many-sided faces, and shrinking
+            # those crashed Blender 4.0 on one plant (it asked for 25 GB)
+            bm = bmesh.new(); bm.from_mesh(me); bmesh.ops.triangulate(bm, faces=bm.faces); bm.to_mesh(me); bm.free()
+            print('  planar done', tris(ob), flush=True)
+            if True:
+                target = int(ver[3:]); t = tris(ob)
                 if t > target:
                     m = ob.modifiers.new('collapse', 'DECIMATE'); m.ratio = target / t; m.use_collapse_triangulate = True; bpy.ops.object.modifier_apply(modifier='collapse')
             # x spread so the sheet still reads as a row of plants in a viewer; the lab places them itself
             ob.location.x = n * 0.4
             counts.append({'tris': tris(ob), 'verts': len(me.vertices)})
-        manifest[sheet]['counts'][ver] = counts
+        manifest[sheet]['counts'][ver] = counts; manifest[sheet]['counts']['raw'] = raw
         for mat in bpy.data.materials: mat.use_backface_culling = False   # two-sided (glTF doubleSided)
         for img in bpy.data.images:
             if img.size[0] > 2048: img.scale(2048, 2048)

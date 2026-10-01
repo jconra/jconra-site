@@ -11,7 +11,7 @@
   html,body { height:100%; overflow:hidden; background:#090d14; color:#ccd6de; font:13px/1.45 ui-sans-serif, system-ui, sans-serif; }
   canvas { display:block; touch-action:none; }
   #panel { position:fixed; top:12px; right:12px; bottom:12px; width:320px; overflow-y:auto; z-index:5;
-           background:rgba(10,13,17,.9); border:1px solid #212a34; border-radius:6px; padding:12px 14px; }
+           background:rgba(10,13,17,.92); border:1px solid #212a34; border-radius:6px; padding:12px 14px; }
   #panel.min { bottom:auto; }
   #panel.min .body { display:none; }
   h1 { font:400 17px/1 nasa, ui-sans-serif, sans-serif; letter-spacing:.05em; color:#e8f1f5; display:flex; justify-content:space-between; align-items:center; }
@@ -21,62 +21,73 @@
   details.sec summary::before { content:"▸ "; color:#35e07d; }
   details.sec[open] > summary::before { content:"▾ "; }
   details.sec[open] > summary { color:#e8f1f5; }
-  .list { display:flex; flex-direction:column; gap:2px; margin:2px 0 6px; }
+  .note { color:#6d7a85; font-size:11.5px; margin:6px 0 4px; }
+  .note b { color:#aeb9c2; font-weight:600; }
+  /* the 4 x 4 of cells, in the panel */
+  #cells { display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; margin:6px 0; }
+  #cells button { aspect-ratio:1; background:#0d1218; border:1px solid #212a34; border-radius:4px; color:#7f8d99; cursor:pointer; padding:3px;
+                  font:10.5px/1.2 ui-sans-serif, system-ui, sans-serif; display:flex; flex-direction:column; justify-content:space-between; text-align:left; overflow:hidden; }
+  #cells button i { font:600 10px ui-monospace,monospace; font-style:normal; color:#59656f; }
+  #cells button.full { color:#cfe9d9; border-color:#2a4a38; }
+  #cells button.on { border-color:#35e07d; background:rgba(53,224,125,.12); color:#e8f1f5; }
+  .list { display:flex; flex-direction:column; gap:1px; margin:2px 0 6px; }
+  .list h4 { font:600 10px ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase; color:#6d7a85; margin:8px 0 2px; }
   .list button { text-align:left; background:none; border:1px solid transparent; border-radius:3px; color:#aeb9c2; padding:3px 7px; cursor:pointer;
                  font:12px ui-sans-serif, system-ui, sans-serif; display:flex; justify-content:space-between; gap:8px; }
   .list button:hover { border-color:#212a34; color:#e8f1f5; }
   .list button.on { background:rgba(53,224,125,.14); border-color:#2f7d55; color:#e8f1f5; }
+  .list button.used { color:#59656f; }
   .list button small { color:#59656f; font:11px ui-monospace,monospace; white-space:nowrap; }
-  .list h4 { font:600 10px ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase; color:#6d7a85; margin:8px 0 2px; }
   .check { display:flex; gap:8px; align-items:center; margin:6px 0; color:#aeb9c2; cursor:pointer; }
   .check input { accent-color:#35e07d; }
-  .note { color:#6d7a85; font-size:11.5px; margin:8px 0 4px; }
-  .note b { color:#aeb9c2; font-weight:600; }
   .btns { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }
-  .btns button { font:600 11px ui-monospace,monospace; letter-spacing:.05em; text-transform:uppercase; background:rgba(53,224,125,.12);
-                 color:#35e07d; border:1px solid #2f7d55; border-radius:4px; padding:6px 8px; cursor:pointer; }
-  .btns button.on { background:rgba(53,224,125,.35); color:#e8f1f5; }
-  table { width:100%; border-collapse:collapse; font:12px ui-monospace,monospace; font-variant-numeric:tabular-nums; margin:4px 0; }
-  th { text-align:left; color:#6d7a85; font-weight:400; padding:2px 4px; }
-  td { padding:2px 4px; color:#e8f1f5; } td.d { color:#7f8d99; }
-  #title { position:fixed; top:36px; left:16px; z-index:6; pointer-events:none; text-shadow:0 1px 4px #000; }
-  #title b { display:block; font:400 20px nasa, ui-sans-serif, sans-serif; letter-spacing:.05em; color:#e8f1f5; }
-  #title span { font:11.5px/1.5 ui-monospace,monospace; color:#9fb3c2; }
+  .btn { font:600 11px ui-monospace,monospace; letter-spacing:.05em; text-transform:uppercase; background:rgba(53,224,125,.12);
+         color:#35e07d; border:1px solid #2f7d55; border-radius:4px; padding:6px 9px; cursor:pointer; }
+  .btn.on { background:rgba(53,224,125,.38); color:#e8f1f5; }
+  .btn.quiet { background:none; color:#8494a0; border-color:#212a34; }
+  .btn:disabled { opacity:.35; cursor:default; }
+  /* the bar along the bottom: the plant being tried, its triangle count, the version, use it */
+  #bar { position:fixed; left:12px; bottom:12px; z-index:5; background:rgba(10,13,17,.92); border:1px solid #212a34; border-radius:6px;
+         padding:10px 12px; display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; max-width:calc(100vw - 360px); }
+  #bar .what b { display:block; font:400 15px nasa, ui-sans-serif, sans-serif; letter-spacing:.04em; color:#e8f1f5; }
+  #bar .what span { font:11.5px ui-monospace,monospace; color:#9fb3c2; }
+  #bar .ver { display:flex; gap:4px; }
+  #total { font:12px ui-monospace,monospace; color:#9fb3c2; font-variant-numeric:tabular-nums; }
+  #total b { color:#e8f1f5; font-size:14px; }
   #back { position:fixed; top:14px; left:16px; z-index:6; font:11px ui-monospace,monospace; letter-spacing:.14em; color:#8494a0; text-decoration:none; text-transform:uppercase; }
-  #labels .lab { position:fixed; z-index:4; transform:translate(-50%, 0); text-align:center; pointer-events:none; text-shadow:0 1px 3px #000; white-space:nowrap; }
-  #labels .lab b { display:block; font:600 11px ui-monospace,monospace; letter-spacing:.1em; text-transform:uppercase; color:#e8f1f5; }
-  #labels .lab span { font:11px ui-monospace,monospace; color:#9fb3c2; }
+  #head { position:fixed; top:36px; left:16px; z-index:6; pointer-events:none; text-shadow:0 1px 4px #000; }
+  #head > b { display:block; font:400 20px nasa, ui-sans-serif, sans-serif; letter-spacing:.05em; color:#e8f1f5; }
   #loading { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:6; font:12px nasa, monospace; letter-spacing:3px; color:#b9c8d2; pointer-events:none; }
   button:focus-visible, input:focus-visible { outline:2px solid #35e07d; outline-offset:1px; }
-  @media (max-width:700px) { #panel, #panel.min { width:auto; left:12px; top:auto; bottom:12px; max-height:46vh; } #title b { font-size:16px; } }
+  @media (max-width:700px) { #panel, #panel.min { width:auto; left:12px; bottom:auto; max-height:44vh; } #bar { max-width:none; right:12px; } #head { display:none; } }
 </style>
 </head>
 <body>
 <a id="back" href="../">&larr; labs</a>
-<div id="title"><b></b><span></span></div>
-<div id="labels"></div>
+<div id="head"><b>Plant Lab</b><span id="total"></span></div>
 <div id="loading">loading…</div>
 <div id="panel">
   <h1>Plant Lab <button id="min" type="button">hide</button></h1>
   <div class="body">
-    <p class="note">Jacob's Tripo plant sheets, split into their plants, each shown in every clean-up version side by side, with how many triangles and corners (vertices) each one keeps.</p>
-    <details class="sec" open><summary>Plants</summary><div class="list" id="plants"></div></details>
-    <details class="sec" open><summary>View</summary>
-      <label class="check" for="wire"><input id="wire" type="checkbox"> Wireframe (the triangles)</label>
-      <label class="check" for="tex"><input id="tex" type="checkbox" checked> Texture</label>
+    <p class="note">Choose the 16 plants for the ground-cover sheet. Pick a <b>cell</b>, try <b>candidates</b> in it (36: your 27 plants and the 9 long grasses), switch between <b>300 / 600 / 900</b> triangles at the bottom, and <b>Use</b> the one you want. <b>Copy picks</b> when you're done and paste them in chat.</p>
+    <details class="sec" open><summary>The 16 cells</summary>
+      <div id="cells"></div>
+      <div class="btns"><button class="btn" id="copy" type="button">Copy picks</button><button class="btn quiet" id="whole" type="button">See the whole grid</button></div>
+      <p class="note" id="copyNote"></p>
+    </details>
+    <details class="sec" open><summary>Candidates</summary><div class="list" id="cands"></div></details>
+    <details class="sec"><summary>View</summary>
       <label class="check" for="upLit"><input id="upLit" type="checkbox" checked> Lit like in the Terrain Lab (every face as if facing up)</label>
-      <label class="check" for="spin"><input id="spin" type="checkbox"> Turn slowly</label>
-      <div class="btns"><button type="button" data-cam="near">Up close</button><button type="button" data-cam="game">At game distance</button><button type="button" data-cam="top">From above</button></div>
-    </details>
-    <details class="sec" open><summary>The versions</summary>
-      <table id="counts"></table>
-      <p class="note"><b>raw</b>: as Tripo made it. <b>weld</b>: corners closer than 0.2 mm merged (Merge by Distance); Tripo splits every corner along texture seams and creases, so this halves the corners, but on its own it blackens leaves, because Tripo's faces don't all point the same way. <b>fixed</b>: weld, then every face of a surface turned to point the same way and shaded smooth except across creases sharper than 35°. <b>planar</b>: fixed, then faces lying flat together merged (Decimate Planar, 5°, keeping texture seams). <b>tri600 / tri300</b>: planar, then shrunk toward 600 / 300 triangles (Decimate Collapse).</p>
-      <p class="note">A plant made of many separate little pieces (lots of loose leaves or flower heads) won't shrink much below a thousand or so: shrinking can't join pieces that aren't connected.</p>
-    </details>
-    <details class="sec"><summary>About the files</summary>
-      <p class="note">Each version of a sheet is one glTF with all nine plants, sharing one 2K texture. Made by <code>labs/plants/process.py</code> (Blender 4.0, run from the command line) from the sheets as Tripo exported them.</p>
+      <label class="check" for="wire"><input id="wire" type="checkbox"> Wireframe (the triangles)</label>
+      <p class="note">Each version: corners at the same spot merged, faces turned one way, flat faces merged, then shrunk toward 900, 600 or 300 triangles (Blender, <code>labs/plants/process.py</code>). Plants made of many separate little pieces stop shrinking at whatever their pieces need, so their 300 can read more.</p>
     </details>
   </div>
+</div>
+<div id="bar">
+  <div class="what"><b id="tryName">Pick a cell</b><span id="tryInfo">then a candidate</span></div>
+  <div class="ver" id="vers"></div>
+  <button class="btn" id="use" type="button" disabled>Use</button>
+  <button class="btn quiet" id="clear" type="button" disabled>Empty the cell</button>
 </div>
 <script type="importmap">
   {
@@ -92,11 +103,12 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { chooseTier } from '../../src/quality.js';
 
-// QUALITY: a light page (one plant at a time); the tier only caps the drawing resolution
+// QUALITY: a light page (16 small plants at most); the tier only caps the drawing resolution
 const TIER_SET = { potato: { ratio: 0.75 }, normal: { ratio: 1.5 }, gaming: { ratio: 2 } };
 const $ = (id) => document.getElementById(id);
-const VERSIONS = ['raw', 'weld', 'fixed', 'planar', 'tri600', 'tri300'];
-const GAP = 0.5;                                  // metres between the versions in the row
+const VERSIONS = ['tri300', 'tri600', 'tri900'], STEP = 0.55;      // metres between cells
+const SHEET_NAMES = { grassesLow: 'Grasses and low plants', flowers: 'Flowers', shrubs: 'Shrubs', longGrass: 'Long grasses' };
+const KEY = 'jconra.plantPicks';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 const QUAL = chooseTier(renderer), TS = TIER_SET[QUAL.tier];
@@ -107,110 +119,140 @@ scene.add(new THREE.HemisphereLight(0xdfefff, 0x4a4030, 1.3));
 const sun = new THREE.DirectionalLight(0xfff2dd, 2.2); sun.position.set(2, 4, 3); scene.add(sun);
 const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.01, 100);
 const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
-const ground = new THREE.Mesh(new THREE.CircleGeometry(3, 48), new THREE.MeshStandardMaterial({ color: 0x232b22, roughness: 1 }));
-ground.rotation.x = -Math.PI / 2; scene.add(ground);
 
-THREE.Cache.enabled = true;                         // the five versions of a sheet share one texture: load it once
-const loader = new GLTFLoader(), sheets = {};      // sheet -> { version -> gltf scene }
+// the grid: 16 ground tiles, a plant on each that has one
+const cells = Array.from({ length: 16 }, (_, c) => {
+  const x = (c % 4 - 1.5) * STEP, z = (Math.floor(c / 4) - 1.5) * STEP;
+  const tile = new THREE.Mesh(new THREE.PlaneGeometry(STEP * 0.92, STEP * 0.92), new THREE.MeshStandardMaterial({ color: 0x232b22, roughness: 1 }));
+  tile.rotation.x = -Math.PI / 2; tile.position.set(x, 0, z); tile.userData.cell = c; scene.add(tile);
+  const holder = new THREE.Group(); holder.position.set(x, 0, z); scene.add(holder);
+  return { tile, holder, pick: null, x, z };       // pick: { sheet, n, ver }
+});
+
+THREE.Cache.enabled = true;                         // the three versions of a sheet share one picture
+const loader = new GLTFLoader(), files = {};
 const manifest = await (await fetch('data/manifest.json')).json();
-async function loadSheet(sheet) {
-  if (sheets[sheet]) return sheets[sheet];
-  $('loading').textContent = 'loading ' + sheet + '…';
-  const out = {}; await Promise.all(VERSIONS.map(v => new Promise((ok, bad) => loader.load(`data/${sheet}/${v}.gltf`, g => { out[v] = g.scene; ok(); }, undefined, bad))));
-  $('loading').textContent = ''; return (sheets[sheet] = out);
-}
+const loadVer = (sheet, ver) => files[sheet + ver] || (files[sheet + ver] = new Promise((ok, bad) => loader.load(`data/${sheet}/${ver}.gltf`, g => ok(g.scene), undefined, bad)));
+const nameOf = (sheet, n) => manifest[sheet].plants[n];
+const trisOf = (sheet, n, ver) => manifest[sheet].counts[ver][n].tris;
 
-// the panel: the plants, by sheet
-const SHEET_NAMES = { grassesLow: 'Grasses and low plants', flowers: 'Flowers', shrubs: 'Shrubs' };
-let current = null;
-for (const [sheet, m] of Object.entries(manifest)) {
-  const h = document.createElement('h4'); h.textContent = SHEET_NAMES[sheet] || sheet; $('plants').appendChild(h);
-  m.plants.forEach((name, n) => {
-    const b = document.createElement('button'); b.type = 'button'; b.dataset.key = sheet + ':' + n;
-    b.innerHTML = `${name}<small>${m.counts.raw[n].tris.toLocaleString()} → ${m.counts.tri300[n].tris.toLocaleString()} tris</small>`;
-    b.addEventListener('click', () => show(sheet, n)); $('plants').appendChild(b);
-  });
+// a plant, ready to stand in a cell: its own copy, lit the way the Terrain Lab lights plants (faces as if
+// facing up, and never flipped when seen from behind, which would turn "up" into "down": black)
+async function plantObject(sheet, n, ver) {
+  $('loading').textContent = 'loading…';
+  const src = (await loadVer(sheet, ver)).getObjectByName(THREE.PropertyBinding.sanitizeNodeName(`${n}:${nameOf(sheet, n)}`));
+  $('loading').textContent = '';
+  const o = src.clone(true); o.position.set(0, 0, 0); o.rotation.set(0, 0, 0);
+  o.traverse(m => { if (!m.isMesh) return; m.material = m.material.clone(); m.geometry = m.geometry.clone(); m.userData.normals = m.geometry.attributes.normal.clone(); });
+  styleObject(o); return o;
 }
-
-// the row: the chosen plant in every version, side by side, with a label under each
-const row = new THREE.Group(); scene.add(row);
-let labels = [];
-async function show(sheet, n) {
-  current = { sheet, n };
-  for (const b of $('plants').querySelectorAll('button')) b.classList.toggle('on', b.dataset.key === sheet + ':' + n);
-  const s = await loadSheet(sheet);
-  row.clear(); $('labels').innerHTML = ''; labels = [];
-  const name = manifest[sheet].plants[n], counts = manifest[sheet].counts;
-  let height = 0.3;
-  VERSIONS.forEach((v, i) => {
-    const src = s[v].getObjectByName(THREE.PropertyBinding.sanitizeNodeName(`${n}:${name}`));   // (three tidies names on load: no ':', spaces become '_')
-    if (!src) return;
-    const o = src.clone(true); o.position.set((i - (VERSIONS.length - 1) / 2) * GAP, 0, 0); o.rotation.set(0, 0, 0);
-    o.traverse(m => { if (m.isMesh) { m.userData.map = m.userData.map ?? m.material.map; m.material = m.material.clone(); m.geometry = m.geometry.clone(); m.userData.normals = m.geometry.attributes.normal.clone(); } });
-    row.add(o);
-    const bb = new THREE.Box3().setFromObject(o); height = Math.max(height, bb.max.y);
-    const el = document.createElement('div'); el.className = 'lab';
-    const c = counts[v][n], pct = Math.round(c.tris / counts.raw[n].tris * 100);
-    el.innerHTML = `<b>${v}</b><span>${c.tris.toLocaleString()} tris${v === 'raw' ? '' : ' (' + pct + '%)'}<br>${c.verts.toLocaleString()} verts</span>`;
-    $('labels').appendChild(el); labels.push([el, o.position.clone()]);
-  });
-  applyView();
-  $('title').querySelector('b').textContent = name;
-  $('title').querySelector('span').textContent = `${SHEET_NAMES[sheet]} · raw ${counts.raw[n].tris.toLocaleString()} triangles`;
-  // the counts table
-  $('counts').innerHTML = '<tr><th>version</th><th>triangles</th><th>verts</th><th>of raw</th></tr>' + VERSIONS.map(v => { const c = counts[v][n];
-    return `<tr><td>${v}</td><td>${c.tris.toLocaleString()}</td><td>${c.verts.toLocaleString()}</td><td class="d">${Math.round(c.tris / counts.raw[n].tris * 100)}%</td></tr>`; }).join('');
-  frame(height, 'near');
-}
-
-// wireframe drawn over the plant (the triangles in white), and the texture switch
-// the Terrain Lab lights ground plants as if every face pointed up (so no leaf goes black from behind);
-// that is how they will look there, so it is the default here
-function applyView() {
-  row.traverse(m => {
+function styleObject(o) {
+  o.traverse(m => {
     if (!m.isMesh) return;
     const nrm = m.geometry.attributes.normal;
     if ($('upLit').checked) { for (let i = 0; i < nrm.count; i++) nrm.setXYZ(i, 0, 1, 0); } else nrm.copy(m.userData.normals);
     nrm.needsUpdate = true;
-    // and, like there, a face seen from behind keeps its normal (three would flip it, and "up" would
-    // become "down": black)
-    m.material.onBeforeCompile = (sh) => { if ($('upLit').checked) sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>',
-      THREE.ShaderChunk.normal_fragment_begin.replace('gl_FrontFacing ? 1.0 : - 1.0', '1.0')); };
-    m.material.customProgramCacheKey = () => $('upLit').checked ? 'plant-up' : 'plant-own';
-    m.material.map = $('tex').checked ? m.userData.map : null; m.material.needsUpdate = true;
+    m.material.onBeforeCompile = (sh) => { if ($('upLit').checked) sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('gl_FrontFacing ? 1.0 : - 1.0', '1.0')); };
+    m.material.customProgramCacheKey = () => $('upLit').checked ? 'plant-up' : 'plant-own'; m.material.needsUpdate = true;
     const old = m.children.find(c => c.userData.wire); if (old) { m.remove(old); old.geometry.dispose(); }
     if ($('wire').checked) { const w = new THREE.LineSegments(new THREE.WireframeGeometry(m.geometry), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 })); w.userData.wire = true; m.add(w); }
   });
 }
-$('wire').addEventListener('change', applyView); $('tex').addEventListener('change', applyView); $('upLit').addEventListener('change', applyView);
+for (const id of ['upLit', 'wire']) $(id).addEventListener('change', () => cells.forEach(c => c.holder.children.forEach(styleObject)));
 
-// camera: up close, at the distance a player sees ground plants from, or from above
-let lastH = 0.3;
-function frame(h, how) {
-  lastH = h; const w = VERSIONS.length * GAP;
-  // far enough back that the whole row fits across the free part of the screen, with a margin
-  const free = innerWidth > 700 && !$('panel').classList.contains('min') ? innerWidth - $('panel').offsetWidth - 24 : innerWidth;
-  const halfH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)), halfW = halfH * free / innerHeight, d = Math.max(w * 0.55 / halfW, h * 0.8 / halfH);
-  if (how === 'near') { camera.position.set(0, h * 0.9, d); controls.target.set(0, h * 0.45, 0); }
-  if (how === 'game') { camera.position.set(0, 1.7, 9); controls.target.set(0, h * 0.4, 0); }        // a person's eye height, ~9 m off
-  if (how === 'top') { camera.position.set(0, d, 0.01); controls.target.set(0, 0, 0); }
-  controls.update();
+// what's going on: the selected cell, and the candidate being tried in it
+let sel = -1, trying = null;                        // trying: { sheet, n, ver }
+async function showInCell(c, p) {                  // p: a pick (or null: empty)
+  const holder = cells[c].holder; holder.clear();
+  if (!p) return;
+  const o = await plantObject(p.sheet, p.n, p.ver);
+  // what that cell should show may have changed while it loaded
+  const now = c === sel && trying ? trying : cells[c].pick;
+  if (!now || now.sheet !== p.sheet || now.n !== p.n || now.ver !== p.ver) return;
+  holder.clear(); holder.add(o);
 }
-for (const b of document.querySelectorAll('[data-cam]')) b.addEventListener('click', () => frame(lastH, b.dataset.cam));
-$('min').addEventListener('click', () => { const p = $('panel'); p.classList.toggle('min'); $('min').textContent = p.classList.contains('min') ? 'show' : 'hide'; fit(); });
+function selectCell(c) {
+  if (sel >= 0 && trying) showInCell(sel, cells[sel].pick);   // leaving a cell: whatever was being tried goes, its pick comes back
+  sel = c; trying = cells[c].pick ? { ...cells[c].pick } : null;
+  focusCell(c); refresh();
+}
+function tryCandidate(sheet, n) {
+  if (sel < 0) { const free = cells.findIndex(c => !c.pick); selectCell(free >= 0 ? free : 0); }
+  trying = { sheet, n, ver: trying ? trying.ver : 'tri300' };
+  showInCell(sel, trying); refresh();
+}
+function setVersion(ver) { if (!trying) return; trying.ver = ver; showInCell(sel, trying); refresh(); }
+function useIt() { if (sel < 0 || !trying) return; cells[sel].pick = { ...trying }; save(); refresh(); }
+function emptyCell() { if (sel < 0) return; cells[sel].pick = null; trying = null; showInCell(sel, null); save(); refresh(); }
 
-// the row is centred in the part of the screen the panel leaves free (wide screens only)
+// the panel and the bar, redrawn from the state
+const cellBtns = cells.map((_, c) => { const b = document.createElement('button'); b.type = 'button'; b.addEventListener('click', () => selectCell(c)); $('cells').appendChild(b); return b; });
+const candBtns = [];
+for (const [sheet, m] of Object.entries(manifest)) {
+  const h = document.createElement('h4'); h.textContent = SHEET_NAMES[sheet] || sheet; $('cands').appendChild(h);
+  m.plants.forEach((name, n) => {
+    const b = document.createElement('button'); b.type = 'button';
+    b.innerHTML = `${name}<small>${m.counts.tri300[n].tris.toLocaleString()} / ${m.counts.tri600[n].tris.toLocaleString()} / ${m.counts.tri900[n].tris.toLocaleString()}</small>`;
+    b.addEventListener('click', () => tryCandidate(sheet, n)); $('cands').appendChild(b); candBtns.push({ b, sheet, n });
+  });
+}
+const verBtns = VERSIONS.map(v => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.textContent = v.slice(3); b.addEventListener('click', () => setVersion(v)); $('vers').appendChild(b); return b; });
+function refresh() {
+  cells.forEach((c, i) => {
+    const b = cellBtns[i]; b.classList.toggle('on', i === sel); b.classList.toggle('full', !!c.pick);
+    b.innerHTML = `<i>${i + 1}</i>${c.pick ? nameOf(c.pick.sheet, c.pick.n) + '<i>' + trisOf(c.pick.sheet, c.pick.n, c.pick.ver).toLocaleString() + '</i>' : ''}`;
+    c.tile.material.color.set(i === sel ? 0x2f4a36 : c.pick ? 0x26332a : 0x1f251f);
+  });
+  for (const { b, sheet, n } of candBtns) {
+    b.classList.toggle('on', !!trying && trying.sheet === sheet && trying.n === n);
+    b.classList.toggle('used', cells.some(c => c.pick && c.pick.sheet === sheet && c.pick.n === n));
+  }
+  verBtns.forEach((b, i) => { b.classList.toggle('on', !!trying && trying.ver === VERSIONS[i]); b.disabled = !trying; });
+  if (trying) {
+    const t = trisOf(trying.sheet, trying.n, trying.ver), raw = manifest[trying.sheet].counts.raw[trying.n].tris;
+    $('tryName').textContent = nameOf(trying.sheet, trying.n);
+    $('tryInfo').textContent = `${t.toLocaleString()} triangles (from ${raw.toLocaleString()}) · cell ${sel + 1}`;
+  } else { $('tryName').textContent = sel < 0 ? 'Pick a cell' : `Cell ${sel + 1}`; $('tryInfo').textContent = sel < 0 ? 'then a candidate' : 'pick a candidate'; }
+  const same = trying && cells[sel] && cells[sel].pick && ['sheet', 'n', 'ver'].every(k => cells[sel].pick[k] === trying[k]);
+  $('use').disabled = !trying || same; $('use').textContent = same ? 'In use' : sel >= 0 ? `Use in cell ${sel + 1}` : 'Use';
+  $('clear').disabled = sel < 0 || !cells[sel].pick;
+  const picked = cells.filter(c => c.pick), total = picked.reduce((a, c) => a + trisOf(c.pick.sheet, c.pick.n, c.pick.ver), 0);
+  $('total').innerHTML = `${picked.length} of 16 picked · <b>${total.toLocaleString()}</b> triangles in all`;
+}
+$('use').addEventListener('click', useIt); $('clear').addEventListener('click', emptyCell);
+
+// the picks are kept in this browser between visits, and copied out as text for Claude
+function save() { try { localStorage.setItem(KEY, JSON.stringify(cells.map(c => c.pick))); } catch (e) { /* no storage */ } }
+try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (Array.isArray(saved)) saved.forEach((p, i) => { if (p && manifest[p.sheet] && cells[i]) { cells[i].pick = p; showInCell(i, p); } }); } catch (e) { /* none */ }
+$('copy').addEventListener('click', async () => {
+  const picks = cells.map((c, i) => c.pick && { cell: i + 1, sheet: c.pick.sheet, plant: c.pick.n, name: nameOf(c.pick.sheet, c.pick.n), version: c.pick.ver, tris: trisOf(c.pick.sheet, c.pick.n, c.pick.ver) }).filter(Boolean);
+  const text = JSON.stringify({ picks, total: picks.reduce((a, p) => a + p.tris, 0) });
+  let ok = false; try { await navigator.clipboard.writeText(text); ok = true; } catch (e) { /* none */ }
+  if (ok) $('copyNote').textContent = `Copied ${picks.length} picks. Paste them in chat.`;
+  else { $('copyNote').textContent = 'Copy this:'; const ta = document.createElement('textarea'); ta.value = text; ta.rows = 4; ta.style.width = '100%'; $('copyNote').after(ta); ta.select(); }
+});
+
+// clicking a tile (not dragging) picks its cell
+const ray = new THREE.Raycaster(), ptr = new THREE.Vector2(); let down = null;
+renderer.domElement.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return;
+  ptr.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); ray.setFromCamera(ptr, camera);
+  const hit = ray.intersectObjects(cells.map(c => c.tile))[0]; if (hit) selectCell(hit.object.userData.cell);
+});
+
+// camera: the whole grid, or close on one cell (orbit round it)
+function focusCell(c) { const { x, z } = cells[c]; controls.target.set(x, 0.12, z); camera.position.set(x + 0.15, 0.42, z + 0.75); controls.update(); }
+function wholeGrid() { controls.target.set(0, 0, 0.1); camera.position.set(0, 2.4, 2.7); controls.update(); }
+$('whole').addEventListener('click', wholeGrid);
+$('min').addEventListener('click', () => { const p = $('panel'); p.classList.toggle('min'); $('min').textContent = p.classList.contains('min') ? 'show' : 'hide'; fit(); });
+// the view is centred in the part of the screen the panel leaves free (wide screens only)
 function fit() { camera.aspect = innerWidth / innerHeight; const p = $('panel'), w = innerWidth > 700 && !p.classList.contains('min') ? p.offsetWidth + 24 : 0;
   if (w) camera.setViewOffset(innerWidth, innerHeight, w / 2, 0, innerWidth, innerHeight); else camera.clearViewOffset(); camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); }
 addEventListener('resize', fit); fit();
-const v3 = new THREE.Vector3();
-renderer.setAnimationLoop(() => {
-  if ($('spin').checked) row.children.forEach(o => { o.rotation.y += 0.004; });
-  controls.update(); renderer.render(scene, camera);
-  for (const [el, p] of labels) { v3.copy(p).setY(-0.02).project(camera); el.style.left = ((v3.x + 1) / 2 * innerWidth) + 'px'; el.style.top = ((1 - v3.y) / 2 * innerHeight + 6) + 'px'; el.style.display = v3.z < 1 ? '' : 'none'; }
-});
-const first = Object.keys(manifest)[0]; show(first, 0);
-if (new URLSearchParams(location.search).has('probe')) Object.assign(window, { show, camera, controls, row, manifest });
+wholeGrid(); refresh(); $('loading').textContent = '';
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+if (new URLSearchParams(location.search).has('probe')) Object.assign(window, { selectCell, tryCandidate, setVersion, useIt, cells, camera });
 </script>
 </body>
 </html>
