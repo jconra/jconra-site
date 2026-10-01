@@ -1084,7 +1084,7 @@ function endRain(msg) { RAIN.gen = null; trailLines.visible = false; if (RAIN.be
 function startRain() {
   FLOW.fill(0); SETTLE.fill(0);
   baseGrid(); RAIN.before = Float32Array.from(Hg);
-  WDEPTH.fill(0); paintWater(new Uint8Array(N * N)); fastMesh();
+  WDEPTH.fill(0); ACC.fill(0); paintWater(new Uint8Array(N * N)); fastMesh();   // no water drawn while it rains: the old rivers belong to the finished land, not this bare one
   for (const f of [treeForest, coverForest]) if (f) f.group.visible = false;
   RAIN.trail = []; RAIN.done = 0; RAIN.paused = false; RAIN.gen = erodeSteps(Hg, SHAPE.drops, () => RAIN.perFrame, RAIN.trail); trailLines.visible = true;
   $('rainPause').textContent = 'pause';
