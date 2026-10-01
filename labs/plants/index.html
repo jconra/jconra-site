@@ -223,7 +223,15 @@ $('use').addEventListener('click', useIt); $('clear').addEventListener('click', 
 
 // the picks are kept in this browser between visits, and copied out as text for Claude
 function save() { try { localStorage.setItem(KEY, JSON.stringify(cells.map(c => c.pick))); } catch (e) { /* no storage */ } }
-try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (Array.isArray(saved)) saved.forEach((p, i) => { if (p && manifest[p.sheet] && cells[i]) { cells[i].pick = p; showInCell(i, p); } }); } catch (e) { /* none */ }
+// Jacob's picks (2026-09-30) to start from, when this browser has none of its own. The juniper was
+// picked at 1,541 triangles, before thinning; its nearest version now is 900
+const DEFAULT_PICKS = [['longGrass', 4, 'tri300'], ['longGrass', 0, 'tri600'], ['longGrass', 1, 'tri300'], ['grassesLow', 0, 'tri300'],
+  ['grassesLow', 3, 'tri300'], ['grassesLow', 5, 'tri600'], ['grassesLow', 6, 'tri600'], ['flowers', 5, 'tri300'],
+  ['flowers', 1, 'tri600'], ['flowers', 6, 'tri300'], ['flowers', 3, 'tri600'], ['flowers', 7, 'tri600'],
+  ['shrubs', 5, 'tri600'], ['shrubs', 1, 'tri900'], ['shrubs', 4, 'tri600'], ['flowers', 8, 'tri600']].map(([sheet, n, ver]) => ({ sheet, n, ver }));
+let start = DEFAULT_PICKS;
+try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (Array.isArray(saved) && saved.some(Boolean)) start = saved; } catch (e) { /* none */ }
+start.forEach((p, i) => { if (p && manifest[p.sheet] && cells[i]) { cells[i].pick = p; showInCell(i, p); } });
 $('copy').addEventListener('click', async () => {
   const picks = cells.map((c, i) => c.pick && { cell: i + 1, sheet: c.pick.sheet, plant: c.pick.n, name: nameOf(c.pick.sheet, c.pick.n), version: c.pick.ver, tris: trisOf(c.pick.sheet, c.pick.n, c.pick.ver) }).filter(Boolean);
   const text = JSON.stringify({ picks, total: picks.reduce((a, p) => a + p.tris, 0) });
