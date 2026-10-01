@@ -6,7 +6,8 @@
 import bpy, bmesh, json, math, os, random
 T = r'C:\Users\bitwizard\AppData\Local\Temp\plantlab'
 picks = json.load(open(os.path.join(T, 'picks.json')))['picks']
-CELL = 0.4                                         # metres a cell: wider than any picked plant
+CELL, ROW = 0.5, 1.0                               # a cell's width and a row's height, far more than any plant: the lab
+                                                   # splits the sheet by these fixed sizes (cell = floor(x / 0.5), row = 3 - floor(y / 1.0))
 def tris(ob): return sum(len(p.vertices) - 2 for p in ob.data.polygons)
 bpy.ops.object.select_all(action='SELECT'); bpy.ops.object.delete()
 sheets = {}
@@ -64,7 +65,7 @@ def clean(ob, target, thin=True):
 plants = []
 for p in picks:
     ob = cut(p['sheet'], p['plant']); clean(ob, int(p['version'][3:]), p.get('thin', True))
-    c = p['cell'] - 1; ob.location = ((c % 4 + 0.5) * CELL, 0, (3 - c // 4) * CELL + 0.01); ob.name = f"{c}:{p['name']}"
+    c = p['cell'] - 1; ob.location = ((c % 4 + 0.5) * CELL, 0, (3 - c // 4) * ROW + 0.01); ob.name = f"{c}:{p['name']}"
     plants.append(ob); print('plant', ob.name, tris(ob), flush=True)
 for s in sheets.values(): bpy.data.objects.remove(s)
 # one object, a fresh UV layout over all 16 (their old layouts kept, to read the pictures through)

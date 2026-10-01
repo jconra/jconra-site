@@ -27,11 +27,11 @@ const Q = new URLSearchParams(location.search);
 // flat colours (each picture's average) instead of read from the pictures, one noise read where
 // there were four.
 const TIER_SET = {
-  potato: { ratio: 0.5, lite: true, stones: 1500, treeShare: 0.45, shadow: null, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 2500, longCount: 800, near: 0, radius: 90 },
+  potato: { ratio: 0.5, lite: true, stones: 1500, treeShare: 0.45, shadow: null, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 3300, near: 0, radius: 90 },
             u: { wWaveOn: 0, stampFar: 12 }, checks: { stampOn: false, hexOn: false, farOn: false, wWaveOn: false, cloudsOn: false } },
-  normal: { ratio: 1.5, stones: 14000, shadow: { range: 80, size: 1024, cover: false }, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 8000, longCount: 3000, near: 35, radius: 140 },
+  normal: { ratio: 1.5, stones: 14000, shadow: { range: 80, size: 1024, cover: false }, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 11000, near: 35, radius: 140 },
             u: { wWaveOn: 1, stampFar: 30 }, checks: { stampOn: true, hexOn: true, farOn: false, wWaveOn: true, cloudsOn: true } },
-  gaming: { ratio: 2, stones: 26000, shadow: { range: 150, size: 2048, cover: true }, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 16000, longCount: 6000, near: 60, radius: 220 },
+  gaming: { ratio: 2, stones: 26000, shadow: { range: 150, size: 2048, cover: true }, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 22000, near: 60, radius: 220 },
             u: { wWaveOn: 1, stampFar: 45 }, checks: { stampOn: true, hexOn: true, farOn: true, wWaveOn: true, cloudsOn: true } },
 };
 // the tier is picked on a throwaway context first, so the real one can be made without smoothing
@@ -823,7 +823,7 @@ mat.onBeforeCompile = (sh) => {
     #include <dithering_fragment>
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-21' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-22' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground); ground.receiveShadow = SHADOW.on;
 // THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
@@ -871,18 +871,29 @@ function placeTrees() {
 // cell its middle is in, and each plant becomes one instanced mesh (16 draws for all of them).
 // Grasses go in the open and in part shade, shrubs along the forest's edge and a few inside it,
 // nothing on paths, steep or muddy ground.
-const COVER = { at: new THREE.Vector3(), on: true, count: 8000, radius: 140, size: 3.2, near: 35, parts: null, meshes: [], longOn: true, longCount: 3000, longSize: 3.0, long: null };   // ~5 M triangles to start: the readout says what more costs
+const COVER = { at: new THREE.Vector3(), on: true, count: 11000, radius: 140, size: 1, near: 35, parts: null, meshes: [] };   // ~5 M triangles to start: the readout says what more costs
 Object.assign(COVER, TS.cover);
-const GRASSES = [0, 1, 4, 8, 10, 12, 14];
+// THE 16 GROUND PLANTS (Jacob's picks in the Plant Lab, baked into one sheet by labs/plants/build_sheet.py):
+// each with its height (m), the ground it likes, and how it grows to start with (the panel can change it)
+//   hab: long (open, dry rises)  grass (open and part shade)  shade (under and beside trees)
+//        shrub (the forest's edge)  wet (along water, on the stony shore too)  dry (open, dry, sunny)
+const KIND_INFO = [
+  ['tall seed grass', 1.0, 'long', 'patch'], ['feather grass', 0.9, 'long', 'patch'], ['broad-blade grass', 0.8, 'long', 'patch'], ['bunchgrass', 0.55, 'grass', 'patch'],
+  ['broad-leaf hosta', 0.55, 'shade', 'clump'], ['wild strawberry', 0.25, 'grass', 'patch'], ['dandelion', 0.35, 'grass', 'loner'], ['yucca', 0.8, 'dry', 'loner'],
+  ['paintbrush', 0.5, 'long', 'clump'], ['snowdrops', 0.3, 'shade', 'clump'], ['columbine', 0.55, 'shade', 'loner'], ['violets', 0.2, 'shade', 'patch'],
+  ['cattails', 1.4, 'wet', 'clump'], ['sprig shrub', 0.8, 'shrub', 'clump'], ['spruce sapling', 1.1, 'shrub', 'loner'], ['marsh marigold', 0.4, 'wet', 'clump'],
+].map(([name, height, hab, style]) => ({ name, height, hab, style }));
 // a Tripo sheet: its plants stand in a grid x grid wall (x across, y up); each triangle goes to the plant
 // whose cell its middle is in, and each plant is stood on its own base. Lit like the ground: every
 // normal points up, and the back of a card keeps it (so no plant is black from behind).
-function loadSheet(url, grid, done) {
+// `cell` (optional): [width, height] of a cell in the model's units, counted from 0, instead of the model's box / grid
+function loadSheet(url, grid, done, cell = null) {
   new GLTFLoader().load(url, (g) => {
     let src = null; g.scene.traverse(o => { if (o.isMesh && !src) src = o; }); if (!src) return;
     src.updateMatrixWorld(true);
     const geo0 = src.geometry.index ? src.geometry.toNonIndexed() : src.geometry.clone(); geo0.applyMatrix4(src.matrixWorld);
-    geo0.computeBoundingBox(); const bb = geo0.boundingBox, pos = geo0.attributes.position, cw = (bb.max.x - bb.min.x) / grid, ch = (bb.max.y - bb.min.y) / grid;
+    geo0.computeBoundingBox(); const bb = geo0.boundingBox, pos = geo0.attributes.position, cw = cell ? cell[0] : (bb.max.x - bb.min.x) / grid, ch = cell ? cell[1] : (bb.max.y - bb.min.y) / grid;
+    if (cell) { bb.min.x = 0; bb.max.y = grid * ch; }
     const buckets = Array.from({ length: grid * grid }, () => []);
     for (let t = 0; t < pos.count; t += 3) {
       const cx = (pos.getX(t) + pos.getX(t + 1) + pos.getX(t + 2)) / 3, cy = (pos.getY(t) + pos.getY(t + 1) + pos.getY(t + 2)) / 3;
@@ -905,12 +916,10 @@ function loadSheet(url, grid, done) {
 }
 // the plants as Forest species: each its own root, lit like the ground, a cheap atlas (8 x 8 views
 // of 128 px over the top half: 1024 px, 4 MB colour + 4 MB normal and depth) and no green tint
-const PLANT_HEIGHT = (sheet, k) => sheet === 'long' ? 1.1 : GRASSES.includes(k) ? 0.55 : 0.85;
-function plantSpecies(parts, material, sheet) {
-  return parts.map((g, k) => { const root = new THREE.Group(); root.add(new THREE.Mesh(g, material)); return { name: sheet + k, root, height: PLANT_HEIGHT(sheet, k), weight: 1, grid: 8, cell: 128, upNormals: true, tint: false }; });
+function plantSpecies(parts, material) {
+  return parts.map((g, k) => { const root = new THREE.Group(); root.add(new THREE.Mesh(g, material)); return { name: 'ground ' + KIND_INFO[k].name, root, height: KIND_INFO[k].height, weight: 1, grid: 8, cell: 128, upNormals: true, tint: false }; });
 }
-loadSheet('/models/props/grassBushes.glb', 4, (parts, m) => { COVER.parts = parts; COVER.material = m; COVER.plantSp = plantSpecies(parts, m, 'plant'); placeCover(); });
-loadSheet('/models/props/longGrass.glb', 3, (parts, m) => { COVER.long = { parts, material: m }; COVER.longSp = plantSpecies(parts, m, 'long'); placeCover(); });
+loadSheet('/models/props/groundPlants.glb', 4, (parts, m) => { COVER.parts = parts; COVER.material = m; COVER.plantSp = plantSpecies(parts, m); placeCover(); }, [0.5, 1.0]);
 let coverForest = null;
 // far plants blend toward the grass's own colour (its picture's average, tinted as the ground is),
 // darkened a little: bushes are darker than the grass they stand in
@@ -1003,7 +1012,7 @@ function placeStones() {
 // A slow `fertility` noise (`fertSize` m) thins the patches and clumps in places, so there are thick
 // meadows and thin ground. `clumpShare` and `lonerShare` split each sheet's count between the styles.
 const GROW = { patchSize: 30, patchSharp: 0.6, clumpShare: 0.3, clumpSize: 3, clumpCount: 6, lonerShare: 0.04, fertSize: 120, fert: 0.5 };
-const PLANT_KINDS = Array.from({ length: 25 }, (_, k) => ({ on: true, style: k >= 16 || GRASSES.includes(k) ? 'patch' : 'clump', size: 1, weight: 1 }));
+const PLANT_KINDS = KIND_INFO.map(K => ({ on: true, style: K.style, size: 1, weight: 1 }));
 // the plants' circle follows where you look: once its centre (a little ahead of the camera, on the
 // ground) has moved a quarter of the circle, they are laid again round the new spot (the tiles that
 // stay keep their plants, so nothing near you shuffles)
@@ -1017,21 +1026,25 @@ function placeCover() {
   U.coverR.value = COVER.radius; U.coverAt.value.copy(COVER.at);
   for (const im of COVER.meshes) { scene.remove(im); im.dispose(); }
   COVER.meshes = [];
-  if (!COVER.parts || !COVER.long || !MAPS.wet) return;
+  if (!COVER.parts || !MAPS.wet) return;
   const fixed = [];
   const r = (a, b) => { const x = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return x - Math.floor(x); };
   // what the ground at a spot is like for each habitat: grasses (open, part shade), shrubs (shade, the
-  // forest's edge), long grasses (open, dry rises); `blocked` paths, steep, mud, water, the stony shore
+  // forest's edge), long grasses (open, dry rises), shade, wet (along water), dry; `hard`: where nothing
+  // grows (paths, steep, in the water); `blocked`: that and mud and the stony shore, which wet kinds don't mind
   const ground = (x, z) => {
     const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
     const pi = Math.min(MAPS.P - 1, Math.max(0, Math.floor((x + SIZE / 2) / SIZE * MAPS.P))), pj = Math.min(MAPS.P - 1, Math.max(0, Math.floor((z + SIZE / 2) / SIZE * MAPS.P))), path = MAPS.path[(pj * MAPS.P + pi) * 4] / 255 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 510;
     const canopy = MAPS.canopy[k], shade = Math.min(1, Math.max(0, MAPS.wide[k] * 2.2 - canopy * 0.8)), open = 1 - Math.min(1, canopy + shade);
-    const blocked = path + MAPS.steep[k] * 1.5 + Math.max(0, MAPS.wet[k] - 0.6) * 2 + waterAt(x, z) * 4 + (MAPS.shore ? MAPS.shore[k] * 3 : 0);
-    return { blocked, grass: (0.55 * open + 1.0 * shade + 0.15 * canopy) * (1 - MAPS.dry[k] * 0.4), shrub: 0.08 * open + 0.9 * shade + 0.35 * canopy,
+    const hard = path + MAPS.steep[k] * 1.5 + waterAt(x, z) * 4, shore = MAPS.shore ? Math.min(1, MAPS.shore[k] * 2.5) : 0;
+    const blocked = hard + Math.max(0, MAPS.wet[k] - 0.6) * 2 + shore * 1.2;
+    return { hard, blocked, shade: Math.min(1, shade + 0.6 * canopy), wet: Math.max(shore, MAPS.wet[k]) * (1 - MAPS.steep[k]),
+      dry: MAPS.steep[k] > 0.4 ? 0 : MAPS.dry[k] * open, grass: (0.55 * open + 1.0 * shade + 0.15 * canopy) * (1 - MAPS.dry[k] * 0.4), shrub: 0.08 * open + 0.9 * shade + 0.35 * canopy,
       long: MAPS.steep[k] > 0.4 ? 0 : (0.35 + 0.65 * MAPS.dry[k]) * (1 - Math.min(1, canopy * 1.5 + MAPS.wide[k])) * (1 - Math.min(1, path + MAPS.steep[k] + MAPS.wet[k])) };
   };
-  const want = (k, g) => k >= 16 ? g.long : GRASSES.includes(k) ? g.grass : g.shrub;
-  const scaleOf = (k, t) => k >= 16 ? COVER.longSize * (0.75 + 0.5 * r(t, 27.9)) / 3.0 * PLANT_KINDS[k].size : (0.7 + 0.6 * r(t, 11.3)) * COVER.size / 3.2 * PLANT_KINDS[k].size;
+  const blk = (k, g) => Math.min(1, KIND_INFO[k].hab === 'wet' ? g.hard : g.blocked);
+  const want = (k, g) => g[KIND_INFO[k].hab] * (1 - blk(k, g));
+  const scaleOf = (k, t) => (0.7 + 0.6 * r(t, 11.3)) * COVER.size * PLANT_KINDS[k].size;
   const fertile = (x, z) => 1 - GROW.fert * (1 - THREE.MathUtils.smoothstep(vnoise(x / GROW.fertSize + 61, z / GROW.fertSize - 23), 0.3, 0.7));
   const patchN = (k, x, z) => { const s = GROW.patchSize; return vnoise(x / s + k * 37.1, z / s - k * 19.7) * 0.7 + vnoise(x / s * 2.3 + k * 11.3, z / s * 2.3 + k * 5.9) * 0.3; };
   // THE PLANTS FOLLOW THE CAMERA: the ground is cut into TILE m tiles; each tile always grows the same
@@ -1052,16 +1065,16 @@ function placeCover() {
     const nP = pk.length ? count - nC - nL : 0, start = fixed.length;
     // patches
     for (const tile of tiles) for (let t = 1, got = 0, want_ = Math.round(perTile(nP)); got < want_ && t < want_ * 16; t++) {
-      const [x, z] = inTile(tile, t, seed), g = ground(x, z); if (g.blocked >= 1) continue;   // (a tile runs the same wherever the circle is; only the planting asks if it's in range)
+      const [x, z] = inTile(tile, t, seed), g = ground(x, z); if (g.hard >= 1) continue;   // (a tile runs the same wherever the circle is; only the planting asks if it's in range)
       let total = 0, hab = 0; const w = pk.map(k => { const h = want(k, g) * PLANT_KINDS[k].weight; hab += h; const v = h * Math.pow(patchN(k, x, z), 1 + GROW.patchSharp * 8); total += v; return v; });
-      if (r(tile[2] + t, seed + 5.3) > hab / pk.length * 0.9 * (1 - g.blocked) * fertile(x, z) || total <= 0) continue;
+      if (r(tile[2] + t, seed + 5.3) > hab / pk.length * 0.9 * fertile(x, z) || total <= 0) continue;
       let q = r(tile[2] + t, seed + 9.1) * total, k = pk[pk.length - 1]; for (let n = 0; n < pk.length; n++) if ((q -= w[n]) <= 0) { k = pk[n]; break; }
       if (inRange(x, z)) plant(k, x, z, tile[2] + t + seed * 1000); got++;
     }
     // clumps: a centre where shrubs like it, a kind (families: nearby clumps lean the same way), then
     // its plants scattered round the centre
     for (const tile of tiles) for (let c = 1, got = 0, want_ = Math.round(perTile(nC)); got < want_ && c < want_ * 4; c++) {
-      const [cx, cz] = inTile(tile, c, seed + 40), g = ground(cx, cz); if (g.blocked >= 0.6) continue;
+      const [cx, cz] = inTile(tile, c, seed + 40), g = ground(cx, cz); if (g.hard >= 0.6) continue;
       let total = 0, hab = 0; const w = ck.map(k => { const h = want(k, g) * PLANT_KINDS[k].weight; hab += h; const v = h * Math.pow(patchN(k + 50, cx * 0.5, cz * 0.5), 3); total += v; return v; });
       const cs = tile[2] + c;
       if (r(cs, seed + 41.3) > hab / ck.length * 1.2 * fertile(cx, cz) || total <= 0) continue;
@@ -1069,27 +1082,26 @@ function placeCover() {
       const n = Math.max(2, Math.round(GROW.clumpCount * (0.6 + 0.8 * r(cs, seed + 47.1))));
       for (let m = 0; m < n && got < want_; m++) {
         const a = r(cs * 31 + m, seed + 51.7) * Math.PI * 2, d = GROW.clumpSize * Math.sqrt(-2 * Math.log(Math.max(1e-4, r(cs * 31 + m, seed + 53.3)))) * 0.5;   // gathered toward the middle
-        const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d; if (ground(x, z).blocked >= 0.8) continue;
+        const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d; if (blk(k, ground(x, z)) >= 0.8) continue;
         if (inRange(x, z)) plant(k, x, z, tile[2] + c * 31 + m + seed * 1000); got++;
       }
     }
     // loners
     for (const tile of tiles) for (let t = 1, got = 0, want_ = perTile(nL); got < want_ && t < Math.max(1, want_) * 20; t++) {
       if (want_ < 1 && r(tile[2], seed + 77.7) > want_) break;                      // under one a tile: some tiles get one
-      const [x, z] = inTile(tile, t, seed + 70), g = ground(x, z); if (g.blocked >= 0.6) continue;
+      const [x, z] = inTile(tile, t, seed + 70), g = ground(x, z); if (g.hard >= 0.6) continue;
       const k = lk[Math.floor(r(tile[2] + t, seed + 71.9) * lk.length) % lk.length]; if (r(tile[2] + t, seed + 73.1) > want(k, g) + 0.1) continue;
       if (inRange(x, z)) plant(k, x, z, tile[2] + t + seed * 1000 + 500); got++;
     }
     return fixed.length - start;
   }
   const placed = scatter([...Array(16).keys()], COVER.on ? COVER.count : 0, 0);
-  const longPlaced = scatter(Array.from({ length: 9 }, (_, n) => 16 + n), COVER.longOn ? COVER.longCount : 0, 200);
   // one Forest for all of them: meshes out to COVER.near, imposters beyond, crossfaded
   if (coverForest) { scene.remove(coverForest.group); for (const b of coverForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
-  const species = coverForest ? coverForest.species : [...COVER.plantSp, ...COVER.longSp];
+  const species = coverForest ? coverForest.species : COVER.plantSp;
   coverForest = new Forest(renderer, scene, { species, shadows: SHADOW.on && TS.shadow.cover, fixed, heightAt, imposterAt: COVER.near, band: COVER.near * 0.5, ahead: 0.5, sunDir: SUN_DIR, nearCap: 3000 });
   calmCover();
-  $('coverInfo').textContent = `${placed.toLocaleString()} plants and ${longPlaced.toLocaleString()} long grasses: meshes to ${COVER.near} m, imposters beyond (atlases bake over the first seconds)`;
+  $('coverInfo').textContent = `${placed.toLocaleString()} plants of 16 kinds: meshes to ${COVER.near} m, imposters beyond (atlases bake over the first seconds)`;
 }
 buildLand();
 
@@ -1171,7 +1183,7 @@ for (const [id, key, fmt] of [['gPatchSize', 'patchSize', v => v + ' m'], ['gPat
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); }); el.addEventListener('change', () => { GROW[key] = +el.value; placeCover(); });
 }
 {
-  const list = $('kindList'), kindName = (k) => k >= 16 ? `Long grass ${k - 15}` : `Plant ${k + 1} (${GRASSES.includes(k) ? 'grass' : 'shrub'})`;
+  const list = $('kindList'), kindName = (k) => `${KIND_INFO[k].name} <small style="color:#6d7a85">${KIND_INFO[k].hab}</small>`;
   PLANT_KINDS.forEach((K, k) => {
     const row = document.createElement('div'); row.className = 'row'; row.style.gridTemplateColumns = 'auto 1fr auto auto';
     row.innerHTML = `<label class="check" for="kOn${k}" style="margin:0"><input id="kOn${k}" type="checkbox"> ${kindName(k)}</label>`
@@ -1201,8 +1213,7 @@ for (const [id, key, fmt] of [['stoneCount', 'count', v => v.toLocaleString()], 
 for (const [id, key, fmt] of [['calmAmount', 'amount', v => Math.round(v * 100) + '%'], ['calmFrom', 'from', v => v + ' m'], ['calmTo', 'to', v => v + ' m']]) {
   const el = $(id); el.value = CALM[key]; const go = () => { CALM[key] = +el.value; $(id + 'Out').textContent = fmt(+el.value); calmCover(); }; el.addEventListener('input', go); go();
 }
-$('longOn').addEventListener('change', e => { COVER.longOn = e.target.checked; placeCover(); });
-for (const [id, key, fmt] of [['coverCount', 'count', v => v.toLocaleString()], ['coverRadius', 'radius', v => v + ' m'], ['coverSize', 'size', v => v.toFixed(1) + '×'], ['longCount', 'longCount', v => v.toLocaleString()], ['longSize', 'longSize', v => v.toFixed(1) + '×'], ['coverNear', 'near', v => v + ' m']]) {
+for (const [id, key, fmt] of [['coverCount', 'count', v => v.toLocaleString()], ['coverRadius', 'radius', v => v + ' m'], ['coverSize', 'size', v => v.toFixed(2) + '×'], ['coverNear', 'near', v => v + ' m']]) {
   const el = $(id); el.value = COVER[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { COVER[key] = +el.value; placeCover(); });
@@ -1338,7 +1349,7 @@ function applyTier(tier) {
   const set = (id, v) => { const el = $(id); if (!el) return; if (el.type === 'checkbox') { if (el.checked !== v) { el.checked = v; el.dispatchEvent(new Event('change')); } } else if (String(el.value) !== String(v)) { el.value = v; el.dispatchEvent(new Event('input')); el.dispatchEvent(new Event('change')); } };
   for (const [id, v] of Object.entries(T.checks)) set(id, v);
   for (const [id, k] of [['fImp', 'imposterAt'], ['fBand', 'band'], ['fGrid', 'grid'], ['fCell', 'cell'], ['fDetail', 'detail']]) set(id, T.forest[k]);
-  for (const [id, k] of [['coverNear', 'near'], ['coverRadius', 'radius'], ['coverCount', 'count'], ['longCount', 'longCount']]) set(id, T.cover[k]);
+  for (const [id, k] of [['coverNear', 'near'], ['coverRadius', 'radius'], ['coverCount', 'count']]) set(id, T.cover[k]);
   set('stampFar', T.u.stampFar);
 }
 function showTier() { $('qTier').value = QUAL.source === 'detected' ? 'auto' : QUAL.tier; $('qWhy').textContent = `${QUAL.tier} (${QUAL.source === 'detected' ? 'picked automatically: ' + QUAL.why : QUAL.why})`; }

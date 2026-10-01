@@ -238,9 +238,8 @@
     </details>
 
     <details class="sec" open><summary>6 · Ground cover</summary>
-      <p class="note">Your Tripo sheet of 16 plants, split into its plants and scattered by the land's maps: grasses in the open and in part shade, shrubs along the forest's edge and a few inside it, nothing on paths, steep or muddy ground. Near the camera each plant is its real mesh; beyond, an octahedral imposter (8 × 8 views of 128 px over the top half: one quad each), crossfaded, the same system as the trees. <b>Cost:</b> the meshes' triangles near you, a quad each far away.</p>
-      <label class="check" for="coverOn"><input id="coverOn" type="checkbox" checked> Grasses and shrubs (Tripo, 16 kinds)</label>
-      <label class="check" for="longOn"><input id="longOn" type="checkbox" checked> Long grasses (Tripo, 9 kinds; in the open and on dry rises)</label>
+      <p class="note">The 16 ground plants picked in the Plant Lab (one sheet, one shared texture), each growing where its kind likes the ground: long grasses in the open and on dry rises, low grasses in the open and part shade, shade plants under the trees, shrubs along the forest's edge, cattails and marsh marigolds along the water.</p>
+      <label class="check" for="coverOn"><input id="coverOn" type="checkbox" checked> Ground plants (16 kinds)</label>
       <p class="note" id="coverInfo">loading…</p>
       <details class="sec"><summary>How they grow (patches, clumps, loners)</summary>
       <p class="note"><b>Patch</b> kinds hold stretches of ground by themselves; <b>clump</b> kinds grow in small family groups; <b>loners</b> stand here and there. Set each kind's style below.</p>
@@ -254,7 +253,7 @@
       <div class="row"><label for="gFert">Thick and thin ground: how much</label><output id="gFertOut"></output><input id="gFert" type="range" min="0" max="1" step="0.01"></div>
       </details>
       <details class="sec"><summary>Plant kinds (on/off, style, size)</summary>
-      <p class="note">The 16 plants on the sheet, then the 9 long grasses. <b>Only</b> shows just that kind (handy for telling them apart); <b>All on</b> brings them all back.</p>
+      <p class="note">Each with the ground it likes. <b>Only</b> shows just that kind (handy for telling them apart); <b>All on</b> brings them all back.</p>
       <div class="row"><button type="button" id="kindsAll" style="grid-column:1/-1">All on</button></div>
       <div id="kindList"></div>
       </details>
@@ -270,9 +269,7 @@
       <div class="row"><label for="stoneSize">Size</label><output id="stoneSizeOut"></output><input id="stoneSize" type="range" min="0.3" max="3" step="0.1"></div>
       <p class="note" id="stoneInfo"></p>
       <div class="row"><label for="coverNear">Real meshes out to (imposters beyond)</label><output id="coverNearOut"></output><input id="coverNear" type="range" min="0" max="150" step="5"></div>
-      <div class="row"><label for="longCount">How many long grasses</label><output id="longCountOut"></output><input id="longCount" type="range" min="0" max="40000" step="500"></div>
-      <div class="row"><label for="longSize">Long grass size</label><output id="longSizeOut"></output><input id="longSize" type="range" min="0.3" max="5" step="0.1"></div>
-      <div class="row"><label for="coverSize">Size</label><output id="coverSizeOut"></output><input id="coverSize" type="range" min="0.5" max="8" step="0.1"></div>
+      <div class="row"><label for="coverSize">Size</label><output id="coverSizeOut"></output><input id="coverSize" type="range" min="0.2" max="3" step="0.05"></div>
     </details>
 
     <details class="sec"><summary>Coming next</summary>
