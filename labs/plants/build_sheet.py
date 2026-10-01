@@ -85,7 +85,7 @@ for mat in me.materials:                             # each source material: its
     out = next(n for n in nt.nodes if n.type == 'OUTPUT_MATERIAL'); nt.links.new(em.outputs['Emission'], out.inputs['Surface'])
     tgt = nt.nodes.new('ShaderNodeTexImage'); tgt.image = img; nt.nodes.active = tgt
 sc = bpy.context.scene; sc.render.engine = 'CYCLES'; sc.cycles.device = 'CPU'; sc.cycles.samples = 1
-sc.render.bake.margin = 6; sc.render.bake.use_selected_to_active = False
+sc.render.bake.margin = 64;   # fills the gaps between pieces with their edge colour, so a plant seen small (a coarse mip) has no black in it sc.render.bake.use_selected_to_active = False
 bpy.ops.object.select_all(action='DESELECT'); ob.select_set(True); bpy.context.view_layer.objects.active = ob
 bpy.ops.object.bake(type='EMIT'); print('baked', flush=True)
 img.filepath_raw = os.path.join(T, 'groundPlants.jpg'); img.file_format = 'JPEG'; sc.render.image_settings.quality = 90; img.save()

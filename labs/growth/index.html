@@ -9,8 +9,7 @@
   @font-face { font-family: nasa; src: url("../../fonts/nasalization-rg.ttf"); font-display: swap; }
   * { margin:0; padding:0; box-sizing:border-box; }
   html,body { height:100%; overflow:hidden; background:#0b1015; color:#ccd6de; font:13px/1.45 ui-sans-serif, system-ui, sans-serif; }
-  canvas { display:block; touch-action:none; cursor:grab; }
-  canvas:active { cursor:grabbing; }
+  canvas { display:block; touch-action:none; }
   #panel { position:fixed; top:12px; right:12px; bottom:12px; width:330px; overflow-y:auto; z-index:5;
            background:rgba(10,13,17,.94); border:1px solid #212a34; border-radius:6px; padding:12px 14px; }
   #panel.min { bottom:auto; }
@@ -47,12 +46,10 @@
   .kind .sz button { font:10.5px ui-monospace,monospace; background:none; border:1px solid #212a34; color:#8494a0; border-radius:3px; padding:1px 6px; cursor:pointer; }
   .kind.off .nm { color:#59656f; }
   #back { position:fixed; top:14px; left:16px; z-index:6; font:11px ui-monospace,monospace; letter-spacing:.14em; color:#8494a0; text-decoration:none; text-transform:uppercase; }
-  #head { position:fixed; top:36px; left:16px; z-index:6; pointer-events:none; text-shadow:0 1px 4px #000; }
+  #head { position:fixed; top:36px; left:12px; z-index:6; pointer-events:none; background:rgba(10,13,17,.72); border-radius:6px; padding:6px 10px; }
   #head b { display:block; font:400 20px nasa, ui-sans-serif, sans-serif; letter-spacing:.05em; color:#e8f1f5; }
   #head span { font:11.5px/1.5 ui-monospace,monospace; color:#9fb3c2; }
   #tip { position:fixed; z-index:7; pointer-events:none; background:rgba(10,13,17,.92); border:1px solid #212a34; border-radius:4px; padding:3px 7px; font:12px ui-sans-serif, system-ui; color:#e8f1f5; display:none; }
-  #scale { position:fixed; left:16px; bottom:14px; z-index:6; font:11px ui-monospace,monospace; color:#9fb3c2; pointer-events:none; }
-  #scale i { display:block; height:4px; border:1px solid #9fb3c2; border-top:0; margin-bottom:3px; }
   button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid #35e07d; outline-offset:1px; }
   @media (max-width:700px) { #panel, #panel.min { width:auto; left:12px; top:auto; bottom:12px; max-height:50vh; } #head span { display:none; } }
 </style>
@@ -61,12 +58,11 @@
 <a id="back" href="../">&larr; labs</a>
 <div id="head"><b>Growth Lab</b><span id="info"></span></div>
 <div id="tip"></div>
-<div id="scale"><i></i><span></span></div>
-<canvas id="map"></canvas>
+<div id="loading" style="position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:6;font:12px nasa,monospace;letter-spacing:3px;color:#b9c8d2;pointer-events:none">loading…</div>
 <div id="panel">
   <h1>Growth Lab <button id="min" type="button">hide</button></h1>
   <div class="body">
-    <p class="note">Where the ground plants and trees go, seen from above on a made-up stretch of land (a hillside, a stream, a pond, a path, woods). The same rules as the Terrain Lab, from the same file, so <b>Copy settings</b> here and <b>Paste growth settings</b> there. Scroll to zoom, drag to move, hover a dot to name it.</p>
+    <p class="note">Where the ground plants and trees go, on a small made-up stretch of land (160 m: a hillside, a stream, a pond, a path, woods), with the real plants and plain ground. The same rules as the Terrain Lab, from the same file, so <b>Copy settings</b> here and <b>Paste growth settings</b> there. Drag to look round, scroll to zoom, click a plant to name it.</p>
     <div class="btns"><button class="btn" id="copy" type="button">Copy settings</button><button class="btn quiet" id="paste" type="button">Paste settings</button><button class="btn quiet" id="reset" type="button">Start over</button></div>
     <p class="note" id="copyNote"></p>
 
@@ -99,39 +95,50 @@
     <details class="sec"><summary>Show</summary>
       <label class="check" for="showPlants"><input id="showPlants" type="checkbox" checked> Plants</label>
       <label class="check" for="showTrees"><input id="showTrees" type="checkbox" checked> Trees</label>
-      <label class="check" for="showLand"><input id="showLand" type="checkbox" checked> The land (green: grass, yellow: dry, brown: steep and paths, blue: water, grey: stony shore)</label>
-      <div class="btns"><button class="btn quiet" id="fit" type="button">See it all</button></div>
+      <div class="row"><label for="near">Plants drawn within (all: 0; potato starts at 40 m)</label><output id="nearOut"></output><input id="near" type="range" min="0" max="160" step="5"></div>
+      <p class="note">The ground's colours: green grass, yellow dry, brown steep ground and paths, grey stony shore, blue water. Trees are simple stand-ins (cones: pines; balls: ash, aspen, oak), tinted as in the Terrain Lab.</p>
+      <div class="btns"><button class="btn quiet" data-cam="eye" type="button">Standing</button><button class="btn quiet" data-cam="low" type="button">Over the meadow</button><button class="btn quiet" data-cam="high" type="button">See it all</button></div>
     </details>
   </div>
 </div>
+<script type="importmap">
+  { "imports": { "three": "https://unpkg.com/three@0.158.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/" } }
+</script>
 <script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { chooseTier } from '../../src/quality.js';
 import { KIND_INFO, GROW_DEFAULTS, FAMILY_DEFAULTS, defaultKinds, growPlants, pickTree, settingsJSON, applySettings, vnoise, hash } from '../../src/objects/growth.js';
 
-// QUALITY: this page is plain 2D drawing, redrawn only when something changes, so every tier gets it
-// whole; nothing to gate.
+// QUALITY: a small patch of land, no ground textures, no shadows, and a frame is drawn only when the
+// view or a setting changes. The tier sets the drawing resolution and smoothing.
+// `near`: plants drawn only this far round the spot you look at (0: all of them); the potato draws the
+// whole patch in about a third of a second, too slow to drag round smoothly
+const TIER_SET = { potato: { ratio: 0.6, aa: false, near: 40 }, normal: { ratio: 1.25, aa: true, near: 0 }, gaming: { ratio: 2, aa: true, near: 0 } };
 const $ = (id) => document.getElementById(id);
 const KEY = 'jconra.growthLab';
 
-// ── the made-up land: 320 x 320 m, on a 2 m grid ─────────────────────────────────────────
+// ── the made-up land: 160 x 160 m, on a 2 m grid ─────────────────────────────────────────
 // a hillside rising to the north (z < 0) with ridges, a stream winding across, a pond, a path, and the
 // same land maps the Terrain Lab makes (wet, dry, steep, canopy, shade, shore, water, path)
-const SIZE = 320, CELL = 2, N = SIZE / CELL;
+const SIZE = 160, CELL = 2, N = SIZE / CELL;
 const idx = (x, z) => { const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / CELL))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / CELL))); return j * N + i; };
 const cx = (i) => (i + 0.5) * CELL - SIZE / 2;
 const fbm = (x, z, o = 4) => { let h = 0, a = 1, n = 0, f = 1; for (let k = 0; k < o; k++) { h += (vnoise(x * f + k * 17, z * f - k * 9) - 0.5) * a; n += a; a *= 0.5; f *= 2.1; } return h / n; };
 const S = (x, a, b) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const H = new Float32Array(N * N), WATER = new Float32Array(N * N), PATH = new Float32Array(N * N);
-const streamZ = (x) => 40 + Math.sin(x / 55) * 22 + fbm(x / 90, 3) * 30;
-const pathAt = (x, z) => { const px = -110 + (z + 160) * 0.55 + Math.sin(z / 40) * 18; return Math.abs(x - px); };
+const streamZ = (x) => 14 + Math.sin(x / 30) * 10 + fbm(x / 60, 3) * 14;
+const pathAt = (x, z) => { const px = -45 + (z + 80) * 0.5 + Math.sin(z / 25) * 9; return Math.abs(x - px); };
 for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
   const x = cx(i), z = cx(j), k = j * N + i;
-  const hill = Math.pow(S(-z, -40, 160), 1.4) * 95 * (0.75 + 0.5 * (1 - Math.abs(fbm(x / 140, z / 140, 3) * 2)));     // up to the north, ridged
-  H[k] = hill + fbm(x / 70, z / 70) * 14 + fbm(x / 20, z / 20, 2) * 2.5;
-  const sd = Math.abs(z - streamZ(x)), pd = Math.hypot(x - 70, (z - 95) * 1.3);
-  WATER[k] = Math.max(1 - S(sd, 3, 5), 1 - S(pd, 18, 21));
+  const hill = Math.pow(S(-z, -10, 80), 1.4) * 24 * (0.75 + 0.5 * (1 - Math.abs(fbm(x / 80, z / 80, 3) * 2)));     // up to the north, ridged
+  H[k] = hill + fbm(x / 50, z / 50) * 5 + fbm(x / 15, z / 15, 2) * 1;
+  const sd = Math.abs(z - streamZ(x)), pd = Math.hypot(x - 38, (z - 50) * 1.3);
+  WATER[k] = Math.max(1 - S(sd, 2, 3.5), 1 - S(pd, 11, 13));
   PATH[k] = 1 - S(pathAt(x, z), 1.2, 2.4);
 }
-for (let k = 0; k < N * N; k++) if (WATER[k] > 0.5) H[k] = Math.min(H[k], 2);
+{ let lo = Infinity; for (let k = 0; k < N * N; k++) if (WATER[k] > 0.5) lo = Math.min(lo, H[k]); for (let k = 0; k < N * N; k++) if (WATER[k] > 0.05) H[k] = Math.min(H[k], lo + (1 - WATER[k]) * 1.2) - WATER[k] * 0.4; }   // the water lies low and flat
 function blur(src, r) { const tmp = new Float32Array(N * N), out = new Float32Array(N * N);
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { let s = 0, n = 0; for (let d = -r; d <= r; d++) { const ii = i + d; if (ii >= 0 && ii < N) { s += src[j * N + ii]; n++; } } tmp[j * N + i] = s / n; }
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { let s = 0, n = 0; for (let d = -r; d <= r; d++) { const jj = j + d; if (jj >= 0 && jj < N) { s += tmp[jj * N + i]; n++; } } out[j * N + i] = s / n; }
@@ -149,7 +156,7 @@ const SHORE = (() => { const b = blur(WATER, 2); for (let k = 0; k < N * N; k++)
 const TREE_NAMES = ['ash', 'aspen', 'oak', 'pine'], TREE_BASE = { ash: '#5f8f3c', aspen: '#a9b94a', oak: '#4f7a33', pine: '#2c4a2c' };
 const FOREST = 0.55, HILL_FOREST = 0.3, TREELINE = 280;
 let trees = [], CANOPY = new Float32Array(N * N), WIDE = new Float32Array(N * N);
-{ const tree = new Float32Array(N * N), clump = (x, z) => { let n = 0, a = 1, f = 1 / 230; for (let o = 0; o < 3; o++) { n += (vnoise(x * f + 40, z * f + 17) - 0.5) * a; a *= 0.5; f *= 2.2; } return n + 0.5; };
+{ const tree = new Float32Array(N * N), clump = (x, z) => { let n = 0, a = 1, f = 1 / 90; for (let o = 0; o < 3; o++) { n += (vnoise(x * f + 40, z * f + 17) - 0.5) * a; a *= 0.5; f *= 2.2; } return n + 0.5; };
   for (let z = -SIZE / 2 + 3; z < SIZE / 2; z += 6) for (let x = -SIZE / 2 + 3; x < SIZE / 2; x += 6) {
     const jx = x + (hash(x, z) - 0.5) * 5, jz = z + (hash(z, x) - 0.5) * 5, k = idx(jx, jz), sl = SLOPE[k];
     const hill = S(sl, 0.15, 0.55) * HILL_FOREST;
@@ -218,86 +225,142 @@ $('paste').addEventListener('click', async () => {
 });
 $('reset').addEventListener('click', () => { Object.assign(GROW, GROW_DEFAULTS); Object.assign(FAMILY, FAMILY_DEFAULTS); defaultKinds().forEach((d, k) => Object.assign(KINDS[k], d)); Object.assign(COVER, { count: 11000, size: 1 }); syncPanel(); save(); growAll(); growTrees(); });
 $('min').addEventListener('click', () => { const p = $('panel'); p.classList.toggle('min'); $('min').textContent = p.classList.contains('min') ? 'show' : 'hide'; });
-for (const id of ['showPlants', 'showTrees', 'showLand']) $(id).addEventListener('change', draw);
 
+// ── the scene ─────────────────────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+const QUAL = chooseTier(renderer), TS = TIER_SET[QUAL.tier];
+renderer.setPixelRatio(Math.min(devicePixelRatio, TS.ratio)); renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene(), SKY = new THREE.Color(0xa9c8e4); scene.background = SKY; scene.fog = new THREE.Fog(SKY, 90, 260);
+scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x6b5a44, 0.9));
+const sun = new THREE.DirectionalLight(0xfff1dc, 2.4); sun.position.set(-300, 400, -200); scene.add(sun);
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 600);
+const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = false; controls.maxPolarAngle = Math.PI * 0.49;
+// a frame only when something changed
+let wantFrame = true; const redraw = () => { wantFrame = true; };
+controls.addEventListener('change', redraw);
+function heightAt(x, z) {
+  const fx = Math.min(N - 1.001, Math.max(0, (x + SIZE / 2) / CELL - 0.5)), fz = Math.min(N - 1.001, Math.max(0, (z + SIZE / 2) / CELL - 0.5)), i = fx | 0, j = fz | 0, u = fx - i, v = fz - j, k = j * N + i;
+  return (H[k] * (1 - u) + H[k + 1] * u) * (1 - v) + (H[k + N] * (1 - u) + H[k + N + 1] * u) * v;
+}
+// the ground: one mesh, a corner on each cell's middle, coloured by the land (no pictures)
+{ const geo = new THREE.PlaneGeometry(SIZE - CELL, SIZE - CELL, N - 1, N - 1); geo.rotateX(-Math.PI / 2);
+  const p = geo.attributes.position, col = new Float32Array(p.count * 3);
+  for (let n = 0; n < p.count; n++) {
+    const k = idx(p.getX(n), p.getZ(n)); p.setY(n, H[k]);
+    let c = [86, 128, 52];                                                                              // grass
+    c = c.map((v, m) => v + ([176, 160, 82][m] - v) * DRY[k] * 0.6);                                  // dry: yellow
+    c = c.map((v, m) => v + ([110, 92, 66][m] - v) * Math.max(STEEP[k], PATH[k]));                     // steep and paths: brown
+    c = c.map((v, m) => v + ([136, 132, 124][m] - v) * Math.min(1, SHORE[k] * 2.5) * (1 - WATER[k]));  // stony shore: grey
+    c = c.map(v => v * (1 - 0.35 * CANOPY[k]));                                                         // under trees: darker
+    c = c.map((v, m) => v + ([40, 92, 126][m] - v) * WATER[k]);                                         // water
+    const lin = new THREE.Color(c[0] / 255, c[1] / 255, c[2] / 255).convertSRGBToLinear(); col.set([lin.r, lin.g, lin.b], n * 3);
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.computeVertexNormals();
+  scene.add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }))); }
+
+// trees: simple stand-ins, one instanced mesh a shape (cones for pines, balls on trunks for the rest)
+const treeMeshes = (() => {
+  const mat = new THREE.MeshLambertMaterial({ color: 0xffffff }), trunkMat = new THREE.MeshLambertMaterial({ color: 0x4a3a2a });
+  const cone = new THREE.ConeGeometry(2.6, 11, 7); cone.translate(0, 8, 0);
+  const ball = new THREE.IcosahedronGeometry(3.6, 1); ball.translate(0, 8, 0);
+  const trunk = new THREE.CylinderGeometry(0.25, 0.35, 6, 5); trunk.translate(0, 3, 0);
+  const mk = (g, m) => { const im = new THREE.InstancedMesh(g, m, trees.length); im.count = 0; scene.add(im); return im; };
+  return { cone: mk(cone, mat), ball: mk(ball, mat.clone()), trunk: mk(trunk, trunkMat) };
+})();
+
+// the 16 ground plants: the Plant Lab's sheet, cut into its cells, one instanced mesh a kind, each
+// stood at its real height and lit as the Terrain Lab lights them (every face as if facing up)
+const plantMeshes = [], PLANT_CAP = 40000;
+async function loadPlants() {
+  const g = await new Promise((ok, bad) => new GLTFLoader().load('/models/props/groundPlants.glb', ok, undefined, bad));
+  let src = null; g.scene.traverse(o => { if (o.isMesh && !src) src = o; }); src.updateMatrixWorld(true);
+  const geo0 = (src.geometry.index ? src.geometry.toNonIndexed() : src.geometry.clone()).applyMatrix4(src.matrixWorld), pos = geo0.attributes.position;
+  const buckets = Array.from({ length: 16 }, () => []);
+  for (let t = 0; t < pos.count; t += 3) { const x = (pos.getX(t) + pos.getX(t + 1) + pos.getX(t + 2)) / 3, y = (pos.getY(t) + pos.getY(t + 1) + pos.getY(t + 2)) / 3;
+    buckets[(3 - Math.min(3, Math.floor(y / 1.0))) * 4 + Math.min(3, Math.floor(x / 0.5))].push(t); }     // the sheet's fixed cells: 0.5 wide, 1.0 a row
+  const mat = new THREE.MeshLambertMaterial({ map: src.material.map, side: THREE.DoubleSide, alphaTest: src.material.alphaTest || 0 });
+  mat.map.colorSpace = THREE.SRGBColorSpace;
+  mat.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('gl_FrontFacing ? 1.0 : - 1.0', '1.0')); };
+  buckets.forEach((tris, k) => {
+    const gg = new THREE.BufferGeometry();
+    for (const a of Object.keys(geo0.attributes)) { const A = geo0.attributes[a], n = A.itemSize, arr = new Float32Array(tris.length * 3 * n); tris.forEach((t, q) => { for (let v = 0; v < 3; v++) for (let c = 0; c < n; c++) arr[(q * 3 + v) * n + c] = A.array[(t + v) * n + c]; }); gg.setAttribute(a, new THREE.BufferAttribute(arr, n)); }
+    gg.computeBoundingBox(); const b = gg.boundingBox; gg.translate(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2);
+    const h = b.max.y - b.min.y; gg.scale(KIND_INFO[k].height / h, KIND_INFO[k].height / h, KIND_INFO[k].height / h);   // its real height at scale 1
+    const nr = gg.attributes.normal; for (let q = 0; q < nr.count; q++) nr.setXYZ(q, 0, 1, 0);
+    const im = new THREE.InstancedMesh(gg, mat, PLANT_CAP); im.count = 0; im.userData.kind = k; im.frustumCulled = false; scene.add(im); plantMeshes.push(im);
+  });
+}
+
+// what's drawn: the plants near where you look (`near` m; 0 all), laid again when you've moved a quarter of that
+const SHOW = { near: TS.near, at: new THREE.Vector3() };
+controls.addEventListener('end', () => { if (SHOW.near && SHOW.at.distanceTo(controls.target) > SHOW.near * 0.25) growAll(); });
 // ── growing ───────────────────────────────────────────────────────────────────────────────
 let plants = [], treeKinds = [];
+const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), v3 = new THREE.Vector3(), sc = new THREE.Vector3();
 function growAll() {
   const t0 = performance.now();
   // "how many" means what it does in the Terrain Lab (normal: that many in a circle 140 m round the
-  // camera), so the same number gives the same thickness here; only those on this land are kept
+  // camera), so the same number gives the same thickness here
   const R = SIZE * 0.72, count = Math.round(COVER.count * (R * R) / (140 * 140));
-  plants = growPlants({ ground, at: { x: 0, z: 0 }, radius: R, count, size: COVER.size, kinds: KINDS, grow: GROW }).filter(p => Math.abs(p.x) < SIZE / 2 && Math.abs(p.z) < SIZE / 2);
-  const by = new Array(16).fill(0); for (const p of plants) by[p.sp]++;
-  $('info').textContent = `${plants.length.toLocaleString()} plants · ${trees.length.toLocaleString()} trees · laid in ${Math.round(performance.now() - t0)} ms`;
+  plants = growPlants({ ground, at: { x: 0, z: 0 }, radius: R, count, size: COVER.size, kinds: KINDS, grow: GROW }).filter(p => Math.abs(p.x) < SIZE / 2 - 1 && Math.abs(p.z) < SIZE / 2 - 1);
+  const by = new Array(16).fill(0);
+  if (plantMeshes.length) {
+    for (const im of plantMeshes) im.count = 0;
+    const T = controls.target, near = SHOW.near; SHOW.at.copy(T);
+    for (const p of plants) { const im = plantMeshes[p.sp]; if (im.count >= PLANT_CAP || (near && Math.hypot(p.x - T.x, p.z - T.z) > near)) continue;
+      m4.compose(v3.set(p.x, heightAt(p.x, p.z), p.z), q.setFromAxisAngle(up, p.yaw), sc.setScalar(p.scale)); im.setMatrixAt(im.count++, m4); by[p.sp]++; }
+    for (const im of plantMeshes) { im.instanceMatrix.needsUpdate = true; im.visible = $('showPlants').checked; }
+  }
+  let tris = 0; plantMeshes.forEach(im => { tris += im.count * im.geometry.attributes.position.count / 3; });
+  $('info').textContent = `${plants.length.toLocaleString()} plants${SHOW.near ? ' (' + by.reduce((a, b) => a + b, 0).toLocaleString() + ' drawn, within ' + SHOW.near + ' m)' : ''} · ${trees.length.toLocaleString()} trees · ${(tris / 1e6).toFixed(2)} M triangles · laid in ${Math.round(performance.now() - t0)} ms`;
   KINDS.forEach((K, k) => { $('kOn' + k).title = by[k] + ' placed'; });
-  draw();
+  redraw();
 }
 function growTrees() {
-  treeKinds = trees.map(t => { const k = idx(t.x, t.z), i = k % N, j = (k / N) | 0; return pickTree(t.x, t.z, TREE_NAMES, { height: H[k], slope: SLOPE[k], wet: WET[k], dry: DRY[k] }, FAMILY); });
-  draw();
+  treeKinds = trees.map(t => { const k = idx(t.x, t.z); return pickTree(t.x, t.z, TREE_NAMES, { height: H[k], slope: SLOPE[k], wet: WET[k], dry: DRY[k] }, FAMILY); });
+  const { cone, ball, trunk } = treeMeshes, col = new THREE.Color(), base = new THREE.Color(); cone.count = ball.count = trunk.count = 0;
+  trees.forEach((t, n) => { const k = treeKinds[n], pine = TREE_NAMES[k.sp] === 'pine', s = t.s;
+    m4.compose(v3.set(t.x, heightAt(t.x, t.z), t.z), q.setFromAxisAngle(up, t.x), sc.setScalar(s));
+    const im = pine ? cone : ball; im.setMatrixAt(im.count, m4);
+    col.setHSL(...k.hsl).multiply(base.set(TREE_BASE[TREE_NAMES[k.sp]]).convertSRGBToLinear().multiplyScalar(1.6)); im.setColorAt(im.count++, col);
+    trunk.setMatrixAt(trunk.count++, m4); });
+  for (const im of [cone, ball, trunk]) { im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
+  for (const im of [cone, ball, trunk]) im.visible = $('showTrees').checked;
+  redraw();
 }
+for (const id of ['showPlants', 'showTrees']) $(id).addEventListener('change', () => { plantMeshes.forEach(im => { im.visible = $('showPlants').checked; }); Object.values(treeMeshes).forEach(im => { im.visible = $('showTrees').checked; }); redraw(); });
 
-// ── drawing: the land as a picture (made once), then trees and plants as dots, scaled as you zoom ──
-const cv = $('map'), g = cv.getContext('2d');
-const land = document.createElement('canvas'); land.width = land.height = N;
-{ const lg = land.getContext('2d'), im = lg.createImageData(N, N), d = im.data;
-  for (let k = 0; k < N * N; k++) {
-    const i = k % N, j = (k / N) | 0, sh = Math.max(0.55, Math.min(1.25, 1 + ((H[k] - H[Math.max(0, j - 1) * N + Math.max(0, i - 1)]) / CELL) * 0.35));   // hill shading, lit from the north-west
-    let c = [86, 128, 52];                                                     // grass
-    c = c.map((v, n) => v + ([176, 160, 82][n] - v) * DRY[k] * 0.6);             // dry: yellow
-    c = c.map((v, n) => v + ([110, 92, 66][n] - v) * Math.max(STEEP[k], PATH[k]));   // steep and paths: brown
-    c = c.map((v, n) => v + ([136, 132, 124][n] - v) * Math.min(1, SHORE[k] * 2.5) * (1 - WATER[k]));   // stony shore: grey
-    c = c.map((v, n) => v * (1 - 0.35 * CANOPY[k]));                            // under trees: darker
-    c = c.map((v, n) => v + ([48, 104, 140][n] - v) * WATER[k]);                 // water
-    d[k * 4] = c[0] * sh; d[k * 4 + 1] = c[1] * sh; d[k * 4 + 2] = c[2] * sh; d[k * 4 + 3] = 255;
-  }
-  lg.putImageData(im, 0, 0); }
-let view = { x: 0, z: 0, ppm: 1 };                                             // the middle (m) and pixels a metre
-function fit() { const free = innerWidth > 700 && !$('panel').classList.contains('min') ? innerWidth - $('panel').offsetWidth - 36 : innerWidth; view.ppm = Math.min(free, innerHeight) / SIZE * 0.96; view.x = (innerWidth - free) / 2 / view.ppm; view.z = 0; draw(); }
-const toScreen = (x, z) => [innerWidth / 2 + (x - view.x) * view.ppm, innerHeight / 2 + (z - view.z) * view.ppm];
-function draw() {
-  const dpr = Math.min(devicePixelRatio, 2); if (cv.width !== innerWidth * dpr) { cv.width = innerWidth * dpr; cv.height = innerHeight * dpr; cv.style.width = innerWidth + 'px'; cv.style.height = innerHeight + 'px'; }
-  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = '#0b1015'; g.fillRect(0, 0, innerWidth, innerHeight);
-  const [x0, y0] = toScreen(-SIZE / 2, -SIZE / 2), w = SIZE * view.ppm;
-  if ($('showLand').checked) { g.imageSmoothingEnabled = true; g.drawImage(land, x0, y0, w, w); } else { g.fillStyle = '#26301f'; g.fillRect(x0, y0, w, w); }
-  if ($('showTrees').checked) {                                               // canopies ~7 m across, tinted like the trees
-    trees.forEach((t, n) => { const k = treeKinds[n]; if (!k) return; const [sx, sy] = toScreen(t.x, t.z), rr = Math.max(1.5, 3.5 * t.s * view.ppm);
-      g.fillStyle = `hsl(${k.hsl[0] * 360} ${k.hsl[1] * 100}% ${k.hsl[2] * 55}%)`; g.globalAlpha = 0.9; g.beginPath(); g.arc(sx, sy, rr, 0, 6.283); g.fill();
-      g.globalAlpha = 1; g.strokeStyle = TREE_BASE[TREE_NAMES[k.sp]]; g.lineWidth = Math.max(1, rr * 0.25); g.stroke(); });
-  }
-  if ($('showPlants').checked) {                                              // each plant a dot its own kind's colour, as wide as it is tall (at least a pixel)
-    for (const p of plants) { const [sx, sy] = toScreen(p.x, p.z); if (sx < -4 || sy < -4 || sx > innerWidth + 4 || sy > innerHeight + 4) continue;
-      const rr = Math.max(0.8, KIND_INFO[p.sp].height * p.scale * 0.5 * view.ppm); g.fillStyle = COLORS[p.sp]; g.fillRect(sx - rr, sy - rr, rr * 2, rr * 2); }
-  }
-  // the scale bar: a round number of metres about 120 px long
-  const m = [1, 2, 5, 10, 20, 50, 100, 200].find(v => v * view.ppm >= 80) || 200; $('scale').querySelector('i').style.width = m * view.ppm + 'px'; $('scale').querySelector('span').textContent = m + ' m';
-}
-
-// zoom about the pointer, drag to move, hover to name the plant or tree under it
-let drag = null;
-cv.addEventListener('wheel', e => { e.preventDefault(); const f = Math.exp(-e.deltaY * 0.0015), mx = view.x + (e.clientX - innerWidth / 2) / view.ppm, mz = view.z + (e.clientY - innerHeight / 2) / view.ppm;
-  view.ppm = Math.min(80, Math.max(0.5, view.ppm * f)); view.x = mx - (e.clientX - innerWidth / 2) / view.ppm; view.z = mz - (e.clientY - innerHeight / 2) / view.ppm; draw(); }, { passive: false });
-const touches = new Map();
-cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); touches.set(e.pointerId, [e.clientX, e.clientY]); drag = { x: e.clientX, y: e.clientY, vx: view.x, vz: view.z }; });
-cv.addEventListener('pointerup', e => { touches.delete(e.pointerId); drag = touches.size ? drag : null; });
-cv.addEventListener('pointermove', e => {
-  if (touches.size === 2 && touches.has(e.pointerId)) {                      // pinch
-    const [a, b] = [...touches.values()], before = Math.hypot(a[0] - b[0], a[1] - b[1]); touches.set(e.pointerId, [e.clientX, e.clientY]);
-    const [c, d] = [...touches.values()], after = Math.hypot(c[0] - d[0], c[1] - d[1]); if (before > 0) { view.ppm = Math.min(80, Math.max(0.5, view.ppm * after / before)); draw(); } return;
-  }
-  if (drag && touches.has(e.pointerId)) { view.x = drag.vx - (e.clientX - drag.x) / view.ppm; view.z = drag.vz - (e.clientY - drag.y) / view.ppm; draw(); $('tip').style.display = 'none'; return; }
-  const mx = view.x + (e.clientX - innerWidth / 2) / view.ppm, mz = view.z + (e.clientY - innerHeight / 2) / view.ppm, reach = 6 / view.ppm;
-  let best = null, bd = reach * reach;
-  if ($('showPlants').checked) for (const p of plants) { const d = (p.x - mx) ** 2 + (p.z - mz) ** 2; if (d < bd) { bd = d; best = KIND_INFO[p.sp].name + ` (${KINDS[p.sp].style})`; } }
-  if (!best && $('showTrees').checked) trees.forEach((t, n) => { const d = (t.x - mx) ** 2 + (t.z - mz) ** 2; if (d < (3.5 * t.s) ** 2 && treeKinds[n]) best = TREE_NAMES[treeKinds[n].sp]; });
-  const tip = $('tip'); if (best) { tip.textContent = best; tip.style.left = e.clientX + 12 + 'px'; tip.style.top = e.clientY + 12 + 'px'; tip.style.display = 'block'; } else tip.style.display = 'none';
+// click (not drag) a plant or tree to name it
+const ray = new THREE.Raycaster(), ptr = new THREE.Vector2(); let down = null;
+renderer.domElement.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; $('tip').style.display = 'none'; });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return;
+  ptr.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); ray.setFromCamera(ptr, camera);
+  const hit = ray.intersectObjects([...plantMeshes, treeMeshes.cone, treeMeshes.ball].filter(m => m.visible && m.count))[0], tip = $('tip');
+  if (!hit) { tip.style.display = 'none'; return; }
+  const k = hit.object.userData.kind;
+  tip.textContent = k !== undefined ? `${KIND_INFO[k].name} (${KINDS[k].style}) · ${(KIND_INFO[k].height * plants.filter(p => p.sp === k)[0]?.scale || KIND_INFO[k].height).toFixed(2)} m tall here` : 'tree';
+  if (k === undefined) { const t = trees.reduce((b, t, n) => { const d = Math.hypot(t.x - hit.point.x, t.z - hit.point.z); return d < b[0] ? [d, n] : b; }, [1e9, -1]); tip.textContent = TREE_NAMES[treeKinds[t[1]].sp]; }
+  tip.style.left = e.clientX + 12 + 'px'; tip.style.top = e.clientY + 12 + 'px'; tip.style.display = 'block';
 });
-cv.addEventListener('pointerleave', () => { $('tip').style.display = 'none'; });
-$('fit').addEventListener('click', fit); addEventListener('resize', draw);
 
-syncPanel(); growTrees(); growAll(); fit();
-if (new URLSearchParams(location.search).has('probe')) Object.assign(window, { GROW, FAMILY, KINDS, COVER, growAll, growTrees, view, draw, plants: () => plants });
+// cameras
+const CAMS = { eye: () => { camera.position.set(-6, heightAt(-6, 40) + 1.7, 40); controls.target.set(0, heightAt(0, 20) + 0.8, 20); },
+  low: () => { camera.position.set(-30, heightAt(-30, 60) + 12, 60); controls.target.set(0, heightAt(0, 20), 20); },
+  high: () => { camera.position.set(0, 120, 140); controls.target.set(0, 0, 0); } };
+for (const b of document.querySelectorAll('[data-cam]')) b.addEventListener('click', () => { CAMS[b.dataset.cam](); controls.update(); redraw(); });
+function fit() { camera.aspect = innerWidth / innerHeight; const p = $('panel'), w = innerWidth > 700 && !p.classList.contains('min') ? p.offsetWidth + 24 : 0;
+  if (w) camera.setViewOffset(innerWidth, innerHeight, w / 2, 0, innerWidth, innerHeight); else camera.clearViewOffset(); camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); redraw(); }
+addEventListener('resize', fit); $('min').addEventListener('click', fit);
+renderer.setAnimationLoop(() => { if (!wantFrame) return; wantFrame = false; controls.update(); renderer.render(scene, camera); });
+
+$('near').value = SHOW.near; $('nearOut').textContent = SHOW.near ? SHOW.near + ' m' : 'all';
+$('near').addEventListener('input', e => { $('nearOut').textContent = +e.target.value ? e.target.value + ' m' : 'all'; });
+$('near').addEventListener('change', e => { SHOW.near = +e.target.value; growAll(); });
+syncPanel(); growTrees(); CAMS.low(); controls.update(); fit();
+await loadPlants(); $('loading').textContent = ''; growAll();
+if (new URLSearchParams(location.search).has('probe')) Object.assign(window, { GROW, FAMILY, KINDS, COVER, growAll, growTrees, camera, controls, redraw, renderer, __scene: scene });
 </script>
 </body>
 </html>
