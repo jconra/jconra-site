@@ -242,6 +242,9 @@
       <label class="check" for="coverOn"><input id="coverOn" type="checkbox" checked> Ground plants (16 kinds)</label>
       <p class="note" id="coverInfo">loading…</p>
       <details class="sec"><summary>How they grow (patches, clumps, loners)</summary>
+      <p class="note">Try these on the <a href="../growth/" style="color:#35e07d">Growth Lab</a> (a light, top-down view), copy them there and paste them here. Covers how they grow, each kind, the tree families, and how many and how big.</p>
+      <div class="row" style="grid-template-columns:1fr 1fr"><button type="button" id="growCopy">Copy growth settings</button><button type="button" id="growPaste">Paste growth settings</button></div>
+      <p class="note" id="growNote"></p>
       <p class="note"><b>Patch</b> kinds hold stretches of ground by themselves; <b>clump</b> kinds grow in small family groups; <b>loners</b> stand here and there. Set each kind's style below.</p>
       <div class="row"><label for="gPatchSize">Patch size</label><output id="gPatchSizeOut"></output><input id="gPatchSize" type="range" min="5" max="150" step="1"></div>
       <div class="row"><label for="gPatchSharp">Patch edges (mixed to clean)</label><output id="gPatchSharpOut"></output><input id="gPatchSharp" type="range" min="0" max="1" step="0.01"></div>

@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Growth Lab</title>
+<script src="/src/oops.js"></script>
+<style>
+  @font-face { font-family: nasa; src: url("../../fonts/nasalization-rg.ttf"); font-display: swap; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; background:#0b1015; color:#ccd6de; font:13px/1.45 ui-sans-serif, system-ui, sans-serif; }
+  canvas { display:block; touch-action:none; cursor:grab; }
+  canvas:active { cursor:grabbing; }
+  #panel { position:fixed; top:12px; right:12px; bottom:12px; width:330px; overflow-y:auto; z-index:5;
+           background:rgba(10,13,17,.94); border:1px solid #212a34; border-radius:6px; padding:12px 14px; }
+  #panel.min { bottom:auto; }
+  #panel.min .body { display:none; }
+  h1 { font:400 17px/1 nasa, ui-sans-serif, sans-serif; letter-spacing:.05em; color:#e8f1f5; display:flex; justify-content:space-between; align-items:center; }
+  h1 button { font:600 11px ui-monospace,monospace; background:none; border:1px solid #212a34; color:#8494a0; border-radius:3px; padding:3px 7px; cursor:pointer; }
+  details.sec { margin:10px 0 0; border-top:1px solid #1a2129; padding-top:6px; }
+  details.sec summary { font:600 10.5px/1 ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:#8494a0; cursor:pointer; list-style:none; padding:6px 0; user-select:none; }
+  details.sec summary::before { content:"▸ "; color:#35e07d; }
+  details.sec[open] > summary::before { content:"▾ "; }
+  details.sec[open] > summary { color:#e8f1f5; }
+  .note { color:#6d7a85; font-size:11.5px; margin:6px 0 4px; }
+  .note b { color:#aeb9c2; font-weight:600; }
+  .row { display:grid; grid-template-columns:1fr auto; gap:2px 8px; align-items:center; margin:6px 0; }
+  .row label { color:#aeb9c2; }
+  .row output { font:12px ui-monospace,monospace; color:#e8f1f5; font-variant-numeric:tabular-nums; }
+  .row input[type=range] { grid-column:1 / -1; width:100%; accent-color:#35e07d; }
+  .check { display:flex; gap:8px; align-items:center; margin:5px 0; color:#aeb9c2; cursor:pointer; }
+  .check input { accent-color:#35e07d; }
+  .btns { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }
+  .btn { font:600 11px ui-monospace,monospace; letter-spacing:.05em; text-transform:uppercase; background:rgba(53,224,125,.12);
+         color:#35e07d; border:1px solid #2f7d55; border-radius:4px; padding:6px 9px; cursor:pointer; }
+  .btn.quiet { background:none; color:#8494a0; border-color:#212a34; }
+  /* the kinds: swatch, on, name, style, size */
+  .kind { display:grid; grid-template-columns:14px 16px 1fr auto; gap:2px 6px; align-items:center; padding:4px 0; border-bottom:1px solid #141b22; }
+  .kind .sw { width:12px; height:12px; border-radius:50%; border:1px solid #0008; }
+  .kind input[type=checkbox] { accent-color:#35e07d; }
+  .kind .nm { color:#cfd8de; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .kind .nm small { color:#59656f; font:10.5px ui-monospace,monospace; }
+  .kind select { background:#0d1218; color:#cfd8de; border:1px solid #212a34; border-radius:3px; font:11.5px ui-sans-serif, system-ui; padding:1px 2px; }
+  .kind .sz { grid-column:2 / -1; display:grid; grid-template-columns:1fr 44px auto; gap:6px; align-items:center; }
+  .kind .sz input { accent-color:#35e07d; width:100%; }
+  .kind .sz output { font:11px ui-monospace,monospace; color:#9fb3c2; text-align:right; }
+  .kind .sz button { font:10.5px ui-monospace,monospace; background:none; border:1px solid #212a34; color:#8494a0; border-radius:3px; padding:1px 6px; cursor:pointer; }
+  .kind.off .nm { color:#59656f; }
+  #back { position:fixed; top:14px; left:16px; z-index:6; font:11px ui-monospace,monospace; letter-spacing:.14em; color:#8494a0; text-decoration:none; text-transform:uppercase; }
+  #head { position:fixed; top:36px; left:16px; z-index:6; pointer-events:none; text-shadow:0 1px 4px #000; }
+  #head b { display:block; font:400 20px nasa, ui-sans-serif, sans-serif; letter-spacing:.05em; color:#e8f1f5; }
+  #head span { font:11.5px/1.5 ui-monospace,monospace; color:#9fb3c2; }
+  #tip { position:fixed; z-index:7; pointer-events:none; background:rgba(10,13,17,.92); border:1px solid #212a34; border-radius:4px; padding:3px 7px; font:12px ui-sans-serif, system-ui; color:#e8f1f5; display:none; }
+  #scale { position:fixed; left:16px; bottom:14px; z-index:6; font:11px ui-monospace,monospace; color:#9fb3c2; pointer-events:none; }
+  #scale i { display:block; height:4px; border:1px solid #9fb3c2; border-top:0; margin-bottom:3px; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid #35e07d; outline-offset:1px; }
+  @media (max-width:700px) { #panel, #panel.min { width:auto; left:12px; top:auto; bottom:12px; max-height:50vh; } #head span { display:none; } }
+</style>
+</head>
+<body>
+<a id="back" href="../">&larr; labs</a>
+<div id="head"><b>Growth Lab</b><span id="info"></span></div>
+<div id="tip"></div>
+<div id="scale"><i></i><span></span></div>
+<canvas id="map"></canvas>
+<div id="panel">
+  <h1>Growth Lab <button id="min" type="button">hide</button></h1>
+  <div class="body">
+    <p class="note">Where the ground plants and trees go, seen from above on a made-up stretch of land (a hillside, a stream, a pond, a path, woods). The same rules as the Terrain Lab, from the same file, so <b>Copy settings</b> here and <b>Paste growth settings</b> there. Scroll to zoom, drag to move, hover a dot to name it.</p>
+    <div class="btns"><button class="btn" id="copy" type="button">Copy settings</button><button class="btn quiet" id="paste" type="button">Paste settings</button><button class="btn quiet" id="reset" type="button">Start over</button></div>
+    <p class="note" id="copyNote"></p>
+
+    <details class="sec" open><summary>How they grow</summary>
+      <div class="row"><label for="patchSize">Patch size</label><output id="patchSizeOut"></output><input id="patchSize" type="range" min="5" max="150" step="1"></div>
+      <div class="row"><label for="patchSharp">Patch edges (mixed to clean)</label><output id="patchSharpOut"></output><input id="patchSharp" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="clumpShare">Share in clumps</label><output id="clumpShareOut"></output><input id="clumpShare" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="clumpSize">Clump size</label><output id="clumpSizeOut"></output><input id="clumpSize" type="range" min="0.5" max="12" step="0.5"></div>
+      <div class="row"><label for="clumpCount">Plants per clump</label><output id="clumpCountOut"></output><input id="clumpCount" type="range" min="2" max="20" step="1"></div>
+      <div class="row"><label for="lonerShare">Share as loners</label><output id="lonerShareOut"></output><input id="lonerShare" type="range" min="0" max="0.4" step="0.01"></div>
+      <div class="row"><label for="fertSize">Thick and thin ground: patch size</label><output id="fertSizeOut"></output><input id="fertSize" type="range" min="20" max="400" step="5"></div>
+      <div class="row"><label for="fert">Thick and thin ground: how much</label><output id="fertOut"></output><input id="fert" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="count">How many plants (as in the Terrain Lab; normal: 11,000)</label><output id="countOut"></output><input id="count" type="range" min="0" max="40000" step="500"></div>
+      <div class="row"><label for="size">Size of them all</label><output id="sizeOut"></output><input id="size" type="range" min="0.2" max="3" step="0.05"></div>
+    </details>
+
+    <details class="sec" open><summary>The 16 kinds</summary>
+      <p class="note"><b>patch</b>: holds stretches of ground by itself · <b>clump</b>: small family groups · <b>loner</b>: here and there. The small grey word is the ground it likes. <b>Only</b> shows just that kind.</p>
+      <div class="btns"><button class="btn quiet" id="allOn" type="button">All on</button></div>
+      <div id="kinds"></div>
+    </details>
+
+    <details class="sec" open><summary>Tree families</summary>
+      <div class="row"><label for="famSize">Family size</label><output id="famSizeOut"></output><input id="famSize" type="range" min="20" max="300" step="5"></div>
+      <div class="row"><label for="famStrict">How strictly one kind holds its ground</label><output id="famStrictOut"></output><input id="famStrict" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="famPine">Pines from height</label><output id="famPineOut"></output><input id="famPine" type="range" min="-50" max="300" step="5"></div>
+      <p class="note" id="treeKey"></p>
+    </details>
+
+    <details class="sec"><summary>Show</summary>
+      <label class="check" for="showPlants"><input id="showPlants" type="checkbox" checked> Plants</label>
+      <label class="check" for="showTrees"><input id="showTrees" type="checkbox" checked> Trees</label>
+      <label class="check" for="showLand"><input id="showLand" type="checkbox" checked> The land (green: grass, yellow: dry, brown: steep and paths, blue: water, grey: stony shore)</label>
+      <div class="btns"><button class="btn quiet" id="fit" type="button">See it all</button></div>
+    </details>
+  </div>
+</div>
+<script type="module">
+import { KIND_INFO, GROW_DEFAULTS, FAMILY_DEFAULTS, defaultKinds, growPlants, pickTree, settingsJSON, applySettings, vnoise, hash } from '../../src/objects/growth.js';
+
+// QUALITY: this page is plain 2D drawing, redrawn only when something changes, so every tier gets it
+// whole; nothing to gate.
+const $ = (id) => document.getElementById(id);
+const KEY = 'jconra.growthLab';
+
+// ── the made-up land: 320 x 320 m, on a 2 m grid ─────────────────────────────────────────
+// a hillside rising to the north (z < 0) with ridges, a stream winding across, a pond, a path, and the
+// same land maps the Terrain Lab makes (wet, dry, steep, canopy, shade, shore, water, path)
+const SIZE = 320, CELL = 2, N = SIZE / CELL;
+const idx = (x, z) => { const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / CELL))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / CELL))); return j * N + i; };
+const cx = (i) => (i + 0.5) * CELL - SIZE / 2;
+const fbm = (x, z, o = 4) => { let h = 0, a = 1, n = 0, f = 1; for (let k = 0; k < o; k++) { h += (vnoise(x * f + k * 17, z * f - k * 9) - 0.5) * a; n += a; a *= 0.5; f *= 2.1; } return h / n; };
+const S = (x, a, b) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const H = new Float32Array(N * N), WATER = new Float32Array(N * N), PATH = new Float32Array(N * N);
+const streamZ = (x) => 40 + Math.sin(x / 55) * 22 + fbm(x / 90, 3) * 30;
+const pathAt = (x, z) => { const px = -110 + (z + 160) * 0.55 + Math.sin(z / 40) * 18; return Math.abs(x - px); };
+for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+  const x = cx(i), z = cx(j), k = j * N + i;
+  const hill = Math.pow(S(-z, -40, 160), 1.4) * 95 * (0.75 + 0.5 * (1 - Math.abs(fbm(x / 140, z / 140, 3) * 2)));     // up to the north, ridged
+  H[k] = hill + fbm(x / 70, z / 70) * 14 + fbm(x / 20, z / 20, 2) * 2.5;
+  const sd = Math.abs(z - streamZ(x)), pd = Math.hypot(x - 70, (z - 95) * 1.3);
+  WATER[k] = Math.max(1 - S(sd, 3, 5), 1 - S(pd, 18, 21));
+  PATH[k] = 1 - S(pathAt(x, z), 1.2, 2.4);
+}
+for (let k = 0; k < N * N; k++) if (WATER[k] > 0.5) H[k] = Math.min(H[k], 2);
+function blur(src, r) { const tmp = new Float32Array(N * N), out = new Float32Array(N * N);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { let s = 0, n = 0; for (let d = -r; d <= r; d++) { const ii = i + d; if (ii >= 0 && ii < N) { s += src[j * N + ii]; n++; } } tmp[j * N + i] = s / n; }
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { let s = 0, n = 0; for (let d = -r; d <= r; d++) { const jj = j + d; if (jj >= 0 && jj < N) { s += tmp[jj * N + i]; n++; } } out[j * N + i] = s / n; }
+  return out; }
+const SLOPE = new Float32Array(N * N), STEEP = new Float32Array(N * N), WET = new Float32Array(N * N), DRY = new Float32Array(N * N);
+{ const Hb = blur(H, 6), near = blur(WATER, 4);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const k = j * N + i, a = H[j * N + Math.min(N - 1, i + 1)] - H[j * N + Math.max(0, i - 1)], b = H[Math.min(N - 1, j + 1) * N + i] - H[Math.max(0, j - 1) * N + i];
+    SLOPE[k] = Math.hypot(a, b) / (2 * CELL); STEEP[k] = S(SLOPE[k], 0.36, 0.7);
+    const d = Hb[k] - H[k]; WET[k] = Math.min(1, Math.max(0, d / 3) + near[k] * 1.6 * (1 - WATER[k])); DRY[k] = Math.min(1, Math.max(0, -d / 3));
+  } }
+const SHORE = (() => { const b = blur(WATER, 2); for (let k = 0; k < N * N; k++) b[k] = WATER[k] > 0.5 ? 0 : b[k]; return b; })();
+
+// ── trees: candidates every 6 m in clumps (the Terrain Lab's rule), the kind by the shared families ──
+const TREE_NAMES = ['ash', 'aspen', 'oak', 'pine'], TREE_BASE = { ash: '#5f8f3c', aspen: '#a9b94a', oak: '#4f7a33', pine: '#2c4a2c' };
+const FOREST = 0.55, HILL_FOREST = 0.3, TREELINE = 280;
+let trees = [], CANOPY = new Float32Array(N * N), WIDE = new Float32Array(N * N);
+{ const tree = new Float32Array(N * N), clump = (x, z) => { let n = 0, a = 1, f = 1 / 230; for (let o = 0; o < 3; o++) { n += (vnoise(x * f + 40, z * f + 17) - 0.5) * a; a *= 0.5; f *= 2.2; } return n + 0.5; };
+  for (let z = -SIZE / 2 + 3; z < SIZE / 2; z += 6) for (let x = -SIZE / 2 + 3; x < SIZE / 2; x += 6) {
+    const jx = x + (hash(x, z) - 0.5) * 5, jz = z + (hash(z, x) - 0.5) * 5, k = idx(jx, jz), sl = SLOPE[k];
+    const hill = S(sl, 0.15, 0.55) * HILL_FOREST;
+    const F = S(clump(jx, jz) + hill, 1 - FOREST * 0.6, 1.05 - FOREST * 0.6) * (1 - WET[k] * 0.9) * (1 - S(sl, 0.75, 1.0)) * (1 - S(H[k], TREELINE - 40, TREELINE));
+    if (WATER[k] < 0.05 && PATH[k] < 0.3 && hash(jx * 1.3, jz * 0.7) < F * 0.85) { trees.push({ x: jx, z: jz, s: 0.8 + hash(jx, jz * 2) * 0.5 }); tree[k] = 1; }
+  }
+  const c = blur(tree, 1); for (let k = 0; k < N * N; k++) CANOPY[k] = Math.min(1, c[k] * 3.2 * 2.25);   // (the Terrain Lab's 3 m cells: x 2.25 for 2 m)
+  WIDE = blur(tree, 3); }
+
+// what the ground at a spot is like, for the plants: the Terrain Lab's formula, on this land's maps
+function ground(x, z) {
+  const k = idx(x, z), canopy = CANOPY[k], shade = Math.min(1, Math.max(0, WIDE[k] * 2.2 - canopy * 0.8)), open = 1 - Math.min(1, canopy + shade), path = PATH[k] * 1.2;
+  const hard = path + STEEP[k] * 1.5 + WATER[k] * 4, shore = Math.min(1, SHORE[k] * 2.5);
+  const blocked = hard + Math.max(0, WET[k] - 0.6) * 2 + shore * 1.2;
+  return { hard, blocked, shade: Math.min(1, shade + 0.6 * canopy), wet: Math.max(shore, WET[k]) * (1 - STEEP[k]),
+    dry: STEEP[k] > 0.4 ? 0 : DRY[k] * open, grass: (0.55 * open + 1.0 * shade + 0.15 * canopy) * (1 - DRY[k] * 0.4), shrub: 0.08 * open + 0.9 * shade + 0.35 * canopy,
+    long: STEEP[k] > 0.4 ? 0 : (0.35 + 0.65 * DRY[k]) * (1 - Math.min(1, canopy * 1.5 + WIDE[k])) * (1 - Math.min(1, path + STEEP[k] + WET[k])) };
+}
+
+// ── the settings ──────────────────────────────────────────────────────────────────────────
+const GROW = { ...GROW_DEFAULTS }, FAMILY = { ...FAMILY_DEFAULTS }, KINDS = defaultKinds(), COVER = { count: 11000, size: 1 };
+try { const t = localStorage.getItem(KEY); if (t) applySettings(t, GROW, FAMILY, KINDS, COVER); } catch (e) { /* no storage */ }
+const save = () => { try { localStorage.setItem(KEY, settingsJSON(GROW, FAMILY, KINDS, COVER)); } catch (e) { /* none */ } };
+// a colour a kind, spread round the wheel, the grasses greener
+const COLORS = ['#c9d65a', '#9ee07a', '#5fc46b', '#d9c36a', '#2fa07a', '#e0505a', '#ffd23a', '#e8e0b8', '#ff6a3a', '#ffffff', '#8a7cff', '#c26bff', '#8a5a2e', '#3fd0c8', '#1f6f3f', '#ffb000'];
+
+// ── the panel ─────────────────────────────────────────────────────────────────────────────
+const SLIDERS = [['patchSize', GROW, 'patchSize', v => v + ' m'], ['patchSharp', GROW, 'patchSharp', v => Math.round(v * 100) + '%'], ['clumpShare', GROW, 'clumpShare', v => Math.round(v * 100) + '%'],
+  ['clumpSize', GROW, 'clumpSize', v => v + ' m'], ['clumpCount', GROW, 'clumpCount', v => v + ' plants'], ['lonerShare', GROW, 'lonerShare', v => Math.round(v * 100) + '%'],
+  ['fertSize', GROW, 'fertSize', v => v + ' m'], ['fert', GROW, 'fert', v => Math.round(v * 100) + '%'], ['count', COVER, 'count', v => v.toLocaleString()], ['size', COVER, 'size', v => v.toFixed(2) + '×'],
+  ['famSize', FAMILY, 'size', v => v + ' m'], ['famStrict', FAMILY, 'strength', v => Math.round(v * 100) + '%'], ['famPine', FAMILY, 'pineFrom', v => v + ' m up']];
+for (const [id, obj, key, fmt] of SLIDERS) {
+  const el = $(id);
+  el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
+  el.addEventListener('change', () => { obj[key] = +el.value; save(); obj === FAMILY ? growTrees() : growAll(); });
+}
+const kindRows = KINDS.map((K, k) => {
+  const row = document.createElement('div'); row.className = 'kind';
+  row.innerHTML = `<span class="sw" style="background:${COLORS[k]}"></span><input type="checkbox" id="kOn${k}" aria-label="${KIND_INFO[k].name} on">
+    <label class="nm" for="kOn${k}">${KIND_INFO[k].name} <small>${KIND_INFO[k].hab}</small></label>
+    <select id="kStyle${k}" aria-label="how ${KIND_INFO[k].name} grows"><option value="patch">patch</option><option value="clump">clump</option><option value="loner">loner</option></select>
+    <div class="sz"><input type="range" id="kSize${k}" min="0.3" max="2.5" step="0.05" aria-label="${KIND_INFO[k].name} size"><output id="kSize${k}Out"></output><button type="button" id="kOnly${k}">Only</button></div>`;
+  $('kinds').appendChild(row);
+  $('kOn' + k).addEventListener('change', e => { K.on = e.target.checked; save(); growAll(); });
+  $('kStyle' + k).addEventListener('change', e => { K.style = e.target.value; save(); growAll(); });
+  $('kSize' + k).addEventListener('input', e => { $('kSize' + k + 'Out').textContent = (+e.target.value).toFixed(2) + '×'; });
+  $('kSize' + k).addEventListener('change', e => { K.size = +e.target.value; save(); growAll(); });
+  $('kOnly' + k).addEventListener('click', () => { KINDS.forEach((O, n) => { O.on = n === k; }); syncPanel(); save(); growAll(); });
+  return row;
+});
+$('allOn').addEventListener('click', () => { KINDS.forEach(O => { O.on = true; }); syncPanel(); save(); growAll(); });
+function syncPanel() {
+  for (const [id, obj, key, fmt] of SLIDERS) { $(id).value = obj[key]; $(id + 'Out').textContent = fmt(+obj[key]); }
+  KINDS.forEach((K, k) => { $('kOn' + k).checked = K.on; $('kStyle' + k).value = K.style; $('kSize' + k).value = K.size; $('kSize' + k + 'Out').textContent = K.size.toFixed(2) + '×'; kindRows[k].classList.toggle('off', !K.on); });
+}
+$('treeKey').innerHTML = TREE_NAMES.map(n => `<span style="color:${TREE_BASE[n]};text-shadow:0 0 1px #000">●</span> ${n}`).join(' &nbsp; ');
+$('copy').addEventListener('click', async () => {
+  const text = settingsJSON(GROW, FAMILY, KINDS, COVER);
+  try { await navigator.clipboard.writeText(text); $('copyNote').textContent = 'Copied. In the Terrain Lab: Ground cover → How they grow → Paste growth settings. Or paste it in chat.'; }
+  catch (e) { $('copyNote').textContent = text; }
+});
+$('paste').addEventListener('click', async () => {
+  let text = ''; try { text = await navigator.clipboard.readText(); } catch (e) { text = prompt('Paste the growth settings here') || ''; }
+  if (!applySettings(text, GROW, FAMILY, KINDS, COVER)) { $('copyNote').textContent = "That isn't growth settings."; return; }
+  syncPanel(); save(); growAll(); growTrees(); $('copyNote').textContent = 'Pasted.';
+});
+$('reset').addEventListener('click', () => { Object.assign(GROW, GROW_DEFAULTS); Object.assign(FAMILY, FAMILY_DEFAULTS); defaultKinds().forEach((d, k) => Object.assign(KINDS[k], d)); Object.assign(COVER, { count: 11000, size: 1 }); syncPanel(); save(); growAll(); growTrees(); });
+$('min').addEventListener('click', () => { const p = $('panel'); p.classList.toggle('min'); $('min').textContent = p.classList.contains('min') ? 'show' : 'hide'; });
+for (const id of ['showPlants', 'showTrees', 'showLand']) $(id).addEventListener('change', draw);
+
+// ── growing ───────────────────────────────────────────────────────────────────────────────
+let plants = [], treeKinds = [];
+function growAll() {
+  const t0 = performance.now();
+  // "how many" means what it does in the Terrain Lab (normal: that many in a circle 140 m round the
+  // camera), so the same number gives the same thickness here; only those on this land are kept
+  const R = SIZE * 0.72, count = Math.round(COVER.count * (R * R) / (140 * 140));
+  plants = growPlants({ ground, at: { x: 0, z: 0 }, radius: R, count, size: COVER.size, kinds: KINDS, grow: GROW }).filter(p => Math.abs(p.x) < SIZE / 2 && Math.abs(p.z) < SIZE / 2);
+  const by = new Array(16).fill(0); for (const p of plants) by[p.sp]++;
+  $('info').textContent = `${plants.length.toLocaleString()} plants · ${trees.length.toLocaleString()} trees · laid in ${Math.round(performance.now() - t0)} ms`;
+  KINDS.forEach((K, k) => { $('kOn' + k).title = by[k] + ' placed'; });
+  draw();
+}
+function growTrees() {
+  treeKinds = trees.map(t => { const k = idx(t.x, t.z), i = k % N, j = (k / N) | 0; return pickTree(t.x, t.z, TREE_NAMES, { height: H[k], slope: SLOPE[k], wet: WET[k], dry: DRY[k] }, FAMILY); });
+  draw();
+}
+
+// ── drawing: the land as a picture (made once), then trees and plants as dots, scaled as you zoom ──
+const cv = $('map'), g = cv.getContext('2d');
+const land = document.createElement('canvas'); land.width = land.height = N;
+{ const lg = land.getContext('2d'), im = lg.createImageData(N, N), d = im.data;
+  for (let k = 0; k < N * N; k++) {
+    const i = k % N, j = (k / N) | 0, sh = Math.max(0.55, Math.min(1.25, 1 + ((H[k] - H[Math.max(0, j - 1) * N + Math.max(0, i - 1)]) / CELL) * 0.35));   // hill shading, lit from the north-west
+    let c = [86, 128, 52];                                                     // grass
+    c = c.map((v, n) => v + ([176, 160, 82][n] - v) * DRY[k] * 0.6);             // dry: yellow
+    c = c.map((v, n) => v + ([110, 92, 66][n] - v) * Math.max(STEEP[k], PATH[k]));   // steep and paths: brown
+    c = c.map((v, n) => v + ([136, 132, 124][n] - v) * Math.min(1, SHORE[k] * 2.5) * (1 - WATER[k]));   // stony shore: grey
+    c = c.map((v, n) => v * (1 - 0.35 * CANOPY[k]));                            // under trees: darker
+    c = c.map((v, n) => v + ([48, 104, 140][n] - v) * WATER[k]);                 // water
+    d[k * 4] = c[0] * sh; d[k * 4 + 1] = c[1] * sh; d[k * 4 + 2] = c[2] * sh; d[k * 4 + 3] = 255;
+  }
+  lg.putImageData(im, 0, 0); }
+let view = { x: 0, z: 0, ppm: 1 };                                             // the middle (m) and pixels a metre
+function fit() { const free = innerWidth > 700 && !$('panel').classList.contains('min') ? innerWidth - $('panel').offsetWidth - 36 : innerWidth; view.ppm = Math.min(free, innerHeight) / SIZE * 0.96; view.x = (innerWidth - free) / 2 / view.ppm; view.z = 0; draw(); }
+const toScreen = (x, z) => [innerWidth / 2 + (x - view.x) * view.ppm, innerHeight / 2 + (z - view.z) * view.ppm];
+function draw() {
+  const dpr = Math.min(devicePixelRatio, 2); if (cv.width !== innerWidth * dpr) { cv.width = innerWidth * dpr; cv.height = innerHeight * dpr; cv.style.width = innerWidth + 'px'; cv.style.height = innerHeight + 'px'; }
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = '#0b1015'; g.fillRect(0, 0, innerWidth, innerHeight);
+  const [x0, y0] = toScreen(-SIZE / 2, -SIZE / 2), w = SIZE * view.ppm;
+  if ($('showLand').checked) { g.imageSmoothingEnabled = true; g.drawImage(land, x0, y0, w, w); } else { g.fillStyle = '#26301f'; g.fillRect(x0, y0, w, w); }
+  if ($('showTrees').checked) {                                               // canopies ~7 m across, tinted like the trees
+    trees.forEach((t, n) => { const k = treeKinds[n]; if (!k) return; const [sx, sy] = toScreen(t.x, t.z), rr = Math.max(1.5, 3.5 * t.s * view.ppm);
+      g.fillStyle = `hsl(${k.hsl[0] * 360} ${k.hsl[1] * 100}% ${k.hsl[2] * 55}%)`; g.globalAlpha = 0.9; g.beginPath(); g.arc(sx, sy, rr, 0, 6.283); g.fill();
+      g.globalAlpha = 1; g.strokeStyle = TREE_BASE[TREE_NAMES[k.sp]]; g.lineWidth = Math.max(1, rr * 0.25); g.stroke(); });
+  }
+  if ($('showPlants').checked) {                                              // each plant a dot its own kind's colour, as wide as it is tall (at least a pixel)
+    for (const p of plants) { const [sx, sy] = toScreen(p.x, p.z); if (sx < -4 || sy < -4 || sx > innerWidth + 4 || sy > innerHeight + 4) continue;
+      const rr = Math.max(0.8, KIND_INFO[p.sp].height * p.scale * 0.5 * view.ppm); g.fillStyle = COLORS[p.sp]; g.fillRect(sx - rr, sy - rr, rr * 2, rr * 2); }
+  }
+  // the scale bar: a round number of metres about 120 px long
+  const m = [1, 2, 5, 10, 20, 50, 100, 200].find(v => v * view.ppm >= 80) || 200; $('scale').querySelector('i').style.width = m * view.ppm + 'px'; $('scale').querySelector('span').textContent = m + ' m';
+}
+
+// zoom about the pointer, drag to move, hover to name the plant or tree under it
+let drag = null;
+cv.addEventListener('wheel', e => { e.preventDefault(); const f = Math.exp(-e.deltaY * 0.0015), mx = view.x + (e.clientX - innerWidth / 2) / view.ppm, mz = view.z + (e.clientY - innerHeight / 2) / view.ppm;
+  view.ppm = Math.min(80, Math.max(0.5, view.ppm * f)); view.x = mx - (e.clientX - innerWidth / 2) / view.ppm; view.z = mz - (e.clientY - innerHeight / 2) / view.ppm; draw(); }, { passive: false });
+const touches = new Map();
+cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); touches.set(e.pointerId, [e.clientX, e.clientY]); drag = { x: e.clientX, y: e.clientY, vx: view.x, vz: view.z }; });
+cv.addEventListener('pointerup', e => { touches.delete(e.pointerId); drag = touches.size ? drag : null; });
+cv.addEventListener('pointermove', e => {
+  if (touches.size === 2 && touches.has(e.pointerId)) {                      // pinch
+    const [a, b] = [...touches.values()], before = Math.hypot(a[0] - b[0], a[1] - b[1]); touches.set(e.pointerId, [e.clientX, e.clientY]);
+    const [c, d] = [...touches.values()], after = Math.hypot(c[0] - d[0], c[1] - d[1]); if (before > 0) { view.ppm = Math.min(80, Math.max(0.5, view.ppm * after / before)); draw(); } return;
+  }
+  if (drag && touches.has(e.pointerId)) { view.x = drag.vx - (e.clientX - drag.x) / view.ppm; view.z = drag.vz - (e.clientY - drag.y) / view.ppm; draw(); $('tip').style.display = 'none'; return; }
+  const mx = view.x + (e.clientX - innerWidth / 2) / view.ppm, mz = view.z + (e.clientY - innerHeight / 2) / view.ppm, reach = 6 / view.ppm;
+  let best = null, bd = reach * reach;
+  if ($('showPlants').checked) for (const p of plants) { const d = (p.x - mx) ** 2 + (p.z - mz) ** 2; if (d < bd) { bd = d; best = KIND_INFO[p.sp].name + ` (${KINDS[p.sp].style})`; } }
+  if (!best && $('showTrees').checked) trees.forEach((t, n) => { const d = (t.x - mx) ** 2 + (t.z - mz) ** 2; if (d < (3.5 * t.s) ** 2 && treeKinds[n]) best = TREE_NAMES[treeKinds[n].sp]; });
+  const tip = $('tip'); if (best) { tip.textContent = best; tip.style.left = e.clientX + 12 + 'px'; tip.style.top = e.clientY + 12 + 'px'; tip.style.display = 'block'; } else tip.style.display = 'none';
+});
+cv.addEventListener('pointerleave', () => { $('tip').style.display = 'none'; });
+$('fit').addEventListener('click', fit); addEventListener('resize', draw);
+
+syncPanel(); growTrees(); growAll(); fit();
+if (new URLSearchParams(location.search).has('probe')) Object.assign(window, { GROW, FAMILY, KINDS, COVER, growAll, growTrees, view, draw, plants: () => plants });
+</script>
+</body>
+</html>

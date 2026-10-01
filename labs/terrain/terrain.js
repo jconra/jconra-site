@@ -14,6 +14,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Forest, FOREST_SPECIES } from '../../src/objects/forest.js';
 import { chooseTier, saveTier, watchFrames, TIERS } from '../../src/quality.js';
 import { makeCloudSky, SKY_GLSL } from '../../src/objects/cloudSky.js';
+import { KIND_INFO, GROW_DEFAULTS, FAMILY_DEFAULTS, defaultKinds, growPlants, pickTree as pickTreeKind, settingsJSON, applySettings } from '../../src/objects/growth.js';
 
 const $ = (id) => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
@@ -834,28 +835,13 @@ const TREE_SPECIES = FOREST_SPECIES.filter(sp => sp.name !== 'bush');
 const FOREST = { imposterAt: 150, band: 120, ahead: 0.6, grid: 12, cell: 192, detail: 'sparse', rebake: false };
 Object.assign(FOREST, TS.forest);
 let treeForest = null;
-// WHICH TREE WHERE: each kind has the ground it likes, and each grows in families: a slow noise per
-// kind, so one kind holds a stretch of ground and gives way to the next at the edges.
-//   pine:  the slopes and the heights, darker; the hills' forest
-//   aspen: groves of one clone (one colour for the whole grove), on the lower slopes and damp ground
-//   ash:   the valley, the damper parts;  oak: the valley, the drier rises
-// `FAMILY.size` is how big a family's stretch is, `FAMILY.strength` how strictly one kind holds it.
-const FAMILY = { size: 90, strength: 0.7, pineFrom: 25 };
+// WHICH TREE WHERE: src/objects/growth.js (shared with the Growth Lab); here it is handed the land's
+// height, slope, wet and dry at each tree
+const FAMILY = { ...FAMILY_DEFAULTS };
 function pickTree(x, z, species) {
   const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
-  const S = THREE.MathUtils.smoothstep, sl = slopeAt(i, j), up = Math.max(S(Hg[k], FAMILY.pineFrom, FAMILY.pineFrom + 90), S(sl, 0.2, 0.6)), wet = MAPS.wet[k], dry = MAPS.dry[k];
-  const fam = (seed, size) => { let n = 0, a = 1, f = 1 / size; for (let o = 0; o < 2; o++) { n += (vnoise(x * f + seed, z * f - seed) - 0.5) * a; a *= 0.5; f *= 2.3; } return Math.min(1, Math.max(0, n * 1.6 + 0.5)); };
-  const want = { pine: 0.15 + 2.2 * up, aspen: 0.2 + 0.8 * S(sl, 0.1, 0.4) * (1 - S(Hg[k], FAMILY.pineFrom + 60, FAMILY.pineFrom + 160)) + 0.8 * wet, ash: (1 - up) * (0.4 + 1.2 * wet), oak: (1 - up) * (0.4 + 1.2 * dry) };
-  const seeds = { pine: 11, aspen: 37, ash: 73, oak: 101 }, sizes = { pine: 1.6, aspen: 0.45, ash: 1, oak: 1 };   // aspen groves are small, pine stands big
-  let total = 0; const w = species.map(sp => { const f = fam(seeds[sp.name] || 7, FAMILY.size * (sizes[sp.name] || 1)); const v = Math.pow(want[sp.name] ?? 0.2, 1.5) * Math.pow(f + 0.05, 1 + FAMILY.strength * 5); total += v; return v; });
-  let r = hash(x * 0.37, z * 0.71) * total, sp = species.length - 1; for (let n = 0; n < w.length; n++) { if ((r -= w[n]) <= 0) { sp = n; break; } }
-  const name = species[sp].name, h = hash(z * 1.3, x * 0.9);
-  // colour: a grove of aspen is one tree, so one colour (by where it is); pines dark
-  let tint;
-  if (name === 'aspen') { const g = vnoise(x / (FAMILY.size * 0.45) + 37, z / (FAMILY.size * 0.45) - 37); tint = new THREE.Color().setHSL(0.2 + g * 0.1, 0.45 + g * 0.2, 0.62 + 0.04 * h); }
-  else if (name === 'pine') tint = new THREE.Color().setHSL(0.3 + h * 0.04, 0.3 + h * 0.15, 0.36 + h * 0.08);
-  else tint = new THREE.Color().setHSL(0.26 + h * 0.08, 0.35 + h * 0.2, 0.55 + h * 0.15);
-  return [sp, tint];
+  const { sp, hsl } = pickTreeKind(x, z, species.map(s => s.name), { height: Hg[k], slope: slopeAt(i, j), wet: MAPS.wet[k], dry: MAPS.dry[k] }, FAMILY);
+  return [sp, new THREE.Color().setHSL(...hsl)];
 }
 function placeTrees() {
   if (treeForest) { scene.remove(treeForest.group); for (const b of treeForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
@@ -873,19 +859,7 @@ function placeTrees() {
 // nothing on paths, steep or muddy ground.
 const COVER = { at: new THREE.Vector3(), on: true, count: 11000, radius: 140, size: 1, near: 35, parts: null, meshes: [] };   // ~5 M triangles to start: the readout says what more costs
 Object.assign(COVER, TS.cover);
-// THE 16 GROUND PLANTS (Jacob's picks in the Plant Lab, baked into one sheet by labs/plants/build_sheet.py):
-// each with its height (m), the ground it likes, and how it grows to start with (the panel can change it)
-//   hab: long (open, dry rises)  grass (open and part shade)  shade (under and beside trees)
-//        shrub (the forest's edge)  wet (along water, on the stony shore too)  dry (open, dry, sunny)
-const KIND_INFO = [
-  ['tall seed grass', 1.0, 'long', 'patch'], ['feather grass', 0.9, 'long', 'patch'], ['broad-blade grass', 0.8, 'long', 'patch'], ['bunchgrass', 0.55, 'grass', 'patch'],
-  ['broad-leaf hosta', 0.55, 'shade', 'clump'], ['wild strawberry', 0.25, 'grass', 'patch'], ['dandelion', 0.35, 'grass', 'loner'], ['yucca', 0.8, 'dry', 'loner'],
-  ['paintbrush', 0.5, 'long', 'clump'], ['snowdrops', 0.3, 'shade', 'clump'], ['columbine', 0.55, 'shade', 'loner'], ['violets', 0.2, 'shade', 'patch'],
-  ['cattails', 1.4, 'wet', 'clump'], ['sprig shrub', 0.8, 'shrub', 'clump'], ['spruce sapling', 1.1, 'shrub', 'loner'], ['marsh marigold', 0.4, 'wet', 'clump'],
-].map(([name, height, hab, style]) => ({ name, height, hab, style }));
-// a Tripo sheet: its plants stand in a grid x grid wall (x across, y up); each triangle goes to the plant
-// whose cell its middle is in, and each plant is stood on its own base. Lit like the ground: every
-// normal points up, and the back of a card keeps it (so no plant is black from behind).
+// THE 16 GROUND PLANTS and how they grow: src/objects/growth.js (KIND_INFO), shared with the Growth Lab
 // `cell` (optional): [width, height] of a cell in the model's units, counted from 0, instead of the model's box / grid
 function loadSheet(url, grid, done, cell = null) {
   new GLTFLoader().load(url, (g) => {
@@ -1001,18 +975,7 @@ function placeStones() {
   });
   if ($('stoneInfo')) $('stoneInfo').textContent = `${placed.toLocaleString()} stones`;
 }
-// GROWTH: how each plant kind grows (k 0-15: the plant sheet; 16-24: the long grasses). Each kind is
-// on or off, has a size, and a style:
-//   patch: holds stretches of ground by itself: every patch kind has its own slow noise, and at each
-//          spot the strongest (where the kind likes the ground) wins, so the ground splits into patches
-//          of one kind with mixed edges (`patchSize` m across, `patchSharp` how cleanly they part)
-//   clump: small family groups, `clumpCount` plants within `clumpSize` m, open ground between; nearby
-//          clumps tend to be the same kind
-//   loner: here and there on its own
-// A slow `fertility` noise (`fertSize` m) thins the patches and clumps in places, so there are thick
-// meadows and thin ground. `clumpShare` and `lonerShare` split each sheet's count between the styles.
-const GROW = { patchSize: 30, patchSharp: 0.6, clumpShare: 0.3, clumpSize: 3, clumpCount: 6, lonerShare: 0.04, fertSize: 120, fert: 0.5 };
-const PLANT_KINDS = KIND_INFO.map(K => ({ on: true, style: K.style, size: 1, weight: 1 }));
+const GROW = { ...GROW_DEFAULTS }, PLANT_KINDS = defaultKinds();
 // the plants' circle follows where you look: once its centre (a little ahead of the camera, on the
 // ground) has moved a quarter of the circle, they are laid again round the new spot (the tiles that
 // stay keep their plants, so nothing near you shuffles)
@@ -1027,8 +990,6 @@ function placeCover() {
   for (const im of COVER.meshes) { scene.remove(im); im.dispose(); }
   COVER.meshes = [];
   if (!COVER.parts || !MAPS.wet) return;
-  const fixed = [];
-  const r = (a, b) => { const x = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return x - Math.floor(x); };
   // what the ground at a spot is like for each habitat: grasses (open, part shade), shrubs (shade, the
   // forest's edge), long grasses (open, dry rises), shade, wet (along water), dry; `hard`: where nothing
   // grows (paths, steep, in the water); `blocked`: that and mud and the stony shore, which wet kinds don't mind
@@ -1042,60 +1003,8 @@ function placeCover() {
       dry: MAPS.steep[k] > 0.4 ? 0 : MAPS.dry[k] * open, grass: (0.55 * open + 1.0 * shade + 0.15 * canopy) * (1 - MAPS.dry[k] * 0.4), shrub: 0.08 * open + 0.9 * shade + 0.35 * canopy,
       long: MAPS.steep[k] > 0.4 ? 0 : (0.35 + 0.65 * MAPS.dry[k]) * (1 - Math.min(1, canopy * 1.5 + MAPS.wide[k])) * (1 - Math.min(1, path + MAPS.steep[k] + MAPS.wet[k])) };
   };
-  const blk = (k, g) => Math.min(1, KIND_INFO[k].hab === 'wet' ? g.hard : g.blocked);
-  const want = (k, g) => g[KIND_INFO[k].hab] * (1 - blk(k, g));
-  const scaleOf = (k, t) => (0.7 + 0.6 * r(t, 11.3)) * COVER.size * PLANT_KINDS[k].size;
-  const fertile = (x, z) => 1 - GROW.fert * (1 - THREE.MathUtils.smoothstep(vnoise(x / GROW.fertSize + 61, z / GROW.fertSize - 23), 0.3, 0.7));
-  const patchN = (k, x, z) => { const s = GROW.patchSize; return vnoise(x / s + k * 37.1, z / s - k * 19.7) * 0.7 + vnoise(x / s * 2.3 + k * 11.3, z / s * 2.3 + k * 5.9) * 0.3; };
-  // THE PLANTS FOLLOW THE CAMERA: the ground is cut into TILE m tiles; each tile always grows the same
-  // plants (its own seeds), and only the tiles round COVER.at are kept, so moving brings tiles in and
-  // drops others while every plant that stays keeps its spot
-  const TILE = 30, C = COVER.at, R = COVER.radius, tiles = [];
-  for (let tz = Math.floor((C.z - R) / TILE); tz <= Math.floor((C.z + R) / TILE); tz++) for (let tx = Math.floor((C.x - R) / TILE); tx <= Math.floor((C.x + R) / TILE); tx++)
-    if (Math.hypot((tx + 0.5) * TILE - C.x, (tz + 0.5) * TILE - C.z) < R + TILE * 0.72) tiles.push([tx, tz, ((tx + 200) * 1000 + tz + 200) * 37]);
-  const inTile = (tile, t, seed) => [(tile[0] + r(tile[2] + t, seed + 1.7)) * TILE, (tile[1] + r(tile[2] + t, seed + 3.1)) * TILE];
-  const inRange = (x, z) => Math.hypot(x - C.x, z - C.z) <= R;
-  const perTile = (n) => n / (Math.PI * R * R) * TILE * TILE;                       // a count over the circle, as a count per tile
-  const plant = (k, x, z, t) => fixed.push({ x, z, sp: k, scale: scaleOf(k, t), yaw: r(t, 13.7) * 6.283 });
-  function scatter(pool, count, seed) {
-    const on = pool.filter(k => PLANT_KINDS[k].on); if (!on.length || !count) return 0;
-    const pk = on.filter(k => PLANT_KINDS[k].style === 'patch'), ck = on.filter(k => PLANT_KINDS[k].style === 'clump'), lk = on.filter(k => PLANT_KINDS[k].style === 'loner');
-    let nL = lk.length ? Math.round(count * GROW.lonerShare) : 0, nC = ck.length ? Math.round(count * GROW.clumpShare) : 0;
-    if (!pk.length) { if (ck.length) nC = count - nL; else nL = count; }
-    const nP = pk.length ? count - nC - nL : 0, start = fixed.length;
-    // patches
-    for (const tile of tiles) for (let t = 1, got = 0, want_ = Math.round(perTile(nP)); got < want_ && t < want_ * 16; t++) {
-      const [x, z] = inTile(tile, t, seed), g = ground(x, z); if (g.hard >= 1) continue;   // (a tile runs the same wherever the circle is; only the planting asks if it's in range)
-      let total = 0, hab = 0; const w = pk.map(k => { const h = want(k, g) * PLANT_KINDS[k].weight; hab += h; const v = h * Math.pow(patchN(k, x, z), 1 + GROW.patchSharp * 8); total += v; return v; });
-      if (r(tile[2] + t, seed + 5.3) > hab / pk.length * 0.9 * fertile(x, z) || total <= 0) continue;
-      let q = r(tile[2] + t, seed + 9.1) * total, k = pk[pk.length - 1]; for (let n = 0; n < pk.length; n++) if ((q -= w[n]) <= 0) { k = pk[n]; break; }
-      if (inRange(x, z)) plant(k, x, z, tile[2] + t + seed * 1000); got++;
-    }
-    // clumps: a centre where shrubs like it, a kind (families: nearby clumps lean the same way), then
-    // its plants scattered round the centre
-    for (const tile of tiles) for (let c = 1, got = 0, want_ = Math.round(perTile(nC)); got < want_ && c < want_ * 4; c++) {
-      const [cx, cz] = inTile(tile, c, seed + 40), g = ground(cx, cz); if (g.hard >= 0.6) continue;
-      let total = 0, hab = 0; const w = ck.map(k => { const h = want(k, g) * PLANT_KINDS[k].weight; hab += h; const v = h * Math.pow(patchN(k + 50, cx * 0.5, cz * 0.5), 3); total += v; return v; });
-      const cs = tile[2] + c;
-      if (r(cs, seed + 41.3) > hab / ck.length * 1.2 * fertile(cx, cz) || total <= 0) continue;
-      let q = r(cs, seed + 43.9) * total, k = ck[ck.length - 1]; for (let n = 0; n < ck.length; n++) if ((q -= w[n]) <= 0) { k = ck[n]; break; }
-      const n = Math.max(2, Math.round(GROW.clumpCount * (0.6 + 0.8 * r(cs, seed + 47.1))));
-      for (let m = 0; m < n && got < want_; m++) {
-        const a = r(cs * 31 + m, seed + 51.7) * Math.PI * 2, d = GROW.clumpSize * Math.sqrt(-2 * Math.log(Math.max(1e-4, r(cs * 31 + m, seed + 53.3)))) * 0.5;   // gathered toward the middle
-        const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d; if (blk(k, ground(x, z)) >= 0.8) continue;
-        if (inRange(x, z)) plant(k, x, z, tile[2] + c * 31 + m + seed * 1000); got++;
-      }
-    }
-    // loners
-    for (const tile of tiles) for (let t = 1, got = 0, want_ = perTile(nL); got < want_ && t < Math.max(1, want_) * 20; t++) {
-      if (want_ < 1 && r(tile[2], seed + 77.7) > want_) break;                      // under one a tile: some tiles get one
-      const [x, z] = inTile(tile, t, seed + 70), g = ground(x, z); if (g.hard >= 0.6) continue;
-      const k = lk[Math.floor(r(tile[2] + t, seed + 71.9) * lk.length) % lk.length]; if (r(tile[2] + t, seed + 73.1) > want(k, g) + 0.1) continue;
-      if (inRange(x, z)) plant(k, x, z, tile[2] + t + seed * 1000 + 500); got++;
-    }
-    return fixed.length - start;
-  }
-  const placed = scatter([...Array(16).keys()], COVER.on ? COVER.count : 0, 0);
+  // where they go: src/objects/growth.js (shared with the Growth Lab)
+  const fixed = growPlants({ ground, at: COVER.at, radius: COVER.radius, count: COVER.on ? COVER.count : 0, size: COVER.size, kinds: PLANT_KINDS, grow: GROW }), placed = fixed.length;
   // one Forest for all of them: meshes out to COVER.near, imposters beyond, crossfaded
   if (coverForest) { scene.remove(coverForest.group); for (const b of coverForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
   const species = coverForest ? coverForest.species : COVER.plantSp;
@@ -1200,6 +1109,24 @@ for (const [id, key, fmt] of [['gPatchSize', 'patchSize', v => v + ' m'], ['gPat
   });
   $('kindsAll').addEventListener('click', () => { PLANT_KINDS.forEach((O, n) => { O.on = true; $('kOn' + n).checked = true; }); placeCover(); });
 }
+// GROWTH SETTINGS in and out (the same text as the Growth Lab's): pasted ones set the panel's controls
+// as if moved by hand, but the plants and trees are laid once at the end, not once a control
+function syncGrowthPanel() {
+  const put = (id, v) => { const el = $(id); if (!el) return; if (el.type === 'checkbox') el.checked = v; else el.value = v; el.dispatchEvent(new Event('input')); };
+  for (const [id, key] of [['gPatchSize', 'patchSize'], ['gPatchSharp', 'patchSharp'], ['gClumpShare', 'clumpShare'], ['gClumpSize', 'clumpSize'], ['gClumpCount', 'clumpCount'], ['gLonerShare', 'lonerShare'], ['gFertSize', 'fertSize'], ['gFert', 'fert']]) put(id, GROW[key]);
+  for (const [id, key] of [['famSize', 'size'], ['famStrict', 'strength'], ['famPine', 'pineFrom']]) put(id, FAMILY[key]);
+  PLANT_KINDS.forEach((K, k) => { put('kOn' + k, K.on); put('kStyle' + k, K.style); put('kSize' + k, K.size); });
+  put('coverCount', COVER.count); put('coverSize', COVER.size);
+}
+$('growCopy').addEventListener('click', async () => {
+  const text = settingsJSON(GROW, FAMILY, PLANT_KINDS, COVER);
+  try { await navigator.clipboard.writeText(text); $('growNote').textContent = 'Copied.'; } catch (e) { $('growNote').textContent = text; }
+});
+$('growPaste').addEventListener('click', async () => {
+  let text = ''; try { text = await navigator.clipboard.readText(); } catch (e) { text = prompt('Paste the growth settings here') || ''; }
+  if (!applySettings(text, GROW, FAMILY, PLANT_KINDS, COVER)) { $('growNote').textContent = "That isn't growth settings (copy them from the Growth Lab first)."; return; }
+  syncGrowthPanel(); placeTrees(); placeCover(); $('growNote').textContent = 'Pasted and applied.';
+});
 // tree families
 for (const [id, key, fmt] of [['famSize', 'size', v => v + ' m'], ['famStrict', 'strength', v => Math.round(v * 100) + '%'], ['famPine', 'pineFrom', v => v + ' m up']]) {
   const el = $(id); el.value = FAMILY[key]; $(id + 'Out').textContent = fmt(+el.value);
