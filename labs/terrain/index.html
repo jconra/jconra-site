@@ -219,6 +219,10 @@
 
     <details class="sec"><summary>7 · Forest (from the Tree Lab)</summary>
       <p class="note">The trees are real meshes near you and octahedral imposters beyond a line, crossfading through a band: an imposter is one quad showing the tree as baked from the nearest of many views round it. The atlases are baked in the page from the same trees.</p>
+      <p class="note"><b>Families:</b> pines on the slopes and heights, aspen in small one-colour groves, ash and oak in the valley; each kind holds a stretch of ground.</p>
+      <div class="row"><label for="famSize">Family size</label><output id="famSizeOut"></output><input id="famSize" type="range" min="20" max="300" step="5"></div>
+      <div class="row"><label for="famStrict">How strictly one kind holds its ground</label><output id="famStrictOut"></output><input id="famStrict" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="famPine">Pines from height</label><output id="famPineOut"></output><input id="famPine" type="range" min="-50" max="300" step="5"></div>
       <div class="row"><label for="fImp">Imposters from</label><output id="fImpOut"></output><input id="fImp" type="range" min="0" max="600" step="10"></div>
       <div class="row"><label for="fBand">Crossfade band</label><output id="fBandOut"></output><input id="fBand" type="range" min="0" max="300" step="5"></div>
       <div class="row"><label for="fAhead">Mesh circle pushed ahead</label><output id="fAheadOut"></output><input id="fAhead" type="range" min="0" max="1" step="0.05"></div>
@@ -238,6 +242,22 @@
       <label class="check" for="coverOn"><input id="coverOn" type="checkbox" checked> Grasses and shrubs (Tripo, 16 kinds)</label>
       <label class="check" for="longOn"><input id="longOn" type="checkbox" checked> Long grasses (Tripo, 9 kinds; in the open and on dry rises)</label>
       <p class="note" id="coverInfo">loading…</p>
+      <details class="sec"><summary>How they grow (patches, clumps, loners)</summary>
+      <p class="note"><b>Patch</b> kinds hold stretches of ground by themselves; <b>clump</b> kinds grow in small family groups; <b>loners</b> stand here and there. Set each kind's style below.</p>
+      <div class="row"><label for="gPatchSize">Patch size</label><output id="gPatchSizeOut"></output><input id="gPatchSize" type="range" min="5" max="150" step="1"></div>
+      <div class="row"><label for="gPatchSharp">Patch edges (mixed to clean)</label><output id="gPatchSharpOut"></output><input id="gPatchSharp" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="gClumpShare">Share in clumps</label><output id="gClumpShareOut"></output><input id="gClumpShare" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="gClumpSize">Clump size</label><output id="gClumpSizeOut"></output><input id="gClumpSize" type="range" min="0.5" max="12" step="0.5"></div>
+      <div class="row"><label for="gClumpCount">Plants per clump</label><output id="gClumpCountOut"></output><input id="gClumpCount" type="range" min="2" max="20" step="1"></div>
+      <div class="row"><label for="gLonerShare">Share as loners</label><output id="gLonerShareOut"></output><input id="gLonerShare" type="range" min="0" max="0.4" step="0.01"></div>
+      <div class="row"><label for="gFertSize">Thick and thin ground: patch size</label><output id="gFertSizeOut"></output><input id="gFertSize" type="range" min="20" max="400" step="5"></div>
+      <div class="row"><label for="gFert">Thick and thin ground: how much</label><output id="gFertOut"></output><input id="gFert" type="range" min="0" max="1" step="0.01"></div>
+      </details>
+      <details class="sec"><summary>Plant kinds (on/off, style, size)</summary>
+      <p class="note">The 16 plants on the sheet, then the 9 long grasses. <b>Only</b> shows just that kind (handy for telling them apart); <b>All on</b> brings them all back.</p>
+      <div class="row"><button type="button" id="kindsAll" style="grid-column:1/-1">All on</button></div>
+      <div id="kindList"></div>
+      </details>
       <label class="check" for="coverFar"><input id="coverFar" type="checkbox" checked> Far cover: clumps painted on past the plants' reach</label>
       <div class="row"><label for="coverCount">How many</label><output id="coverCountOut"></output><input id="coverCount" type="range" min="0" max="60000" step="500"></div>
       <div class="row"><label for="coverRadius">Out to</label><output id="coverRadiusOut"></output><input id="coverRadius" type="range" min="20" max="600" step="10"></div>

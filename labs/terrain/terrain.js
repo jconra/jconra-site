@@ -980,6 +980,18 @@ function placeStones() {
   });
   if ($('stoneInfo')) $('stoneInfo').textContent = `${placed.toLocaleString()} stones`;
 }
+// GROWTH: how each plant kind grows (k 0-15: the plant sheet; 16-24: the long grasses). Each kind is
+// on or off, has a size, and a style:
+//   patch: holds stretches of ground by itself: every patch kind has its own slow noise, and at each
+//          spot the strongest (where the kind likes the ground) wins, so the ground splits into patches
+//          of one kind with mixed edges (`patchSize` m across, `patchSharp` how cleanly they part)
+//   clump: small family groups, `clumpCount` plants within `clumpSize` m, open ground between; nearby
+//          clumps tend to be the same kind
+//   loner: here and there on its own
+// A slow `fertility` noise (`fertSize` m) thins the patches and clumps in places, so there are thick
+// meadows and thin ground. `clumpShare` and `lonerShare` split each sheet's count between the styles.
+const GROW = { patchSize: 30, patchSharp: 0.6, clumpShare: 0.3, clumpSize: 3, clumpCount: 6, lonerShare: 0.04, fertSize: 120, fert: 0.5 };
+const PLANT_KINDS = Array.from({ length: 25 }, (_, k) => ({ on: true, style: k >= 16 || GRASSES.includes(k) ? 'patch' : 'clump', size: 1, weight: 1 }));
 function placeCover() {
   U.coverR.value = COVER.radius;
   for (const im of COVER.meshes) { scene.remove(im); im.dispose(); }
@@ -987,46 +999,64 @@ function placeCover() {
   if (!COVER.parts || !COVER.long || !MAPS.wet) return;
   const fixed = [];
   const r = (a, b) => { const x = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return x - Math.floor(x); };
-  const spots = Array.from({ length: 16 }, () => []), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
-  let tries = 0, placed = 0;
-  while (placed < COVER.count && tries < COVER.count * 12) {
-    tries++;
-    const ang = r(tries, 1.7) * Math.PI * 2, dist = Math.sqrt(r(tries, 3.1)) * COVER.radius, x = Math.cos(ang) * dist, z = Math.sin(ang) * dist;
+  // what the ground at a spot is like for each habitat: grasses (open, part shade), shrubs (shade, the
+  // forest's edge), long grasses (open, dry rises); `blocked` paths, steep, mud, water, the stony shore
+  const ground = (x, z) => {
     const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
-    const pi = Math.floor((x + SIZE / 2) / SIZE * MAPS.P), pj = Math.floor((z + SIZE / 2) / SIZE * MAPS.P), path = MAPS.path[(pj * MAPS.P + pi) * 4] / 255 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 510;
+    const pi = Math.min(MAPS.P - 1, Math.max(0, Math.floor((x + SIZE / 2) / SIZE * MAPS.P))), pj = Math.min(MAPS.P - 1, Math.max(0, Math.floor((z + SIZE / 2) / SIZE * MAPS.P))), path = MAPS.path[(pj * MAPS.P + pi) * 4] / 255 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 510;
     const canopy = MAPS.canopy[k], shade = Math.min(1, Math.max(0, MAPS.wide[k] * 2.2 - canopy * 0.8)), open = 1 - Math.min(1, canopy + shade);
-    const blocked = path + MAPS.steep[k] * 1.5 + Math.max(0, MAPS.wet[k] - 0.6) * 2 + waterAt(x, z) * 4 + (MAPS.shore ? MAPS.shore[k] * 3 : 0);   // (none on the stony shore)
-    const wantGrass = (0.55 * open + 1.0 * shade + 0.15 * canopy) * (1 - MAPS.dry[k] * 0.4), wantShrub = 0.08 * open + 0.9 * shade + 0.35 * canopy;
-    const total = wantGrass + wantShrub; if (r(tries, 5.3) > total * 0.9 * (1 - Math.min(1, blocked))) continue;
-    const grass = r(tries, 7.7) < wantGrass / total;
-    const pool = grass ? GRASSES : [...Array(16).keys()].filter(n => !GRASSES.includes(n)), kind = pool[Math.floor(r(tries, 9.1) * pool.length)];
-    const s = COVER.size * (grass ? 0.8 : 1.1) * (0.7 + 0.6 * r(tries, 11.3));
-    fixed.push({ x, z, sp: kind, scale: s / (COVER.size * (grass ? 0.8 : 1.1)) * COVER.size / 3.2, yaw: r(tries, 13.7) * 6.283 });
-    placed++;
-  }
-
-  // the long grasses: out in the open and on dry rises, thinning at the forest and gone in it
-  let longPlaced = 0;
-  if (COVER.long) {
-    const L = COVER.long, ls = Array.from({ length: L.parts.length }, () => []);
-    for (let t2 = 1; longPlaced < COVER.longCount && t2 < COVER.longCount * 12; t2++) {
-      const ang = r(t2, 21.7) * Math.PI * 2, dist = Math.sqrt(r(t2, 23.1)) * COVER.radius, x = Math.cos(ang) * dist, z = Math.sin(ang) * dist;
-      const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
-      const pi = Math.floor((x + SIZE / 2) / SIZE * MAPS.P), pj = Math.floor((z + SIZE / 2) / SIZE * MAPS.P), path = MAPS.path[(pj * MAPS.P + pi) * 4] / 255 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 510;
-      if (waterAt(x, z) > 0.05 || MAPS.steep[k] > 0.4 || (MAPS.shore && MAPS.shore[k] > 0.3)) continue;
-      const want = (0.35 + 0.65 * MAPS.dry[k]) * (1 - Math.min(1, MAPS.canopy[k] * 1.5 + MAPS.wide[k])) * (1 - Math.min(1, path + MAPS.steep[k] + MAPS.wet[k]));
-      if (r(t2, 25.3) > want) continue;
-      // clumps: a few together
-      const kind = Math.floor(r(Math.floor(x / 9), Math.floor(z / 9) + 31.1) * L.parts.length) % L.parts.length, sc = COVER.longSize * (0.75 + 0.5 * r(t2, 27.9));
-      fixed.push({ x, z, sp: 16 + kind, scale: sc / 3.0, yaw: r(t2, 29.3) * 6.283 });
-      longPlaced++;
+    const blocked = path + MAPS.steep[k] * 1.5 + Math.max(0, MAPS.wet[k] - 0.6) * 2 + waterAt(x, z) * 4 + (MAPS.shore ? MAPS.shore[k] * 3 : 0);
+    return { blocked, grass: (0.55 * open + 1.0 * shade + 0.15 * canopy) * (1 - MAPS.dry[k] * 0.4), shrub: 0.08 * open + 0.9 * shade + 0.35 * canopy,
+      long: MAPS.steep[k] > 0.4 ? 0 : (0.35 + 0.65 * MAPS.dry[k]) * (1 - Math.min(1, canopy * 1.5 + MAPS.wide[k])) * (1 - Math.min(1, path + MAPS.steep[k] + MAPS.wet[k])) };
+  };
+  const want = (k, g) => k >= 16 ? g.long : GRASSES.includes(k) ? g.grass : g.shrub;
+  const scaleOf = (k, t) => k >= 16 ? COVER.longSize * (0.75 + 0.5 * r(t, 27.9)) / 3.0 * PLANT_KINDS[k].size : (0.7 + 0.6 * r(t, 11.3)) * COVER.size / 3.2 * PLANT_KINDS[k].size;
+  const fertile = (x, z) => 1 - GROW.fert * (1 - THREE.MathUtils.smoothstep(vnoise(x / GROW.fertSize + 61, z / GROW.fertSize - 23), 0.3, 0.7));
+  const patchN = (k, x, z) => { const s = GROW.patchSize; return vnoise(x / s + k * 37.1, z / s - k * 19.7) * 0.7 + vnoise(x / s * 2.3 + k * 11.3, z / s * 2.3 + k * 5.9) * 0.3; };
+  const disc = (t, seed) => { const ang = r(t, seed + 1.7) * Math.PI * 2, dist = Math.sqrt(r(t, seed + 3.1)) * COVER.radius; return [Math.cos(ang) * dist, Math.sin(ang) * dist]; };
+  const plant = (k, x, z, t) => fixed.push({ x, z, sp: k, scale: scaleOf(k, t), yaw: r(t, 13.7) * 6.283 });
+  function scatter(pool, count, seed) {
+    const on = pool.filter(k => PLANT_KINDS[k].on); if (!on.length || !count) return 0;
+    const pk = on.filter(k => PLANT_KINDS[k].style === 'patch'), ck = on.filter(k => PLANT_KINDS[k].style === 'clump'), lk = on.filter(k => PLANT_KINDS[k].style === 'loner');
+    let nL = lk.length ? Math.round(count * GROW.lonerShare) : 0, nC = ck.length ? Math.round(count * GROW.clumpShare) : 0;
+    if (!pk.length) { if (ck.length) nC = count - nL; else nL = count; }
+    const nP = pk.length ? count - nC - nL : 0, start = fixed.length;
+    // patches
+    for (let t = 1, got = 0; got < nP && t < nP * 16; t++) {
+      const [x, z] = disc(t, seed), g = ground(x, z); if (g.blocked >= 1) continue;
+      let total = 0, hab = 0; const w = pk.map(k => { const h = want(k, g) * PLANT_KINDS[k].weight; hab += h; const v = h * Math.pow(patchN(k, x, z), 1 + GROW.patchSharp * 8); total += v; return v; });
+      if (r(t, seed + 5.3) > hab / pk.length * 0.9 * (1 - g.blocked) * fertile(x, z) || total <= 0) continue;
+      let q = r(t, seed + 9.1) * total, k = pk[pk.length - 1]; for (let n = 0; n < pk.length; n++) if ((q -= w[n]) <= 0) { k = pk[n]; break; }
+      plant(k, x, z, t + seed * 1000); got++;
     }
+    // clumps: a centre where shrubs like it, a kind (families: nearby clumps lean the same way), then
+    // its plants scattered round the centre
+    for (let c = 1, got = 0; got < nC && c < nC * 4; c++) {
+      const [cx, cz] = disc(c, seed + 40), g = ground(cx, cz); if (g.blocked >= 0.6) continue;
+      let total = 0, hab = 0; const w = ck.map(k => { const h = want(k, g) * PLANT_KINDS[k].weight; hab += h; const v = h * Math.pow(patchN(k + 50, cx * 0.5, cz * 0.5), 3); total += v; return v; });
+      if (r(c, seed + 41.3) > hab / ck.length * 1.2 * fertile(cx, cz) || total <= 0) continue;
+      let q = r(c, seed + 43.9) * total, k = ck[ck.length - 1]; for (let n = 0; n < ck.length; n++) if ((q -= w[n]) <= 0) { k = ck[n]; break; }
+      const n = Math.max(2, Math.round(GROW.clumpCount * (0.6 + 0.8 * r(c, seed + 47.1))));
+      for (let m = 0; m < n && got < nC; m++) {
+        const a = r(c * 31 + m, seed + 51.7) * Math.PI * 2, d = GROW.clumpSize * Math.sqrt(-2 * Math.log(Math.max(1e-4, r(c * 31 + m, seed + 53.3)))) * 0.5;   // gathered toward the middle
+        const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d; if (ground(x, z).blocked >= 0.8) continue;
+        plant(k, x, z, c * 31 + m + seed * 1000); got++;
+      }
+    }
+    // loners
+    for (let t = 1, got = 0; got < nL && t < nL * 20; t++) {
+      const [x, z] = disc(t, seed + 70), g = ground(x, z); if (g.blocked >= 0.6) continue;
+      const k = lk[Math.floor(r(t, seed + 71.9) * lk.length) % lk.length]; if (r(t, seed + 73.1) > want(k, g) + 0.1) continue;
+      plant(k, x, z, t + seed * 1000 + 500); got++;
+    }
+    return fixed.length - start;
   }
+  const placed = scatter([...Array(16).keys()], COVER.on ? COVER.count : 0, 0);
+  const longPlaced = scatter(Array.from({ length: 9 }, (_, n) => 16 + n), COVER.longOn ? COVER.longCount : 0, 200);
   // one Forest for all of them: meshes out to COVER.near, imposters beyond, crossfaded
   if (coverForest) { scene.remove(coverForest.group); for (const b of coverForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
   const species = coverForest ? coverForest.species : [...COVER.plantSp, ...COVER.longSp];
-  const use = fixed.filter(f => (f.sp < 16 ? COVER.on : COVER.longOn));
-  coverForest = new Forest(renderer, scene, { species, shadows: SHADOW.on && TS.shadow.cover, fixed: use, heightAt, imposterAt: COVER.near, band: COVER.near * 0.5, ahead: 0.5, sunDir: SUN_DIR, nearCap: 3000 });
+  coverForest = new Forest(renderer, scene, { species, shadows: SHADOW.on && TS.shadow.cover, fixed, heightAt, imposterAt: COVER.near, band: COVER.near * 0.5, ahead: 0.5, sunDir: SUN_DIR, nearCap: 3000 });
   calmCover();
   $('coverInfo').textContent = `${placed.toLocaleString()} plants and ${longPlaced.toLocaleString()} long grasses: meshes to ${COVER.near} m, imposters beyond (atlases bake over the first seconds)`;
 }
@@ -1103,6 +1133,35 @@ for (const [id, key] of [['hillShade', 'hillShade'], ['aoShade', 'aoShade'], ['t
 $('mixView').addEventListener('change', e => { U.view.value = +e.target.value; });
 $('treesOn').addEventListener('change', e => { if (treeForest) treeForest.group.visible = e.target.checked; });
 $('coverOn').addEventListener('change', e => { COVER.on = e.target.checked; placeCover(); });
+// how the plants grow, and each kind's settings
+for (const [id, key, fmt] of [['gPatchSize', 'patchSize', v => v + ' m'], ['gPatchSharp', 'patchSharp', v => Math.round(v * 100) + '%'], ['gClumpShare', 'clumpShare', v => Math.round(v * 100) + '%'], ['gClumpSize', 'clumpSize', v => v + ' m'],
+  ['gClumpCount', 'clumpCount', v => v + ' plants'], ['gLonerShare', 'lonerShare', v => Math.round(v * 100) + '%'], ['gFertSize', 'fertSize', v => v + ' m'], ['gFert', 'fert', v => Math.round(v * 100) + '%']]) {
+  const el = $(id); el.value = GROW[key]; $(id + 'Out').textContent = fmt(+el.value);
+  el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); }); el.addEventListener('change', () => { GROW[key] = +el.value; placeCover(); });
+}
+{
+  const list = $('kindList'), kindName = (k) => k >= 16 ? `Long grass ${k - 15}` : `Plant ${k + 1} (${GRASSES.includes(k) ? 'grass' : 'shrub'})`;
+  PLANT_KINDS.forEach((K, k) => {
+    const row = document.createElement('div'); row.className = 'row'; row.style.gridTemplateColumns = 'auto 1fr auto auto';
+    row.innerHTML = `<label class="check" for="kOn${k}" style="margin:0"><input id="kOn${k}" type="checkbox"> ${kindName(k)}</label>`
+      + `<select id="kStyle${k}"><option value="patch">patch</option><option value="clump">clump</option><option value="loner">loner</option></select>`
+      + `<input id="kSize${k}" type="range" min="0.3" max="2.5" step="0.05" style="width:70px" title="size"><output id="kSize${k}Out"></output>`
+      + `<button type="button" id="kOnly${k}" style="grid-column:1/-1;justify-self:start;padding:1px 6px">Only</button>`;
+    list.appendChild(row);
+    const on = $('kOn' + k), st = $('kStyle' + k), sz = $('kSize' + k);
+    on.checked = K.on; st.value = K.style; sz.value = K.size; $('kSize' + k + 'Out').textContent = K.size.toFixed(2) + '×';
+    on.addEventListener('change', () => { K.on = on.checked; placeCover(); });
+    st.addEventListener('change', () => { K.style = st.value; placeCover(); });
+    sz.addEventListener('input', () => { $('kSize' + k + 'Out').textContent = (+sz.value).toFixed(2) + '×'; }); sz.addEventListener('change', () => { K.size = +sz.value; placeCover(); });
+    $('kOnly' + k).addEventListener('click', () => { PLANT_KINDS.forEach((O, n) => { O.on = n === k; $('kOn' + n).checked = O.on; }); placeCover(); });
+  });
+  $('kindsAll').addEventListener('click', () => { PLANT_KINDS.forEach((O, n) => { O.on = true; $('kOn' + n).checked = true; }); placeCover(); });
+}
+// tree families
+for (const [id, key, fmt] of [['famSize', 'size', v => v + ' m'], ['famStrict', 'strength', v => Math.round(v * 100) + '%'], ['famPine', 'pineFrom', v => v + ' m up']]) {
+  const el = $(id); el.value = FAMILY[key]; $(id + 'Out').textContent = fmt(+el.value);
+  el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); }); el.addEventListener('change', () => { FAMILY[key] = +el.value; placeTrees(); });
+}
 $('stonesOn').checked = STONES.on; $('stonesOn').addEventListener('change', e => { STONES.on = e.target.checked; placeStones(); });
 for (const [id, key, fmt] of [['stoneCount', 'count', v => v.toLocaleString()], ['stoneSize', 'size', v => v.toFixed(1) + '×']]) {
   const el = $(id); el.value = STONES[key]; $(id + 'Out').textContent = fmt(+el.value);
