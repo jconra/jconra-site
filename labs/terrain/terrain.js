@@ -100,7 +100,8 @@ function baseHeight(x, z) {
   }
   return out;
 }
-const SHAPE = { terraceOn: true, step: 15, riser: 0.1, terraceAmount: 0.6, terraceFrom: 0.7, terraceSpread: 0.35, erodeOn: true, erodeSmooth: 3, drops: 90000, erodeStrength: 0.35, ravines: 16, ravineStrength: 1.6, ravineScale: 4, ravineRound: 0.35 };
+const SHAPE = { terraceOn: true, step: 15, riser: 0.1, terraceAmount: 0.6, terraceFrom: 0.7, terraceSpread: 0.35, erodeOn: true, erodeSmooth: 3, drops: 90000, erodeStrength: 0.35, ravines: 16, ravineStrength: 1.6, ravineScale: 4, ravineRound: 0.35, crags: 26, cragSize: 40 };
+const LAND = { wetDepth: 7, dryHeight: 6.0, forest: 0.55, shadeReach: 4, pathWidth: 2.2, treeline: 280, hillForest: 0.3 };   // (the land maps' settings; up here because the crags read the treeline)
 const Hg = new Float32Array(N * N), FLOW = new Float32Array(N * N), SETTLE = new Float32Array(N * N);
 const cellX = (i) => (i + 0.5) * TEX - SIZE / 2;
 // TERRACES: the height is stepped - a flat top, then a short steep riser - the way rock bands break a
@@ -340,11 +341,29 @@ function smoothErosion(before) {
   const d = new Float32Array(N * N); for (let k = 0; k < N * N; k++) d[k] = Hg[k] - before[k];
   const soft = blur(d, SHAPE.erodeSmooth); for (let k = 0; k < N * N; k++) Hg[k] = before[k] + soft[k];
 }
+// CRAGS: jagged rock up high. Only above the treeline and on steep ground, sharp ridged noise (its
+// creases are knife-edge ribs and narrow chutes, not soft lumps), stretched down the fall line so
+// the ribs and couloirs run downhill the way they do on real rock faces. `crags` how tall (m),
+// `cragSize` how wide the ribs are (m). Added after the ravines, so the rounding doesn't soften it.
+function addCrags(H) {
+  if (!SHAPE.crags) return;
+  const B = blur(H, 4), S = THREE.MathUtils.smoothstep, at = (i, j) => B[Math.min(N - 1, Math.max(0, j)) * N + Math.min(N - 1, Math.max(0, i))];
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const k = j * N + i, gx = (at(i + 2, j) - at(i - 2, j)) / (4 * TEX), gz = (at(i, j + 2) - at(i, j - 2)) / (4 * TEX), sl = Math.hypot(gx, gz);
+    const where = S(H[k], LAND.treeline - 40, LAND.treeline + 60) * S(sl, 0.45, 0.9);
+    if (where <= 0) continue;
+    const dx = gx / sl, dz = gz / sl, x = cellX(i), z = cellX(j);
+    const u = (x * -dz + z * dx) / SHAPE.cragSize, v = (x * dx + z * dz) / (SHAPE.cragSize * 3);   // across the slope, and (stretched) down it
+    let r = 0, a = 1, n = 0;
+    for (let o = 0; o < 3; o++) { const c = 1 - Math.abs(vnoise(u * (1 << o) + 17.3 * o, v * (1 << o) - 5.1 * o) * 2 - 1); r += c * c * a; n += a; a *= 0.5; }
+    H[k] += SHAPE.crags * where * (r / n - 0.35);
+  }
+}
 function buildHeights() {
   FLOW.fill(0); SETTLE.fill(0);
   baseGrid();
   if (SHAPE.erodeOn) { const before = Float32Array.from(Hg); erode(Hg, SHAPE.drops); smoothErosion(before); }
-  cutRavines(Hg);
+  cutRavines(Hg); addCrags(Hg);
   findWater(Hg);
 }
 function heightAt(x, z) {
@@ -375,7 +394,6 @@ function blur(src, r) {                             // two passes of a box blur,
   }
   return a;
 }
-const LAND = { wetDepth: 7, dryHeight: 6.0, forest: 0.55, shadeReach: 4, pathWidth: 2.2, treeline: 280, hillForest: 0.3 };
 let Hb = null;                                        // the ground's height averaged over about 40 m (per buildLand)
 const slopeAt = (i, j) => { const a = Hg[j * N + Math.min(N - 1, i + 1)] - Hg[j * N + Math.max(0, i - 1)], b = Hg[Math.min(N - 1, j + 1) * N + i] - Hg[Math.max(0, j - 1) * N + i]; return Math.hypot(a, b) / (2 * TEX); };
 // LIGHT AND SHADE, worked out once from the height grid (so it costs one texture read a frame, on
@@ -1052,7 +1070,7 @@ const RAIN = { gen: null, paused: false, perFrame: 1500, done: 0, trail: [], fra
 const trailGeo = new THREE.BufferGeometry(), trailLines = new THREE.LineSegments(trailGeo, new THREE.LineBasicMaterial({ color: 0x5fb4ff, transparent: true, opacity: 0.55 }));
 trailLines.frustumCulled = false; trailLines.visible = false; scene.add(trailLines);
 function fastMesh() { if (SEG !== N - 1) { shapeMesh(); return; } const p = geo.attributes.position; for (let k = 0; k < p.count; k++) p.setY(k, Hg[k]); p.needsUpdate = true; geo.computeVertexNormals(); }
-function endRain(msg) { RAIN.gen = null; trailLines.visible = false; if (RAIN.before) smoothErosion(RAIN.before); cutRavines(Hg); findWater(Hg); fastMesh(); buildLand(); if (treeForest) treeForest.group.visible = $('treesOn').checked; $('shapeInfo').textContent = msg; }
+function endRain(msg) { RAIN.gen = null; trailLines.visible = false; if (RAIN.before) smoothErosion(RAIN.before); cutRavines(Hg); addCrags(Hg); findWater(Hg); fastMesh(); buildLand(); if (treeForest) treeForest.group.visible = $('treesOn').checked; $('shapeInfo').textContent = msg; }
 function startRain() {
   FLOW.fill(0); SETTLE.fill(0);
   baseGrid(); RAIN.before = Float32Array.from(Hg);
@@ -1089,7 +1107,7 @@ for (const [id, key, fmt] of [['wWave', 'wWave', v => v.toFixed(1) + ' m'], ['wS
 for (const [id, key] of [['wDeepC', 'wDeep'], ['wShallowC', 'wShallow']]) { const el = $(id); el.value = '#' + U[key].value.clone().convertLinearToSRGB().getHexString(); el.addEventListener('input', () => { U[key].value.set(el.value).convertSRGBToLinear(); }); }
 function reshape() { $('shapeInfo').textContent = 'shaping…'; setTimeout(() => { const t0 = performance.now(); buildHeights(); shapeMesh(); buildLand(); $('shapeInfo').textContent = `shaped in ${((performance.now() - t0) / 1000).toFixed(1)} s`; }, 30); }
 for (const [id, key] of [['terraceOn', 'terraceOn'], ['erodeOn', 'erodeOn']]) { $(id).checked = SHAPE[key]; $(id).addEventListener('change', e => { SHAPE[key] = e.target.checked; reshape(); }); }
-for (const [id, key, fmt] of [['tStep', 'step', v => v.toFixed(1) + ' m'], ['tRiser', 'riser', v => Math.round(v * 100) + '% of a step'], ['tAmount', 'terraceAmount', v => Math.round(v * 100) + '%'], ['tSpread', 'terraceSpread', v => Math.round(v * 100) + '% of the land'], ['tFrom', 'terraceFrom', v => 'steeper than ' + Math.round(Math.atan(v) * 180 / Math.PI) + '°'], ['eDrops', 'drops', v => v.toLocaleString()], ['eStr', 'erodeStrength', v => v.toFixed(2)], ['rPasses', 'ravines', v => v + (v === 1 ? ' pass' : ' passes')], ['rStr', 'ravineStrength', v => v.toFixed(1) + '×'], ['rScale', 'ravineScale', v => 'water gathers on ' + (v * TEX).toFixed(1) + ' m cells'], ['rRound', 'ravineRound', v => Math.round(v * 100) + '%']]) {
+for (const [id, key, fmt] of [['tStep', 'step', v => v.toFixed(1) + ' m'], ['tRiser', 'riser', v => Math.round(v * 100) + '% of a step'], ['tAmount', 'terraceAmount', v => Math.round(v * 100) + '%'], ['tSpread', 'terraceSpread', v => Math.round(v * 100) + '% of the land'], ['tFrom', 'terraceFrom', v => 'steeper than ' + Math.round(Math.atan(v) * 180 / Math.PI) + '°'], ['eDrops', 'drops', v => v.toLocaleString()], ['eStr', 'erodeStrength', v => v.toFixed(2)], ['rPasses', 'ravines', v => v + (v === 1 ? ' pass' : ' passes')], ['rStr', 'ravineStrength', v => v.toFixed(1) + '×'], ['rScale', 'ravineScale', v => 'water gathers on ' + (v * TEX).toFixed(1) + ' m cells'], ['rRound', 'ravineRound', v => Math.round(v * 100) + '%'], ['cCrags', 'crags', v => v + ' m'], ['cCragSize', 'cragSize', v => v + ' m']]) {
   const el = $(id); el.value = SHAPE[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { SHAPE[key] = +el.value; reshape(); });
