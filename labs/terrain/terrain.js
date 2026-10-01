@@ -101,7 +101,7 @@ function baseHeight(x, z) {
   return out;
 }
 const SHAPE = { terraceOn: true, step: 15, riser: 0.1, terraceAmount: 0.6, terraceFrom: 0.7, terraceSpread: 0.35, erodeOn: true, erodeSmooth: 3, drops: 90000, erodeStrength: 0.35, ravines: 16, ravineStrength: 1.6, ravineScale: 4, ravineRound: 0.35, crags: 26, cragSize: 40 };
-const LAND = { wetDepth: 7, dryHeight: 6.0, forest: 0.55, shadeReach: 4, pathWidth: 2.2, treeline: 280, hillForest: 0.3 };   // (the land maps' settings; up here because the crags read the treeline)
+const LAND = { wetDepth: 7, dryHeight: 6.0, forest: 0.55, shadeReach: 4, pathWidth: 2.2, treeline: 280, hillForest: 0.3, shore: 2 };   // (the land maps' settings; up here because the crags read the treeline)
 const Hg = new Float32Array(N * N), FLOW = new Float32Array(N * N), SETTLE = new Float32Array(N * N);
 const cellX = (i) => (i + 0.5) * TEX - SIZE / 2;
 // TERRACES: the height is stepped - a flat top, then a short steep riser - the way rock bands break a
@@ -200,11 +200,13 @@ function findPools(H, F) {
 // the pool's depth, so ponds shrink but stay), walls rising steeply either side. Inward it follows the
 // real ground down into the lake; outward it follows the overflow downhill, its floor falling gently,
 // and ends where the land falls away below it by itself.
+const OUTLETS = [];
 function carveOutlets(H, F, pools) {
-  const R = 5, wall = 1.2, fall = 0.03;
+  OUTLETS.length = 0;
+  const R = 6, wall = 1.2, fall = 0.03, bed = 2.2;          // bed: the flat floor's half-width in cells (~14 m across), wide enough for the river
   const cut = (c, floor, r) => { const i = c % N, j = (c / N) | 0;
     for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= N || jj >= N) continue;
-      const q = jj * N + ii, h = floor + Math.max(0, Math.hypot(di, dj) - 1) * TEX * wall; if (H[q] > h) H[q] = h; } };
+      const q = jj * N + ii, h = floor + Math.max(0, Math.hypot(di, dj) - bed) * TEX * wall; if (H[q] > h) H[q] = h; } };
   const step = (a, b) => ((a % N) !== (b % N) && ((a / N) | 0) !== ((b / N) | 0) ? 1.414 : 1) * TEX;
   for (const pool of pools) {
     let S = -Infinity, low = pool[0];
@@ -212,6 +214,7 @@ function carveOutlets(H, F, pools) {
     const level = S - Math.min(WATER.outlet, (S - H[low]) * 0.7);
     let rim = low; while (rim >= 0 && F[rim] - H[rim] >= 0.01) rim = DOWN[rim];   // the spill point on the rim
     if (rim < 0) continue;
+    { let d = rim; for (let n = 0; n < 12 && DOWN[d] >= 0; n++) d = DOWN[d]; OUTLETS.push([rim, d, pool.length]); }   // (for the test rigs: where each outlet is)
     // the gorge's head: from the rim into the lake, the path that needs the least digging to reach
     // below the new water line (a cheapest-path search over the lake bed), so it bends with the land
     // and always gets through; cut to the new level
@@ -452,10 +455,13 @@ function buildLand() {
   const fl = new Float32Array(N * N), se = new Float32Array(N * N);
   for (let q = 0; q < N * N; q++) { fl[q] = Math.min(1, Math.max(0, (Math.log(1 + FLOW[q]) - 2.2) / 2.5)); se[q] = Math.min(1, SETTLE[q] * 4); }
   const gully = blur(fl, 1), fan = blur(se, 2), dataB = new Uint8Array(N * N * 4);
+  // the shore: a band of stones round every pond and stream (and under the shallows), `shore` cells wide
+  const wetCells = new Float32Array(N * N); for (let q = 0; q < N * N; q++) wetCells[q] = WDEPTH[q] > 0 ? 1 : 0;
+  const shore = LAND.shore > 0 ? blur(wetCells, LAND.shore) : wetCells.fill(0); MAPS.shore = shore;
   for (let q = 0; q < N * N; q++) {
     const sh = Math.min(1, Math.max(0, wide[q] * 2.2 - canopy[q] * 0.8)), open = 1 - Math.min(1, canopy[q] + sh);
     const cover = WDEPTH[q] > 0 ? 0 : Math.min(1, (0.55 * open + 1.0 * sh + 0.3 * canopy[q]) * (1 - steep[q]) * (1 - Math.max(0, wet[q] - 0.6) * 2));   // where plants would grow
-    dataB[q * 4] = gully[q] * 255; dataB[q * 4 + 1] = Math.min(1, fan[q] * 2) * 255; dataB[q * 4 + 2] = cover * 255; dataB[q * 4 + 3] = 255;
+    dataB[q * 4] = gully[q] * 255; dataB[q * 4 + 1] = Math.min(1, fan[q] * 2) * 255; dataB[q * 4 + 2] = cover * 255; dataB[q * 4 + 3] = Math.min(1, shore[q] * 2.5) * 255;
   }
   if (!U.maskB.value) { const t = new THREE.DataTexture(dataB, N, N, THREE.RGBAFormat); t.magFilter = t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; U.maskB.value = t; } else U.maskB.value.image.data.set(dataB);
   U.maskB.value.needsUpdate = true;
@@ -499,7 +505,7 @@ function buildLand() {
 }
 
 // ── textures ────────────────────────────────────────────────────────────────────
-const TEXTURES = ['forest', 'leaves', 'needles', 'moss', 'dirt', 'darkDirt', 'ferns', 'shrubs', 'grassMed', 'grassDry', 'grassDark', 'concrete', 'asphalt'];
+const TEXTURES = ['forest', 'leaves', 'needles', 'moss', 'dirt', 'darkDirt', 'ferns', 'shrubs', 'grassMed', 'grassDry', 'grassDark', 'concrete', 'asphalt', 'pebbles'];
 const loader = new THREE.TextureLoader(), cache = {};
 // a picture's average colour (potato paints each ground layer in this instead of reading the picture)
 function avgColour(img) {
@@ -510,7 +516,7 @@ function avgColour(img) {
 function setAverages() {
   if (typeof calmCover === 'function') calmCover();
   if (!TS.lite) return;
-  for (const [id, a] of [['groundMap', 'avgGround'], ['layDry', 'avgDry'], ['layLush', 'avgLush'], ['layForest', 'avgForest'], ['layWet', 'avgWet'], ['layPath', 'avgPath'], ['laySteep', 'avgSteep']]) {
+  for (const [id, a] of [['groundMap', 'avgGround'], ['layDry', 'avgDry'], ['layLush', 'avgLush'], ['layForest', 'avgForest'], ['layWet', 'avgWet'], ['layPath', 'avgPath'], ['laySteep', 'avgSteep'], ['layShore', 'avgShore']]) {
     const t = U[id].value; if (t && t.userData.avg) U[a].value.copy(t.userData.avg); }
 }
 function tex(name) {
@@ -522,7 +528,7 @@ $('tex').value = 'grassMed';
 
 // ── the ground material ────────────────────────────────────────────────────────
 const U = {
-  groundMap: { value: tex('grassMed') }, tile: { value: 3 }, split: { value: 0.5 }, res: { value: new THREE.Vector2(innerWidth, innerHeight) },
+  groundMap: { value: tex('grassMed') }, tile: { value: 12 }, split: { value: 0.5 }, res: { value: new THREE.Vector2(innerWidth, innerHeight) },
   hexOn: { value: 1 }, hexSize: { value: 0.8 }, hexRot: { value: Math.PI }, hexSharp: { value: 7 }, hexBright: { value: 0.6 },
   macroOn: { value: 1 }, macroStr: { value: 0.55 }, macroSize: { value: 60 }, macroHue: { value: 0.5 },
   farOn: { value: 0 }, farFrom: { value: 40 }, grid: { value: 0 },
@@ -538,7 +544,7 @@ const U = {
   gullyStr: { value: 0.8 }, fanStr: { value: 0.45 }, strataStr: { value: 0.8 }, strataSize: { value: 1.6 }, lushTint: { value: new THREE.Color(0.86, 1.0, 0.8) }, dampTint: { value: new THREE.Color(0.78, 0.92, 0.76) }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
   slopeTint: { value: new THREE.Color(0.5, 0.66, 0.4) },
   shadeMap: { value: null }, shadowRange: { value: 0 }, shadowAt: { value: new THREE.Vector3() }, hillShade: { value: 1 }, aoShade: { value: 0.9 }, treeShade: { value: 0.5 },
-  avgGround: { value: new THREE.Color(0x6b8a3a) }, avgDry: { value: new THREE.Color(0x8a8a4a) }, avgLush: { value: new THREE.Color(0x5b7a2a) }, avgForest: { value: new THREE.Color(0x4a4a2a) }, avgWet: { value: new THREE.Color(0x4a3a2a) }, avgPath: { value: new THREE.Color(0x6a5238) }, avgSteep: { value: new THREE.Color(0x7a7a7a) },
+  avgGround: { value: new THREE.Color(0x6b8a3a) }, avgDry: { value: new THREE.Color(0x8a8a4a) }, avgLush: { value: new THREE.Color(0x5b7a2a) }, avgForest: { value: new THREE.Color(0x4a4a2a) }, avgWet: { value: new THREE.Color(0x4a3a2a) }, avgPath: { value: new THREE.Color(0x6a5238) }, avgSteep: { value: new THREE.Color(0x7a7a7a) }, avgShore: { value: new THREE.Color(0x77706a) }, shoreStr: { value: 1 }, layShore: { value: null },
   layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layWet: { value: null }, layPath: { value: null }, laySteep: { value: null },
   mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.06 },
 };
@@ -556,7 +562,7 @@ mat.onBeforeCompile = (sh) => {
     uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 lushTint, dampTint, slopeTint;
     uniform sampler2D waterMap; uniform float waterOn, wFroth, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow;
     float gWater = 0.0, gFoam = 0.0; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathMap; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange; uniform vec3 shadowAt;
-    uniform vec3 avgGround, avgDry, avgLush, avgForest, avgWet, avgPath, avgSteep; uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layWet; uniform sampler2D layPath; uniform sampler2D laySteep;
+    uniform vec3 avgGround, avgDry, avgLush, avgForest, avgWet, avgPath, avgSteep, avgShore; uniform float shoreStr; uniform sampler2D layShore; uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layWet; uniform sampler2D layPath; uniform sampler2D laySteep;
     varying vec3 vWN;
     varying vec3 vW;
     float h1(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -678,7 +684,7 @@ mat.onBeforeCompile = (sh) => {
     if (!plain && mixOn > 0.5) {
       // the land's maps here, each edge roughened by a little noise
       vec2 luv = vW.xz / landSize + 0.5;
-      vec4 m = texture2D(maskA, luv); vec2 pth = texture2D(pathMap, luv).rg; vec3 er = texture2D(maskB, luv).rgb; float wAt = texture2D(waterMap, luv).r;
+      vec4 m = texture2D(maskA, luv); vec2 pth = texture2D(pathMap, luv).rg; vec4 er = texture2D(maskB, luv); float wAt = texture2D(waterMap, luv).r;
       float bn = (fbm(vW.xz / mixBreakSize) - 0.5) * mixBreak, bn2 = (fbm(vW.xz / (mixBreakSize * 3.1) + 13.0) - 0.5) * mixBreak;
       float steep = smoothstep(steepFrom, steepFrom + 0.12, 1.0 - vWN.y + (fbm(vW.xz / 6.0) - 0.5) * 0.08);   // patchy toward its edge
       float wWet = clamp(m.r * 1.5 + bn, 0.0, 1.0), wMud = clamp(m.r * 2.2 - 1.3 + bn, 0.0, 1.0), wDry = clamp(m.g * 1.3 - 0.15 - m.b - m.a * 0.6 + bn2, 0.0, 1.0);
@@ -686,10 +692,10 @@ mat.onBeforeCompile = (sh) => {
       float dryLand = 1.0 - smoothstep(0.25, 0.45, wAt);                      // never paint path over water
       float wPath = clamp(pth.r + bn * 0.5, 0.0, 1.0) * dryLand, wShoulder = clamp(pth.g * 1.5 + bn, 0.0, 1.0) * dryLand;
       #ifdef LITE
-      vec3 dryC = avgDry, lushC = avgLush, forC = avgForest, wetC = avgWet, pathC = avgPath;
+      vec3 dryC = avgDry, lushC = avgLush, forC = avgForest, wetC = avgWet, pathC = avgPath, shoreC = avgShore;
       #else
       vec3 dryC = lay(layDry, uv, vec2(0.13, 0.71)), lushC = lay(layLush, uv, vec2(0.61, 0.27)), forC = lay(layForest, uv * 1.3, vec2(0.37, 0.93));
-      vec3 wetC = lay(layWet, uv, vec2(0.83, 0.41)), pathC = lay(layPath, uv * 1.6, vec2(0.29, 0.17));
+      vec3 wetC = lay(layWet, uv, vec2(0.83, 0.41)), pathC = lay(layPath, uv * 1.6, vec2(0.29, 0.17)), shoreC = lay(layShore, uv * 3.0, vec2(0.53, 0.07));
       #endif
       // the rock of a steep face: read from the side, in horizontal strata (bands of lighter and
       // darker, warmer and greyer layers that wander a little), darker in the overhanging parts
@@ -710,6 +716,7 @@ mat.onBeforeCompile = (sh) => {
       g = over(g, pathC, clamp(er.r * gullyStr + bn * 0.6, 0.0, 1.0) * (1.0 - wForest * 0.6));       // gullies: worn dirt where the water ran
       g = over(g, mix(g, pathC, 0.5), wShoulder * (1.0 - wForest * 0.5));     // trampled edge: half-worn
       g = over(g, pathC, wPath);
+      g = over(g, shoreC, clamp(er.a * shoreStr + bn * 0.8, 0.0, 1.0) * (1.0 - smoothstep(0.3, 0.6, 1.0 - vWN.y)));   // stones round the water's edge
       vec3 scrubC = mix(lushC * slopeTint, pathC * vec3(0.95, 0.9, 0.85), smoothstep(0.62, 0.8, vn(vW.xz / 7.0)) * 0.8);   // slopes: dark green scrub, bare dirt showing in patches
       g = over(g, scrubC, steep);
       float rock = smoothstep(rockFrom, rockFrom + 0.1, 1.0 - vWN.y + (fbm(vW.xz / 9.0) - 0.5) * 0.1);
@@ -766,6 +773,9 @@ mat.onBeforeCompile = (sh) => {
       vec2 wuv = vW.xz / landSize + 0.5; vec3 wd = texture2D(waterMap, wuv).rgb;
       float edge = (fbm(vW.xz / 1.5) - 0.5) * 0.35;
       gWater = smoothstep(0.35, 0.6, wd.r + edge);
+      // water lies flat: on ground that tilts (a channel's walls) it goes, except where the froth says
+      // the stream itself is falling steeply (falls and cascades)
+      gWater *= mix(1.0 - smoothstep(0.05, 0.14, 1.0 - normalize(vWN).y), 1.0, smoothstep(0.1, 0.45, wd.b));
       if (gWater > 0.0) {
         vec3 wc = mix(wShallow, wDeep, smoothstep(0.2, 0.9, wd.g));
         g = mix(g, mix(g * wc * 2.2, wc, mix(0.35, 0.75, smoothstep(0.2, 0.55, wd.g))), gWater);   // shallow streams let their bed show
@@ -795,7 +805,7 @@ mat.onBeforeCompile = (sh) => {
     #include <dithering_fragment>
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-15' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-17' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground); ground.receiveShadow = SHADOW.on;
 // THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
@@ -955,7 +965,7 @@ function placeCover() {
     const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
     const pi = Math.floor((x + SIZE / 2) / SIZE * MAPS.P), pj = Math.floor((z + SIZE / 2) / SIZE * MAPS.P), path = MAPS.path[(pj * MAPS.P + pi) * 4] / 255 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 510;
     const canopy = MAPS.canopy[k], shade = Math.min(1, Math.max(0, MAPS.wide[k] * 2.2 - canopy * 0.8)), open = 1 - Math.min(1, canopy + shade);
-    const blocked = path + MAPS.steep[k] * 1.5 + Math.max(0, MAPS.wet[k] - 0.6) * 2 + waterAt(x, z) * 4;
+    const blocked = path + MAPS.steep[k] * 1.5 + Math.max(0, MAPS.wet[k] - 0.6) * 2 + waterAt(x, z) * 4 + (MAPS.shore ? MAPS.shore[k] * 3 : 0);   // (none on the stony shore)
     const wantGrass = (0.55 * open + 1.0 * shade + 0.15 * canopy) * (1 - MAPS.dry[k] * 0.4), wantShrub = 0.08 * open + 0.9 * shade + 0.35 * canopy;
     const total = wantGrass + wantShrub; if (r(tries, 5.3) > total * 0.9 * (1 - Math.min(1, blocked))) continue;
     const grass = r(tries, 7.7) < wantGrass / total;
@@ -973,7 +983,7 @@ function placeCover() {
       const ang = r(t2, 21.7) * Math.PI * 2, dist = Math.sqrt(r(t2, 23.1)) * COVER.radius, x = Math.cos(ang) * dist, z = Math.sin(ang) * dist;
       const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
       const pi = Math.floor((x + SIZE / 2) / SIZE * MAPS.P), pj = Math.floor((z + SIZE / 2) / SIZE * MAPS.P), path = MAPS.path[(pj * MAPS.P + pi) * 4] / 255 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 510;
-      if (waterAt(x, z) > 0.05 || MAPS.steep[k] > 0.4) continue;
+      if (waterAt(x, z) > 0.05 || MAPS.steep[k] > 0.4 || (MAPS.shore && MAPS.shore[k] > 0.3)) continue;
       const want = (0.35 + 0.65 * MAPS.dry[k]) * (1 - Math.min(1, MAPS.canopy[k] * 1.5 + MAPS.wide[k])) * (1 - Math.min(1, path + MAPS.steep[k] + MAPS.wet[k]));
       if (r(t2, 25.3) > want) continue;
       // clumps: a few together
@@ -1031,15 +1041,15 @@ for (const [id, on] of Object.entries(TS.checks)) if ($(id)) $(id).checked = on;
 for (const [id, key] of [['hexOn', 'hexOn'], ['macroOn', 'macroOn'], ['farOn', 'farOn'], ['grid', 'grid'], ['stampOn', 'stampOn'], ['mixOn', 'mixOn'], ['wWaveOn', 'wWaveOn'], ['coverFar', 'coverFar']]) { const el = $(id), go = () => { U[key].value = el.checked ? 1 : 0; }; el.addEventListener('change', go); go(); }
 $('tex').addEventListener('change', () => { U.groundMap.value = tex($('tex').value); setAverages(); });
 // the layers' pictures, and the land's settings (these rebuild the maps)
-const LAYERS = { layDry: 'grassDry', layLush: 'grassMed', layForest: 'forest', layWet: 'darkDirt', layPath: 'dirt', laySteep: 'concrete' };
+const LAYERS = { layDry: 'grassDry', layLush: 'grassMed', layForest: 'forest', layWet: 'darkDirt', layPath: 'dirt', laySteep: 'concrete', layShore: 'pebbles' };
 for (const [id, def] of Object.entries(LAYERS)) { const el = $(id); for (const n of TEXTURES) el.add(new Option(n, n)); el.value = def; const go = () => { U[id].value = tex(el.value); setAverages(); }; el.addEventListener('change', go); go(); }
-for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'], ['landDry', 'dryHeight', v => v.toFixed(1) + ' m'], ['landForest', 'forest', v => Math.round(v * 100) + '%'], ['landShade', 'shadeReach', v => Math.round(v * TEX) + ' m'], ['landPath', 'pathWidth', v => v.toFixed(1) + ' m'], ['landTreeline', 'treeline', v => v + ' m'], ['landHill', 'hillForest', v => Math.round(v * 100) + '%']]) {
+for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'], ['landDry', 'dryHeight', v => v.toFixed(1) + ' m'], ['landForest', 'forest', v => Math.round(v * 100) + '%'], ['landShade', 'shadeReach', v => Math.round(v * TEX) + ' m'], ['landPath', 'pathWidth', v => v.toFixed(1) + ' m'], ['landTreeline', 'treeline', v => v + ' m'], ['landShore', 'shore', v => Math.round(v * TEX) + ' m'], ['landHill', 'hillForest', v => Math.round(v * 100) + '%']]) {
   const el = $(id); el.value = LAND[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { LAND[key] = +el.value; buildLand(); });
 }
 // light and shade
-for (const [id, key] of [['hillShade', 'hillShade'], ['aoShade', 'aoShade'], ['treeShade', 'treeShade']]) {
+for (const [id, key] of [['hillShade', 'hillShade'], ['aoShade', 'aoShade'], ['treeShade', 'treeShade'], ['shoreStr', 'shoreStr']]) {
   const el = $(id), go = () => { U[key].value = +el.value; $(id + 'Out').textContent = Math.round(+el.value * 100) + '%'; }; el.value = U[key].value; el.addEventListener('input', go); go();
 }
 // the sky's controls
@@ -1211,4 +1221,4 @@ renderer.setAnimationLoop(() => {
   for (const f of [treeForest, coverForest]) if (f) f.update(camera, controls.target, camera.position, dt);
   renderer.render(scene, camera); drawAtlas();
 });
-if (Q.has('probe')) Object.assign(window, { WATER, POND, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest] });
+if (Q.has('probe')) Object.assign(window, { WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest] });
