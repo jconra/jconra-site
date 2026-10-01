@@ -30,7 +30,12 @@ export const KIND_INFO = [
 //   kinds: per kind { on, style, size, weight }
 //   family (trees): size (m) of the stretch one kind holds, strength (0..1) how strictly, pineFrom (m)
 //         the height the pines take over from
-export const GROW_DEFAULTS = { patchSize: 30, patchSharp: 0.6, clumpShare: 0.3, clumpSize: 3, clumpCount: 6, lonerShare: 0.04, fertSize: 120, fert: 0.5 };
+//   winner: each patch spot always goes to the strongest claim (pure patches) instead of a weighted draw
+//   bare (0..1): how much of the ground is open, no plants (bareSize m across)
+//   wetSize (0..1): plants bigger in damp ground, smaller on dry (at 1: 0.75x on the driest, 1.3x in the wettest)
+//   clumpEdge (0..1): clumps kept to where patches meet (and round the bare ground) instead of anywhere
+export const GROW_DEFAULTS = { patchSize: 30, patchSharp: 0.6, clumpShare: 0.3, clumpSize: 3, clumpCount: 6, lonerShare: 0.04, fertSize: 120, fert: 0.5,
+  winner: false, bare: 0, bareSize: 25, wetSize: 0, clumpEdge: 0 };
 export const FAMILY_DEFAULTS = { size: 90, strength: 0.7, pineFrom: 25 };
 export const defaultKinds = () => KIND_INFO.map(K => ({ on: true, style: K.style, size: 1, weight: 1 }));
 
@@ -40,6 +45,18 @@ const want = (k, g) => g[KIND_INFO[k].hab] * (1 - blk(k, g));                   
 const patchN = (G, k, x, z) => { const s = G.patchSize; return vnoise(x / s + k * 37.1, z / s - k * 19.7) * 0.7 + vnoise(x / s * 2.3 + k * 11.3, z / s * 2.3 + k * 5.9) * 0.3; };   // kind k's patch map
 const patchW = (G, K, k, g, x, z) => want(k, g) * K[k].weight * Math.pow(patchN(G, k, x, z), 1 + G.patchSharp * 8);   // kind k's claim on a spot
 const fertileAt = (G, x, z) => 1 - G.fert * (1 - smooth(vnoise(x / G.fertSize + 61, z / G.fertSize - 23), 0.3, 0.7));
+// BARE GROUND: its own slow map; where it's above the line the ground stays open. 0 none .. 1 open.
+const bareAt = (G, x, z) => { if (!(G.bare > 0)) return 0; const n = vnoise(x / G.bareSize + 211, z / G.bareSize - 97) * 0.75 + vnoise(x / G.bareSize * 2.7 + 5, z / G.bareSize * 2.7 + 9) * 0.25;
+  const line = 1 - G.bare * 0.85, soft = 0.03 + 0.12 * (1 - G.patchSharp); return smooth(n, line - soft, line + soft); };
+// how clearly one patch kind holds a spot (1 alone .. 0 a toss-up), from all the patch kinds' claims
+function clarity(G, K, g, x, z) {
+  let bw = 0, total = 0, n = 0;
+  K.forEach((k_, k) => { if (!k_.on || k_.style !== 'patch') return; const w = patchW(G, K, k, g, x, z); total += w; n++; if (w > bw) bw = w; });
+  return n > 1 && total > 0 ? Math.max(0, (bw / total - 1 / n) / (1 - 1 / n)) : 1;
+}
+// a plant's size from the moisture where it stands: wetter bigger, drier smaller
+const wetScale = (G, g) => { if (!(G.wetSize > 0)) return 1; const m = Math.max(-1, Math.min(1, g.wet - g.dry)); return 1 + G.wetSize * (m > 0 ? 0.3 * m : 0.25 * m); };
+
 // THE PATCHES AT A SPOT, as a picture would show them: the patch kind with the strongest claim, its share of
 // all the claims (1: it holds the spot alone, near 1/n: n kinds are close and the pick there is a toss-up),
 // and how thick the plants are there (fertility, 0..1). null where no patch kind can grow.
@@ -47,7 +64,7 @@ export function patchAt(x, z, ground, kinds, grow) {
   const g = ground(x, z); if (g.hard >= 1) return null;
   let best = -1, bw = 0, total = 0;
   kinds.forEach((K, k) => { if (!K.on || K.style !== 'patch') return; const w = patchW(grow, kinds, k, g, x, z); total += w; if (w > bw) { bw = w; best = k; } });
-  return best < 0 || total <= 0 ? null : { kind: best, share: bw / total, thick: fertileAt(grow, x, z) };
+  return best < 0 || total <= 0 ? null : { kind: best, share: bw / total, thick: fertileAt(grow, x, z), bare: bareAt(grow, x, z) };
 }
 
 // THE GROUND PLANTS round a spot. Returns [{ x, z, sp, scale, yaw }].
@@ -68,7 +85,7 @@ export function growPlants({ ground, at, radius, count, size = 1, kinds, grow })
   const inTile = (tile, t, seed) => [(tile[0] + r(tile[2] + t, seed + 1.7)) * TILE, (tile[1] + r(tile[2] + t, seed + 3.1)) * TILE];
   const inRange = (x, z) => Math.hypot(x - C.x, z - C.z) <= R;
   const perTile = (n) => n / (Math.PI * R * R) * TILE * TILE;                       // a count over the circle, as a count per tile
-  const plant = (k, x, z, t) => out.push({ x, z, sp: k, scale: scaleOf(k, t), yaw: r(t, 13.7) * 6.283 });
+  const plant = (k, x, z, t, g) => out.push({ x, z, sp: k, scale: scaleOf(k, t) * wetScale(G, g), yaw: r(t, 13.7) * 6.283 });
   const seed = 0, on = K.map((_, k) => k).filter(k => K[k].on);
   if (!on.length || !count) return out;
   const pk = on.filter(k => K[k].style === 'patch'), ck = on.filter(k => K[k].style === 'clump'), lk = on.filter(k => K[k].style === 'loner');
@@ -77,16 +94,24 @@ export function growPlants({ ground, at, radius, count, size = 1, kinds, grow })
   const nP = pk.length ? count - nC - nL : 0;
   // patches: every patch kind has its own slow noise; where the ground suits it, the strongest wins
   for (const tile of tiles) for (let t = 1, got = 0, want_ = Math.round(perTile(nP)); got < want_ && t < want_ * 16; t++) {
-    const [x, z] = inTile(tile, t, seed), g = ground(x, z); if (g.hard >= 1) continue;   // (a tile runs the same wherever the circle is; only the planting asks if it's in range)
+    const [x, z] = inTile(tile, t, seed), g = ground(x, z); if (g.hard >= 1) continue;
+    if (G.bare > 0 && r(tile[2] + t, seed + 17.9) < bareAt(G, x, z)) { got++; continue; }       // open ground: the spot stays empty   (a tile runs the same wherever the circle is; only the planting asks if it's in range)
     let total = 0, hab = 0; const w = pk.map(k => { const h = want(k, g) * K[k].weight; hab += h; const v = h * Math.pow(patchN(G, k, x, z), 1 + G.patchSharp * 8); total += v; return v; });
     if (r(tile[2] + t, seed + 5.3) > hab / pk.length * 0.9 * fertile(x, z) || total <= 0) continue;
-    let q = r(tile[2] + t, seed + 9.1) * total, k = pk[pk.length - 1]; for (let n = 0; n < pk.length; n++) if ((q -= w[n]) <= 0) { k = pk[n]; break; }
-    if (inRange(x, z)) plant(k, x, z, tile[2] + t + seed * 1000); got++;
+    let k = pk[pk.length - 1];
+    if (G.winner) { let b = -1; w.forEach((v, n) => { if (v > b) { b = v; k = pk[n]; } }); }
+    else { let q = r(tile[2] + t, seed + 9.1) * total; for (let n = 0; n < pk.length; n++) if ((q -= w[n]) <= 0) { k = pk[n]; break; } }
+    if (inRange(x, z)) plant(k, x, z, tile[2] + t + seed * 1000, g); got++;
   }
   // clumps: a centre where the kind likes it (families: nearby clumps lean the same way), then its plants
   // scattered round the centre
-  for (const tile of tiles) for (let c = 1, got = 0, want_ = Math.round(perTile(nC)); got < want_ && c < want_ * 4; c++) {
+  for (const tile of tiles) for (let c = 1, got = 0, want_ = Math.round(perTile(nC)); got < want_ && c < want_ * (G.clumpEdge > 0 ? 14 : 4); c++) {
     const [cx, cz] = inTile(tile, c, seed + 40), g = ground(cx, cz); if (g.hard >= 0.6) continue;
+    const b = G.bare > 0 ? bareAt(G, cx, cz) : 0; if (b > 0.85) continue;                    // not out in the open ground
+    if (G.clumpEdge > 0) {                                                                    // kept to where patches meet, or the bare ground's rim
+      const edge = Math.max(1 - clarity(G, K, g, cx, cz), G.bare > 0 ? 1 - Math.abs(2 * b - 1) : 0);
+      if (r(tile[2] + c, seed + 39.7) > 1 - G.clumpEdge * (1 - Math.pow(edge, 0.7))) continue;
+    }
     let total = 0, hab = 0; const w = ck.map(k => { const h = want(k, g) * K[k].weight; hab += h; const v = h * Math.pow(patchN(G, k + 50, cx * 0.5, cz * 0.5), 3); total += v; return v; });
     const cs = tile[2] + c;
     if (r(cs, seed + 41.3) > hab / ck.length * 1.2 * fertile(cx, cz) || total <= 0) continue;
@@ -94,16 +119,17 @@ export function growPlants({ ground, at, radius, count, size = 1, kinds, grow })
     const n = Math.max(2, Math.round(G.clumpCount * (0.6 + 0.8 * r(cs, seed + 47.1))));
     for (let m = 0; m < n && got < want_; m++) {
       const a = r(cs * 31 + m, seed + 51.7) * Math.PI * 2, d = G.clumpSize * Math.sqrt(-2 * Math.log(Math.max(1e-4, r(cs * 31 + m, seed + 53.3)))) * 0.5;   // gathered toward the middle
-      const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d; if (blk(k, ground(x, z)) >= 0.8) continue;
-      if (inRange(x, z)) plant(k, x, z, tile[2] + c * 31 + m + seed * 1000); got++;
+      const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d, gm = ground(x, z); if (blk(k, gm) >= 0.8) continue;
+      if (inRange(x, z)) plant(k, x, z, tile[2] + c * 31 + m + seed * 1000, gm); got++;
     }
   }
   // loners: here and there, where the kind likes it
   for (const tile of tiles) for (let t = 1, got = 0, want_ = perTile(nL); got < want_ && t < Math.max(1, want_) * 20; t++) {
     if (want_ < 1 && r(tile[2], seed + 77.7) > want_) break;                      // under one a tile: some tiles get one
     const [x, z] = inTile(tile, t, seed + 70), g = ground(x, z); if (g.hard >= 0.6) continue;
+    if (G.bare > 0 && r(tile[2] + t, seed + 79.3) < bareAt(G, x, z)) continue;
     const k = lk[Math.floor(r(tile[2] + t, seed + 71.9) * lk.length) % lk.length]; if (r(tile[2] + t, seed + 73.1) > want(k, g) + 0.1) continue;
-    if (inRange(x, z)) plant(k, x, z, tile[2] + t + seed * 1000 + 500); got++;
+    if (inRange(x, z)) plant(k, x, z, tile[2] + t + seed * 1000 + 500, g); got++;
   }
   return out;
 }

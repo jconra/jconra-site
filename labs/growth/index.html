@@ -69,6 +69,11 @@
     <details class="sec" open><summary>How they grow</summary>
       <div class="row"><label for="patchSize">Patch size</label><output id="patchSizeOut"></output><input id="patchSize" type="range" min="5" max="150" step="1"></div>
       <div class="row"><label for="patchSharp">Patch edges (mixed to clean)</label><output id="patchSharpOut"></output><input id="patchSharp" type="range" min="0" max="1" step="0.01"></div>
+      <label class="check" for="winner"><input id="winner" type="checkbox"> Winner takes all (each spot to the strongest patch kind: pure patches, no strays)</label>
+      <div class="row"><label for="bare">Bare ground (open areas with no plants)</label><output id="bareOut"></output><input id="bare" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="bareSize">Bare ground: how big the open areas are</label><output id="bareSizeOut"></output><input id="bareSize" type="range" min="5" max="120" step="1"></div>
+      <div class="row"><label for="wetSize">Bigger where it's wet, smaller where it's dry</label><output id="wetSizeOut"></output><input id="wetSize" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="clumpEdge">Clumps on the edges (where patches meet and round the bare ground)</label><output id="clumpEdgeOut"></output><input id="clumpEdge" type="range" min="0" max="1" step="0.01"></div>
       <div class="row"><label for="clumpShare">Share in clumps</label><output id="clumpShareOut"></output><input id="clumpShare" type="range" min="0" max="1" step="0.01"></div>
       <div class="row"><label for="clumpSize">Clump size</label><output id="clumpSizeOut"></output><input id="clumpSize" type="range" min="0.5" max="12" step="0.5"></div>
       <div class="row"><label for="clumpCount">Plants per clump</label><output id="clumpCountOut"></output><input id="clumpCount" type="range" min="2" max="20" step="1"></div>
@@ -94,7 +99,7 @@
 
     <details class="sec" open><summary>Show</summary>
       <div class="row"><label for="paint">Paint the ground</label><select id="paint" style="grid-column:2"><option value="land">the land</option><option value="patch">by patch</option><option value="thick">thick and thin</option></select></div>
-      <p class="note"><b>By patch</b>: each spot in the colour of the patch kind that wins it (the dots by the kinds' names), strong where one kind holds it alone, grey where several are close and their plants mix. <b>Thick and thin</b>: bright where plants grow thick, dark where they thin out.</p>
+      <p class="note"><b>By patch</b>: each spot in the colour of the patch kind that wins it (the dots by the kinds' names), strong where one kind holds it alone, grey where several are close and their plants mix, dark brown where the ground is bare. <b>Thick and thin</b>: bright where plants grow thick, dark where they thin out.</p>
       <label class="check" for="showPlants"><input id="showPlants" type="checkbox" checked> Plants</label>
       <label class="check" for="showTrees"><input id="showTrees" type="checkbox" checked> Trees</label>
       <div class="row"><label for="near">Plants drawn within (all: 0; potato starts at 40 m)</label><output id="nearOut"></output><input id="near" type="range" min="0" max="160" step="5"></div>
@@ -188,7 +193,8 @@ const COLORS = ['#c9d65a', '#9ee07a', '#5fc46b', '#d9c36a', '#2fa07a', '#e0505a'
 // ── the panel ─────────────────────────────────────────────────────────────────────────────
 const SLIDERS = [['patchSize', GROW, 'patchSize', v => v + ' m'], ['patchSharp', GROW, 'patchSharp', v => Math.round(v * 100) + '%'], ['clumpShare', GROW, 'clumpShare', v => Math.round(v * 100) + '%'],
   ['clumpSize', GROW, 'clumpSize', v => v + ' m'], ['clumpCount', GROW, 'clumpCount', v => v + ' plants'], ['lonerShare', GROW, 'lonerShare', v => Math.round(v * 100) + '%'],
-  ['fertSize', GROW, 'fertSize', v => v + ' m'], ['fert', GROW, 'fert', v => Math.round(v * 100) + '%'], ['count', COVER, 'count', v => v.toLocaleString()], ['size', COVER, 'size', v => v.toFixed(2) + '×'],
+  ['fertSize', GROW, 'fertSize', v => v + ' m'], ['fert', GROW, 'fert', v => Math.round(v * 100) + '%'],
+  ['bare', GROW, 'bare', v => Math.round(v * 100) + '%'], ['bareSize', GROW, 'bareSize', v => v + ' m'], ['wetSize', GROW, 'wetSize', v => v > 0 ? `${(1 - 0.25 * v).toFixed(2)}× dry … ${(1 + 0.3 * v).toFixed(2)}× wet` : 'off'], ['clumpEdge', GROW, 'clumpEdge', v => Math.round(v * 100) + '%'], ['count', COVER, 'count', v => v.toLocaleString()], ['size', COVER, 'size', v => v.toFixed(2) + '×'],
   ['famSize', FAMILY, 'size', v => v + ' m'], ['famStrict', FAMILY, 'strength', v => Math.round(v * 100) + '%'], ['famPine', FAMILY, 'pineFrom', v => v + ' m up']];
 for (const [id, obj, key, fmt] of SLIDERS) {
   const el = $(id);
@@ -210,7 +216,9 @@ const kindRows = KINDS.map((K, k) => {
   return row;
 });
 $('allOn').addEventListener('click', () => { KINDS.forEach(O => { O.on = true; }); syncPanel(); save(); growAll(); });
+$('winner').addEventListener('change', e => { GROW.winner = e.target.checked; save(); growAll(); });
 function syncPanel() {
+  $('winner').checked = !!GROW.winner;
   for (const [id, obj, key, fmt] of SLIDERS) { $(id).value = obj[key]; $(id + 'Out').textContent = fmt(+obj[key]); }
   KINDS.forEach((K, k) => { $('kOn' + k).checked = K.on; $('kStyle' + k).value = K.style; $('kSize' + k).value = K.size; $('kSize' + k + 'Out').textContent = K.size.toFixed(2) + '×'; kindRows[k].classList.toggle('off', !K.on); });
 }
@@ -303,14 +311,15 @@ controls.addEventListener('end', () => { if (SHOW.near && SHOW.at.distanceTo(con
 //     kind holds it alone, washed out toward grey where several kinds are close (there the pick between
 //     them is a toss-up, so their plants mingle); the land shows through where no patch kind can grow
 //   thick and thin: dark where the fertility noise thins the plants, bright where they grow thick
-const grey = new THREE.Color(0.18, 0.2, 0.18), kc = new THREE.Color(), out = new THREE.Color();
+const bareC = new THREE.Color(0.16, 0.09, 0.04), grey = new THREE.Color(0.18, 0.2, 0.18), kc = new THREE.Color(), out = new THREE.Color();
 function paintGround() {
   const mode = $('paint').value, col = groundGeo.attributes.color, p = groundGeo.attributes.position, nOn = KINDS.filter(K => K.on && K.style === 'patch').length;
   for (let n = 0; n < p.count; n++) {
     out.setRGB(landCol[n * 3], landCol[n * 3 + 1], landCol[n * 3 + 2]);
     if (mode !== 'land') {
       const a = patchAt(p.getX(n), p.getZ(n), ground, KINDS, GROW);
-      if (a && mode === 'patch') { const clear = nOn > 1 ? Math.max(0, (a.share - 1 / nOn) / (1 - 1 / nOn)) : 1; kc.set(COLORS[a.kind]).convertSRGBToLinear(); out.copy(grey).lerp(kc, 0.25 + 0.75 * clear); }
+      if (a && mode === 'patch') { const clear = GROW.winner ? 1 : nOn > 1 ? Math.max(0, (a.share - 1 / nOn) / (1 - 1 / nOn)) : 1; kc.set(COLORS[a.kind]).convertSRGBToLinear(); out.copy(grey).lerp(kc, 0.25 + 0.75 * clear);
+        out.lerp(bareC, a.bare); }                                                                            // open ground: bare earth
       if (a && mode === 'thick') out.copy(grey).lerp(kc.setRGB(0.25, 0.7, 0.15), a.thick);
     }
     col.setXYZ(n, out.r, out.g, out.b);
