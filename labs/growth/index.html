@@ -92,7 +92,9 @@
       <p class="note" id="treeKey"></p>
     </details>
 
-    <details class="sec"><summary>Show</summary>
+    <details class="sec" open><summary>Show</summary>
+      <div class="row"><label for="paint">Paint the ground</label><select id="paint" style="grid-column:2"><option value="land">the land</option><option value="patch">by patch</option><option value="thick">thick and thin</option></select></div>
+      <p class="note"><b>By patch</b>: each spot in the colour of the patch kind that wins it (the dots by the kinds' names), strong where one kind holds it alone, grey where several are close and their plants mix. <b>Thick and thin</b>: bright where plants grow thick, dark where they thin out.</p>
       <label class="check" for="showPlants"><input id="showPlants" type="checkbox" checked> Plants</label>
       <label class="check" for="showTrees"><input id="showTrees" type="checkbox" checked> Trees</label>
       <div class="row"><label for="near">Plants drawn within (all: 0; potato starts at 40 m)</label><output id="nearOut"></output><input id="near" type="range" min="0" max="160" step="5"></div>
@@ -109,7 +111,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { chooseTier } from '../../src/quality.js';
-import { KIND_INFO, GROW_DEFAULTS, FAMILY_DEFAULTS, defaultKinds, growPlants, pickTree, settingsJSON, applySettings, vnoise, hash } from '../../src/objects/growth.js';
+import { KIND_INFO, GROW_DEFAULTS, FAMILY_DEFAULTS, defaultKinds, growPlants, patchAt, pickTree, settingsJSON, applySettings, vnoise, hash } from '../../src/objects/growth.js';
 
 // QUALITY: a small patch of land, no ground textures, no shadows, and a frame is drawn only when the
 // view or a setting changes. The tier sets the drawing resolution and smoothing.
@@ -244,6 +246,7 @@ function heightAt(x, z) {
   return (H[k] * (1 - u) + H[k + 1] * u) * (1 - v) + (H[k + N] * (1 - u) + H[k + N + 1] * u) * v;
 }
 // the ground: one mesh, a corner on each cell's middle, coloured by the land (no pictures)
+let groundGeo, landCol;
 { const geo = new THREE.PlaneGeometry(SIZE - CELL, SIZE - CELL, N - 1, N - 1); geo.rotateX(-Math.PI / 2);
   const p = geo.attributes.position, col = new Float32Array(p.count * 3);
   for (let n = 0; n < p.count; n++) {
@@ -256,7 +259,7 @@ function heightAt(x, z) {
     c = c.map((v, m) => v + ([40, 92, 126][m] - v) * WATER[k]);                                         // water
     const lin = new THREE.Color(c[0] / 255, c[1] / 255, c[2] / 255).convertSRGBToLinear(); col.set([lin.r, lin.g, lin.b], n * 3);
   }
-  geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.computeVertexNormals();
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.computeVertexNormals(); groundGeo = geo; landCol = col.slice();
   scene.add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }))); }
 
 // trees: simple stand-ins, one instanced mesh a shape (cones for pines, balls on trunks for the rest)
@@ -295,6 +298,25 @@ async function loadPlants() {
 // what's drawn: the plants near where you look (`near` m; 0 all), laid again when you've moved a quarter of that
 const SHOW = { near: TS.near, at: new THREE.Vector3() };
 controls.addEventListener('end', () => { if (SHOW.near && SHOW.at.distanceTo(controls.target) > SHOW.near * 0.25) growAll(); });
+// PAINTING THE GROUND to show the rules (instead of the land's colours):
+//   by patch: each spot in the colour of the patch kind with the strongest claim on it, strong where that
+//     kind holds it alone, washed out toward grey where several kinds are close (there the pick between
+//     them is a toss-up, so their plants mingle); the land shows through where no patch kind can grow
+//   thick and thin: dark where the fertility noise thins the plants, bright where they grow thick
+const grey = new THREE.Color(0.18, 0.2, 0.18), kc = new THREE.Color(), out = new THREE.Color();
+function paintGround() {
+  const mode = $('paint').value, col = groundGeo.attributes.color, p = groundGeo.attributes.position, nOn = KINDS.filter(K => K.on && K.style === 'patch').length;
+  for (let n = 0; n < p.count; n++) {
+    out.setRGB(landCol[n * 3], landCol[n * 3 + 1], landCol[n * 3 + 2]);
+    if (mode !== 'land') {
+      const a = patchAt(p.getX(n), p.getZ(n), ground, KINDS, GROW);
+      if (a && mode === 'patch') { const clear = nOn > 1 ? Math.max(0, (a.share - 1 / nOn) / (1 - 1 / nOn)) : 1; kc.set(COLORS[a.kind]).convertSRGBToLinear(); out.copy(grey).lerp(kc, 0.25 + 0.75 * clear); }
+      if (a && mode === 'thick') out.copy(grey).lerp(kc.setRGB(0.25, 0.7, 0.15), a.thick);
+    }
+    col.setXYZ(n, out.r, out.g, out.b);
+  }
+  col.needsUpdate = true; redraw();
+}
 // ── growing ───────────────────────────────────────────────────────────────────────────────
 let plants = [], treeKinds = [];
 const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), v3 = new THREE.Vector3(), sc = new THREE.Vector3();
@@ -315,6 +337,7 @@ function growAll() {
   let tris = 0; plantMeshes.forEach(im => { tris += im.count * im.geometry.attributes.position.count / 3; });
   $('info').textContent = `${plants.length.toLocaleString()} plants${SHOW.near ? ' (' + by.reduce((a, b) => a + b, 0).toLocaleString() + ' drawn, within ' + SHOW.near + ' m)' : ''} · ${trees.length.toLocaleString()} trees · ${(tris / 1e6).toFixed(2)} M triangles · laid in ${Math.round(performance.now() - t0)} ms`;
   KINDS.forEach((K, k) => { $('kOn' + k).title = by[k] + ' placed'; });
+  if ($('paint').value !== 'land') paintGround();
   redraw();
 }
 function growTrees() {
@@ -355,6 +378,7 @@ function fit() { camera.aspect = innerWidth / innerHeight; const p = $('panel'),
 addEventListener('resize', fit); $('min').addEventListener('click', fit);
 renderer.setAnimationLoop(() => { if (!wantFrame) return; wantFrame = false; controls.update(); renderer.render(scene, camera); });
 
+$('paint').addEventListener('change', paintGround);
 $('near').value = SHOW.near; $('nearOut').textContent = SHOW.near ? SHOW.near + ' m' : 'all';
 $('near').addEventListener('input', e => { $('nearOut').textContent = +e.target.value ? e.target.value + ' m' : 'all'; });
 $('near').addEventListener('change', e => { SHOW.near = +e.target.value; growAll(); });

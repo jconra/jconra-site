@@ -34,6 +34,22 @@ export const GROW_DEFAULTS = { patchSize: 30, patchSharp: 0.6, clumpShare: 0.3, 
 export const FAMILY_DEFAULTS = { size: 90, strength: 0.7, pineFrom: 25 };
 export const defaultKinds = () => KIND_INFO.map(K => ({ on: true, style: K.style, size: 1, weight: 1 }));
 
+// the rules growPlants uses, kept outside it so patchAt (the Growth Lab's picture of the patches) uses the same
+const blk = (k, g) => Math.min(1, KIND_INFO[k].hab === 'wet' ? g.hard : g.blocked);   // how far the ground keeps kind k out
+const want = (k, g) => g[KIND_INFO[k].hab] * (1 - blk(k, g));                         // how much kind k likes the ground
+const patchN = (G, k, x, z) => { const s = G.patchSize; return vnoise(x / s + k * 37.1, z / s - k * 19.7) * 0.7 + vnoise(x / s * 2.3 + k * 11.3, z / s * 2.3 + k * 5.9) * 0.3; };   // kind k's patch map
+const patchW = (G, K, k, g, x, z) => want(k, g) * K[k].weight * Math.pow(patchN(G, k, x, z), 1 + G.patchSharp * 8);   // kind k's claim on a spot
+const fertileAt = (G, x, z) => 1 - G.fert * (1 - smooth(vnoise(x / G.fertSize + 61, z / G.fertSize - 23), 0.3, 0.7));
+// THE PATCHES AT A SPOT, as a picture would show them: the patch kind with the strongest claim, its share of
+// all the claims (1: it holds the spot alone, near 1/n: n kinds are close and the pick there is a toss-up),
+// and how thick the plants are there (fertility, 0..1). null where no patch kind can grow.
+export function patchAt(x, z, ground, kinds, grow) {
+  const g = ground(x, z); if (g.hard >= 1) return null;
+  let best = -1, bw = 0, total = 0;
+  kinds.forEach((K, k) => { if (!K.on || K.style !== 'patch') return; const w = patchW(grow, kinds, k, g, x, z); total += w; if (w > bw) { bw = w; best = k; } });
+  return best < 0 || total <= 0 ? null : { kind: best, share: bw / total, thick: fertileAt(grow, x, z) };
+}
+
 // THE GROUND PLANTS round a spot. Returns [{ x, z, sp, scale, yaw }].
 //   ground(x, z) -> { hard, blocked, grass, shrub, long, shade, wet, dry }: `hard` (0..1+) where nothing
 //     grows (paths, steep, in the water), `blocked` that and the mud and stony shore, which wet kinds don't
@@ -44,11 +60,8 @@ export const defaultKinds = () => KIND_INFO.map(K => ({ on: true, style: K.style
 // its spot.
 export function growPlants({ ground, at, radius, count, size = 1, kinds, grow }) {
   const out = [], G = grow, K = kinds;
-  const blk = (k, g) => Math.min(1, KIND_INFO[k].hab === 'wet' ? g.hard : g.blocked);
-  const want = (k, g) => g[KIND_INFO[k].hab] * (1 - blk(k, g));
   const scaleOf = (k, t) => (0.7 + 0.6 * r(t, 11.3)) * size * K[k].size;
-  const fertile = (x, z) => 1 - G.fert * (1 - smooth(vnoise(x / G.fertSize + 61, z / G.fertSize - 23), 0.3, 0.7));
-  const patchN = (k, x, z) => { const s = G.patchSize; return vnoise(x / s + k * 37.1, z / s - k * 19.7) * 0.7 + vnoise(x / s * 2.3 + k * 11.3, z / s * 2.3 + k * 5.9) * 0.3; };
+  const fertile = (x, z) => fertileAt(G, x, z);
   const TILE = 30, C = at, R = radius, tiles = [];
   for (let tz = Math.floor((C.z - R) / TILE); tz <= Math.floor((C.z + R) / TILE); tz++) for (let tx = Math.floor((C.x - R) / TILE); tx <= Math.floor((C.x + R) / TILE); tx++)
     if (Math.hypot((tx + 0.5) * TILE - C.x, (tz + 0.5) * TILE - C.z) < R + TILE * 0.72) tiles.push([tx, tz, ((tx + 200) * 1000 + tz + 200) * 37]);
@@ -65,7 +78,7 @@ export function growPlants({ ground, at, radius, count, size = 1, kinds, grow })
   // patches: every patch kind has its own slow noise; where the ground suits it, the strongest wins
   for (const tile of tiles) for (let t = 1, got = 0, want_ = Math.round(perTile(nP)); got < want_ && t < want_ * 16; t++) {
     const [x, z] = inTile(tile, t, seed), g = ground(x, z); if (g.hard >= 1) continue;   // (a tile runs the same wherever the circle is; only the planting asks if it's in range)
-    let total = 0, hab = 0; const w = pk.map(k => { const h = want(k, g) * K[k].weight; hab += h; const v = h * Math.pow(patchN(k, x, z), 1 + G.patchSharp * 8); total += v; return v; });
+    let total = 0, hab = 0; const w = pk.map(k => { const h = want(k, g) * K[k].weight; hab += h; const v = h * Math.pow(patchN(G, k, x, z), 1 + G.patchSharp * 8); total += v; return v; });
     if (r(tile[2] + t, seed + 5.3) > hab / pk.length * 0.9 * fertile(x, z) || total <= 0) continue;
     let q = r(tile[2] + t, seed + 9.1) * total, k = pk[pk.length - 1]; for (let n = 0; n < pk.length; n++) if ((q -= w[n]) <= 0) { k = pk[n]; break; }
     if (inRange(x, z)) plant(k, x, z, tile[2] + t + seed * 1000); got++;
@@ -74,7 +87,7 @@ export function growPlants({ ground, at, radius, count, size = 1, kinds, grow })
   // scattered round the centre
   for (const tile of tiles) for (let c = 1, got = 0, want_ = Math.round(perTile(nC)); got < want_ && c < want_ * 4; c++) {
     const [cx, cz] = inTile(tile, c, seed + 40), g = ground(cx, cz); if (g.hard >= 0.6) continue;
-    let total = 0, hab = 0; const w = ck.map(k => { const h = want(k, g) * K[k].weight; hab += h; const v = h * Math.pow(patchN(k + 50, cx * 0.5, cz * 0.5), 3); total += v; return v; });
+    let total = 0, hab = 0; const w = ck.map(k => { const h = want(k, g) * K[k].weight; hab += h; const v = h * Math.pow(patchN(G, k + 50, cx * 0.5, cz * 0.5), 3); total += v; return v; });
     const cs = tile[2] + c;
     if (r(cs, seed + 41.3) > hab / ck.length * 1.2 * fertile(cx, cz) || total <= 0) continue;
     let q = r(cs, seed + 43.9) * total, k = ck[ck.length - 1]; for (let n = 0; n < ck.length; n++) if ((q -= w[n]) <= 0) { k = ck[n]; break; }
