@@ -919,7 +919,7 @@ function calmCover() {
   const a = U.layLush.value && U.layLush.value.userData.avg, col = (a ? a.clone() : new THREE.Color(0.25, 0.33, 0.1)).multiply(U.lushTint.value).multiplyScalar(0.9);
   coverForest.setCalm({ calmCol: col, calmFrom: CALM.from, calmTo: CALM.to, calmAmt: CALM.amount });
 }
-const CALM = { from: 25, to: 120, amount: 0.9 };
+const CALM = { from: 60, to: 260, amount: 0.35 };   // gentle: far plants keep most of their own colour and shading
 // STONES: simple rocks (a lumpy, flattened ball in four shapes, drawn faceted) scattered by the land:
 // thick on steep and rocky ground and in the scree at the foot of the cliffs, a few out in the
 // meadows, many along the streams and shores (in the creeks too), none out in the lakes or on the paths. Mostly small, the odd boulder. 20 faces each (80 on gaming).
@@ -1078,6 +1078,20 @@ for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'],
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { LAND[key] = +el.value; buildLand(); });
 }
+// COPY SETTINGS: every control in the panel (sliders, boxes, colours, lists) as { id: value }, so a set
+// someone tuned by hand can be pasted back and made the defaults; the quality tier comes along to say
+// which tier's numbers they were
+$('copySettings').addEventListener('click', async () => {
+  const out = { tier: QUAL.tier };
+  for (const el of document.querySelectorAll('#panel input[id], #panel select[id], aside input[id], aside select[id]')) {
+    if (el.id === 'qTier') continue;
+    out[el.id] = el.type === 'checkbox' ? el.checked : el.type === 'range' || el.type === 'number' ? +el.value : el.value;
+  }
+  const text = JSON.stringify(out);
+  let ok = false; try { await navigator.clipboard.writeText(text); ok = true; } catch (e) { /* no clipboard: show it instead */ }
+  if (ok) $('copyNote').textContent = `Copied ${Object.keys(out).length - 1} settings. Paste them in chat.`;
+  else { $('copyNote').textContent = 'Copy this:'; const ta = document.createElement('textarea'); ta.value = text; ta.rows = 4; ta.style.width = '100%'; $('copyNote').after(ta); ta.select(); }
+});
 // light and shade
 for (const [id, key] of [['hillShade', 'hillShade'], ['aoShade', 'aoShade'], ['treeShade', 'treeShade'], ['shoreStr', 'shoreStr']]) {
   const el = $(id), go = () => { U[key].value = +el.value; $(id + 'Out').textContent = Math.round(+el.value * 100) + '%'; }; el.value = U[key].value; el.addEventListener('input', go); go();

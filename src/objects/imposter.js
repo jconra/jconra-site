@@ -249,7 +249,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
         // CALM WITH DISTANCE: far off, a plant's own colour and shading give way to a shared colour lit
         // like the ground, so a far field of them reads as one tone instead of speckle
         float calm = calmAmt * smoothstep(calmFrom, calmTo, length(vViewPos));
-        nw = normalize(mix(nw, vec3(0.0, 1.0, 0.0), max(soften, calm)));
+        nw = normalize(mix(nw, vec3(0.0, 1.0, 0.0), max(soften, calm * 0.5)));   // (only half way: fully flat lighting made a far field one even, bright tone)
         vec3 nv = normalize((viewMatrix * vec4(nw, 0.0)).xyz);              // in view space, where three keeps its lights
         float off = (0.5 - nrm.a) * 2.0 * vRadius;
         // lit the way MeshStandardMaterial's diffuse is: the sun (shadowed) and the sky/ground light,
