@@ -165,7 +165,7 @@ function* erodeSteps(H, drops, chunk, trail = null) {
 // they run into the ponds and out over the spill. Pond ground is flattened to its surface and river
 // channels are carved a little; the shader paints the water on (no see-through mesh).
 let trees = [], maskA = null, pathCanvas = null; const MAPS = {};
-const WATER = { on: true, river: 1800, width: 1.6, carve: 0.8, pondDepth: 0.35, pondMin: 30, outlet: 5 };
+const WATER = { on: true, river: 1800, width: 1.6, carve: 0.8, channel: 2, pondDepth: 0.35, pondMin: 30, outlet: 5 };
 const POND = new Uint8Array(N * N), WDEPTH = new Float32Array(N * N), ACC = new Float32Array(N * N), DOWN = new Int32Array(N * N);
 let waterCanvas = null, waterTex = null;          // (the shader's uniforms are made later; they pick waterTex up)
 // the priority flood: F is the land with every hollow filled to its spill level, DOWN the cell each
@@ -300,8 +300,13 @@ function findWater(H) {
   for (const pool of findPools(H, F)) for (const c of pool) pond[c] = 1;
   POND.set(pond);
   for (let k = 0; k < N * N; k++) if (pond[k]) { WDEPTH[k] = F[k] - H[k]; H[k] = F[k]; }       // the pond's ground is its surface
-  // rivers: carved a little where enough water gathers (not in the ponds)
-  for (let k = 0; k < N * N; k++) if (!pond[k] && ACC[k] > WATER.river) { const t = Math.min(1, Math.log(ACC[k] / WATER.river) / 3); H[k] -= WATER.carve * (0.5 + t); WDEPTH[k] = 0.3 + 0.5 * t; }
+  // rivers: channels carved where enough water gathers (not in the ponds). The river's cells are
+  // blurred into a rounded trough `channel` cells to each side, deepest in the middle, and that is
+  // carved: one smooth channel, not a 3 m staircase of notches that the water would lie in jaggedly
+  const chan = new Float32Array(N * N);
+  for (let k = 0; k < N * N; k++) if (!pond[k] && ACC[k] > WATER.river) { const t = Math.min(1, Math.log(ACC[k] / WATER.river) / 3); chan[k] = 0.5 + t; WDEPTH[k] = 0.3 + 0.5 * t; }
+  const r = WATER.channel, trough = r > 0 ? blur(chan, r) : chan, gain = (2 * r + 1) * 0.8;   // the blur spreads a line 2r+1 cells wide; gain brings its middle back to full depth
+  for (let k = 0; k < N * N; k++) if (!pond[k] && trough[k] > 0) H[k] -= WATER.carve * Math.min(1.5, trough[k] * gain);
   paintWater(pond);
 }
 // the water picture, 0.8 m a pixel: ponds as their cells, rivers as lines from each cell to the one it
@@ -912,7 +917,7 @@ function calmCover() {
 const CALM = { from: 25, to: 120, amount: 0.9 };
 // STONES: simple rocks (a lumpy, flattened ball in four shapes, drawn faceted) scattered by the land:
 // thick on steep and rocky ground and in the scree at the foot of the cliffs, a few out in the
-// meadows, none in the water or on the paths. Mostly small, the odd boulder. 20 faces each (80 on gaming).
+// meadows, many along the streams and shores (in the creeks too), none out in the lakes or on the paths. Mostly small, the odd boulder. 20 faces each (80 on gaming).
 const STONES = { on: true, count: TS.stones, size: 1, meshes: [], shapes: null };
 function stoneShapes() {
   const out = [];
@@ -949,9 +954,10 @@ function placeStones() {
   for (let t = 1; placed < STONES.count && t < STONES.count * 30; t++) {
     const x = (r(t, 41.3) - 0.5) * SIZE * 0.98, z = (r(t, 43.7) - 0.5) * SIZE * 0.98;
     const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
-    if (waterAt(x, z) > 0.05) continue;
+    if (POND[k]) continue;                                                    // none out in the lakes; streams are fine (stones in a creek)
     const pi = Math.floor((x + SIZE / 2) / SIZE * MAPS.P), pj = Math.floor((z + SIZE / 2) / SIZE * MAPS.P); if (MAPS.path[(pj * MAPS.P + pi) * 4] > 60) continue;
-    const sl = slopeAt(i, j), want = 0.14 + 0.8 * THREE.MathUtils.smoothstep(sl, 0.45, 0.9) + 0.9 * Math.max(0, scree[k] - MAPS.steep[k]) * 2;
+    const creek = MAPS.shore ? Math.min(1, MAPS.shore[k] * 2.5) : 0;             // along streams and shores the soil is washed off the stones
+    const sl = slopeAt(i, j), want = 0.14 + 1.6 * creek + 0.8 * THREE.MathUtils.smoothstep(sl, 0.45, 0.9) + 0.9 * Math.max(0, scree[k] - MAPS.steep[k]) * 2;
     if (r(t, 47.1) > want) continue;
     const u = r(t, 49.9), size = STONES.size * (0.22 + 1.7 * u * u * u) * (1 + 0.6 * Math.max(0, scree[k] - MAPS.steep[k]));
     per[Math.floor(r(t, 51.7) * 4) % 4].push([x, heightAt(x, z) - size * 0.22, z, size, r(t, 53.3) * 6.283, r(t, 57.1)]);
@@ -1125,7 +1131,7 @@ for (const [id, key, fmt] of [['vHeight', 'height', v => v + ' m'], ['vWidth', '
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); }); el.addEventListener('change', () => { VALLEY[key] = +el.value; reshape(); });
 }
 $('vOn').checked = VALLEY.on; $('vOn').addEventListener('change', e => { VALLEY.on = e.target.checked; reshape(); });
-for (const [id, key, fmt] of [['wRiver', 'river', v => Math.round(v * TEX * TEX / 1000).toLocaleString() + ',000 m² gathered'], ['wWidth', 'width', v => v.toFixed(1) + '×'], ['wCarve', 'carve', v => v.toFixed(1) + ' m'], ['wPondDepth', 'pondDepth', v => v.toFixed(2) + ' m'], ['wPondMin', 'pondMin', v => Math.round(v * TEX * TEX) + ' m²'], ['wOutlet', 'outlet', v => v.toFixed(0) + ' m']]) {
+for (const [id, key, fmt] of [['wRiver', 'river', v => Math.round(v * TEX * TEX / 1000).toLocaleString() + ',000 m² gathered'], ['wWidth', 'width', v => v.toFixed(1) + '×'], ['wCarve', 'carve', v => v.toFixed(1) + ' m'], ['wChannel', 'channel', v => Math.round((2 * v + 1) * TEX) + ' m across'], ['wPondDepth', 'pondDepth', v => v.toFixed(2) + ' m'], ['wPondMin', 'pondMin', v => Math.round(v * TEX * TEX) + ' m²'], ['wOutlet', 'outlet', v => v.toFixed(0) + ' m']]) {
   const el = $(id); el.value = WATER[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); }); el.addEventListener('change', () => { WATER[key] = +el.value; reshape(); });
 }
