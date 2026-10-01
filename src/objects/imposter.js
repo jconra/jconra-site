@@ -118,7 +118,7 @@ const VERTEX = `
         vec3 off = dTree - dc;                                        // how far the true direction is from the baked one
         return vec2(dot(off, rightTree), dot(off, upTree));
       }
-      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius; varying vec4 vShadowToCam;
+      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius; varying vec4 vShadowToCam; varying vec2 vLand;
       // direction (in the tree's frame) -> the square
       vec2 octEncode(vec3 d) {
         float s = abs(d.x) + abs(d.y) + abs(d.z); float x = d.x / s, z = d.z / s;
@@ -155,7 +155,7 @@ const VERTEX = `
         vec3 upTree = vec3(c * up.x - s * up.z, up.y, s * up.x + c * up.z);
         vP0 = vP1 = vP2 = vec2(0.0);
         if (parallax > 0.5 && useOverride < 0.5) { vP0 = parallaxOf(vC0, dn, rightTree, upTree); vP1 = parallaxOf(vC1, dn, rightTree, upTree); vP2 = parallaxOf(vC2, dn, rightTree, upTree); }
-        vQuad = uv; vTint = iTint; vFade = iFade; vYaw = iYaw; vRadius = radius * iScale;
+        vQuad = uv; vTint = iTint; vFade = iFade; vYaw = iYaw; vRadius = radius * iScale; vLand = iPos.xz;
         vec4 mv = viewMatrix * vec4(world, 1.0); vViewPos = mv.xyz; vToCamView = (viewMatrix * vec4(toCam, 0.0)).xyz;
         gl_Position = projectionMatrix * mv;
         #include <logdepthbuf_vertex>
@@ -171,7 +171,7 @@ const VERTEX = `
 // the atlas lookup shared by both fragment stages: colour (straight alpha = coverage) and normal + depth
 const LOOKUP = `
       uniform sampler2D atlas; uniform sampler2D atlasN; uniform float grid; uniform float blend;
-      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius; varying vec4 vShadowToCam;
+      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius; varying vec4 vShadowToCam; varying vec2 vLand;
       varying vec2 vC0; varying vec2 vC1; varying vec2 vC2; varying vec3 vW; varying vec2 vP0; varying vec2 vP1; varying vec2 vP2;
       uniform mat4 projectionMatrix; uniform float useDepth; uniform float parallax; uniform float halfWc; uniform float halfHc;
       vec4 cellSampleAt(sampler2D t, vec2 cell, vec2 q) { vec2 uv = (cell + clamp(q, 0.002, 0.998)) / grid; return texture2D(t, uv); }
@@ -216,6 +216,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
     blend: { value: blend ? 1 : 0 }, blendDist: { value: 400 }, parallax: { value: 0 }, halfWc: { value: bake.halfW }, halfHc: { value: bake.halfH }, ambient: { value: 0.45 }, useDepth: { value: depth ? 1 : 0 }, useShadow: { value: shadows ? 1 : 0 },
     viewDirOverride: { value: new THREE.Vector3(0, 1, 0) }, useOverride: { value: 0 },
     calmCol: { value: new THREE.Color(0.3, 0.4, 0.15) }, calmFrom: { value: 60 }, calmTo: { value: 250 }, calmAmt: { value: 0 },
+    landShade: { value: null }, landShadeSize: { value: 1600 }, landShadeK: { value: new THREE.Vector4() },
   }]);
   uniforms.atlas.value = bake.colour; uniforms.atlasN.value = bake.normal;
   const mat = new THREE.ShaderMaterial({
@@ -230,6 +231,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
       #include <fog_pars_fragment>
       uniform vec3 sunDir; uniform float ambient; uniform float useShadow; uniform float soften;
       uniform vec3 calmCol; uniform float calmFrom, calmTo, calmAmt;
+      uniform sampler2D landShade; uniform float landShadeSize; uniform vec4 landShadeK;
       ` + LOOKUP + `
       void main() {
         #include <logdepthbuf_fragment>
@@ -266,6 +268,10 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
         irradiance += mix(hemisphereLights[0].groundColor, hemisphereLights[0].skyColor, dot(nv, hemisphereLights[0].direction) * 0.5 + 0.5);
         #endif
         vec3 albedo = mix(col.rgb / max(col.a, 0.001) * vTint, calmCol, calm);
+        // the land's baked shade where the plant stands (hill shadow, hollows, under trees), if given:
+        // landShadeK = (hill, hollow, tree strengths, on)
+        if (landShadeK.w > 0.5) { vec3 sd = texture2D(landShade, vLand / landShadeSize + 0.5).rgb;
+          albedo *= mix(1.0, 0.4 + 0.6 * sd.r, landShadeK.x) * mix(1.0, 0.3 + 0.7 * sd.g, landShadeK.y) * (1.0 - landShadeK.z * sd.b); }
         gl_FragColor = vec4(albedo * irradiance * RECIPROCAL_PI, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>

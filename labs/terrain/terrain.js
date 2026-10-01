@@ -409,7 +409,7 @@ function bakeShade(canopy, wide) {
   const out = new Uint8Array(N * N * 4), H = Hg;
   const hAt = (x, z) => { const i = Math.min(N - 1, Math.max(0, x | 0)), j = Math.min(N - 1, Math.max(0, z | 0)); return H[j * N + i]; };
   const dirs = Array.from({ length: 8 }, (_, a) => [Math.cos(a * Math.PI / 4), Math.sin(a * Math.PI / 4)]), reach = [1, 2, 4, 7, 12, 20, 32];
-  const tree = Math.round(9 / S.y * flat / TEX);                    // a ~9 m tree's shadow falls this many cells away from the sun
+  const tree = Math.max(2, Math.round(20 / S.y * flat / TEX));      // a ~20 m tree's shadow reaches this many cells away from the sun; was a ~9 m tree's shadow falls this many cells away from the sun
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const k = j * N + i, h0 = H[k] + 0.5;
     let vis = 1;
@@ -420,9 +420,12 @@ function bakeShade(canopy, wide) {
     }
     let open = 0;
     for (const [ax, az] of dirs) { let m = 0; for (const r of reach) { const e = (hAt(i + ax * r, j + az * r) - h0) / (r * TEX); if (e > m) m = e; } open += m / Math.sqrt(1 + m * m); }   // sin of the horizon's angle
-    const ti = Math.min(N - 1, Math.max(0, Math.round(i + dx * tree))), tj = Math.min(N - 1, Math.max(0, Math.round(j + dz * tree)));
+    // the trees' shade: the canopy looked for toward the sun, all along a shadow's length (so it is a
+    // long shadow like the real ones, not a blob beside the tree), a little weaker toward its tip
+    let ts = canopy[k] * 0.6;
+    for (let t = 1; t <= tree; t++) { const ti = Math.min(N - 1, Math.max(0, Math.round(i + dx * t))), tj = Math.min(N - 1, Math.max(0, Math.round(j + dz * t))); ts = Math.max(ts, canopy[tj * N + ti] * (1 - 0.35 * t / tree)); }
     out[k * 4] = vis * 255; out[k * 4 + 1] = Math.max(0, 1 - open / 8 * 1.6) * 255;
-    out[k * 4 + 2] = Math.min(1, Math.max(canopy[k] * 0.6, wide[tj * N + ti] * 2.5 + canopy[tj * N + ti] * 0.5)) * 255; out[k * 4 + 3] = 255;
+    out[k * 4 + 2] = Math.min(1, ts) * 255; out[k * 4 + 3] = 255;
   }
   if (!shadeTex) { shadeTex = new THREE.DataTexture(out, N, N, THREE.RGBAFormat); shadeTex.magFilter = shadeTex.minFilter = THREE.LinearFilter; shadeTex.generateMipmaps = false; U.shadeMap.value = shadeTex; }
   else shadeTex.image.data.set(out);
@@ -553,7 +556,7 @@ for (const [k, v] of Object.entries(TS.u)) if (U[k]) U[k].value = v;
 const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0 });
 mat.defines = {}; if (GL2) mat.defines.HEX_GRAD = ''; if (TS.lite) mat.defines.LITE = '';        // WebGL 2 can give each turned read its own true gradients (no seams); WebGL 1 lets the blend hide them
 mat.onBeforeCompile = (sh) => {
-  Object.assign(sh.uniforms, U, sky.uniforms);
+  Object.assign(sh.uniforms, U, sky.uniforms); setTimeout(() => { mat.userData.fs = sh.fragmentShader; });   // (kept for the test rigs)
   sh.vertexShader = 'varying vec3 vW; varying vec3 vWN;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvW = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);');
   sh.fragmentShader = SKY_GLSL + `
     uniform sampler2D groundMap; uniform float tile, split; uniform vec2 res;
@@ -561,7 +564,7 @@ mat.onBeforeCompile = (sh) => {
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
     uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 lushTint, dampTint, slopeTint;
     uniform sampler2D waterMap; uniform float waterOn, wFroth, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow;
-    float gWater = 0.0, gFoam = 0.0; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathMap; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange; uniform vec3 shadowAt;
+    float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gShadowFade = 0.0; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathMap; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange; uniform vec3 shadowAt;
     uniform vec3 avgGround, avgDry, avgLush, avgForest, avgWet, avgPath, avgSteep, avgShore; uniform float shoreStr; uniform sampler2D layShore; uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layWet; uniform sampler2D layPath; uniform sampler2D laySteep;
     varying vec3 vWN;
     varying vec3 vW;
@@ -764,8 +767,9 @@ mat.onBeforeCompile = (sh) => {
       // LIGHT AND SHADE (baked): out of the sun behind a ridge, down in a ravine, under the trees
       vec3 sd = texture2D(shadeMap, vW.xz / landSize + 0.5).rgb;
       vec2 inSq = abs(vW.xz - shadowAt.xz) / max(shadowRange, 1.0);                  // inside the real shadows' square, they throw the trees' shade
-      float baked = shadowRange > 0.0 ? smoothstep(0.7, 0.95, max(inSq.x, inSq.y)) : 1.0;
-      g *= mix(1.0, 0.4 + 0.6 * sd.r, hillShade) * mix(1.0, 0.3 + 0.7 * sd.g, aoShade) * (1.0 - treeShade * sd.b * mix(0.35, 1.0, baked));
+      float baked = shadowRange > 0.0 ? smoothstep(0.55, 0.92, max(inSq.x, inSq.y)) : 1.0; gShadowFade = baked;
+      gLit = mix(1.0, 0.4 + 0.6 * sd.r, hillShade) * mix(1.0, 0.3 + 0.7 * sd.g, aoShade) * (1.0 - treeShade * sd.b * mix(0.35, 1.0, baked));
+      g *= gLit;
     }
     // WATER, painted on: its colour by depth over the bed, and the surface's wave normal kept for the
     // glints and sky reflection laid on after the lighting
@@ -777,13 +781,13 @@ mat.onBeforeCompile = (sh) => {
       // the stream itself is falling steeply (falls and cascades)
       gWater *= mix(1.0 - smoothstep(0.05, 0.14, 1.0 - normalize(vWN).y), 1.0, smoothstep(0.1, 0.45, wd.b));
       if (gWater > 0.0) {
-        vec3 wc = mix(wShallow, wDeep, smoothstep(0.2, 0.9, wd.g));
+        vec3 wc = mix(wShallow, wDeep, smoothstep(0.2, 0.9, wd.g)) * mix(1.0, gLit, 0.8);   // in the shade too
         g = mix(g, mix(g * wc * 2.2, wc, mix(0.35, 0.75, smoothstep(0.2, 0.55, wd.g))), gWater);   // shallow streams let their bed show
         // WHITE WATER: where a river falls steeply, froth in streaks that run downhill
         gFoam = smoothstep(0.1, 0.6, wd.b) * wFroth * gWater;
         if (gFoam > 0.0) {
           float st = vn(vec2((vW.x + vW.z) * 0.9, vW.y * 0.8 + time * 3.0)) * 0.6 + vn(vec2((vW.x - vW.z) * 2.1, vW.y * 2.0 + time * 5.0)) * 0.4;
-          g = mix(g, vec3(0.86, 0.92, 0.95) * (0.78 + 0.32 * st), clamp(gFoam * (0.6 + 0.5 * st), 0.0, 1.0));
+          g = mix(g, vec3(0.86, 0.92, 0.95) * (0.78 + 0.32 * st) * gLit, clamp(gFoam * (0.6 + 0.5 * st), 0.0, 1.0));
         }
         vec2 p = vW.xz / wWave, t = vec2(time * wSpeed, time * wSpeed * 0.7) * wWaveOn;
         float e = 0.15, hA = vn(p + t) + 0.5 * vn(p * 2.3 - t * 1.3);
@@ -793,7 +797,11 @@ mat.onBeforeCompile = (sh) => {
     }
     if (grid > 0.5) { vec2 f = abs(fract(uv + 0.5) - 0.5) / fwidth(uv); g = mix(g, vec3(1.0, 0.2, 0.2), 1.0 - smoothstep(0.0, 1.5, min(f.x, f.y))); }
     diffuseColor.rgb *= g;
-  `).replace('#include <dithering_fragment>', `
+  `).replace('#include <lights_fragment_begin>', THREE.ShaderChunk.lights_fragment_begin.replace(
+    // the real sun shadow fades out over the outer part of its square (the baked tree shade fades in there)
+    'directLight.color *= ( directLight.visible && receiveShadow ) ? getShadow( directionalShadowMap[ i ], directionalLightShadow.shadowMapSize, directionalLightShadow.shadowBias, directionalLightShadow.shadowRadius, vDirectionalShadowCoord[ i ] ) : 1.0;',
+    'directLight.color *= ( directLight.visible && receiveShadow ) ? mix( getShadow( directionalShadowMap[ i ], directionalLightShadow.shadowMapSize, directionalLightShadow.shadowBias, directionalLightShadow.shadowRadius, vDirectionalShadowCoord[ i ] ), 1.0, gShadowFade ) : 1.0;'
+  )).replace('#include <dithering_fragment>', `
     if (gWater > 0.0) {
       vec3 V = normalize(cameraPosition - vW), R = reflect(-V, gWaterN);
       float fres0 = 0.04 + 0.96 * pow(1.0 - max(dot(V, gWaterN), 0.0), 5.0);
@@ -805,7 +813,7 @@ mat.onBeforeCompile = (sh) => {
     #include <dithering_fragment>
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-17' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-19' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground); ground.receiveShadow = SHADOW.on;
 // THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
@@ -919,6 +927,17 @@ function stoneShapes() {
   }
   return out;
 }
+// a material darkened by the land's baked shade where each instance stands, like the ground under it
+function landShaded(m) {
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, { shadeMap: U.shadeMap, landSize: U.landSize, hillShade: U.hillShade, aoShade: U.aoShade, treeShade: U.treeShade });
+    sh.vertexShader = 'varying vec2 vLand;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n{ vec4 lw = vec4(0.0, 0.0, 0.0, 1.0);\n#ifdef USE_INSTANCING\nlw = instanceMatrix * lw;\n#endif\nvLand = (modelMatrix * lw).xz; }');
+    sh.fragmentShader = 'uniform sampler2D shadeMap; uniform float landSize, hillShade, aoShade, treeShade; varying vec2 vLand;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+      { vec3 sd = texture2D(shadeMap, vLand / landSize + 0.5).rgb; diffuseColor.rgb *= mix(1.0, 0.4 + 0.6 * sd.r, hillShade) * mix(1.0, 0.3 + 0.7 * sd.g, aoShade) * (1.0 - treeShade * sd.b * 0.6); }`);
+  };
+  m.customProgramCacheKey = () => 'land-shaded';
+  return m;
+}
 function placeStones() {
   for (const m of STONES.meshes) { scene.remove(m); m.dispose(); }
   STONES.meshes = [];
@@ -941,7 +960,7 @@ function placeStones() {
   const base = new THREE.Color(0x8d8a84), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), c = new THREE.Color();
   per.forEach((list, v) => {
     if (!list.length) return;
-    const mesh = new THREE.InstancedMesh(STONES.shapes[v], new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, flatShading: true }), list.length);
+    const mesh = new THREE.InstancedMesh(STONES.shapes[v], landShaded(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, flatShading: true })), list.length);
     list.forEach(([x, y, z, sc, yaw, tone], n) => {
       e.set((tone - 0.5) * 0.3, yaw, (tone - 0.5) * 0.2); q.setFromEuler(e); m4.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(sc, sc, sc)); mesh.setMatrixAt(n, m4);
       mesh.setColorAt(n, c.copy(base).multiplyScalar(0.72 + 0.4 * tone).lerp(new THREE.Color(0x9a8f78), (tone * 7.3) % 1 * 0.35));   // greys, some warmer
@@ -1218,7 +1237,10 @@ renderer.setAnimationLoop(() => {
   watch();
   if ((shown += dt) > 0.5) { shown = 0; const inf = renderer.info.render; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${(1000 / Math.max(1, fps)).toFixed(1)} ms · ${inf.calls} draws · ${(inf.triangles / 1e6).toFixed(2)} M triangles · ${GL2 ? 'WebGL2' : 'WebGL1'}`; }
   renderer.info.reset(); stepRain(); controls.update(); U.time.value += dt; sky.update(camera, dt); U.sunDirW.value.copy(SUN_DIR); followShadow();
-  for (const f of [treeForest, coverForest]) if (f) f.update(camera, controls.target, camera.position, dt);
+  for (const f of [treeForest, coverForest]) if (f) {
+    f.landU.landShade.value = U.shadeMap.value; f.landU.landShadeK.value.set(U.hillShade.value, U.aoShade.value, U.treeShade.value * 0.6, U.shadeMap.value ? 1 : 0);   // the land's baked shade, on the plants too
+    f.update(camera, controls.target, camera.position, dt);
+  }
   renderer.render(scene, camera); drawAtlas();
 });
-if (Q.has('probe')) Object.assign(window, { WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest] });
+if (Q.has('probe')) Object.assign(window, { groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest] });
