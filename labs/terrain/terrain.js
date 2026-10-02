@@ -102,7 +102,7 @@ function baseHeight(x, z) {
   return out;
 }
 // (the land's shape as Jacob set it, 2026-10-01)
-const SHAPE = { terraceOn: true, step: 30, riser: 0.03, terraceAmount: 0.22, terraceFrom: 1, terraceSpread: 0.35, erodeOn: true, erodeSmooth: 3, drops: 390000, erodeStrength: 0.35, ravines: 40, ravineStrength: 4, ravineScale: 4, ravineRound: 0.8, crags: 40, cragSize: 60 };
+const SHAPE = { terraceOn: true, step: 30, riser: 0.03, terraceAmount: 0.22, terraceFrom: 1, terraceSpread: 0.35, erodeOn: true, erodeSmooth: 3, drops: 90000, erodeStrength: 0.35, ravines: 40, ravineStrength: 4, ravineScale: 4, ravineRound: 0.8, crags: 40, cragSize: 60 };
 const LAND = { wetDepth: 7, dryHeight: 6.0, forest: 0.55, shadeReach: 4, pathWidth: 2.2, treeline: 280, hillForest: 0.3, shore: 2 };   // (the land maps' settings; up here because the crags read the treeline)
 const Hg = new Float32Array(N * N), FLOW = new Float32Array(N * N), SETTLE = new Float32Array(N * N);
 const cellX = (i) => (i + 0.5) * TEX - SIZE / 2;
@@ -1170,7 +1170,7 @@ for (const [id, key, fmt] of [['coverCount', 'count', v => v.toLocaleString()], 
 // ── the land's shape: terraces and erosion (these rebuild the land, the maps, trees and plants) ──
 // WATCH IT RAIN: the land without erosion, then drops a chunk a frame with their trails drawn and the
 // mesh reshaped as they go; when the rain stops the maps, trees and plants are rebuilt on the result
-const RAIN = { gen: null, paused: false, perFrame: 5200, done: 0, trail: [], frame: 0 };
+const RAIN = { gen: null, paused: false, perFrame: 1500, done: 0, trail: [], frame: 0 };
 const trailGeo = new THREE.BufferGeometry(), trailLines = new THREE.LineSegments(trailGeo, new THREE.LineBasicMaterial({ color: 0x5fb4ff, transparent: true, opacity: 0.55 }));
 trailLines.frustumCulled = false; trailLines.visible = false; scene.add(trailLines);
 function fastMesh() { if (SEG !== N - 1) { shapeMesh(); return; } const p = geo.attributes.position; for (let k = 0; k < p.count; k++) p.setY(k, Hg[k]); p.needsUpdate = true; geo.computeVertexNormals(); }
