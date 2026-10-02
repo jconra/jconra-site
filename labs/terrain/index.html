@@ -104,6 +104,7 @@
       <details class="sec"><summary>Cliff faces</summary>
       <p class="note"><b>Cliff faces:</b> steep ground reads its picture from the side (triplanar, so it is not smeared down the face) and is banded into rock strata.</p>
       <div class="row"><label for="cCrags">Crags: jagged rock up high (above the treeline, on steep ground)</label><output id="cCragsOut"></output><input id="cCrags" type="range" min="0" max="40" step="1"></div>
+      <div class="row"><label for="cCragSharp">Crags: rounded to sharp and jagged</label><output id="cCragSharpOut"></output><input id="cCragSharp" type="range" min="0" max="1" step="0.01"></div>
       <div class="row"><label for="cCragSize">Crags: how wide the ribs are</label><output id="cCragSizeOut"></output><input id="cCragSize" type="range" min="10" max="120" step="5"></div>
       <div class="row"><label for="strataStr">Strata</label><output id="strataStrOut"></output><input id="strataStr" type="range" min="0" max="1.5" step="0.05" value="1.5"></div>
       <div class="row"><label for="strataSize">Strata thickness</label><output id="strataSizeOut"></output><input id="strataSize" type="range" min="0.3" max="6" step="0.1" value="6"></div>
@@ -274,6 +275,15 @@
       <div class="row"><label for="calmAmount">How much they blend</label><output id="calmAmountOut"></output><input id="calmAmount" type="range" min="0" max="1" step="0.01"></div>
       <div class="row"><label for="calmFrom">Starting at</label><output id="calmFromOut"></output><input id="calmFrom" type="range" min="0" max="300" step="5"></div>
       <div class="row"><label for="calmTo">Fully by</label><output id="calmToOut"></output><input id="calmTo" type="range" min="20" max="600" step="10"></div>
+      <p class="note"><b>Lawn</b>: short grass tufts (the Grass Lab's blades) on the bare ground near you.</p>
+      <div class="row"><label for="lawnAmount">How much of the bare ground</label><output id="lawnAmountOut"></output><input id="lawnAmount" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="lawnDensity">How thick</label><output id="lawnDensityOut"></output><input id="lawnDensity" type="range" min="1" max="30" step="1"></div>
+      <div class="row"><label for="lawnRadius">Out to (0: off)</label><output id="lawnRadiusOut"></output><input id="lawnRadius" type="range" min="0" max="100" step="5"></div>
+      <p class="note"><b>Breeze</b>: the plants, their far stand-ins and the lawn sway together, big plants less.</p>
+      <label class="check" for="windOn"><input id="windOn" type="checkbox" checked> Breeze</label>
+      <div class="row"><label for="windAmp">Strength</label><output id="windAmpOut"></output><input id="windAmp" type="range" min="0" max="0.4" step="0.01"></div>
+      <div class="row"><label for="windSpeed">Speed of the gusts</label><output id="windSpeedOut"></output><input id="windSpeed" type="range" min="0" max="5" step="0.1"></div>
+      <div class="row"><label for="windFreq">Size of the gusts</label><output id="windFreqOut"></output><input id="windFreq" type="range" min="0.02" max="0.5" step="0.01"></div>
       <label class="check" for="stonesOn"><input id="stonesOn" type="checkbox" checked> Stones (thick on slopes and in the scree below cliffs, a few in the meadows)</label>
       <div class="row"><label for="stoneCount">How many</label><output id="stoneCountOut"></output><input id="stoneCount" type="range" min="0" max="30000" step="500"></div>
       <div class="row"><label for="stoneSize">Size</label><output id="stoneSizeOut"></output><input id="stoneSize" type="range" min="0.3" max="3" step="0.1"></div>

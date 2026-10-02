@@ -9,6 +9,7 @@
 // hint in alpha. The instance carries its own spin, so a thousand trees spun differently each
 // pick their own view.
 import * as THREE from 'three';
+import { WIND, WIND_GLSL } from './wind.js';
 
 // direction (unit, in the tree's frame, y up) -> square [0,1]^2
 export function octEncode(d, hemi) {
@@ -95,6 +96,10 @@ export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, he
 // viewer's direction in the tree's own frame.
 const VERTEX = `
       #include <common>
+      #ifdef WIND
+      ` + WIND_GLSL + `
+      uniform float windSway;
+      #endif
       #include <logdepthbuf_pars_vertex>
       #include <shadowmap_pars_vertex>
       #include <fog_pars_vertex>
@@ -138,6 +143,10 @@ const VERTEX = `
         // every cell boundary, trunk and all, and the trees look as if they are walking.)
         vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam)); vec3 up = cross(toCam, right);
         vec3 world = worldCentre + (right * position.x * halfW * 2.0 + up * position.y * halfH * 2.0) * iScale;
+        #ifdef WIND
+        { float top = (centre.y + halfH) * iScale, above = world.y - (modelMatrix * vec4(iPos, 1.0)).y, k = clamp(above / max(top, 0.001), 0.0, 1.0);   // the card bends like the plant: its top in the breeze, its foot still
+          world.xz += windAt(iPos.xz) * k * k * top * windSway; }
+        #endif
         // Which atlas cells this card shows, and their weights: the three cells of the triangle the
         // view direction falls in (near, when blending), else the nearest one. Worked out here, once
         // per card and in full precision - done per pixel, a phone's GPU split one card between
@@ -209,7 +218,8 @@ const LOOKUP = `
 // `iYaw` (radians), `iScale`, `iTint` (vec3) and `iFade` (0 gone .. 1 solid, dithered).
 // `soften` (0..1) bends the foliage's normals toward straight up, the usual trick for leaves (cards
 // facing every way, half of them 'away' from the sun, read as black otherwise)
-export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3), blend = true, depth = true, shadows = true, soften = 0 } = {}) {
+// wind (0..1): sway in the shared breeze (src/objects/wind.js), 0 still
+export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3), blend = true, depth = true, shadows = true, soften = 0, wind = 0 } = {}) {
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, THREE.UniformsLib.fog, { soften: { value: soften },
     atlas: { value: null }, atlasN: { value: null }, grid: { value: bake.grid }, hemi: { value: bake.hemi ? 1 : 0 },
     radius: { value: bake.radius }, halfW: { value: bake.halfW }, halfH: { value: bake.halfH }, centre: { value: bake.centre.clone() }, sunDir: { value: sunDir.clone().normalize() },
@@ -278,6 +288,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
         #include <fog_fragment>
       }`,
   });
+  if (wind > 0) { mat.defines = { ...(mat.defines || {}), WIND: '' }; Object.assign(mat.uniforms, WIND.uniforms, { windSway: { value: wind } }); }
   // the shadow pass: the same quad, turned to the light, its depth from the atlas, packed the way
   // three's shadow maps expect
   mat.userData.depthMaterial = new THREE.ShaderMaterial({

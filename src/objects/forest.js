@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { bakeImposterSteps, imposterMaterial } from './imposter.js';
+import { swayMaterial } from './wind.js';
 
 function rnd(seed) { let s = seed >>> 0 || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
 
@@ -27,7 +28,8 @@ export class Forest {
   // yaw, tint (optional THREE.Color) } to plant instead of the endless tiles; `heightAt(x, z)` stands them on uneven ground.
   constructor(renderer, scene, { base = '/models/trees/', tile = 420, tiles = 7, perTile = 90, imposterAt = 140, band = 40, ahead = 0.75,
                                  grid = 12, cell = 192, light = false, detail = 'coarse', clear = null, sunDir = new THREE.Vector3(0.5, 1, 0.3), shadows = false,
-                                 species = null, fixed = null, heightAt = null, nearCap = 400 } = {}) {
+                                 species = null, fixed = null, heightAt = null, nearCap = 400, wind = false } = {}) {
+    this.wind = wind;                   // sway in the shared breeze (src/objects/wind.js); a species' `sway` (0..1, default 1) says how much
     Object.assign(this, { renderer, scene, base, tile, tiles, perTile, imposterAt: light ? 0 : imposterAt, band, ahead, grid: light ? 8 : grid, cell, detail, clear, sunDir, shadows: shadows && !light, light, fixed, heightAt, nearCap });
     this.group = new THREE.Group(); scene.add(this.group);
     this.species = (species || FOREST_SPECIES).map(s => ({ ...s }));
@@ -109,7 +111,7 @@ export class Forest {
       const n = cap;
       for (const [name, size] of [['iPos', 3], ['iYaw', 1], ['iScale', 1], ['iTint', 3], ['iFade', 1]]) { const a = new THREE.InstancedBufferAttribute(new Float32Array(n * size), size); a.setUsage(THREE.DynamicDrawUsage); geo.setAttribute(name, a); }
       geo.instanceCount = 0;
-      const mat = imposterMaterial(sp.bake, { sunDir: this.sunDir, blend: true, depth: !this.light, shadows: this.shadows, soften: sp.soften || 0 });
+      const mat = imposterMaterial(sp.bake, { sunDir: this.sunDir, blend: true, depth: !this.light, shadows: this.shadows, soften: sp.soften || 0, wind: this.wind ? (sp.sway ?? 1) : 0 });
       if (this.calm) for (const [k, v] of Object.entries(this.calm)) mat.uniforms[k].value = v;
       Object.assign(mat.uniforms, this.landU);
       mat.uniforms.blendDist.value = 300;
@@ -134,6 +136,7 @@ export class Forest {
             sh.fragmentShader = 'varying float vFade;\n' + sh.fragmentShader.replace('#include <alphatest_fragment>', '#include <alphatest_fragment>\n{ float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))); if (vFade < dither) discard; }');
           };
           mat.customProgramCacheKey = () => 'forest-mesh' + (sp.upNormals ? '-up' : '') + (sp.soften ? '-s' + sp.soften : ''); mat.needsUpdate = true;
+          if (this.wind) { m.geometry.computeBoundingBox(); swayMaterial(mat, Math.max(0.001, m.geometry.boundingBox.max.y), sp.sway ?? 1, '-' + (sp.sway ?? 1)); }
         }
         m.userData.local = o.matrixWorld.clone(); m.userData.fade = mf;
         this.group.add(m); meshes.push(m);

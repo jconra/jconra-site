@@ -47,9 +47,10 @@ export const LIT_SOFTEN = 0.35;
 //   clumpEdge (0..1): clumps kept to where patches meet (and round the bare ground) instead of anywhere
 //   lonerBare (0..1): loners kept to the bare ground (1: only there), so the open areas hold the flowers
 //   longClear (0..1): long grasses kept out from under and beside the trees (1: none in the trees' shade)
+//   lawn (0..1): how much of the bare ground the short lawn grass covers (see lawnSpots)
 // (the defaults are Jacob's, set in the Growth Lab on 2026-10-01)
 export const GROW_DEFAULTS = { patchSize: 63, patchSharp: 1, clumpShare: 0.39, clumpSize: 2.5, clumpCount: 10, lonerShare: 0.11, fertSize: 110, fert: 0.33,
-  winner: true, bare: 0.39, bareSize: 20, wetSize: 0, clumpEdge: 1, lonerBare: 1, longClear: 1 };
+  winner: true, bare: 0.39, bareSize: 20, wetSize: 0, clumpEdge: 1, lonerBare: 1, longClear: 1, lawn: 1 };
 export const COVER_DEFAULTS = { size: 2.6, density: 40000 };   // density: how many in a circle 140 m round (the Growth Lab's "how many")
 export const FAMILY_DEFAULTS = { size: 90, strength: 0.7, pineFrom: 25 };
 const KIND_SIZES = [1.8, 1.95, 1.85, 1.55, 0.65, 1.6, 1.9, 1.45, 1.15, 1.1, 1.6, 1.4, 1, 1.65, 1.05, 1.55];   // Jacob's, 2026-10-01
@@ -149,6 +150,26 @@ export function growPlants({ ground, at, radius, count, size = 1, kinds, grow })
       if (lb > 0 ? r(tile[2] + t, seed + 79.3) > lb * b + (1 - lb) * (1 - b) : r(tile[2] + t, seed + 79.3) < b) continue; }
     const k = lk[Math.floor(r(tile[2] + t, seed + 71.9) * lk.length) % lk.length]; if (r(tile[2] + t, seed + 75.7) > want(k, g) + 0.1) continue;   // (its own draw: 73.1 is the spot's depth in the tile)
     if (inRange(x, z)) plant(k, x, z, tile[2] + t + seed * 1000 + 500, g); got++;
+  }
+  return out;
+}
+
+// THE LAWN: short grass tufts (src/objects/lawn.js) on the bare ground, `density` tufts a square metre, within
+// `radius` m of `at`; tiled like the plants, so tufts that stay in range keep their spots as `at` moves.
+// grow.lawn (0..1): how much of the bare ground they cover. Returns [{ x, z, turn, size, yellow, light }].
+export function lawnSpots({ ground, at, radius, density, grow }) {
+  const out = [], G = grow; if (!(G.bare > 0) || !(G.lawn > 0) || !(density > 0)) return out;
+  const TILE = 10, C = at, R = radius, per = Math.round(density * TILE * TILE);
+  for (let tz = Math.floor((C.z - R) / TILE); tz <= Math.floor((C.z + R) / TILE); tz++) for (let tx = Math.floor((C.x - R) / TILE); tx <= Math.floor((C.x + R) / TILE); tx++) {
+    if (Math.hypot((tx + 0.5) * TILE - C.x, (tz + 0.5) * TILE - C.z) > R + TILE) continue;
+    const ts = ((tx + 5000) * 10007 + tz + 5000) * 13;
+    for (let t = 0; t < per; t++) {
+      const x = (tx + r(ts + t, 301.1)) * TILE, z = (tz + r(ts + t, 302.3)) * TILE;
+      if (Math.hypot(x - C.x, z - C.z) > R) continue;
+      if (r(ts + t, 303.7) > bareAt(G, x, z) * G.lawn) continue;
+      const g = ground(x, z); if (g.hard >= 0.5) continue;
+      out.push({ x, z, turn: r(ts + t, 304.9) * 6.283, size: 0.7 + 0.7 * r(ts + t, 305.3), yellow: r(ts + t, 306.1) < 0.2 ? 0.35 : 0, light: (r(ts + t, 307.9) - 0.5) * 0.25 });
+    }
   }
   return out;
 }

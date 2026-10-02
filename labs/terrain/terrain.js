@@ -14,12 +14,15 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Forest, FOREST_SPECIES } from '../../src/objects/forest.js';
 import { chooseTier, saveTier, watchFrames, TIERS } from '../../src/quality.js';
 import { makeCloudSky, SKY_GLSL } from '../../src/objects/cloudSky.js';
-import { KIND_INFO, LIT_SOFTEN, GROW_DEFAULTS, FAMILY_DEFAULTS, COVER_DEFAULTS, defaultKinds, growPlants, pickTree as pickTreeKind, settingsJSON, applySettings } from '../../src/objects/growth.js';
+import { WIND, tickWind } from '../../src/objects/wind.js';
+import { makeLawn } from '../../src/objects/lawn.js';
+import { KIND_INFO, LIT_SOFTEN, GROW_DEFAULTS, FAMILY_DEFAULTS, COVER_DEFAULTS, defaultKinds, growPlants, lawnSpots, pickTree as pickTreeKind, settingsJSON, applySettings } from '../../src/objects/growth.js';
 
 const $ = (id) => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
 // QUALITY: what each tier means here. `forest`, `cover` and `u` seed the defaults before anything is
 // built; `controls` are the panel's own controls, set (and fired) when the tier changes while running.
+// `lawn`: the short lawn grass on the bare ground, out to `radius` m, `density` tufts a square metre (off on potato)
 // `shadow`: real sun shadows (a shadow map) from trees, stones and, on gaming, the plants, over
 // `range` m round where you look; past it (and on potato) the baked shade does the job.
 // Potato is aimed at a machine with no graphics card (a thin client: every pixel drawn by the
@@ -28,11 +31,11 @@ const Q = new URLSearchParams(location.search);
 // flat colours (each picture's average) instead of read from the pictures, one noise read where
 // there were four.
 const TIER_SET = {
-  potato: { ratio: 0.5, lite: true, stones: 1500, treeShare: 0.45, shadow: null, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 8000, near: 0, radius: 90 },
+  potato: { ratio: 0.5, lite: true, lawn: { radius: 0, density: 0 }, stones: 1500, treeShare: 0.45, shadow: null, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 8000, near: 0, radius: 90 },
             u: { wWaveOn: 0, stampFar: 12 }, checks: { stampOn: false, hexOn: false, farOn: false, wWaveOn: false, cloudsOn: false } },
-  normal: { ratio: 1.5, stones: 14000, shadow: { range: 80, size: 1024, cover: false }, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 40000, near: 35, radius: 140 },
+  normal: { ratio: 1.5, lawn: { radius: 40, density: 10 }, stones: 14000, shadow: { range: 80, size: 1024, cover: false }, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 40000, near: 35, radius: 140 },
             u: { wWaveOn: 1, stampFar: 30 }, checks: { stampOn: true, hexOn: true, farOn: false, wWaveOn: true, cloudsOn: true } },
-  gaming: { ratio: 2, stones: 26000, shadow: { range: 150, size: 2048, cover: true }, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 66000, near: 45, radius: 180 },
+  gaming: { ratio: 2, lawn: { radius: 60, density: 14 }, stones: 26000, shadow: { range: 150, size: 2048, cover: true }, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 66000, near: 45, radius: 180 },
             u: { wWaveOn: 1, stampFar: 45 }, checks: { stampOn: true, hexOn: true, farOn: true, wWaveOn: true, cloudsOn: true } },
 };
 // the tier is picked on a throwaway context first, so the real one can be made without smoothing
@@ -102,7 +105,7 @@ function baseHeight(x, z) {
   return out;
 }
 // (the land's shape as Jacob set it, 2026-10-01)
-const SHAPE = { terraceOn: true, step: 30, riser: 0.03, terraceAmount: 0.22, terraceFrom: 1, terraceSpread: 0.35, erodeOn: true, erodeSmooth: 3, drops: 90000, erodeStrength: 0.35, ravines: 40, ravineStrength: 4, ravineScale: 4, ravineRound: 0.8, crags: 40, cragSize: 60 };
+const SHAPE = { terraceOn: true, step: 30, riser: 0.03, terraceAmount: 0.22, terraceFrom: 1, terraceSpread: 0.35, erodeOn: true, erodeSmooth: 3, drops: 90000, erodeStrength: 0.35, ravines: 40, ravineStrength: 4, ravineScale: 4, ravineRound: 0.8, crags: 40, cragSize: 60, cragSharp: 0.5 };
 const LAND = { wetDepth: 7, dryHeight: 6.0, forest: 0.55, shadeReach: 4, pathWidth: 2.2, treeline: 280, hillForest: 0.3, shore: 2 };   // (the land maps' settings; up here because the crags read the treeline)
 const Hg = new Float32Array(N * N), FLOW = new Float32Array(N * N), SETTLE = new Float32Array(N * N);
 const cellX = (i) => (i + 0.5) * TEX - SIZE / 2;
@@ -362,6 +365,10 @@ function addCrags(H) {
   if (!SHAPE.crags) return;
   const B = blur(H, 4), S = THREE.MathUtils.smoothstep, at = (i, j) => B[Math.min(N - 1, Math.max(0, j)) * N + Math.min(N - 1, Math.max(0, i))];
   const L = SHAPE.cragSize * 0.9, f = 2 * Math.PI / SHAPE.cragSize;              // lattice spacing (m); ribs a cragSize apart
+  // SHARPNESS (cragSharp 0..1): the ribs' profile goes from rounded to knife-edged, and finer broken crests ride on them;
+  // `mean` is the pattern's average height, taken off so sharpening doesn't raise or sink the rock as a whole
+  const pw = 0.9 + SHAPE.cragSharp * 3.5, jagK = SHAPE.cragSharp * 0.45;
+  let mean = 0; for (let q = 0; q < 256; q++) { const t = (q + 0.5) / 256 * Math.PI; mean += Math.pow(1 - Math.abs(Math.cos(t)), pw) * 0.75; } mean = mean / 256 + jagK * 0.045;
   const latDir = new Map();                                                      // a lattice point's downhill direction, worked out once
   const dirAt = (a, b) => { const key = a * 100003 + b; let d = latDir.get(key);
     if (!d) { const x = a * L, z = b * L, i = Math.round((x + SIZE / 2) / TEX - 0.5), j = Math.round((z + SIZE / 2) / TEX - 0.5);
@@ -377,10 +384,12 @@ function addCrags(H) {
       const cx = a * L, cz = b * L, dd = Math.hypot(x - cx, z - cz) / (L * 1.5); if (dd >= 1) continue;
       const w = (1 - dd * dd) ** 2, [dx, dz, ph, len] = dirAt(a, b);
       const across = (x - cx) * -dz + (z - cz) * dx, down = (x - cx) * dx + (z - cz) * dz;   // from this point: across the slope, and down it
-      const rib = 1 - Math.abs(Math.cos(across * f + ph + Math.sin(down * f * 0.25) * 0.6));   // sharp crests, the odd kink down the fall line
-      sum += rib * rib * (0.75 + 0.25 * Math.sin(down * f * 0.35 * len + ph)) * w; wsum += w;
+      const rib = 1 - Math.abs(Math.cos(across * f + ph + Math.sin(down * f * 0.25) * 0.6));   // crests, the odd kink down the fall line
+      // jag: finer, broken crests riding on the ribs (their own, slanting a little across the fall line)
+      const jag = Math.pow(1 - Math.abs(Math.cos(across * f * 2.7 + down * f * 0.9 + ph * 1.7)), 3) * (0.5 + 0.5 * Math.sin(down * f * 1.3 + ph * 2.3));
+      sum += (Math.pow(rib, pw) * (0.75 + 0.25 * Math.sin(down * f * 0.35 * len + ph)) + jagK * jag) * w; wsum += w;
     }
-    if (wsum > 0) H[k] += SHAPE.crags * where * (sum / wsum - 0.3);
+    if (wsum > 0) H[k] += SHAPE.crags * where * (sum / wsum - mean);
   }
 }
 function buildHeights() {
@@ -909,8 +918,33 @@ function loadSheet(url, grid, done, cell = null, lit = () => false) {
 }
 // the plants as Forest species: each its own root, lit like the ground, a cheap atlas (8 x 8 views
 // of 128 px over the top half: 1024 px, 4 MB colour + 4 MB normal and depth) and no green tint
+// what the ground at a spot is like, for the plants and the lawn (see growPlants in src/objects/growth.js): how much
+// each habitat likes it (grass: open, part shade; shrub: the forest's edge; long: open, dry rises; shade; wet: along
+// water; dry), `hard` where nothing grows (paths, steep, in the water), `blocked` that and mud and the stony shore
+function coverGround(x, z) {
+  const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
+  const pi = Math.min(MAPS.P - 1, Math.max(0, Math.floor((x + SIZE / 2) / SIZE * MAPS.P))), pj = Math.min(MAPS.P - 1, Math.max(0, Math.floor((z + SIZE / 2) / SIZE * MAPS.P))), path = MAPS.path[(pj * MAPS.P + pi) * 4] / 255 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 510;
+  const canopy = MAPS.canopy[k], shade = Math.min(1, Math.max(0, MAPS.wide[k] * 2.2 - canopy * 0.8)), open = 1 - Math.min(1, canopy + shade);
+  const hard = path + MAPS.steep[k] * 1.5 + waterAt(x, z) * 4, shore = MAPS.shore ? Math.min(1, MAPS.shore[k] * 2.5) : 0;
+  const blocked = hard + Math.max(0, MAPS.wet[k] - 0.6) * 2 + shore * 1.2;
+  return { hard, blocked, shade: Math.min(1, shade + 0.6 * canopy), wet: Math.max(shore, MAPS.wet[k]) * (1 - MAPS.steep[k]),
+    dry: MAPS.steep[k] > 0.4 ? 0 : MAPS.dry[k] * open, grass: (0.55 * open + 1.0 * shade + 0.15 * canopy) * (1 - MAPS.dry[k] * 0.4), shrub: 0.08 * open + 0.9 * shade + 0.35 * canopy,
+    long: MAPS.steep[k] > 0.4 ? 0 : (0.35 + 0.65 * MAPS.dry[k]) * (1 - Math.min(1, canopy * 1.5 + MAPS.wide[k])) * (1 - Math.min(1, path + MAPS.steep[k] + MAPS.wet[k])) };
+}
+// THE LAWN: short grass tufts on the bare ground near you (src/objects/lawn.js, placed by lawnSpots), the
+// grass's own colour, darkened by the land's shade; laid with the plants
+const LAWN = { ...TS.lawn, count: 0 };
+const lawn = makeLawn({ cap: 90000, shade: { shadeMap: U.shadeMap, landSize: U.landSize, hillShade: U.hillShade, aoShade: U.aoShade, treeShade: U.treeShade } });
+scene.add(lawn.mesh);
+function placeLawn() {
+  const spots = LAWN.radius > 0 ? lawnSpots({ ground: coverGround, at: COVER.at, radius: LAWN.radius, density: LAWN.density, grow: GROW }) : [];
+  for (const t of spots) t.y = heightAt(t.x, t.z);
+  LAWN.count = lawn.set(spots);
+  const a = U.layLush.value && U.layLush.value.userData.avg, base = (a ? a.clone() : new THREE.Color(0.25, 0.33, 0.1)).multiply(U.lushTint.value);
+  lawn.colours(base.clone().multiplyScalar(0.8), base.clone().multiply(new THREE.Color(1.15, 1.12, 0.85)));   // darker at the root, lighter and yellower at the tips
+}
 function plantSpecies(parts, material) {
-  return parts.map((g, k) => { const root = new THREE.Group(); root.add(new THREE.Mesh(g, material)); return { name: 'ground ' + KIND_INFO[k].name, root, height: KIND_INFO[k].height, weight: 1, grid: 8, cell: 128, upNormals: !KIND_INFO[k].lit, soften: KIND_INFO[k].lit ? LIT_SOFTEN : 0, tint: false }; });
+  return parts.map((g, k) => { const root = new THREE.Group(); root.add(new THREE.Mesh(g, material)); return { name: 'ground ' + KIND_INFO[k].name, root, height: KIND_INFO[k].height, weight: 1, grid: 8, cell: 128, upNormals: !KIND_INFO[k].lit, soften: KIND_INFO[k].lit ? LIT_SOFTEN : 0, sway: KIND_INFO[k].lit ? 0.45 : 1, tint: false }; });   // big plants sway less
 }
 loadSheet('/models/props/groundPlants.glb', 4, (parts, m) => { COVER.parts = parts; COVER.material = m; COVER.plantSp = plantSpecies(parts, m); placeCover(); }, [0.5, 1.0], (k) => !!KIND_INFO[k].lit);
 let coverForest = null;
@@ -1009,27 +1043,16 @@ function placeCover() {
   for (const im of COVER.meshes) { scene.remove(im); im.dispose(); }
   COVER.meshes = [];
   if (!COVER.parts || !MAPS.wet) return;
-  // what the ground at a spot is like for each habitat: grasses (open, part shade), shrubs (shade, the
-  // forest's edge), long grasses (open, dry rises), shade, wet (along water), dry; `hard`: where nothing
-  // grows (paths, steep, in the water); `blocked`: that and mud and the stony shore, which wet kinds don't mind
-  const ground = (x, z) => {
-    const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
-    const pi = Math.min(MAPS.P - 1, Math.max(0, Math.floor((x + SIZE / 2) / SIZE * MAPS.P))), pj = Math.min(MAPS.P - 1, Math.max(0, Math.floor((z + SIZE / 2) / SIZE * MAPS.P))), path = MAPS.path[(pj * MAPS.P + pi) * 4] / 255 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 510;
-    const canopy = MAPS.canopy[k], shade = Math.min(1, Math.max(0, MAPS.wide[k] * 2.2 - canopy * 0.8)), open = 1 - Math.min(1, canopy + shade);
-    const hard = path + MAPS.steep[k] * 1.5 + waterAt(x, z) * 4, shore = MAPS.shore ? Math.min(1, MAPS.shore[k] * 2.5) : 0;
-    const blocked = hard + Math.max(0, MAPS.wet[k] - 0.6) * 2 + shore * 1.2;
-    return { hard, blocked, shade: Math.min(1, shade + 0.6 * canopy), wet: Math.max(shore, MAPS.wet[k]) * (1 - MAPS.steep[k]),
-      dry: MAPS.steep[k] > 0.4 ? 0 : MAPS.dry[k] * open, grass: (0.55 * open + 1.0 * shade + 0.15 * canopy) * (1 - MAPS.dry[k] * 0.4), shrub: 0.08 * open + 0.9 * shade + 0.35 * canopy,
-      long: MAPS.steep[k] > 0.4 ? 0 : (0.35 + 0.65 * MAPS.dry[k]) * (1 - Math.min(1, canopy * 1.5 + MAPS.wide[k])) * (1 - Math.min(1, path + MAPS.steep[k] + MAPS.wet[k])) };
-  };
+  const ground = coverGround;
+
   // where they go: src/objects/growth.js (shared with the Growth Lab)
   const fixed = growPlants({ ground, at: COVER.at, radius: COVER.radius, count: COVER.on ? COVER.count : 0, size: COVER.size, kinds: PLANT_KINDS, grow: GROW }), placed = fixed.length;
   // one Forest for all of them: meshes out to COVER.near, imposters beyond, crossfaded
   if (coverForest) { scene.remove(coverForest.group); for (const b of coverForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
   const species = coverForest ? coverForest.species : COVER.plantSp;
-  coverForest = new Forest(renderer, scene, { species, shadows: SHADOW.on && TS.shadow.cover, fixed, heightAt, imposterAt: COVER.near, band: COVER.near * 0.5, ahead: 0.5, sunDir: SUN_DIR, nearCap: 12000 });   // (Jacob's thickness puts ~7,000 within 60 m)
-  calmCover();
-  $('coverInfo').textContent = `${placed.toLocaleString()} plants of 16 kinds: meshes to ${COVER.near} m, imposters beyond (atlases bake over the first seconds)`;
+  coverForest = new Forest(renderer, scene, { species, shadows: SHADOW.on && TS.shadow.cover, fixed, heightAt, imposterAt: COVER.near, band: COVER.near * 0.5, ahead: 0.5, sunDir: SUN_DIR, nearCap: 12000, wind: true });   // (Jacob's thickness puts ~7,000 within 60 m)
+  calmCover(); placeLawn();
+  $('coverInfo').textContent = `${placed.toLocaleString()} plants of 16 kinds: meshes to ${COVER.near} m, imposters beyond (atlases bake over the first seconds)` + (LAWN.count ? ` · ${LAWN.count.toLocaleString()} lawn tufts (${(LAWN.count * lawn.trisPerTuft / 1e6).toFixed(2)} M triangles) out to ${LAWN.radius} m` : '');
 }
 buildLand();
 
@@ -1154,6 +1177,14 @@ for (const [id, key, fmt] of [['famSize', 'size', v => v + ' m'], ['famStrict', 
   const el = $(id); el.value = FAMILY[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); }); el.addEventListener('change', () => { FAMILY[key] = +el.value; placeTrees(); });
 }
+// the breeze and the lawn
+$('windOn').checked = WIND.on; $('windOn').addEventListener('change', e => { WIND.on = e.target.checked; if (!WIND.on) WIND.uniforms.windAmp.value = 0; else WIND.uniforms.windAmp.value = +$('windAmp').value; });
+for (const [id, key, fmt] of [['windAmp', 'windAmp', v => Math.round(v * 100) + '% lean'], ['windSpeed', 'windSpeed', v => v.toFixed(1)], ['windFreq', 'windFreq', v => Math.round(1 / v) + ' m waves']]) {
+  const el = $(id), go = () => { if (key !== 'windAmp' || WIND.on) WIND.uniforms[key].value = +el.value; $(id + 'Out').textContent = fmt(+el.value); }; el.value = WIND.uniforms[key].value; el.addEventListener('input', go); go(); }
+for (const [id, obj, key, fmt] of [['lawnAmount', GROW, 'lawn', v => Math.round(v * 100) + '%'], ['lawnDensity', LAWN, 'density', v => v + ' tufts / m²'], ['lawnRadius', LAWN, 'radius', v => v ? v + ' m' : 'off']]) {
+  const el = $(id); el.value = obj[key]; $(id + 'Out').textContent = fmt(+el.value);
+  el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); }); el.addEventListener('change', () => { obj[key] = +el.value; placeLawn(); placeCover(); });
+}
 $('stonesOn').checked = STONES.on; $('stonesOn').addEventListener('change', e => { STONES.on = e.target.checked; placeStones(); });
 for (const [id, key, fmt] of [['stoneCount', 'count', v => v.toLocaleString()], ['stoneSize', 'size', v => v.toFixed(1) + '×']]) {
   const el = $(id); el.value = STONES[key]; $(id + 'Out').textContent = fmt(+el.value);
@@ -1211,7 +1242,7 @@ for (const [id, key, fmt] of [['wWave', 'wWave', v => v.toFixed(1) + ' m'], ['wS
 for (const [id, key] of [['wDeepC', 'wDeep'], ['wShallowC', 'wShallow']]) { const el = $(id); el.value = '#' + U[key].value.clone().convertLinearToSRGB().getHexString(); el.addEventListener('input', () => { U[key].value.set(el.value).convertSRGBToLinear(); }); }
 function reshape() { $('shapeInfo').textContent = 'shaping…'; setTimeout(() => { const t0 = performance.now(); buildHeights(); shapeMesh(); buildLand(); $('shapeInfo').textContent = `shaped in ${((performance.now() - t0) / 1000).toFixed(1)} s`; }, 30); }
 for (const [id, key] of [['terraceOn', 'terraceOn'], ['erodeOn', 'erodeOn']]) { $(id).checked = SHAPE[key]; $(id).addEventListener('change', e => { SHAPE[key] = e.target.checked; reshape(); }); }
-for (const [id, key, fmt] of [['tStep', 'step', v => v.toFixed(1) + ' m'], ['tRiser', 'riser', v => Math.round(v * 100) + '% of a step'], ['tAmount', 'terraceAmount', v => Math.round(v * 100) + '%'], ['tSpread', 'terraceSpread', v => Math.round(v * 100) + '% of the land'], ['tFrom', 'terraceFrom', v => 'steeper than ' + Math.round(Math.atan(v) * 180 / Math.PI) + '°'], ['eDrops', 'drops', v => v.toLocaleString()], ['eStr', 'erodeStrength', v => v.toFixed(2)], ['rPasses', 'ravines', v => v + (v === 1 ? ' pass' : ' passes')], ['rStr', 'ravineStrength', v => v.toFixed(1) + '×'], ['rScale', 'ravineScale', v => 'water gathers on ' + (v * TEX).toFixed(1) + ' m cells'], ['rRound', 'ravineRound', v => Math.round(v * 100) + '%'], ['cCrags', 'crags', v => v + ' m'], ['cCragSize', 'cragSize', v => v + ' m']]) {
+for (const [id, key, fmt] of [['tStep', 'step', v => v.toFixed(1) + ' m'], ['tRiser', 'riser', v => Math.round(v * 100) + '% of a step'], ['tAmount', 'terraceAmount', v => Math.round(v * 100) + '%'], ['tSpread', 'terraceSpread', v => Math.round(v * 100) + '% of the land'], ['tFrom', 'terraceFrom', v => 'steeper than ' + Math.round(Math.atan(v) * 180 / Math.PI) + '°'], ['eDrops', 'drops', v => v.toLocaleString()], ['eStr', 'erodeStrength', v => v.toFixed(2)], ['rPasses', 'ravines', v => v + (v === 1 ? ' pass' : ' passes')], ['rStr', 'ravineStrength', v => v.toFixed(1) + '×'], ['rScale', 'ravineScale', v => 'water gathers on ' + (v * TEX).toFixed(1) + ' m cells'], ['rRound', 'ravineRound', v => Math.round(v * 100) + '%'], ['cCrags', 'crags', v => v + ' m'], ['cCragSize', 'cragSize', v => v + ' m'], ['cCragSharp', 'cragSharp', v => Math.round(v * 100) + '%']]) {
   const el = $(id); el.value = SHAPE[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { SHAPE[key] = +el.value; reshape(); });
@@ -1311,7 +1342,7 @@ renderer.setAnimationLoop(() => {
   if (dt > 0) fps += (1 / dt - fps) * Math.min(1, dt * 2);
   watch();
   if ((shown += dt) > 0.5) { shown = 0; const inf = renderer.info.render; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${(1000 / Math.max(1, fps)).toFixed(1)} ms · ${inf.calls} draws · ${(inf.triangles / 1e6).toFixed(2)} M triangles · ${GL2 ? 'WebGL2' : 'WebGL1'}`; }
-  renderer.info.reset(); stepRain(); controls.update(); followCover(); U.time.value += dt; sky.update(camera, dt); U.sunDirW.value.copy(SUN_DIR); followShadow();
+  renderer.info.reset(); stepRain(); controls.update(); followCover(); U.time.value += dt; sky.update(camera, dt); if (WIND.on) tickWind(dt); U.sunDirW.value.copy(SUN_DIR); followShadow();
   for (const f of [treeForest, coverForest]) if (f) {
     f.landU.landShade.value = U.shadeMap.value; f.landU.landShadeK.value.set(U.hillShade.value, U.aoShade.value, U.treeShade.value * 0.6, U.shadeMap.value ? 1 : 0);   // the land's baked shade, on the plants too
     f.update(camera, controls.target, camera.position, dt);
