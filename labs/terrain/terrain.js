@@ -501,6 +501,7 @@ function buildLand() {
   bakeShade(canopy, wide);
   // paths: cheapest routes over the grid, where steep, wet and thick forest cost more
   const cost = new Float32Array(N * N); for (let k = 0; k < N * N; k++) cost[k] = 1 + 60 * steep[k] + 8 * wet[k] + 2 * canopy[k] + (POND[k] ? 5000 : WDEPTH[k] > 0 ? 40 : 0);   // round the lakes; over a river only where it must
+  const baseCost = Float32Array.from(cost), trail = new Float32Array(N * N);       // trail: how much cheaper a cell is for being on (or beside) a path already routed
   const route = (ax, az, bx, bz) => {
     const S = N / 2, cell = (x, z) => [Math.round((x + SIZE / 2) / TEX), Math.round((z + SIZE / 2) / TEX)];
     // each end moved to the nearest dry cell
@@ -509,11 +510,20 @@ function buildLand() {
     const push = (k, f) => { heap.push([f, k]); let c = heap.length - 1; while (c > 0) { const p = (c - 1) >> 1; if (heap[p][0] <= heap[c][0]) break; [heap[p], heap[c]] = [heap[c], heap[p]]; c = p; } };
     const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let c = 0; for (;;) { const l = 2 * c + 1, r = l + 1; let m = c; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === c) break; [heap[m], heap[c]] = [heap[c], heap[m]]; c = m; } } return top; };
     const start = sj * N + si, goal = tj * N + ti; g[start] = 0; push(start, 0);
-    while (heap.length) { const [, k] = pop(); if (k === goal) break; const i = k % N, j = (k / N) | 0;
+    const shut = new Uint8Array(N * N);                 // cells already explored: each once (the cheap trail cells make the guess toward
+                                                        // the goal overshoot, and without this cells were explored again and again)
+    while (heap.length) { const [, k] = pop(); if (k === goal) break; if (shut[k]) continue; shut[k] = 1; const i = k % N, j = (k / N) | 0;
       for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { if (!di && !dj) continue; const ni = i + di, nj = j + dj; if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue;
         const n = nj * N + ni, step = (di && dj ? 1.414 : 1) * (cost[k] + cost[n]) / 2 + Math.abs(Hg[n] - Hg[k]) * 3, ng = g[k] + step;
         if (ng < g[n]) { g[n] = ng; from[n] = k; push(n, ng + Math.hypot(ni - ti, nj - tj) * 0.9); } } }
     const pts = []; for (let k = goal; k >= 0; k = from[k]) pts.push([(k % N) * TEX - SIZE / 2, ((k / N) | 0) * TEX - SIZE / 2]);
+    // TRAILS ATTRACT: walking an existing trail is easier than breaking new ground, so the routes after this
+    // one join it where they're going the same way and fork off where they part, instead of running beside it
+    // a few metres off (two routes found the same cheap valley separately)
+    for (let k = goal; k >= 0; k = from[k]) { const i = k % N, j = (k / N) | 0;
+      for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= N || jj >= N) continue;
+        const f = di || dj ? (Math.max(Math.abs(di), Math.abs(dj)) === 1 ? 0.6 : 0.85) : 0.35; const q = jj * N + ii; if (!trail[q] || f < trail[q]) trail[q] = f; } }
+    for (let q = 0; q < N * N; q++) if (trail[q]) { cost[q] = baseCost[q] * trail[q]; }
     // smoothed, so it wanders instead of stepping along the grid
     for (let it = 0; it < 6; it++) for (let q = 1; q < pts.length - 1; q++) pts[q] = [(pts[q - 1][0] + 2 * pts[q][0] + pts[q + 1][0]) / 4, (pts[q - 1][1] + 2 * pts[q][1] + pts[q + 1][1]) / 4];
     return pts;
@@ -1410,4 +1420,4 @@ renderer.setAnimationLoop(() => {
   }
   renderer.render(scene, camera); drawAtlas();
 });
-if (Q.has('probe')) Object.assign(window, { __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest] });
+if (Q.has('probe')) Object.assign(window, { __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest] });
