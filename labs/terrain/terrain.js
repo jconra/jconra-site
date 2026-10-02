@@ -81,7 +81,7 @@ function vnoise(x, z) { const ix = Math.floor(x), iz = Math.floor(z), fx = x - i
 // THE VALLEY: mountains rise on either side of a winding valley floor. The distance from the valley's
 // line (which meanders by noise) sets how far up the mountainside a point is; the mountains carry
 // ridged noise for peaks and spurs. The old rolling hills stay on top as small detail.
-const VALLEY = { on: true, height: 260, width: 360, slope: 380, steep: 1.6, angle: 20, meander: 140, ridges: 0.55, fine: 0.35 };
+const VALLEY = { on: true, height: 260, width: 360, slope: 380, steep: 1.6, angle: 20, meander: 235, ridges: 0.55, fine: 0.35 };
 // the mountains' ridged noise in five layers, the big peaks first; `VALLEY.fine` turns down the last
 // three (bumps ~25-100 m across), which otherwise wobble every slope; it also turns down the rolling
 // hills' fine layers below
@@ -101,7 +101,8 @@ function baseHeight(x, z) {
   }
   return out;
 }
-const SHAPE = { terraceOn: true, step: 15, riser: 0.1, terraceAmount: 0.6, terraceFrom: 0.7, terraceSpread: 0.35, erodeOn: true, erodeSmooth: 3, drops: 90000, erodeStrength: 0.35, ravines: 16, ravineStrength: 1.6, ravineScale: 4, ravineRound: 0.35, crags: 26, cragSize: 40 };
+// (the land's shape as Jacob set it, 2026-10-01)
+const SHAPE = { terraceOn: true, step: 30, riser: 0.03, terraceAmount: 0.22, terraceFrom: 1, terraceSpread: 0.35, erodeOn: true, erodeSmooth: 3, drops: 390000, erodeStrength: 0.35, ravines: 40, ravineStrength: 4, ravineScale: 4, ravineRound: 0.8, crags: 40, cragSize: 60 };
 const LAND = { wetDepth: 7, dryHeight: 6.0, forest: 0.55, shadeReach: 4, pathWidth: 2.2, treeline: 280, hillForest: 0.3, shore: 2 };   // (the land maps' settings; up here because the crags read the treeline)
 const Hg = new Float32Array(N * N), FLOW = new Float32Array(N * N), SETTLE = new Float32Array(N * N);
 const cellX = (i) => (i + 0.5) * TEX - SIZE / 2;
@@ -166,7 +167,7 @@ function* erodeSteps(H, drops, chunk, trail = null) {
 // they run into the ponds and out over the spill. Pond ground is flattened to its surface and river
 // channels are carved a little; the shader paints the water on (no see-through mesh).
 let trees = [], maskA = null, pathCanvas = null; const MAPS = {};
-const WATER = { on: true, river: 1800, width: 1.6, carve: 0.8, channel: 2, pondDepth: 0.35, pondMin: 30, outlet: 5 };
+const WATER = { on: true, river: 1200, width: 0.6, carve: 0.8, channel: 2, pondDepth: 0.35, pondMin: 30, outlet: 5 };
 const POND = new Uint8Array(N * N), WDEPTH = new Float32Array(N * N), ACC = new Float32Array(N * N), DOWN = new Int32Array(N * N);
 let waterCanvas = null, waterTex = null;          // (the shader's uniforms are made later; they pick waterTex up)
 // the priority flood: F is the land with every hollow filled to its spill level, DOWN the cell each
@@ -350,22 +351,36 @@ function smoothErosion(before) {
   const d = new Float32Array(N * N); for (let k = 0; k < N * N; k++) d[k] = Hg[k] - before[k];
   const soft = blur(d, SHAPE.erodeSmooth); for (let k = 0; k < N * N; k++) Hg[k] = before[k] + soft[k];
 }
-// CRAGS: jagged rock up high. Only above the treeline and on steep ground, sharp ridged noise (its
-// creases are knife-edge ribs and narrow chutes, not soft lumps), stretched down the fall line so
-// the ribs and couloirs run downhill the way they do on real rock faces. `crags` how tall (m),
-// `cragSize` how wide the ribs are (m). Added after the ravines, so the rounding doesn't soften it.
+// CRAGS: jagged rock up high. Only above the treeline and on steep ground: knife-edge ribs with narrow
+// chutes between, running down the fall line the way they do on real rock faces. `crags` how tall (m),
+// `cragSize` how far apart the ribs are (m). Added after the ravines, so the rounding doesn't soften it.
+// How: a loose lattice of points over the land; each takes the downhill direction where it stands and
+// draws a patch of ribs lined up with it, measured FROM ITSELF (its own offset, its own random phase), and
+// neighbouring patches blend smoothly. (Measuring along the downhill direction from the map's origin, as
+// this first did, is really measuring distance from each summit, which drew rings round every peak.)
 function addCrags(H) {
   if (!SHAPE.crags) return;
   const B = blur(H, 4), S = THREE.MathUtils.smoothstep, at = (i, j) => B[Math.min(N - 1, Math.max(0, j)) * N + Math.min(N - 1, Math.max(0, i))];
+  const L = SHAPE.cragSize * 0.9, f = 2 * Math.PI / SHAPE.cragSize;              // lattice spacing (m); ribs a cragSize apart
+  const latDir = new Map();                                                      // a lattice point's downhill direction, worked out once
+  const dirAt = (a, b) => { const key = a * 100003 + b; let d = latDir.get(key);
+    if (!d) { const x = a * L, z = b * L, i = Math.round((x + SIZE / 2) / TEX - 0.5), j = Math.round((z + SIZE / 2) / TEX - 0.5);
+      const gx = at(i + 3, j) - at(i - 3, j), gz = at(i, j + 3) - at(i, j - 3), l = Math.hypot(gx, gz) || 1; d = [gx / l, gz / l, hash(a * 1.37, b * 2.11) * 6.283, 0.75 + 0.5 * hash(b * 3.1, a * 0.7)]; latDir.set(key, d); }
+    return d; };
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const k = j * N + i, gx = (at(i + 2, j) - at(i - 2, j)) / (4 * TEX), gz = (at(i, j + 2) - at(i, j - 2)) / (4 * TEX), sl = Math.hypot(gx, gz);
     const where = S(H[k], LAND.treeline - 40, LAND.treeline + 60) * S(sl, 0.45, 0.9);
     if (where <= 0) continue;
-    const dx = gx / sl, dz = gz / sl, x = cellX(i), z = cellX(j);
-    const u = (x * -dz + z * dx) / SHAPE.cragSize, v = (x * dx + z * dz) / (SHAPE.cragSize * 3);   // across the slope, and (stretched) down it
-    let r = 0, a = 1, n = 0;
-    for (let o = 0; o < 3; o++) { const c = 1 - Math.abs(vnoise(u * (1 << o) + 17.3 * o, v * (1 << o) - 5.1 * o) * 2 - 1); r += c * c * a; n += a; a *= 0.5; }
-    H[k] += SHAPE.crags * where * (r / n - 0.35);
+    const x = cellX(i), z = cellX(j), la = Math.floor(x / L), lb = Math.floor(z / L);
+    let sum = 0, wsum = 0;
+    for (let b = lb - 1; b <= lb + 2; b++) for (let a = la - 1; a <= la + 2; a++) {
+      const cx = a * L, cz = b * L, dd = Math.hypot(x - cx, z - cz) / (L * 1.5); if (dd >= 1) continue;
+      const w = (1 - dd * dd) ** 2, [dx, dz, ph, len] = dirAt(a, b);
+      const across = (x - cx) * -dz + (z - cz) * dx, down = (x - cx) * dx + (z - cz) * dz;   // from this point: across the slope, and down it
+      const rib = 1 - Math.abs(Math.cos(across * f + ph + Math.sin(down * f * 0.25) * 0.6));   // sharp crests, the odd kink down the fall line
+      sum += rib * rib * (0.75 + 0.25 * Math.sin(down * f * 0.35 * len + ph)) * w; wsum += w;
+    }
+    if (wsum > 0) H[k] += SHAPE.crags * where * (sum / wsum - 0.3);
   }
 }
 function buildHeights() {
@@ -537,7 +552,7 @@ $('tex').value = 'grassMed';
 
 // ── the ground material ────────────────────────────────────────────────────────
 const U = {
-  groundMap: { value: tex('grassMed') }, tile: { value: 12 }, split: { value: 0.5 }, res: { value: new THREE.Vector2(innerWidth, innerHeight) },
+  groundMap: { value: tex('grassMed') }, tile: { value: 24 }, split: { value: 0.5 }, res: { value: new THREE.Vector2(innerWidth, innerHeight) },
   hexOn: { value: 1 }, hexSize: { value: 0.8 }, hexRot: { value: Math.PI }, hexSharp: { value: 7 }, hexBright: { value: 0.6 },
   macroOn: { value: 1 }, macroStr: { value: 0.55 }, macroSize: { value: 60 }, macroHue: { value: 0.5 },
   farOn: { value: 0 }, farFrom: { value: 40 }, grid: { value: 0 },
@@ -550,7 +565,7 @@ const U = {
   waterMap: { value: waterTex }, waterOn: { value: 1 }, time: { value: 0 }, sunDirW: { value: new THREE.Vector3() }, skyCol: { value: SKY.clone() },
   wDeep: { value: new THREE.Color('#123a4a') }, wShallow: { value: new THREE.Color('#3f7f86') }, wWave: { value: 2.2 }, wSpeed: { value: 0.6 }, wSpec: { value: 0.8 }, wReflect: { value: 0.55 }, wFroth: { value: 1 }, wWaveOn: { value: 1 },
   coverR: { value: 140 }, coverAt: { value: new THREE.Vector3() }, coverFar: { value: 1 }, rockFrom: { value: 0.25 },
-  gullyStr: { value: 0.8 }, fanStr: { value: 0.45 }, strataStr: { value: 0.8 }, strataSize: { value: 1.6 }, lushTint: { value: new THREE.Color(0.86, 1.0, 0.8) }, dampTint: { value: new THREE.Color(0.78, 0.92, 0.76) }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
+  gullyStr: { value: 0.65 }, fanStr: { value: 0.35 }, strataStr: { value: 1.5 }, strataSize: { value: 6 }, lushTint: { value: new THREE.Color(0.86, 1.0, 0.8) }, dampTint: { value: new THREE.Color(0.78, 0.92, 0.76) }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
   slopeTint: { value: new THREE.Color(0.5, 0.66, 0.4) },
   shadeMap: { value: null }, shadowRange: { value: 0 }, shadowAt: { value: new THREE.Vector3() }, hillShade: { value: 1 }, aoShade: { value: 0.9 }, treeShade: { value: 0.5 },
   avgGround: { value: new THREE.Color(0x6b8a3a) }, avgDry: { value: new THREE.Color(0x8a8a4a) }, avgLush: { value: new THREE.Color(0x5b7a2a) }, avgForest: { value: new THREE.Color(0x4a4a2a) }, avgWet: { value: new THREE.Color(0x4a3a2a) }, avgPath: { value: new THREE.Color(0x6a5238) }, avgSteep: { value: new THREE.Color(0x7a7a7a) }, avgShore: { value: new THREE.Color(0x77706a) }, shoreStr: { value: 1 }, layShore: { value: null },
@@ -1155,7 +1170,7 @@ for (const [id, key, fmt] of [['coverCount', 'count', v => v.toLocaleString()], 
 // ── the land's shape: terraces and erosion (these rebuild the land, the maps, trees and plants) ──
 // WATCH IT RAIN: the land without erosion, then drops a chunk a frame with their trails drawn and the
 // mesh reshaped as they go; when the rain stops the maps, trees and plants are rebuilt on the result
-const RAIN = { gen: null, paused: false, perFrame: 1500, done: 0, trail: [], frame: 0 };
+const RAIN = { gen: null, paused: false, perFrame: 5200, done: 0, trail: [], frame: 0 };
 const trailGeo = new THREE.BufferGeometry(), trailLines = new THREE.LineSegments(trailGeo, new THREE.LineBasicMaterial({ color: 0x5fb4ff, transparent: true, opacity: 0.55 }));
 trailLines.frustumCulled = false; trailLines.visible = false; scene.add(trailLines);
 function fastMesh() { if (SEG !== N - 1) { shapeMesh(); return; } const p = geo.attributes.position; for (let k = 0; k < p.count; k++) p.setY(k, Hg[k]); p.needsUpdate = true; geo.computeVertexNormals(); }

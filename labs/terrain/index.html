@@ -55,12 +55,12 @@
     <p class="note" id="qWhy"></p>
     <div class="row"><button type="button" id="copySettings" style="grid-column:1/-1">Copy settings</button></div>
     <p class="note" id="copyNote">Copies every control's setting as text, to paste in chat.</p>
-    <label class="check" for="splitOn"><input id="splitOn" type="checkbox" checked> Split screen</label>
+    <label class="check" for="splitOn"><input id="splitOn" type="checkbox"> Split screen</label>
     <div class="btns" id="views"></div>
 
     <details class="sec" open><summary>Ground</summary>
       <div class="row"><label for="tex">Texture</label><select id="tex"></select></div>
-      <div class="row"><label for="tile">Texture repeats every</label><output id="tileOut"></output><input id="tile" type="range" min="0.5" max="24" step="0.1" value="12"></div>
+      <div class="row"><label for="tile">Texture repeats every</label><output id="tileOut"></output><input id="tile" type="range" min="0.5" max="24" step="0.1" value="24"></div>
       <label class="check" for="grid"><input id="grid" type="checkbox"> Show where each repeat starts</label>
     </details>
 
@@ -96,17 +96,17 @@
       <div class="row"><label for="eDrops">Raindrops</label><output id="eDropsOut"></output><input id="eDrops" type="range" min="10000" max="400000" step="10000"></div>
       <div class="row"><label for="eStr">How much each takes</label><output id="eStrOut"></output><input id="eStr" type="range" min="0.05" max="1" step="0.01"></div>
       <div class="btns"><button id="rainGo" type="button">Watch it rain</button><button id="rainPause" type="button">pause</button><button id="rainStop" type="button">finish now</button></div>
-      <div class="row"><label for="rainSpeed">Rain speed</label><output id="rainSpeedOut"></output><input id="rainSpeed" type="range" min="50" max="6000" step="50" value="1500"></div>
+      <div class="row"><label for="rainSpeed">Rain speed</label><output id="rainSpeedOut"></output><input id="rainSpeed" type="range" min="50" max="6000" step="50" value="5200"></div>
       <p class="note">Watching starts from the land before erosion; blue lines are this frame's drops running downhill. The trees and plants come back when it stops.</p>
-      <div class="row"><label for="gullyStr">Dirt in the gullies</label><output id="gullyStrOut"></output><input id="gullyStr" type="range" min="0" max="2" step="0.05" value="0.8"></div>
-      <div class="row"><label for="fanStr">Damp grass on the fans</label><output id="fanStrOut"></output><input id="fanStr" type="range" min="0" max="2" step="0.05" value="0.45"></div>
+      <div class="row"><label for="gullyStr">Dirt in the gullies</label><output id="gullyStrOut"></output><input id="gullyStr" type="range" min="0" max="2" step="0.05" value="0.65"></div>
+      <div class="row"><label for="fanStr">Damp grass on the fans</label><output id="fanStrOut"></output><input id="fanStr" type="range" min="0" max="2" step="0.05" value="0.35"></div>
       </details>
       <details class="sec"><summary>Cliff faces</summary>
       <p class="note"><b>Cliff faces:</b> steep ground reads its picture from the side (triplanar, so it is not smeared down the face) and is banded into rock strata.</p>
       <div class="row"><label for="cCrags">Crags: jagged rock up high (above the treeline, on steep ground)</label><output id="cCragsOut"></output><input id="cCrags" type="range" min="0" max="40" step="1"></div>
       <div class="row"><label for="cCragSize">Crags: how wide the ribs are</label><output id="cCragSizeOut"></output><input id="cCragSize" type="range" min="10" max="120" step="5"></div>
-      <div class="row"><label for="strataStr">Strata</label><output id="strataStrOut"></output><input id="strataStr" type="range" min="0" max="1.5" step="0.05" value="0.8"></div>
-      <div class="row"><label for="strataSize">Strata thickness</label><output id="strataSizeOut"></output><input id="strataSize" type="range" min="0.3" max="6" step="0.1" value="1.6"></div>
+      <div class="row"><label for="strataStr">Strata</label><output id="strataStrOut"></output><input id="strataStr" type="range" min="0" max="1.5" step="0.05" value="1.5"></div>
+      <div class="row"><label for="strataSize">Strata thickness</label><output id="strataSizeOut"></output><input id="strataSize" type="range" min="0.3" max="6" step="0.1" value="6"></div>
       </details>
       <p class="note" id="shapeInfo"></p>
     </details>
@@ -268,7 +268,7 @@
       <div id="kindList"></div>
       </details>
       <label class="check" for="coverFar"><input id="coverFar" type="checkbox" checked> Far cover: clumps painted on past the plants' reach</label>
-      <div class="row"><label for="coverCount">How many</label><output id="coverCountOut"></output><input id="coverCount" type="range" min="0" max="60000" step="500"></div>
+      <div class="row"><label for="coverCount">How many</label><output id="coverCountOut"></output><input id="coverCount" type="range" min="0" max="120000" step="500"></div>
       <div class="row"><label for="coverRadius">Out to</label><output id="coverRadiusOut"></output><input id="coverRadius" type="range" min="20" max="600" step="10"></div>
       <p class="note"><b>Far off</b>, plants blend toward one colour (the grass's, darker), so a far field reads as one tone instead of speckle</p>
       <div class="row"><label for="calmAmount">How much they blend</label><output id="calmAmountOut"></output><input id="calmAmount" type="range" min="0" max="1" step="0.01"></div>
