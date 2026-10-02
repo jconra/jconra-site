@@ -13,6 +13,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Forest, FOREST_SPECIES } from '../../src/objects/forest.js';
 import { SHAPE_DEFAULTS } from '../../src/objects/foliage.js';
+import { stoneField, stoneGeometry, STONE_UNIFORMS, STONE_GLSL } from '../../src/objects/stones.js';
 import { chooseTier, saveTier, watchFrames, TIERS } from '../../src/quality.js';
 import { makeCloudSky, SKY_GLSL } from '../../src/objects/cloudSky.js';
 import { WIND, tickWind } from '../../src/objects/wind.js';
@@ -22,6 +23,16 @@ import { VillageEditor, savedLayout as savedTown } from '../../src/objects/villa
 const TOWN_DEFAULT = normaliseTown(await fetch('/models/town/layout.json').then(r => r.ok ? r.json() : null).catch(() => null));
 const PATHROAD = new Uint8Array(2048 * 2048 * 4);              // the paths-and-roads picture's pixels (see composePathRoad)
 const TOWN = { layout: normaliseTown(savedTown() || TOWN_DEFAULT), Hpre: null, block: null, road: null, canvas: document.createElement('canvas'), village: null };
+// THE TOWN'S PAVING (src/objects/stones.js, tuned in the Stone Lab): irregular stones, one per scattered point, so
+// nothing repeats and a road's edge is a ragged row of whole stones. Painted in the ground's shader everywhere, and
+// near the camera real low 3D stones on top (TIER_SET paving3D), which sink into the ground past `lod` metres where
+// the painted ones take over. Jacob's settings (2026-10-02); `build` is which Stone Lab build the 3D stones use.
+const PAVE = { build: 'C', size: 0.92, jitter: 0.47, variety: 0.25, gap: 0.018, seed: 1, base: '#8d8a83', shade: 0.18, hue: 0.26, grain: 0.43, grainSize: 0.6, speck: 0.12,
+  soil: '#3a3126', moss: 0.59, edgeDark: 1, edgeWidth: 0.05, pRound: 0.06, lod: 80, bevelDark: 0.55,
+  builds: { A: { name: 'Painted only', painted: true }, B: { name: 'Slab', top: 4, per: 1, round: 0, bevel: 0.06, height: 0.03, dome: 0, soft: true, uneven: 0.3 },
+    C: { name: 'Cut corners', top: 0, per: 1, round: 0.5, bevel: 0.035, height: 0.12, dome: 0.05, soft: true, uneven: 0.69 },
+    D: { name: 'Pillow', top: 5, per: 1, round: 0, bevel: 0.08, height: 0.025, dome: 0.015, soft: true, uneven: 0.3 },
+    E: { name: "Stone's own corners", top: 0, per: 1, round: 0, bevel: 0.06, height: 0.03, dome: 0, soft: true, uneven: 0.3 } } };
 import { makeLawn } from '../../src/objects/lawn.js';
 import { KIND_INFO, LIT_SOFTEN, GROW_DEFAULTS, FAMILY_DEFAULTS, COVER_DEFAULTS, defaultKinds, growPlants, growPlantsSteps, lawnSpots, lawnSpotsSteps, patchAt, pickTree as pickTreeKind, settingsJSON, applySettings } from '../../src/objects/growth.js';
 
@@ -38,11 +49,11 @@ const Q = new URLSearchParams(location.search);
 // flat colours (each picture's average) instead of read from the pictures, one noise read where
 // there were four.
 const TIER_SET = {
-  potato: { ratio: 0.5, lite: true, coverFarX: 1.8, lawn: { radius: 0, density: 0 }, stones: 1500, treeShare: 0.45, shadow: null, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 2900, near: 0, radius: 90 },
+  potato: { ratio: 0.5, lite: true, paving3D: false, coverFarX: 1.8, lawn: { radius: 0, density: 0 }, stones: 1500, treeShare: 0.45, shadow: null, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 2900, near: 0, radius: 90 },
             u: { wWaveOn: 0, stampFar: 12 }, checks: { stampOn: false, hexOn: false, farOn: false, wWaveOn: false, cloudsOn: false } },
-  normal: { ratio: 1.5, coverFarX: 3.1, lawn: { radius: 40, density: 1 }, stones: 14000, shadow: { range: 80, size: 1024, cover: false }, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 7000, near: 70, radius: 140 },
+  normal: { ratio: 1.5, paving3D: true, coverFarX: 3.1, lawn: { radius: 40, density: 1 }, stones: 14000, shadow: { range: 80, size: 1024, cover: false }, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 7000, near: 70, radius: 140 },
             u: { wWaveOn: 1, stampFar: 30 }, checks: { stampOn: true, hexOn: true, farOn: false, wWaveOn: true, cloudsOn: true } },
-  gaming: { ratio: 2, coverFarX: 3.1, lawn: { radius: 60, density: 1 }, stones: 26000, shadow: { range: 150, size: 2048, cover: true }, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 30000, near: 100, radius: 290 },
+  gaming: { ratio: 2, paving3D: true, coverFarX: 3.1, lawn: { radius: 60, density: 1 }, stones: 26000, shadow: { range: 150, size: 2048, cover: true }, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 30000, near: 100, radius: 290 },
             u: { wWaveOn: 1, stampFar: 73 }, checks: { stampOn: true, hexOn: true, farOn: true, wWaveOn: true, cloudsOn: true } },
 };
 // the tier is picked on a throwaway context first, so the real one can be made without smoothing
@@ -562,7 +573,7 @@ function buildLand() {
   maskA.needsUpdate = true;
   U.maskA.value = maskA;
   MAPS.path = pathCanvas.getContext('2d').getImageData(0, 0, P, P).data; MAPS.P = P;
-  composePathRoad();
+  composePathRoad(); buildPaving();
   COVER.cache = {};                                   // the land changed: the remembered tiles are stale
   placeTrees(); placeStones(); if (COVER.parts) placeCover();
   if (TOWN.village) { TOWN.village.sync(); if (TOWN.editor) TOWN.editor.markSel(); }   // the town stands on the land as it now is
@@ -580,7 +591,7 @@ function avgColour(img) {
 function setAverages() {
   if (typeof calmCover === 'function') calmCover();
   if (!TS.lite) return;
-  for (const [id, a] of [['layDry', 'avgDry'], ['layLush', 'avgLush'], ['layForest', 'avgForest'], ['layPath', 'avgPath'], ['laySteep', 'avgSteep'], ['layShore', 'avgShore'], ['layCobble', 'avgCobble'], ['layFlag', 'avgFlag']]) {
+  for (const [id, a] of [['layDry', 'avgDry'], ['layLush', 'avgLush'], ['layForest', 'avgForest'], ['layPath', 'avgPath'], ['laySteep', 'avgSteep'], ['layShore', 'avgShore']]) {
     const t = U[id].value; if (t && t.userData.avg) U[a].value.copy(t.userData.avg); }
 }
 function tex(name) {
@@ -607,7 +618,11 @@ const U = {
   coverR: { value: 140 }, coverAt: { value: new THREE.Vector3() }, coverMap: { value: null }, coverFar: { value: 1 }, rockFrom: { value: 0.25 },
   gullyStr: { value: 0.65 }, fanStr: { value: 0.35 }, strataStr: { value: 1.5 }, strataSize: { value: 6 }, lushTint: { value: new THREE.Color(0.86, 1.0, 0.8) }, dampTint: { value: new THREE.Color(0.78, 0.92, 0.76) }, landSize: { value: SIZE }, view: { value: 0 },
   slopeTint: { value: new THREE.Color(0.5, 0.66, 0.4) },
-  pathRoad: { value: null }, layCobble: { value: null }, layFlag: { value: null }, avgCobble: { value: new THREE.Color(0x77706a) }, avgFlag: { value: new THREE.Color(0x9a9286) }, cobbleScale: { value: 1.6 }, flagScale: { value: 2.5 },   // (m a picture: cobbles ~15 cm, flagstones 30-60 cm)
+  pathRoad: { value: null },
+  // the paving's stones (PAVE): their layout (stoneCells: one pixel per grid square, see stones.js) and look
+  ...STONE_UNIFORMS(), stoneBase: { value: new THREE.Color() }, stoneShade: { value: 0 }, stoneHue: { value: 0 }, grainAmt: { value: 0 }, grainSize: { value: 1 }, speckAmt: { value: 0 },
+  gapCol: { value: new THREE.Color() }, mossAmt: { value: 0 }, edgeDark: { value: 0 }, edgeWidth: { value: 0.05 }, cornerRound: { value: 0 }, gapW: { value: 0 }, paveLod: { value: 80 }, pave3D: { value: 0 },
+  eyePos: { value: new THREE.Vector3() }, bevelDark: { value: 0 },
   shadeMap: { value: null }, shadowRange: { value: 0 }, shadowAt: { value: new THREE.Vector3() }, hillShade: { value: 1 }, aoShade: { value: 1 }, treeShade: { value: 0.9 },
   avgGround: { value: new THREE.Color(0x6b8a3a) }, avgDry: { value: new THREE.Color(0x8a8a4a) }, avgLush: { value: new THREE.Color(0x5b7a2a) }, avgForest: { value: new THREE.Color(0x4a4a2a) }, avgWet: { value: new THREE.Color(0x4a3a2a) }, avgPath: { value: new THREE.Color(0x6a5238) }, avgSteep: { value: new THREE.Color(0x7a7a7a) }, avgShore: { value: new THREE.Color(0x77706a) }, shoreStr: { value: 1 }, layShore: { value: null },
   layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layPath: { value: null }, laySteep: { value: null },
@@ -620,13 +635,13 @@ mat.defines = {}; if (GL2) mat.defines.HEX_GRAD = ''; if (TS.lite) mat.defines.L
 mat.onBeforeCompile = (sh) => {
   Object.assign(sh.uniforms, U, sky.uniforms); setTimeout(() => { mat.userData.fs = sh.fragmentShader; });   // (kept for the test rigs)
   sh.vertexShader = 'varying vec3 vW; varying vec3 vWN;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvW = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);');
-  sh.fragmentShader = SKY_GLSL + `
+  sh.fragmentShader = SKY_GLSL + STONE_GLSL + `
     uniform float tile, split; uniform vec2 res;   // (the base ground picture is the lush layer, layLush: a real GPU allows 16 pictures a shader)
     uniform float hexOn, hexSize, hexRot, hexSharp, hexBright, macroOn, macroStr, macroSize, macroHue, farOn, farFrom, grid;
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar, stampPatch, stampPatchSize, stampClump; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
     uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 coverAt; uniform sampler2D coverMap; uniform vec3 lushTint, dampTint, slopeTint;
     uniform sampler2D waterMap; uniform float waterOn, wFroth, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow;
-    float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gShadowFade = 0.0, gRoad = 0.0; uniform sampler2D layCobble, layFlag; uniform vec3 avgCobble, avgFlag; uniform float cobbleScale, flagScale; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathRoad; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange; uniform vec3 shadowAt;
+    float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gShadowFade = 0.0, gRoad = 0.0; uniform vec3 gapCol; uniform float mossAmt, edgeDark, edgeWidth, cornerRound, gapW, paveLod, pave3D; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathRoad; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange; uniform vec3 shadowAt;
     uniform vec3 avgGround, avgDry, avgLush, avgForest, avgWet, avgPath, avgSteep, avgShore; uniform float shoreStr; uniform sampler2D layShore; uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layPath; uniform sampler2D laySteep;
     varying vec3 vWN;
     varying vec3 vW;
@@ -807,15 +822,27 @@ mat.onBeforeCompile = (sh) => {
         vec3 tops = cv.rgb * (0.85 + 0.45 * speck), gaps = mix(g, cv.rgb, 0.4) * 0.55;
         g = mix(g, mix(gaps, tops, smoothstep(0.35, 0.7, m)), k * 0.85);
       }
-      // THE TOWN'S ROADS, painted (R cobbles, G flagstones), their edges a little ragged
+      // THE TOWN'S ROADS: where the road picture says (B, A: either brush), the paving's stones (PAVE, stones.js),
+      // each its own shade and grain, dark soil and moss in the gaps; a stone near enough to stand in 3D leaves
+      // its spot as gap (the 3D stone covers it)
       { float rn = (vn(vW.xz / 0.8) - 0.5) * 0.35;
-        float aC = smoothstep(0.3, 0.65, pr.b + rn), aF = smoothstep(0.3, 0.65, pr.a + rn); gRoad = max(aC, aF);
-        #ifdef LITE
-        vec3 cobC = avgCobble, flagC = avgFlag;
-        #else
-        vec3 cobC = texture2D(layCobble, vW.xz / cobbleScale).rgb, flagC = texture2D(layFlag, vW.xz / flagScale).rgb;
-        #endif
-        g = mix(g, cobC, aC * (1.0 - rock)); g = mix(g, flagC, aF * (1.0 - rock)); }
+        gRoad = smoothstep(0.3, 0.65, max(pr.b, pr.a) + rn);
+        if (gRoad > 0.001) {
+          vec3 gapc = mix(gapCol, vec3(0.05, 0.08, 0.025), mossAmt * (0.4 + 0.6 * vn(vW.xz * 2.5)));
+          #ifdef LITE
+          vec3 paved = mix(gapc, stoneBase * 0.95, 0.85);
+          #else
+          vec3 paved = gapc; vec4 sd; vec2 sc; vec4 st = stoneAt(vW.xz, sd, sc);
+          if (sd.r > 0.75) {
+            vec2 q = vec2(cornerRound) - (st.xy - gapW * 0.5);
+            float e = cornerRound - (length(max(q, 0.0)) + min(max(q.x, q.y), 0.0)), dist = length(vW - cameraPosition);
+            float on = smoothstep(-1.0, 1.0, e / (0.002 + dist * 0.0012)) * (1.0 - pave3D * (1.0 - smoothstep(0.15, 0.45, smoothstep(paveLod * 0.8, paveLod, dist))));
+            paved = mix(gapc, stoneColour(vW.xz, sd, sc, smoothstep(6.0, 30.0, dist)) * (1.0 - edgeDark * (1.0 - smoothstep(0.0, edgeWidth, e))), on);
+          }
+          #endif
+          g = mix(g, paved, gRoad * (1.0 - rock));
+        }
+      }
       // the maps themselves, in false colour
       if (view > 0.5) {
         vec3 v = vec3(0.12);
@@ -1177,6 +1204,70 @@ function placeCover(ready = null) {
   calmCover(); placeLawn(); bakeCoverMap();
   $('coverInfo').textContent = `${placed.toLocaleString()} plants of 16 kinds: meshes to ${COVER.near} m, imposters beyond (atlases bake over the first seconds)` + (LAWN.count ? ` · ${LAWN.count.toLocaleString()} lawn tufts (${(LAWN.count * lawn.trisPerTuft / 1e6).toFixed(2)} M triangles) out to ${LAWN.radius} m` : '');
 }
+// THE PAVING: the stones laid where the town's road picture says (stones.js), their grid over just the roads' bounds;
+// near the camera real low 3D stones stood on the land (TIER_SET paving3D), sinking into it past PAVE.lod metres
+let paveMesh = null, paveTimer = 0;
+const PAVE_U = Object.fromEntries(['stoneCells', 'stoneGrid', 'stoneShape', 'stoneBase', 'stoneShade', 'stoneHue', 'grainAmt', 'grainSize', 'speckAmt', 'eyePos', 'paveLod', 'bevelDark'].map((k) => [k, U[k]]));
+const PAVE_SINK = `
+  float sunk = smoothstep(paveLod * 0.8, paveLod, distance(transformed, eyePos));
+  transformed.y -= sunk * 0.3;`;
+const paveMat = new THREE.MeshStandardMaterial({ roughness: 0.88, metalness: 0 });
+paveMat.onBeforeCompile = (sh) => {
+  Object.assign(sh.uniforms, PAVE_U);
+  sh.vertexShader = 'attribute vec2 aCell; attribute float aEdge; varying vec2 vCell; varying float vEdge; varying vec3 vStW; uniform vec3 eyePos; uniform float paveLod;\n' + sh.vertexShader
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\n  vCell = aCell; vEdge = aEdge;' + PAVE_SINK)
+    .replace('#include <project_vertex>', '#include <project_vertex>\n  vStW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+  sh.fragmentShader = 'varying vec2 vCell; varying float vEdge; varying vec3 vStW; uniform vec3 eyePos; uniform float bevelDark;\n' + STONE_GLSL + sh.fragmentShader
+    .replace('#include <map_fragment>', `#include <map_fragment>
+      diffuseColor.rgb = stoneColour(vStW.xz, stCell(vCell), vCell, smoothstep(6.0, 30.0, length(vStW - eyePos))) * (1.0 - bevelDark * (1.0 - vEdge));`);
+};
+paveMat.customProgramCacheKey = () => 'town-paving-1';
+const paveDepth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });   // their shadows sink with them
+paveDepth.onBeforeCompile = (sh) => { Object.assign(sh.uniforms, { eyePos: U.eyePos, paveLod: U.paveLod }); sh.vertexShader = 'uniform vec3 eyePos; uniform float paveLod;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>' + PAVE_SINK); };
+paveDepth.customProgramCacheKey = () => 'town-paving-depth-1';
+function applyPave() {
+  U.stoneBase.value.set(PAVE.base); U.stoneShade.value = PAVE.shade; U.stoneHue.value = PAVE.hue; U.grainAmt.value = PAVE.grain; U.grainSize.value = PAVE.grainSize; U.speckAmt.value = PAVE.speck;
+  U.gapCol.value.set(PAVE.soil); U.mossAmt.value = PAVE.moss; U.edgeDark.value = PAVE.edgeDark; U.edgeWidth.value = PAVE.edgeWidth; U.cornerRound.value = PAVE.pRound; U.gapW.value = PAVE.gap;
+  U.paveLod.value = PAVE.lod; U.bevelDark.value = PAVE.bevelDark;
+}
+applyPave();
+function buildPaving() {
+  const t0 = performance.now(), cv = TOWN.canvas, P = cv.width;
+  if (paveMesh) { scene.remove(paveMesh); paveMesh.geometry.dispose(); paveMesh = null; }
+  if (!P) return;
+  const d = cv.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, P, P).data, k = SIZE / P;
+  const paved = (o) => d[o + 3] / 255 * Math.max(d[o], d[o + 1]) / 255;   // either brush: stones
+  let x0 = P, y0 = P, x1 = -1, y1 = -1;
+  for (let y = 0; y < P; y++) for (let x = 0; x < P; x++) if (paved((y * P + x) * 4) > 0.1) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0) { U.pave3D.value = 0; return; }
+  const inside = (x, z) => { const px = Math.floor((x + SIZE / 2) / k), py = Math.floor((z + SIZE / 2) / k); return px >= 0 && py >= 0 && px < P && py < P && paved((py * P + px) * 4) > 0.5; };
+  const field = stoneField({ size: PAVE.size, jitter: PAVE.jitter, variety: PAVE.variety, gap: PAVE.gap, seed: PAVE.seed,
+    x0: x0 * k - SIZE / 2 - 3, z0: y0 * k - SIZE / 2 - 3, width: Math.max(x1 - x0, y1 - y0) * k + 6, inside }, U);
+  const shape = PAVE.builds[PAVE.build];
+  U.pave3D.value = TS.paving3D && shape && !shape.painted ? 1 : 0;
+  let tris = 0;
+  if (U.pave3D.value) {
+    const g = stoneGeometry(field, () => shape), pos = g.geometry.attributes.position, edge = g.geometry.attributes.aEdge;
+    // stood on the land; the footing taken a little further down, so no stone shows daylight under it on a bump
+    for (let i = 0; i < pos.count; i++) pos.setY(i, pos.getY(i) + heightAt(pos.getX(i), pos.getZ(i)) - (edge.getX(i) < 0.5 ? 0.04 : 0));
+    g.geometry.computeBoundingSphere(); tris = g.tris;
+    paveMesh = new THREE.Mesh(g.geometry, paveMat); paveMesh.castShadow = paveMesh.receiveShadow = SHADOW.on; paveMesh.customDepthMaterial = paveDepth; paveMesh.frustumCulled = false;
+    scene.add(paveMesh);
+  }
+  const note = $('paveNote');
+  if (note) note.textContent = `${field.stones.length.toLocaleString()} stones${tris ? `, ${(tris / 1000).toFixed(0)}k triangles in 3D (sunk into the ground past ${PAVE.lod} m)` : ', painted'} · laid in ${(performance.now() - t0).toFixed(0)} ms`;
+}
+const paveLater = () => { clearTimeout(paveTimer); paveTimer = setTimeout(buildPaving, 400); };
+for (const [b, sp] of Object.entries(PAVE.builds)) $('paveBuild').add(new Option(`${b} · ${sp.name}${sp.painted ? '' : ' (3D near you)'}`, b));
+$('paveBuild').value = PAVE.build; $('paveBuild').addEventListener('change', (e) => { PAVE.build = e.target.value; buildPaving(); });
+$('pavePaste').addEventListener('click', async () => {   // the Stone Lab's Copy settings: the look, the stones, and every build
+  let text = ''; try { text = await navigator.clipboard.readText(); } catch (e) { text = prompt('Paste the Stone Lab settings here') || ''; }
+  let o = null; try { o = JSON.parse(text); } catch (e) { /* not JSON */ }
+  if (!o || typeof o.size !== 'number' || !o.builds) { $('paveNote').textContent = "That isn't Stone Lab settings."; return; }
+  for (const k of Object.keys(PAVE)) if (k !== 'build' && k !== 'builds' && typeof o[k] === typeof PAVE[k]) PAVE[k] = o[k];
+  for (const b of Object.keys(PAVE.builds)) if (o.builds[b]) for (const k of Object.keys(PAVE.builds[b])) if (k !== 'name' && typeof o.builds[b][k] === typeof PAVE.builds[b][k]) PAVE.builds[b][k] = o.builds[b][k];
+  applyPave(); buildPaving();
+});
 buildLand();
 // THE TOWN: the buildings, props and the editor. Potato and normal (phones) get the 1K pictures, gaming the 2K
 TOWN.village = new Village({ scene, lo: QUAL.tier !== 'gaming', heightAt, size: SIZE });
@@ -1201,7 +1292,7 @@ function townRebuild() {
   townTimer = setTimeout(() => { const t = performance.now(); townRebuildNow(); if (note) note.textContent = `Saved in this browser · ground redone in ${((performance.now() - t) / 1000).toFixed(1)} s`; }, 350);
 }
 TOWN.editor = new VillageEditor({ village: TOWN.village, camera, controls, dom: renderer.domElement, container: $('townPanel'), groundAt, scene,
-  roadCanvas: TOWN.canvas, roadChanged: (rect) => composePathRoad(rect), changed: () => townRebuild(), defaultLayout: TOWN_DEFAULT });
+  roadCanvas: TOWN.canvas, roadChanged: (rect) => { composePathRoad(rect); paveLater(); }, changed: () => townRebuild(), defaultLayout: TOWN_DEFAULT });
 
 // ── views ─────────────────────────────────────────────────────────────────────
 const VIEWS = {
@@ -1247,19 +1338,27 @@ for (const [id, key] of [['hexOn', 'hexOn'], ['macroOn', 'macroOn'], ['farOn', '
 $('tex').addEventListener('change', () => { const l = $('layLush'); l.value = $('tex').value; l.dispatchEvent(new Event('change')); });   // the ground picture IS the lush layer
 // the layers' pictures, and the land's settings (these rebuild the maps)
 const LAYERS = { layDry: 'grassDry', layLush: 'grassMed', layForest: 'forest', layPath: 'dirt', laySteep: 'concrete', layShore: 'rocks' };
-// the town's road stones (not in the pictures list: not meant for the land's layers)
-U.layCobble.value = tex('cobbles'); U.layFlag.value = tex('flagstones');
 // PATHS AND ROADS IN ONE PICTURE (2048 x 2048 over the land): R path, G its trampled shoulder (from the path picture),
 // B cobbles, A flagstones (from the town's road picture, each weighed by its coverage). One picture, not two: a real GPU
 // allows 16 a shader and the ground was at 19. `rect` (canvas pixels): only that part redone (live road painting)
 function composePathRoad(rect = null) {
   if (!U.pathRoad.value) { const t = new THREE.DataTexture(PATHROAD, 2048, 2048, THREE.RGBAFormat); t.flipY = false; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.anisotropy = 4; U.pathRoad.value = t; }
-  const P = 2048, x0 = rect ? Math.max(0, rect[0] | 0) : 0, y0 = rect ? Math.max(0, rect[1] | 0) : 0, x1 = rect ? Math.min(P, Math.ceil(rect[2])) : P, y1 = rect ? Math.min(P, Math.ceil(rect[3])) : P;
+  // M: a footpath fades out within this many pixels (~3 m) of a paved road, so paths end at the roads instead of
+  // running beside them as a strip of dirt (both the rectangle written and the road read round it grow by M)
+  const P = 2048, M = 4, x0 = rect ? Math.max(0, (rect[0] | 0) - M) : 0, y0 = rect ? Math.max(0, (rect[1] | 0) - M) : 0, x1 = rect ? Math.min(P, Math.ceil(rect[2]) + M) : P, y1 = rect ? Math.min(P, Math.ceil(rect[3]) + M) : P;
   if (x1 <= x0 || y1 <= y0 || !MAPS.path) return;
-  const rd = TOWN.canvas.width === P ? TOWN.canvas.getContext('2d', { willReadFrequently: true }).getImageData(x0, y0, x1 - x0, y1 - y0).data : null, w = x1 - x0;
+  const X0 = Math.max(0, x0 - M), Y0 = Math.max(0, y0 - M), X1 = Math.min(P, x1 + M), Y1 = Math.min(P, y1 + M), W = X1 - X0, H = Y1 - Y0;
+  const rd = TOWN.canvas.width === P ? TOWN.canvas.getContext('2d', { willReadFrequently: true }).getImageData(X0, Y0, W, H).data : null;
+  let near = null;                                                    // how close a road is: its coverage, spread M pixels each way (a max, across then down)
+  if (rd) {
+    const cov = new Float32Array(W * H), tmp = new Float32Array(W * H); near = new Float32Array(W * H);
+    for (let q = 0; q < W * H; q++) cov[q] = rd[q * 4 + 3] / 255 * Math.max(rd[q * 4], rd[q * 4 + 1]) / 255;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let m = 0; for (let d = Math.max(0, x - M); d <= Math.min(W - 1, x + M); d++) m = Math.max(m, cov[y * W + d]); tmp[y * W + x] = m; }
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let m = 0; for (let d = Math.max(0, y - M); d <= Math.min(H - 1, y + M); d++) m = Math.max(m, tmp[d * W + x]); near[y * W + x] = m; }
+  }
   for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
-    const o = (y * P + x) * 4, q = ((y - y0) * w + (x - x0)) * 4;
-    PATHROAD[o] = MAPS.path[o]; PATHROAD[o + 1] = MAPS.path[o + 1];
+    const o = (y * P + x) * 4, k = (y - Y0) * W + (x - X0), q = k * 4, keep = near ? 1 - Math.min(1, near[k] * 1.5) : 1;
+    PATHROAD[o] = MAPS.path[o] * keep; PATHROAD[o + 1] = MAPS.path[o + 1] * keep;
     if (rd) { const a = rd[q + 3] / 255; PATHROAD[o + 2] = rd[q] * a; PATHROAD[o + 3] = rd[q + 1] * a; } else { PATHROAD[o + 2] = PATHROAD[o + 3] = 0; }
   }
   U.pathRoad.value.needsUpdate = true;
@@ -1524,6 +1623,7 @@ renderer.setAnimationLoop(() => {
     f.landU.landShade.value = U.shadeMap.value; f.landU.landShadeK.value.set(U.hillShade.value, U.aoShade.value, U.treeShade.value * 0.6, U.shadeMap.value ? 1 : 0);   // the land's baked shade, on the plants too
     f.update(camera, controls.target, camera.position, dt);
   }
+  U.eyePos.value.copy(camera.position);                              // (the paving's 3D stones sink past PAVE.lod from here)
   renderer.render(scene, camera); drawAtlas();
 });
 if (Q.has('probe')) Object.assign(window, { __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest] });

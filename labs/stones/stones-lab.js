@@ -122,6 +122,7 @@ groundMat.onBeforeCompile = (sh) => {
   sh.vertexShader = 'varying vec3 vStW;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n  vStW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
   sh.fragmentShader = `varying vec3 vStW;
     uniform sampler2D grassPic; uniform vec3 soilCol, eyePos; uniform vec4 road3D; uniform float mossAmt, edgeDark, edgeWidth, cornerRound, pBevel, pBevelW, gapW, lodNear;
+    #define STONE_PIC
     ` + STONE_GLSL + sh.fragmentShader
     .replace('#include <map_fragment>', `#include <map_fragment>
       vec3 stoneN = vec3(0.0, 1.0, 0.0);
@@ -169,7 +170,7 @@ stoneMat.onBeforeCompile = (sh) => {
   sh.vertexShader = 'attribute vec2 aCell; attribute float aEdge; varying vec2 vCell; varying float vEdge; varying vec3 vStW; uniform vec3 eyePos; uniform float lodNear;\n' + sh.vertexShader
     .replace('#include <begin_vertex>', '#include <begin_vertex>\n  vCell = aCell; vEdge = aEdge;' + LOD_GLSL)
     .replace('#include <project_vertex>', '#include <project_vertex>\n  vStW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-  sh.fragmentShader = 'varying vec2 vCell; varying float vEdge; varying vec3 vStW; uniform vec3 eyePos; uniform float bevelDark;\n' + STONE_GLSL + sh.fragmentShader
+  sh.fragmentShader = '#define STONE_PIC\nvarying vec2 vCell; varying float vEdge; varying vec3 vStW; uniform vec3 eyePos; uniform float bevelDark;\n' + STONE_GLSL + sh.fragmentShader
     .replace('#include <map_fragment>', `#include <map_fragment>
       { float far = smoothstep(6.0, 30.0, length(vStW - eyePos));
         diffuseColor.rgb = stoneColour(vStW.xz, stCell(vCell), vCell, far) * (1.0 - bevelDark * (1.0 - vEdge)); }`);

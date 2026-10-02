@@ -193,11 +193,14 @@ export function stoneGeometry(field, shapeFor) {
 // nearest (for rounding corners), zw: the way out across the nearest edge.
 // stoneColour(p, d, c, far): its colour there: the stone's own shade and tint, grain from noise (fixed
 // to the spot, so it never changes from frame to frame), an optional rock picture; far 0..1 fades the
-// finest grain away with distance, where it would only sparkle.
+// finest grain away with distance, where it would only sparkle. #define STONE_PIC first for the rock-picture
+// option (one more picture in the shader: the Stone Lab has it, the Terrain Lab's ground has no room).
 export const STONE_GLSL = `
   uniform sampler2D stoneCells; uniform vec3 stoneGrid, stoneShape;
-  uniform vec3 stoneBase; uniform float stoneShade, stoneHue, grainAmt, grainSize, speckAmt, picAmt, picScale, picAvg;
-  uniform sampler2D rockPic;
+  uniform vec3 stoneBase; uniform float stoneShade, stoneHue, grainAmt, grainSize, speckAmt;
+  #ifdef STONE_PIC
+  uniform float picAmt, picScale, picAvg; uniform sampler2D rockPic;
+  #endif
   vec4 stCell(vec2 c) { return texture2D(stoneCells, (c + 0.5) / stoneShape.x); }
   vec2 stPoint(vec2 c, vec4 d) { return stoneGrid.xy + (c + 0.5 + (d.gb - 0.5) * stoneShape.y) * stoneGrid.z; }
   float stWeight(vec4 d) { return d.a * stoneShape.z * stoneGrid.z * stoneGrid.z; }
@@ -231,12 +234,14 @@ export const STONE_GLSL = `
     col *= 1.0 + (n - 0.5) * 2.0 * grainAmt;
     float s = stNoise(p / (grainSize * 0.09) + 13.0);                             // fine speckle, gone by the time it would sparkle
     col *= 1.0 + (s - 0.5) * 2.0 * speckAmt * (1.0 - far);
+    #ifdef STONE_PIC
     if (picAmt > 0.0) {                                                          // the rock picture, turned and shifted per stone
       float an = r1 * 6.2832, cs = cos(an), sn = sin(an);
       vec2 u = mat2(cs, sn, -sn, cs) * (p / picScale) + vec2(r2, r1) * 7.0;
       vec3 t = pow(texture2D(rockPic, u).rgb, vec3(2.2));
       col *= mix(1.0, dot(t, vec3(0.299, 0.587, 0.114)) / picAvg, picAmt);
     }
+    #endif
     return col;
   }
 `;
