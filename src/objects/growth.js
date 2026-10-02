@@ -9,7 +9,14 @@ export function hash(x, z) { const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5
 export function vnoise(x, z) { const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz, u = fx * fx * (3 - 2 * fx), v = fz * fz * (3 - 2 * fz);
   const a = hash(ix, iz), b = hash(ix + 1, iz), c = hash(ix, iz + 1), d = hash(ix + 1, iz + 1); return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v; }
 const smooth = (x, a, b) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-const r = (a, b) => { const x = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return x - Math.floor(x); };
+// a random number 0..1 for (a, b): a a whole number (which spot), b a seed (which draw for it). Mixed with
+// integer hashing: the old sin-based one tied draws together when two seeds turned the sine by about 0 or pi
+// (a loner's kind mirrored its position, and whether it was kept used the same number as its depth: lines).
+const r = (a, b) => {
+  let h = Math.imul((a | 0) ^ Math.imul(Math.round(b * 1000), 0x9E3779B1), 0x85EBCA6B) ^ Math.imul(Math.floor(a / 4294967296), 0x27D4EB2F);
+  h ^= h >>> 13; h = Math.imul(h, 0xC2B2AE35); h ^= h >>> 16; h = Math.imul(h, 0x165667B1); h ^= h >>> 15;
+  return (h >>> 0) / 4294967296;
+};
 
 // THE 16 GROUND PLANTS (Jacob's picks in the Plant Lab, baked into one sheet, models/props/groundPlants.glb,
 // by labs/plants/build_sheet.py), in sheet order: each with its height (m), the ground it likes, and how it
@@ -128,7 +135,7 @@ export function growPlants({ ground, at, radius, count, size = 1, kinds, grow })
     if (want_ < 1 && r(tile[2], seed + 77.7) > want_) break;                      // under one a tile: some tiles get one
     const [x, z] = inTile(tile, t, seed + 70), g = ground(x, z); if (g.hard >= 0.6) continue;
     if (G.bare > 0 && r(tile[2] + t, seed + 79.3) < bareAt(G, x, z)) continue;
-    const k = lk[Math.floor(r(tile[2] + t, seed + 71.9) * lk.length) % lk.length]; if (r(tile[2] + t, seed + 73.1) > want(k, g) + 0.1) continue;
+    const k = lk[Math.floor(r(tile[2] + t, seed + 71.9) * lk.length) % lk.length]; if (r(tile[2] + t, seed + 75.7) > want(k, g) + 0.1) continue;   // (its own draw: 73.1 is the spot's depth in the tile)
     if (inRange(x, z)) plant(k, x, z, tile[2] + t + seed * 1000 + 500, g); got++;
   }
   return out;
