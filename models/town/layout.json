@@ -1,0 +1,710 @@
+{
+"v": 1,
+"items": [
+{
+"type": "model",
+"kind": "fountain",
+"x": -15,
+"z": -200,
+"rot": 0,
+"size": 5
+},
+{
+"type": "model",
+"kind": "townHall",
+"x": -15,
+"z": -232,
+"rot": 0
+},
+{
+"type": "model",
+"kind": "tavern",
+"x": 12,
+"z": -196,
+"rot": 270
+},
+{
+"type": "model",
+"kind": "brewery",
+"x": 13,
+"z": -221,
+"rot": 270
+},
+{
+"type": "prop",
+"kind": "stall",
+"x": -31,
+"z": -186,
+"rot": 45
+},
+{
+"type": "prop",
+"kind": "stall",
+"x": -33,
+"z": -197,
+"rot": 90
+},
+{
+"type": "prop",
+"kind": "stall",
+"x": -31,
+"z": -208,
+"rot": 135
+},
+{
+"type": "prop",
+"kind": "signpost",
+"x": 3,
+"z": -208,
+"rot": 270
+},
+{
+"type": "prop",
+"kind": "lamp",
+"x": -11.3,
+"z": -181.9,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "lamp",
+"x": 0.4,
+"z": -189.8,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "lamp",
+"x": 3.1,
+"z": -203.7,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "lamp",
+"x": -4.8,
+"z": -215.4,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "lamp",
+"x": -18.7,
+"z": -218.1,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "lamp",
+"x": -30.4,
+"z": -210.2,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "lamp",
+"x": -33.1,
+"z": -196.3,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "lamp",
+"x": -25.2,
+"z": -184.6,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "bench",
+"x": -10.2,
+"z": -194.3,
+"rot": 220
+},
+{
+"type": "prop",
+"kind": "bench",
+"x": -10.2,
+"z": -205.7,
+"rot": 320
+},
+{
+"type": "prop",
+"kind": "bench",
+"x": -19.8,
+"z": -205.7,
+"rot": 40
+},
+{
+"type": "prop",
+"kind": "bench",
+"x": -19.8,
+"z": -194.3,
+"rot": 140
+},
+{
+"type": "prop",
+"kind": "planter",
+"x": -24,
+"z": -217,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "planter",
+"x": -6,
+"z": -217,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "planter",
+"x": 4,
+"z": -189,
+"rot": 270
+},
+{
+"type": "prop",
+"kind": "planter",
+"x": 4,
+"z": -204,
+"rot": 270
+},
+{
+"type": "prop",
+"kind": "flowerBed",
+"x": -6,
+"z": -168,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "bench",
+"x": -6.0,
+"z": -163.0,
+"rot": 180
+},
+{
+"type": "prop",
+"kind": "bench",
+"x": -1.0,
+"z": -168.0,
+"rot": 270
+},
+{
+"type": "prop",
+"kind": "bench",
+"x": -6.0,
+"z": -173.0,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "bench",
+"x": -11.0,
+"z": -168.0,
+"rot": 90
+},
+{
+"type": "prop",
+"kind": "easel",
+"x": -20,
+"z": -170,
+"rot": 160
+},
+{
+"type": "prop",
+"kind": "easel",
+"x": -23,
+"z": -166,
+"rot": 175
+},
+{
+"type": "prop",
+"kind": "easel",
+"x": -18,
+"z": -163,
+"rot": 190
+},
+{
+"type": "prop",
+"kind": "picnicTable",
+"x": 8,
+"z": -160,
+"rot": 20
+},
+{
+"type": "prop",
+"kind": "picnicTable",
+"x": 14,
+"z": -170,
+"rot": 70
+},
+{
+"type": "model",
+"kind": "workshop",
+"x": -36,
+"z": -157,
+"rot": 90
+},
+{
+"type": "model",
+"kind": "playground",
+"x": -40,
+"z": -180,
+"rot": 129
+},
+{
+"type": "model",
+"kind": "school",
+"x": -60,
+"z": -182,
+"rot": 180
+},
+{
+"type": "model",
+"kind": "bridge",
+"x": 43,
+"z": -201,
+"rot": 90,
+"level": false
+},
+{
+"type": "model",
+"kind": "Lcottage",
+"x": 64,
+"z": -216,
+"rot": 0
+},
+{
+"type": "model",
+"kind": "Tcottage",
+"x": 87,
+"z": -217,
+"rot": 0
+},
+{
+"type": "model",
+"kind": "solarpunkCottage",
+"x": 110,
+"z": -219,
+"rot": 0
+},
+{
+"type": "model",
+"kind": "solarpunkHouse",
+"x": 69,
+"z": -189,
+"rot": 180
+},
+{
+"type": "model",
+"kind": "Lcottage",
+"x": 93,
+"z": -190,
+"rot": 180,
+"size": 10
+},
+{
+"type": "model",
+"kind": "Tcottage",
+"x": 116,
+"z": -192,
+"rot": 180
+},
+{
+"type": "prop",
+"kind": "planter",
+"x": 60,
+"z": -209,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "planter",
+"x": 83,
+"z": -209,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "planter",
+"x": 106,
+"z": -209,
+"rot": 0
+},
+{
+"type": "model",
+"kind": "hanger",
+"x": -104,
+"z": -205,
+"rot": 90
+},
+{
+"type": "model",
+"kind": "observatory",
+"x": -15,
+"z": -292,
+"rot": 0
+},
+{
+"type": "model",
+"kind": "hottubHouse",
+"x": -26,
+"z": -122,
+"rot": 90
+},
+{
+"type": "prop",
+"kind": "bench",
+"x": -20,
+"z": -112,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "bench",
+"x": -10,
+"z": -114,
+"rot": 0
+},
+{
+"type": "tree",
+"kind": "ash",
+"x": -82,
+"z": -213,
+"rot": 0,
+"size": 0.54
+},
+{
+"type": "tree",
+"kind": "oak",
+"x": -66,
+"z": -193,
+"rot": 0,
+"size": 0.58
+},
+{
+"type": "tree",
+"kind": "oak",
+"x": -50,
+"z": -213,
+"rot": 0,
+"size": 0.62
+},
+{
+"type": "tree",
+"kind": "ash",
+"x": 14,
+"z": -213,
+"rot": 0,
+"size": 0.5
+},
+{
+"type": "tree",
+"kind": "oak",
+"x": 30,
+"z": -193,
+"rot": 0,
+"size": 0.54
+},
+{
+"type": "tree",
+"kind": "ash",
+"x": 62,
+"z": -193,
+"rot": 0,
+"size": 0.62
+},
+{
+"type": "tree",
+"kind": "oak",
+"x": 78,
+"z": -213,
+"rot": 0,
+"size": 0.52
+},
+{
+"type": "tree",
+"kind": "oak",
+"x": 94,
+"z": -193,
+"rot": 0,
+"size": 0.56
+},
+{
+"type": "tree",
+"kind": "ash",
+"x": 110,
+"z": -213,
+"rot": 0,
+"size": 0.6
+},
+{
+"type": "tree",
+"kind": "aspen",
+"x": -7.1,
+"z": -178.4,
+"rot": 0,
+"size": 0.45
+},
+{
+"type": "tree",
+"kind": "aspen",
+"x": 6.6,
+"z": -207.9,
+"rot": 0,
+"size": 0.45
+},
+{
+"type": "tree",
+"kind": "aspen",
+"x": -36.6,
+"z": -207.9,
+"rot": 0,
+"size": 0.45
+},
+{
+"type": "tree",
+"kind": "aspen",
+"x": -22.9,
+"z": -178.4,
+"rot": 0,
+"size": 0.45
+},
+{
+"type": "tree",
+"kind": "oak",
+"x": -14,
+"z": -152,
+"rot": 0,
+"size": 0.5
+},
+{
+"type": "tree",
+"kind": "oak",
+"x": 4,
+"z": -150,
+"rot": 0,
+"size": 0.5
+},
+{
+"type": "tree",
+"kind": "oak",
+"x": -26,
+"z": -176,
+"rot": 0,
+"size": 0.5
+},
+{
+"type": "tree",
+"kind": "oak",
+"x": 14,
+"z": -178,
+"rot": 0,
+"size": 0.5
+},
+{
+"type": "tree",
+"kind": "pine",
+"x": -40,
+"z": -130,
+"rot": 0,
+"size": 0.5
+},
+{
+"type": "tree",
+"kind": "pine",
+"x": -5,
+"z": -110,
+"rot": 0,
+"size": 0.5
+},
+{
+"type": "tree",
+"kind": "pine",
+"x": 16,
+"z": -120,
+"rot": 0,
+"size": 0.5
+},
+{
+"type": "prop",
+"kind": "lamp",
+"x": -70,
+"z": -207.5,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "lamp",
+"x": -45,
+"z": -207.5,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "lamp",
+"x": 30,
+"z": -207.5,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "lamp",
+"x": 55,
+"z": -207.5,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "lamp",
+"x": 80,
+"z": -207.5,
+"rot": 0
+},
+{
+"type": "prop",
+"kind": "lamp",
+"x": 105,
+"z": -207.5,
+"rot": 0
+}
+],
+"roads": [
+{
+"mat": "flagstones",
+"w": 34,
+"pts": [
+[
+-15,
+-200
+]
+]
+},
+{
+"mat": "cobbles",
+"w": 6,
+"pts": [
+[
+0,
+-200
+],
+[
+20,
+-201
+],
+[
+43,
+-201
+],
+[
+62,
+-203
+],
+[
+90,
+-205
+],
+[
+125,
+-207
+]
+]
+},
+{
+"mat": "cobbles",
+"w": 6,
+"pts": [
+[
+-30,
+-200
+],
+[
+-45,
+-201
+],
+[
+-75,
+-204
+],
+[
+-90,
+-205
+]
+]
+},
+{
+"mat": "flagstones",
+"w": 20,
+"pts": [
+[
+-92,
+-205
+],
+[
+-80,
+-205
+]
+]
+},
+{
+"mat": "cobbles",
+"w": 5,
+"pts": [
+[
+-23,
+-215
+],
+[
+-32,
+-238
+],
+[
+-34,
+-262
+],
+[
+-22,
+-282
+]
+]
+},
+{
+"mat": "cobbles",
+"w": 5,
+"pts": [
+[
+-15,
+-184
+],
+[
+-17,
+-160
+],
+[
+-8,
+-140
+],
+[
+-14,
+-126
+]
+]
+},
+{
+"mat": "cobbles",
+"w": 3,
+"pts": [
+[
+-8,
+-165
+],
+[
+-28,
+-160
+]
+]
+}
+]
+}

@@ -193,7 +193,7 @@ export function* growPlantsSteps({ ground, at, radius, count, size = 1, kinds, g
 // grow.lawn (0..1): how much of the bare ground they cover. Returns [{ x, z, turn, size, yellow, light }].
 export function lawnSpots(opts) { const it = lawnSpotsSteps(opts); let n; while (!(n = it.next()).done); return n.value; }
 export function* lawnSpotsSteps({ ground, at, radius, density, grow, budget = Infinity }) {
-  const out = [], G = grow; let t0 = performance.now(); if (!(G.bare > 0) || !(G.lawn > 0) || !(density > 0)) return out;
+  const out = [], G = grow; let t0 = performance.now(); if (!(G.lawn > 0) || !(density > 0)) return out;
   const TILE = 10, C = at, R = radius, per = Math.round(density * TILE * TILE);
   for (let tz = Math.floor((C.z - R) / TILE); tz <= Math.floor((C.z + R) / TILE); tz++) for (let tx = Math.floor((C.x - R) / TILE); tx <= Math.floor((C.x + R) / TILE); tx++) {
     if (Math.hypot((tx + 0.5) * TILE - C.x, (tz + 0.5) * TILE - C.z) > R + TILE) continue;
@@ -201,8 +201,9 @@ export function* lawnSpotsSteps({ ground, at, radius, density, grow, budget = In
     for (let t = 0; t < per; t++) {
       const x = (tx + r(ts + t, 301.1)) * TILE, z = (tz + r(ts + t, 302.3)) * TILE;
       if (Math.hypot(x - C.x, z - C.z) > R) continue;
-      if (r(ts + t, 303.7) > bareAt(G, x, z) * G.lawn) continue;
-      const g = ground(x, z); if (g.hard >= 0.5) continue;
+      const g = ground(x, z), y = g.yard || 0;                     // (yard: a town's mown ground, from the ground function, if it has one)
+      if (r(ts + t, 303.7) > Math.max(bareAt(G, x, z) * G.lawn, y)) continue;
+      if (g.hard - y >= 0.5) continue;
       out.push({ x, z, turn: r(ts + t, 304.9) * 6.283, size: 0.7 + 0.7 * r(ts + t, 305.3), yellow: r(ts + t, 306.1) < 0.2 ? 0.35 : 0, light: (r(ts + t, 307.9) - 0.5) * 0.25 });
     }
     if (performance.now() - t0 > budget) { yield; t0 = performance.now(); }

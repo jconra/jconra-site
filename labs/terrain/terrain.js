@@ -15,6 +15,11 @@ import { Forest, FOREST_SPECIES } from '../../src/objects/forest.js';
 import { chooseTier, saveTier, watchFrames, TIERS } from '../../src/quality.js';
 import { makeCloudSky, SKY_GLSL } from '../../src/objects/cloudSky.js';
 import { WIND, tickWind } from '../../src/objects/wind.js';
+import { Village, levelPads, blockGrid, paintRoads, normalise as normaliseTown } from '../../src/objects/village.js';
+import { VillageEditor, savedLayout as savedTown } from '../../src/objects/villageEditor.js';
+// THE TOWN's layout: the one saved in this browser, else the first town (models/town/layout.json)
+const TOWN_DEFAULT = normaliseTown(await fetch('/models/town/layout.json').then(r => r.ok ? r.json() : null).catch(() => null));
+const TOWN = { layout: normaliseTown(savedTown() || TOWN_DEFAULT), Hpre: null, block: null, road: null, canvas: document.createElement('canvas'), village: null };
 import { makeLawn } from '../../src/objects/lawn.js';
 import { KIND_INFO, LIT_SOFTEN, GROW_DEFAULTS, FAMILY_DEFAULTS, COVER_DEFAULTS, defaultKinds, growPlants, growPlantsSteps, lawnSpots, lawnSpotsSteps, patchAt, pickTree as pickTreeKind, settingsJSON, applySettings } from '../../src/objects/growth.js';
 
@@ -404,7 +409,10 @@ function buildHeights() {
   if (SHAPE.erodeOn) { const before = Float32Array.from(Hg); erode(Hg, SHAPE.drops); smoothErosion(before); }
   cutRavines(Hg); addCrags(Hg);
   findWater(Hg);
+  townLand();
 }
+// the land as made is kept (Hpre); the town's pads are laid on a copy of it, so moving a building puts the old ground back
+function townLand() { TOWN.Hpre = Float32Array.from(Hg); levelPads(Hg, TOWN.Hpre, TOWN.village ? TOWN.village.layout : TOWN.layout, N, SIZE, TEX); }
 function heightAt(x, z) {
   const fx = Math.min(N - 1.001, Math.max(0, (x + SIZE / 2) / TEX - 0.5)), fz = Math.min(N - 1.001, Math.max(0, (z + SIZE / 2) / TEX - 0.5));
   const i = fx | 0, j = fz | 0, u = fx - i, v = fz - j, k = j * N + i;
@@ -468,6 +476,9 @@ function bakeShade(canopy, wide) {
   shadeTex.needsUpdate = true;
 }
 function buildLand() {
+  paintRoads(TOWN.canvas, TOWN.village ? TOWN.village.layout : TOWN.layout, SIZE);
+  ({ block: TOWN.block, road: TOWN.road, yard: TOWN.yard } = blockGrid(TOWN.village ? TOWN.village.layout : TOWN.layout, TOWN.canvas, N, SIZE, TEX));
+  if (U.roadMap.value) U.roadMap.value.needsUpdate = true;
   Hb = blur(Hg, 12);
   // wet and dry: how far below or above its surroundings each spot is
   const wet = new Float32Array(N * N), dry = new Float32Array(N * N), steep = new Float32Array(N * N);
@@ -483,7 +494,7 @@ function buildLand() {
     // thinning out over the last 40 m below the treeline
     const sl = slopeAt(i, j), hill = THREE.MathUtils.smoothstep(sl, 0.15, 0.55) * LAND.hillForest;
     const F = THREE.MathUtils.smoothstep(clump(jx, jz) + hill, 1 - LAND.forest * 0.6, 1.05 - LAND.forest * 0.6) * (1 - wet[k] * 0.9)
-      * (1 - THREE.MathUtils.smoothstep(sl, 0.75, 1.0)) * (1 - THREE.MathUtils.smoothstep(Hg[k], LAND.treeline - 40, LAND.treeline));
+      * (1 - THREE.MathUtils.smoothstep(sl, 0.75, 1.0)) * (1 - THREE.MathUtils.smoothstep(Hg[k], LAND.treeline - 40, LAND.treeline)) * (1 - TOWN.block[k]);   // (none in the town's buildings and roads)
     // (potato keeps under half of them: treeShare)
     if (waterAt(jx, jz) < 0.05 && hash(jx * 1.3, jz * 0.7) < F * 0.85 * (TS.treeShare || 1)) { trees.push([jx, heightAt(jx, jz), jz, 0.8 + hash(jx, jz * 2) * 0.5]); tree[k] = 1; }
   }
@@ -506,7 +517,7 @@ function buildLand() {
   U.maskB.value.needsUpdate = true;
   bakeShade(canopy, wide);
   // paths: cheapest routes over the grid, where steep, wet and thick forest cost more
-  const cost = new Float32Array(N * N); for (let k = 0; k < N * N; k++) cost[k] = 1 + 60 * steep[k] + 8 * wet[k] + 2 * canopy[k] + (POND[k] ? 5000 : WDEPTH[k] > 0 ? 40 : 0);   // round the lakes; over a river only where it must
+  const cost = new Float32Array(N * N); for (let k = 0; k < N * N; k++) cost[k] = (1 + 60 * steep[k] + 8 * wet[k] + 2 * canopy[k] + (POND[k] ? 5000 : WDEPTH[k] > 0 ? 40 : 0)) * (1 - 0.65 * TOWN.road[k]) + 80 * Math.max(0, TOWN.block[k] - TOWN.road[k]);   // round the lakes; over a river only where it must; along the town's roads, round its buildings
   const baseCost = Float32Array.from(cost), trail = new Float32Array(N * N);       // trail: how much cheaper a cell is for being on (or beside) a path already routed
   const route = (ax, az, bx, bz) => {
     const S = N / 2, cell = (x, z) => [Math.round((x + SIZE / 2) / TEX), Math.round((z + SIZE / 2) / TEX)];
@@ -537,7 +548,7 @@ function buildLand() {
   const paths = [route(-760, -520, 740, 380), route(-560, 760, 520, -760), route(40, -790, -60, 790), route(-790, 120, 30, 20)];
   // the path texture: a worn core and a trampled shoulder, drawn at 0.8 m a pixel
   const P = 2048, k = P / SIZE; pathCanvas = pathCanvas || document.createElement('canvas'); pathCanvas.width = pathCanvas.height = P;
-  const g2 = pathCanvas.getContext('2d'); g2.fillStyle = '#000'; g2.fillRect(0, 0, P, P); g2.lineCap = g2.lineJoin = 'round';
+  const g2 = pathCanvas.getContext('2d', { willReadFrequently: true }); g2.fillStyle = '#000';   // (read back below: kept in ordinary memory, not on the graphics card, where a rebuild's blur and read-back stalled for many seconds) g2.fillRect(0, 0, P, P); g2.lineCap = g2.lineJoin = 'round';
   const stroke = (w, colour, blurPx) => { g2.filter = `blur(${blurPx}px)`; g2.strokeStyle = colour; g2.lineWidth = w * k;
     for (const pts of paths) { g2.beginPath(); pts.forEach(([x, z], q) => q ? g2.lineTo((x + SIZE / 2) * k, (z + SIZE / 2) * k) : g2.moveTo((x + SIZE / 2) * k, (z + SIZE / 2) * k)); g2.stroke(); } };
   g2.globalCompositeOperation = 'lighter'; stroke(LAND.pathWidth * 3.2, 'rgb(0,90,0)', 3); stroke(LAND.pathWidth, 'rgb(255,0,0)', 1.2); g2.filter = 'none'; g2.globalCompositeOperation = 'source-over';
@@ -566,7 +577,7 @@ function avgColour(img) {
 function setAverages() {
   if (typeof calmCover === 'function') calmCover();
   if (!TS.lite) return;
-  for (const [id, a] of [['groundMap', 'avgGround'], ['layDry', 'avgDry'], ['layLush', 'avgLush'], ['layForest', 'avgForest'], ['layWet', 'avgWet'], ['layPath', 'avgPath'], ['laySteep', 'avgSteep'], ['layShore', 'avgShore']]) {
+  for (const [id, a] of [['groundMap', 'avgGround'], ['layDry', 'avgDry'], ['layLush', 'avgLush'], ['layForest', 'avgForest'], ['layWet', 'avgWet'], ['layPath', 'avgPath'], ['laySteep', 'avgSteep'], ['layShore', 'avgShore'], ['layCobble', 'avgCobble'], ['layFlag', 'avgFlag']]) {
     const t = U[id].value; if (t && t.userData.avg) U[a].value.copy(t.userData.avg); }
 }
 function tex(name) {
@@ -593,6 +604,7 @@ const U = {
   coverR: { value: 140 }, coverAt: { value: new THREE.Vector3() }, coverMap: { value: null }, coverFar: { value: 1 }, rockFrom: { value: 0.25 },
   gullyStr: { value: 0.65 }, fanStr: { value: 0.35 }, strataStr: { value: 1.5 }, strataSize: { value: 6 }, lushTint: { value: new THREE.Color(0.86, 1.0, 0.8) }, dampTint: { value: new THREE.Color(0.78, 0.92, 0.76) }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
   slopeTint: { value: new THREE.Color(0.5, 0.66, 0.4) },
+  roadMap: { value: null }, layCobble: { value: null }, layFlag: { value: null }, avgCobble: { value: new THREE.Color(0x77706a) }, avgFlag: { value: new THREE.Color(0x9a9286) }, cobbleScale: { value: 1.6 }, flagScale: { value: 2.5 },   // (m a picture: cobbles ~15 cm, flagstones 30-60 cm)
   shadeMap: { value: null }, shadowRange: { value: 0 }, shadowAt: { value: new THREE.Vector3() }, hillShade: { value: 1 }, aoShade: { value: 1 }, treeShade: { value: 0.9 },
   avgGround: { value: new THREE.Color(0x6b8a3a) }, avgDry: { value: new THREE.Color(0x8a8a4a) }, avgLush: { value: new THREE.Color(0x5b7a2a) }, avgForest: { value: new THREE.Color(0x4a4a2a) }, avgWet: { value: new THREE.Color(0x4a3a2a) }, avgPath: { value: new THREE.Color(0x6a5238) }, avgSteep: { value: new THREE.Color(0x7a7a7a) }, avgShore: { value: new THREE.Color(0x77706a) }, shoreStr: { value: 1 }, layShore: { value: null },
   layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layWet: { value: null }, layPath: { value: null }, laySteep: { value: null },
@@ -611,7 +623,7 @@ mat.onBeforeCompile = (sh) => {
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar, stampPatch, stampPatchSize, stampClump; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
     uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 coverAt; uniform sampler2D coverMap; uniform vec3 lushTint, dampTint, slopeTint;
     uniform sampler2D waterMap; uniform float waterOn, wFroth, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow;
-    float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gShadowFade = 0.0; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathMap; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange; uniform vec3 shadowAt;
+    float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gShadowFade = 0.0, gRoad = 0.0; uniform sampler2D roadMap, layCobble, layFlag; uniform vec3 avgCobble, avgFlag; uniform float cobbleScale, flagScale; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathMap; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange; uniform vec3 shadowAt;
     uniform vec3 avgGround, avgDry, avgLush, avgForest, avgWet, avgPath, avgSteep, avgShore; uniform float shoreStr; uniform sampler2D layShore; uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layWet; uniform sampler2D layPath; uniform sampler2D laySteep;
     varying vec3 vWN;
     varying vec3 vW;
@@ -791,6 +803,15 @@ mat.onBeforeCompile = (sh) => {
         vec3 tops = cv.rgb * (0.85 + 0.45 * speck), gaps = mix(g, cv.rgb, 0.4) * 0.55;
         g = mix(g, mix(gaps, tops, smoothstep(0.35, 0.7, m)), k * 0.85);
       }
+      // THE TOWN'S ROADS, painted (R cobbles, G flagstones), their edges a little ragged
+      { vec4 rd = texture2D(roadMap, luv); float rn = (vn(vW.xz / 0.8) - 0.5) * 0.35;
+        float aC = smoothstep(0.3, 0.65, rd.r + rn), aF = smoothstep(0.3, 0.65, rd.g + rn); gRoad = max(aC, aF);
+        #ifdef LITE
+        vec3 cobC = avgCobble, flagC = avgFlag;
+        #else
+        vec3 cobC = texture2D(layCobble, vW.xz / cobbleScale).rgb, flagC = texture2D(layFlag, vW.xz / flagScale).rgb;
+        #endif
+        g = mix(g, cobC, aC * (1.0 - rock)); g = mix(g, flagC, aF * (1.0 - rock)); }
       // the maps themselves, in false colour
       if (view > 0.5) {
         vec3 v = vec3(0.12);
@@ -820,6 +841,7 @@ mat.onBeforeCompile = (sh) => {
       }
       if (stampOn > 0.5) {
         float fade = 1.0 - smoothstep(stampFar * 0.7, stampFar, length(vW - cameraPosition));
+        fade *= 1.0 - gRoad;                                            // no leaves and twigs on the roads
         if (fade > 0.001) g = mix(g, stamps(g, vW.xz), fade);
       }
       if (macroOn > 0.5) {
@@ -876,7 +898,7 @@ mat.onBeforeCompile = (sh) => {
     #include <dithering_fragment>
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-24' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-25' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground); ground.receiveShadow = SHADOW.on;
 // THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
@@ -895,12 +917,18 @@ function pickTree(x, z, species) {
   const { sp, hsl } = pickTreeKind(x, z, species.map(s => s.name), { height: Hg[k], slope: slopeAt(i, j), wet: MAPS.wet[k], dry: MAPS.dry[k] }, FAMILY);
   return [sp, new THREE.Color().setHSL(...hsl)];
 }
+// the town's trees, for the forest to draw (so they get its imposters, wind and shade): the species named, its usual tint
+function townTrees(species) {
+  return (TOWN.village ? TOWN.village.layout : TOWN.layout).items.filter(it => it.type === 'tree').map(it => {
+    const sp = Math.max(0, species.findIndex(s => s.name === it.kind)), [, tint] = pickTree(it.x, it.z, species);
+    return { x: it.x, z: it.z, sp, scale: it.size, tint, yaw: (it.rot || 0) * Math.PI / 180 }; });
+}
 function placeTrees() {
   if (treeForest) { scene.remove(treeForest.group); for (const b of treeForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
   const species = treeForest && !FOREST.rebake ? treeForest.species : TREE_SPECIES.map(sp => ({ ...sp }));   // keeps the baked atlases unless the atlas settings changed
   FOREST.rebake = false;
   treeForest = new Forest(renderer, scene, { species, shadows: SHADOW.on, detail: FOREST.detail, grid: FOREST.grid, cell: FOREST.cell, imposterAt: FOREST.imposterAt, band: FOREST.band, ahead: FOREST.ahead, sunDir: SUN_DIR, heightAt, nearCap: 600,
-    fixed: trees.map(([x, , z, s]) => { const [sp, tint] = pickTree(x, z, species); return { x, z, sp, scale: s, tint }; }) });
+    fixed: [...trees.map(([x, , z, s]) => { const [sp, tint] = pickTree(x, z, species); return { x, z, sp, scale: s, tint }; }), ...townTrees(species)] });
   treeForest.group.visible = $('treesOn').checked;
   $('landInfo').textContent = `${trees.length.toLocaleString()} trees, 4 paths`;
 }
@@ -954,9 +982,9 @@ function coverGround(x, z) {
   const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
   const pi = Math.min(MAPS.P - 1, Math.max(0, Math.floor((x + SIZE / 2) / SIZE * MAPS.P))), pj = Math.min(MAPS.P - 1, Math.max(0, Math.floor((z + SIZE / 2) / SIZE * MAPS.P))), path = MAPS.path[(pj * MAPS.P + pi) * 4] / 255 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 510;
   const canopy = MAPS.canopy[k], shade = Math.min(1, Math.max(0, MAPS.wide[k] * 2.2 - canopy * 0.8)), open = 1 - Math.min(1, canopy + shade);
-  const hard = path + MAPS.steep[k] * 1.5 + waterAt(x, z) * 4, shore = MAPS.shore ? Math.min(1, MAPS.shore[k] * 2.5) : 0;
+  const yard = TOWN.yard ? TOWN.yard[k] : 0, hard = path + MAPS.steep[k] * 1.5 + waterAt(x, z) * 4 + (TOWN.block ? TOWN.block[k] * 2 : 0) + yard, shore = MAPS.shore ? Math.min(1, MAPS.shore[k] * 2.5) : 0;   // (nothing in the town's buildings and roads; mown yards round them: lawn, no meadow)
   const blocked = hard + Math.max(0, MAPS.wet[k] - 0.6) * 2 + shore * 1.2;
-  return { hard, blocked, shade: Math.min(1, shade + 0.6 * canopy), wet: Math.max(shore, MAPS.wet[k]) * (1 - MAPS.steep[k]),
+  return { hard, yard, blocked, shade: Math.min(1, shade + 0.6 * canopy), wet: Math.max(shore, MAPS.wet[k]) * (1 - MAPS.steep[k]),
     dry: MAPS.steep[k] > 0.4 ? 0 : MAPS.dry[k] * open, grass: (0.55 * open + 1.0 * shade + 0.15 * canopy) * (1 - MAPS.dry[k] * 0.4), shrub: 0.08 * open + 0.9 * shade + 0.35 * canopy,
     long: MAPS.steep[k] > 0.4 ? 0 : (0.35 + 0.65 * MAPS.dry[k]) * (1 - Math.min(1, canopy * 1.5 + MAPS.wide[k])) * (1 - Math.min(1, path + MAPS.steep[k] + MAPS.wet[k])) };
 }
@@ -1064,6 +1092,7 @@ function placeStones() {
     const x = (r(t, 41.3) - 0.5) * SIZE * 0.98, z = (r(t, 43.7) - 0.5) * SIZE * 0.98;
     const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
     if (POND[k]) continue;                                                    // none out in the lakes; streams are fine (stones in a creek)
+    if (TOWN.block && TOWN.block[k] > 0.1) continue;                         // none in the town
     const pi = Math.floor((x + SIZE / 2) / SIZE * MAPS.P), pj = Math.floor((z + SIZE / 2) / SIZE * MAPS.P); if (MAPS.path[(pj * MAPS.P + pi) * 4] > 60) continue;
     const creek = MAPS.shore ? Math.min(1, MAPS.shore[k] * 2.5) : 0;             // along streams and shores the soil is washed off the stones
     const sl = slopeAt(i, j), want = 0.14 + 1.6 * creek + 0.8 * THREE.MathUtils.smoothstep(sl, 0.45, 0.9) + 0.9 * Math.max(0, scree[k] - MAPS.steep[k]) * 2;
@@ -1140,6 +1169,30 @@ function placeCover(ready = null) {
   $('coverInfo').textContent = `${placed.toLocaleString()} plants of 16 kinds: meshes to ${COVER.near} m, imposters beyond (atlases bake over the first seconds)` + (LAWN.count ? ` · ${LAWN.count.toLocaleString()} lawn tufts (${(LAWN.count * lawn.trisPerTuft / 1e6).toFixed(2)} M triangles) out to ${LAWN.radius} m` : '');
 }
 buildLand();
+// THE TOWN: the buildings, props and the editor. Potato and normal (phones) get the 1K pictures, gaming the 2K
+TOWN.village = new Village({ scene, lo: QUAL.tier !== 'gaming', heightAt, size: SIZE });
+TOWN.village.setLayout(TOWN.layout);
+// the land under the pointer: a ray marched over the heights (cheaper than hitting the 520,000-triangle ground mesh)
+const townRay = new THREE.Raycaster();
+function groundAt(cx, cy) {
+  const r = renderer.domElement.getBoundingClientRect(); townRay.setFromCamera(new THREE.Vector2((cx - r.left) / r.width * 2 - 1, -((cy - r.top) / r.height) * 2 + 1), camera);
+  const o = townRay.ray.origin, d = townRay.ray.direction; let prev = 0;
+  for (let t = 1; t < 3000; t += Math.max(1, t * 0.01)) {
+    const x = o.x + d.x * t, z = o.z + d.z * t; if (Math.abs(x) > SIZE / 2 || Math.abs(z) > SIZE / 2) return null;
+    if (o.y + d.y * t < heightAt(x, z)) { let a = prev, b = t; for (let q = 0; q < 20; q++) { const m = (a + b) / 2; if (o.y + d.y * m < heightAt(o.x + d.x * m, o.z + d.z * m)) b = m; else a = m; } return new THREE.Vector3(o.x + d.x * b, 0, o.z + d.z * b); }
+    prev = t;
+  }
+  return null;
+}
+// after an edit (and a short pause): the pads laid again, the mesh reshaped, the land's maps, paths, trees, plants and stones redone
+let townTimer = 0;
+function townRebuildNow() { levelPads(Hg, TOWN.Hpre, TOWN.village.layout, N, SIZE, TEX); fastMesh(); buildLand(); TOWN.village.sync(); }
+function townRebuild() {
+  clearTimeout(townTimer); const note = $('tNote'); if (note) note.textContent = 'levelling the ground and clearing the plants…';
+  townTimer = setTimeout(() => { const t = performance.now(); townRebuildNow(); if (note) note.textContent = `Saved in this browser · ground redone in ${((performance.now() - t) / 1000).toFixed(1)} s`; }, 350);
+}
+TOWN.editor = new VillageEditor({ village: TOWN.village, camera, controls, dom: renderer.domElement, container: $('townPanel'), groundAt, scene,
+  roadCanvas: TOWN.canvas, roadChanged: () => { U.roadMap.value.needsUpdate = true; }, changed: () => townRebuild(), defaultLayout: TOWN_DEFAULT });
 
 // ── views ─────────────────────────────────────────────────────────────────────
 const VIEWS = {
@@ -1185,6 +1238,9 @@ for (const [id, key] of [['hexOn', 'hexOn'], ['macroOn', 'macroOn'], ['farOn', '
 $('tex').addEventListener('change', () => { U.groundMap.value = tex($('tex').value); setAverages(); });
 // the layers' pictures, and the land's settings (these rebuild the maps)
 const LAYERS = { layDry: 'grassDry', layLush: 'grassMed', layForest: 'forest', layWet: 'darkDirt', layPath: 'dirt', laySteep: 'concrete', layShore: 'rocks' };
+// the town's road stones (not in the pictures list: not meant for the land's layers)
+U.layCobble.value = tex('cobbles'); U.layFlag.value = tex('flagstones');
+{ const t = new THREE.CanvasTexture(TOWN.canvas); t.flipY = false; t.minFilter = THREE.LinearMipmapLinearFilter; t.anisotropy = 4; U.roadMap.value = t; }
 for (const [id, def] of Object.entries(LAYERS)) { const el = $(id); for (const n of TEXTURES) el.add(new Option(n, n)); el.value = def; const go = () => { U[id].value = tex(el.value); setAverages(); }; el.addEventListener('change', go); go(); }
 for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'], ['landDry', 'dryHeight', v => v.toFixed(1) + ' m'], ['landForest', 'forest', v => Math.round(v * 100) + '%'], ['landShade', 'shadeReach', v => Math.round(v * TEX) + ' m'], ['landPath', 'pathWidth', v => v.toFixed(1) + ' m'], ['landTreeline', 'treeline', v => v + ' m'], ['landShore', 'shore', v => Math.round(v * TEX) + ' m'], ['landHill', 'hillForest', v => Math.round(v * 100) + '%']]) {
   const el = $(id); el.value = LAND[key]; $(id + 'Out').textContent = fmt(+el.value);
@@ -1294,7 +1350,7 @@ const RAIN = { gen: null, paused: false, perFrame: 1500, done: 0, trail: [], fra
 const trailGeo = new THREE.BufferGeometry(), trailLines = new THREE.LineSegments(trailGeo, new THREE.LineBasicMaterial({ color: 0x5fb4ff, transparent: true, opacity: 0.55 }));
 trailLines.frustumCulled = false; trailLines.visible = false; scene.add(trailLines);
 function fastMesh() { if (SEG !== N - 1) { shapeMesh(); return; } const p = geo.attributes.position; for (let k = 0; k < p.count; k++) p.setY(k, Hg[k]); p.needsUpdate = true; geo.computeVertexNormals(); }
-function endRain(msg) { RAIN.gen = null; trailLines.visible = false; if (RAIN.before) smoothErosion(RAIN.before); cutRavines(Hg); addCrags(Hg); findWater(Hg); fastMesh(); buildLand(); if (treeForest) treeForest.group.visible = $('treesOn').checked; $('shapeInfo').textContent = msg; }
+function endRain(msg) { RAIN.gen = null; trailLines.visible = false; if (RAIN.before) smoothErosion(RAIN.before); cutRavines(Hg); addCrags(Hg); findWater(Hg); townLand(); fastMesh(); buildLand(); if (treeForest) treeForest.group.visible = $('treesOn').checked; $('shapeInfo').textContent = msg; }
 function startRain() {
   FLOW.fill(0); SETTLE.fill(0);
   baseGrid(); RAIN.before = Float32Array.from(Hg);
@@ -1438,4 +1494,4 @@ renderer.setAnimationLoop(() => {
   }
   renderer.render(scene, camera); drawAtlas();
 });
-if (Q.has('probe')) Object.assign(window, { __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest] });
+if (Q.has('probe')) Object.assign(window, { __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest] });
