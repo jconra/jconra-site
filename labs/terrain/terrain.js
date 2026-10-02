@@ -19,6 +19,7 @@ import { Village, levelPads, blockGrid, paintRoads, normalise as normaliseTown }
 import { VillageEditor, savedLayout as savedTown } from '../../src/objects/villageEditor.js';
 // THE TOWN's layout: the one saved in this browser, else the first town (models/town/layout.json)
 const TOWN_DEFAULT = normaliseTown(await fetch('/models/town/layout.json').then(r => r.ok ? r.json() : null).catch(() => null));
+const PATHROAD = new Uint8Array(2048 * 2048 * 4);              // the paths-and-roads picture's pixels (see composePathRoad)
 const TOWN = { layout: normaliseTown(savedTown() || TOWN_DEFAULT), Hpre: null, block: null, road: null, canvas: document.createElement('canvas'), village: null };
 import { makeLawn } from '../../src/objects/lawn.js';
 import { KIND_INFO, LIT_SOFTEN, GROW_DEFAULTS, FAMILY_DEFAULTS, COVER_DEFAULTS, defaultKinds, growPlants, growPlantsSteps, lawnSpots, lawnSpotsSteps, patchAt, pickTree as pickTreeKind, settingsJSON, applySettings } from '../../src/objects/growth.js';
@@ -478,7 +479,6 @@ function bakeShade(canopy, wide) {
 function buildLand() {
   paintRoads(TOWN.canvas, TOWN.village ? TOWN.village.layout : TOWN.layout, SIZE);
   ({ block: TOWN.block, road: TOWN.road, yard: TOWN.yard } = blockGrid(TOWN.village ? TOWN.village.layout : TOWN.layout, TOWN.canvas, N, SIZE, TEX));
-  if (U.roadMap.value) U.roadMap.value.needsUpdate = true;
   Hb = blur(Hg, 12);
   // wet and dry: how far below or above its surroundings each spot is
   const wet = new Float32Array(N * N), dry = new Float32Array(N * N), steep = new Float32Array(N * N);
@@ -548,7 +548,8 @@ function buildLand() {
   const paths = [route(-760, -520, 740, 380), route(-560, 760, 520, -760), route(40, -790, -60, 790), route(-790, 120, 30, 20)];
   // the path texture: a worn core and a trampled shoulder, drawn at 0.8 m a pixel
   const P = 2048, k = P / SIZE; pathCanvas = pathCanvas || document.createElement('canvas'); pathCanvas.width = pathCanvas.height = P;
-  const g2 = pathCanvas.getContext('2d', { willReadFrequently: true }); g2.fillStyle = '#000';   // (read back below: kept in ordinary memory, not on the graphics card, where a rebuild's blur and read-back stalled for many seconds) g2.fillRect(0, 0, P, P); g2.lineCap = g2.lineJoin = 'round';
+  // (read back below: kept in ordinary memory, not on the graphics card, where a rebuild's blur and read-back stalled for many seconds)
+  const g2 = pathCanvas.getContext('2d', { willReadFrequently: true }); g2.fillStyle = '#000'; g2.fillRect(0, 0, P, P); g2.lineCap = g2.lineJoin = 'round';
   const stroke = (w, colour, blurPx) => { g2.filter = `blur(${blurPx}px)`; g2.strokeStyle = colour; g2.lineWidth = w * k;
     for (const pts of paths) { g2.beginPath(); pts.forEach(([x, z], q) => q ? g2.lineTo((x + SIZE / 2) * k, (z + SIZE / 2) * k) : g2.moveTo((x + SIZE / 2) * k, (z + SIZE / 2) * k)); g2.stroke(); } };
   g2.globalCompositeOperation = 'lighter'; stroke(LAND.pathWidth * 3.2, 'rgb(0,90,0)', 3); stroke(LAND.pathWidth, 'rgb(255,0,0)', 1.2); g2.filter = 'none'; g2.globalCompositeOperation = 'source-over';
@@ -558,11 +559,12 @@ function buildLand() {
   if (!maskA) { maskA = new THREE.DataTexture(data, N, N, THREE.RGBAFormat); maskA.magFilter = maskA.minFilter = THREE.LinearFilter; maskA.generateMipmaps = false; }
   else maskA.image.data.set(data);
   maskA.needsUpdate = true;
-  if (!U.pathMap.value) { const t = new THREE.CanvasTexture(pathCanvas); t.flipY = false; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; U.pathMap.value = t; }
-  U.pathMap.value.needsUpdate = true; U.maskA.value = maskA;
+  U.maskA.value = maskA;
   MAPS.path = pathCanvas.getContext('2d').getImageData(0, 0, P, P).data; MAPS.P = P;
+  composePathRoad();
   COVER.cache = {};                                   // the land changed: the remembered tiles are stale
   placeTrees(); placeStones(); if (COVER.parts) placeCover();
+  if (TOWN.village) { TOWN.village.sync(); if (TOWN.editor) TOWN.editor.markSel(); }   // the town stands on the land as it now is
 }
 
 // ── textures ────────────────────────────────────────────────────────────────────
@@ -577,7 +579,7 @@ function avgColour(img) {
 function setAverages() {
   if (typeof calmCover === 'function') calmCover();
   if (!TS.lite) return;
-  for (const [id, a] of [['groundMap', 'avgGround'], ['layDry', 'avgDry'], ['layLush', 'avgLush'], ['layForest', 'avgForest'], ['layWet', 'avgWet'], ['layPath', 'avgPath'], ['laySteep', 'avgSteep'], ['layShore', 'avgShore'], ['layCobble', 'avgCobble'], ['layFlag', 'avgFlag']]) {
+  for (const [id, a] of [['layDry', 'avgDry'], ['layLush', 'avgLush'], ['layForest', 'avgForest'], ['layPath', 'avgPath'], ['laySteep', 'avgSteep'], ['layShore', 'avgShore'], ['layCobble', 'avgCobble'], ['layFlag', 'avgFlag']]) {
     const t = U[id].value; if (t && t.userData.avg) U[a].value.copy(t.userData.avg); }
 }
 function tex(name) {
@@ -589,7 +591,7 @@ $('tex').value = 'grassMed';
 
 // ── the ground material ────────────────────────────────────────────────────────
 const U = {
-  groundMap: { value: tex('grassMed') }, tile: { value: 24 }, split: { value: 0.5 }, res: { value: new THREE.Vector2(innerWidth, innerHeight) },
+  tile: { value: 24 }, split: { value: 0.5 }, res: { value: new THREE.Vector2(innerWidth, innerHeight) },
   hexOn: { value: 1 }, hexSize: { value: 0.8 }, hexRot: { value: Math.PI }, hexSharp: { value: 7 }, hexBright: { value: 0.6 },
   macroOn: { value: 1 }, macroStr: { value: 0.55 }, macroSize: { value: 60 }, macroHue: { value: 0.5 },
   farOn: { value: 0 }, farFrom: { value: 40 }, grid: { value: 0 },
@@ -602,12 +604,12 @@ const U = {
   waterMap: { value: waterTex }, waterOn: { value: 1 }, time: { value: 0 }, sunDirW: { value: new THREE.Vector3() }, skyCol: { value: SKY.clone() },
   wDeep: { value: new THREE.Color('#123a4a') }, wShallow: { value: new THREE.Color('#3f7f86') }, wWave: { value: 2.2 }, wSpeed: { value: 0.6 }, wSpec: { value: 0.8 }, wReflect: { value: 0.55 }, wFroth: { value: 1 }, wWaveOn: { value: 1 },
   coverR: { value: 140 }, coverAt: { value: new THREE.Vector3() }, coverMap: { value: null }, coverFar: { value: 1 }, rockFrom: { value: 0.25 },
-  gullyStr: { value: 0.65 }, fanStr: { value: 0.35 }, strataStr: { value: 1.5 }, strataSize: { value: 6 }, lushTint: { value: new THREE.Color(0.86, 1.0, 0.8) }, dampTint: { value: new THREE.Color(0.78, 0.92, 0.76) }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
+  gullyStr: { value: 0.65 }, fanStr: { value: 0.35 }, strataStr: { value: 1.5 }, strataSize: { value: 6 }, lushTint: { value: new THREE.Color(0.86, 1.0, 0.8) }, dampTint: { value: new THREE.Color(0.78, 0.92, 0.76) }, landSize: { value: SIZE }, view: { value: 0 },
   slopeTint: { value: new THREE.Color(0.5, 0.66, 0.4) },
-  roadMap: { value: null }, layCobble: { value: null }, layFlag: { value: null }, avgCobble: { value: new THREE.Color(0x77706a) }, avgFlag: { value: new THREE.Color(0x9a9286) }, cobbleScale: { value: 1.6 }, flagScale: { value: 2.5 },   // (m a picture: cobbles ~15 cm, flagstones 30-60 cm)
+  pathRoad: { value: null }, layCobble: { value: null }, layFlag: { value: null }, avgCobble: { value: new THREE.Color(0x77706a) }, avgFlag: { value: new THREE.Color(0x9a9286) }, cobbleScale: { value: 1.6 }, flagScale: { value: 2.5 },   // (m a picture: cobbles ~15 cm, flagstones 30-60 cm)
   shadeMap: { value: null }, shadowRange: { value: 0 }, shadowAt: { value: new THREE.Vector3() }, hillShade: { value: 1 }, aoShade: { value: 1 }, treeShade: { value: 0.9 },
   avgGround: { value: new THREE.Color(0x6b8a3a) }, avgDry: { value: new THREE.Color(0x8a8a4a) }, avgLush: { value: new THREE.Color(0x5b7a2a) }, avgForest: { value: new THREE.Color(0x4a4a2a) }, avgWet: { value: new THREE.Color(0x4a3a2a) }, avgPath: { value: new THREE.Color(0x6a5238) }, avgSteep: { value: new THREE.Color(0x7a7a7a) }, avgShore: { value: new THREE.Color(0x77706a) }, shoreStr: { value: 1 }, layShore: { value: null },
-  layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layWet: { value: null }, layPath: { value: null }, laySteep: { value: null },
+  layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layPath: { value: null }, laySteep: { value: null },
   mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.06 },
 };
 for (const [k, v] of Object.entries(TS.u)) if (U[k]) U[k].value = v;
@@ -618,13 +620,13 @@ mat.onBeforeCompile = (sh) => {
   Object.assign(sh.uniforms, U, sky.uniforms); setTimeout(() => { mat.userData.fs = sh.fragmentShader; });   // (kept for the test rigs)
   sh.vertexShader = 'varying vec3 vW; varying vec3 vWN;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvW = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);');
   sh.fragmentShader = SKY_GLSL + `
-    uniform sampler2D groundMap; uniform float tile, split; uniform vec2 res;
+    uniform float tile, split; uniform vec2 res;   // (the base ground picture is the lush layer, layLush: a real GPU allows 16 pictures a shader)
     uniform float hexOn, hexSize, hexRot, hexSharp, hexBright, macroOn, macroStr, macroSize, macroHue, farOn, farFrom, grid;
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar, stampPatch, stampPatchSize, stampClump; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
     uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 coverAt; uniform sampler2D coverMap; uniform vec3 lushTint, dampTint, slopeTint;
     uniform sampler2D waterMap; uniform float waterOn, wFroth, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow;
-    float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gShadowFade = 0.0, gRoad = 0.0; uniform sampler2D roadMap, layCobble, layFlag; uniform vec3 avgCobble, avgFlag; uniform float cobbleScale, flagScale; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathMap; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange; uniform vec3 shadowAt;
-    uniform vec3 avgGround, avgDry, avgLush, avgForest, avgWet, avgPath, avgSteep, avgShore; uniform float shoreStr; uniform sampler2D layShore; uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layWet; uniform sampler2D layPath; uniform sampler2D laySteep;
+    float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gShadowFade = 0.0, gRoad = 0.0; uniform sampler2D layCobble, layFlag; uniform vec3 avgCobble, avgFlag; uniform float cobbleScale, flagScale; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathRoad; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange; uniform vec3 shadowAt;
+    uniform vec3 avgGround, avgDry, avgLush, avgForest, avgWet, avgPath, avgSteep, avgShore; uniform float shoreStr; uniform sampler2D layShore; uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layPath; uniform sampler2D laySteep;
     varying vec3 vWN;
     varying vec3 vW;
     float h1(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -638,9 +640,9 @@ mat.onBeforeCompile = (sh) => {
     #endif
     vec3 readAt(vec2 uv, vec2 dx, vec2 dy) {
     #ifdef HEX_GRAD
-      return textureGrad(groundMap, uv, dx, dy).rgb;
+      return textureGrad(layLush, uv, dx, dy).rgb;
     #else
-      return texture2D(groundMap, uv).rgb;
+      return texture2D(layLush, uv).rgb;
     #endif
     }
     // one grid vertex's read: its own random turn and shift of the texture
@@ -745,14 +747,14 @@ mat.onBeforeCompile = (sh) => {
     bool plain = gl_FragCoord.x < split * res.x;
     vec3 g;
     #ifdef LITE
-    g = avgGround * (0.9 + 0.2 * vn(vW.xz / 5.0));                       // flat colour, a little mottled
+    g = avgLush * (0.9 + 0.2 * vn(vW.xz / 5.0));                       // flat colour, a little mottled
     #else
-    if (plain || hexOn < 0.5) g = texture2D(groundMap, uv).rgb; else g = hexTile(uv);
+    if (plain || hexOn < 0.5) g = texture2D(layLush, uv).rgb; else g = hexTile(uv);
     #endif
     if (!plain && mixOn > 0.5) {
       // the land's maps here, each edge roughened by a little noise
       vec2 luv = vW.xz / landSize + 0.5;
-      vec4 m = texture2D(maskA, luv); vec2 pth = texture2D(pathMap, luv).rg; vec4 er = texture2D(maskB, luv); float wAt = texture2D(waterMap, luv).r;
+      vec4 m = texture2D(maskA, luv); vec4 pr = texture2D(pathRoad, luv); vec2 pth = pr.rg; vec4 er = texture2D(maskB, luv); float wAt = texture2D(waterMap, luv).r;
       float bn = (fbm(vW.xz / mixBreakSize) - 0.5) * mixBreak, bn2 = (fbm(vW.xz / (mixBreakSize * 3.1) + 13.0) - 0.5) * mixBreak;
       float steep = smoothstep(steepFrom, steepFrom + 0.12, 1.0 - vWN.y + (fbm(vW.xz / 6.0) - 0.5) * 0.08);   // patchy toward its edge
       float wWet = clamp(m.r * 1.5 + bn, 0.0, 1.0), wMud = clamp(m.r * 2.2 - 1.3 + bn, 0.0, 1.0), wDry = clamp(m.g * 1.3 - 0.15 - m.b - m.a * 0.6 + bn2, 0.0, 1.0);
@@ -763,7 +765,8 @@ mat.onBeforeCompile = (sh) => {
       vec3 dryC = avgDry, lushC = avgLush, forC = avgForest, wetC = avgWet, pathC = avgPath, shoreC = avgShore;
       #else
       vec3 dryC = lay(layDry, uv, vec2(0.13, 0.71)), lushC = lay(layLush, uv, vec2(0.61, 0.27)), forC = lay(layForest, uv * 1.3, vec2(0.37, 0.93));
-      vec3 wetC = lay(layWet, uv, vec2(0.83, 0.41)), pathC = lay(layPath, uv * 1.6, vec2(0.29, 0.17)), shoreC = lay(layShore, uv * 3.0, vec2(0.53, 0.07));
+      // mud: the dirt picture, darker and wetter (a picture of its own would be one too many for a real GPU)
+      vec3 pathC = lay(layPath, uv * 1.6, vec2(0.29, 0.17)), wetC = lay(layPath, uv * 1.1, vec2(0.83, 0.41)) * vec3(0.55, 0.5, 0.42), shoreC = lay(layShore, uv * 3.0, vec2(0.53, 0.07));
       #endif
       // the rock of a steep face: read from the side, in horizontal strata (bands of lighter and
       // darker, warmer and greyer layers that wander a little), darker in the overhanging parts
@@ -804,8 +807,8 @@ mat.onBeforeCompile = (sh) => {
         g = mix(g, mix(gaps, tops, smoothstep(0.35, 0.7, m)), k * 0.85);
       }
       // THE TOWN'S ROADS, painted (R cobbles, G flagstones), their edges a little ragged
-      { vec4 rd = texture2D(roadMap, luv); float rn = (vn(vW.xz / 0.8) - 0.5) * 0.35;
-        float aC = smoothstep(0.3, 0.65, rd.r + rn), aF = smoothstep(0.3, 0.65, rd.g + rn); gRoad = max(aC, aF);
+      { float rn = (vn(vW.xz / 0.8) - 0.5) * 0.35;
+        float aC = smoothstep(0.3, 0.65, pr.b + rn), aF = smoothstep(0.3, 0.65, pr.a + rn); gRoad = max(aC, aF);
         #ifdef LITE
         vec3 cobC = avgCobble, flagC = avgFlag;
         #else
@@ -835,8 +838,8 @@ mat.onBeforeCompile = (sh) => {
         // far off, a second, larger read of the picture varies the BRIGHTNESS of whatever is there (grass,
         // path, rock...) to break up the repeat; it used to blend the base grass over it, so paths and
         // dirt vanished into grass with distance
-        if (k > 0.001) { vec2 u2 = uv * 0.25 + vec2(0.37, 0.61); vec3 g2 = hexOn > 0.5 ? hexTile(u2) : texture2D(groundMap, u2).rgb;
-          vec3 L = vec3(0.299, 0.587, 0.114); float v = dot(g2, L) / max(0.02, dot(texture2D(groundMap, vec2(0.5), 16.0).rgb, L));   // against the picture's average
+        if (k > 0.001) { vec2 u2 = uv * 0.25 + vec2(0.37, 0.61); vec3 g2 = hexOn > 0.5 ? hexTile(u2) : texture2D(layLush, u2).rgb;
+          vec3 L = vec3(0.299, 0.587, 0.114); float v = dot(g2, L) / max(0.02, dot(texture2D(layLush, vec2(0.5), 16.0).rgb, L));   // against the picture's average
           g *= mix(1.0, clamp(v, 0.6, 1.5), k * 0.65); }
       }
       if (stampOn > 0.5) {
@@ -898,7 +901,7 @@ mat.onBeforeCompile = (sh) => {
     #include <dithering_fragment>
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-25' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-27' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground); ground.receiveShadow = SHADOW.on;
 // THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
@@ -920,8 +923,8 @@ function pickTree(x, z, species) {
 // the town's trees, for the forest to draw (so they get its imposters, wind and shade): the species named, its usual tint
 function townTrees(species) {
   return (TOWN.village ? TOWN.village.layout : TOWN.layout).items.filter(it => it.type === 'tree').map(it => {
-    const sp = Math.max(0, species.findIndex(s => s.name === it.kind)), [, tint] = pickTree(it.x, it.z, species);
-    return { x: it.x, z: it.z, sp, scale: it.size, tint, yaw: (it.rot || 0) * Math.PI / 180 }; });
+    const sp = Math.max(0, species.findIndex(s => s.name === it.kind)), tint = new THREE.Color().setHSL(...pickTreeKind(it.x, it.z, [it.kind], { height: 0, slope: 0, wet: 0, dry: 0 }, FAMILY).hsl);   // its own kind's tint
+    return { x: it.x, z: it.z, sp, scale: it.size, tint, yaw: it.rot ? it.rot * Math.PI / 180 : hash(it.x * 0.37, it.z * 0.71) * 6.283 }; });   // (unturned: each its own way)
 }
 function placeTrees() {
   if (treeForest) { scene.remove(treeForest.group); for (const b of treeForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
@@ -1176,9 +1179,9 @@ TOWN.village.setLayout(TOWN.layout);
 const townRay = new THREE.Raycaster();
 function groundAt(cx, cy) {
   const r = renderer.domElement.getBoundingClientRect(); townRay.setFromCamera(new THREE.Vector2((cx - r.left) / r.width * 2 - 1, -((cy - r.top) / r.height) * 2 + 1), camera);
-  const o = townRay.ray.origin, d = townRay.ray.direction; let prev = 0;
+  const o = townRay.ray.origin, d = townRay.ray.direction; let prev = 0, inside = false;
   for (let t = 1; t < 3000; t += Math.max(1, t * 0.01)) {
-    const x = o.x + d.x * t, z = o.z + d.z * t; if (Math.abs(x) > SIZE / 2 || Math.abs(z) > SIZE / 2) return null;
+    const x = o.x + d.x * t, z = o.z + d.z * t; if (Math.abs(x) > SIZE / 2 || Math.abs(z) > SIZE / 2) { if (inside) return null; prev = t; continue; } inside = true;   // (from outside the land: march on until over it)
     if (o.y + d.y * t < heightAt(x, z)) { let a = prev, b = t; for (let q = 0; q < 20; q++) { const m = (a + b) / 2; if (o.y + d.y * m < heightAt(o.x + d.x * m, o.z + d.z * m)) b = m; else a = m; } return new THREE.Vector3(o.x + d.x * b, 0, o.z + d.z * b); }
     prev = t;
   }
@@ -1186,13 +1189,13 @@ function groundAt(cx, cy) {
 }
 // after an edit (and a short pause): the pads laid again, the mesh reshaped, the land's maps, paths, trees, plants and stones redone
 let townTimer = 0;
-function townRebuildNow() { levelPads(Hg, TOWN.Hpre, TOWN.village.layout, N, SIZE, TEX); fastMesh(); buildLand(); TOWN.village.sync(); }
+function townRebuildNow() { if (RAIN.gen) return; levelPads(Hg, TOWN.Hpre, TOWN.village.layout, N, SIZE, TEX); fastMesh(); buildLand(); }   // (while it rains the land isn't finished: the rain's end lays the pads)
 function townRebuild() {
   clearTimeout(townTimer); const note = $('tNote'); if (note) note.textContent = 'levelling the ground and clearing the plants…';
   townTimer = setTimeout(() => { const t = performance.now(); townRebuildNow(); if (note) note.textContent = `Saved in this browser · ground redone in ${((performance.now() - t) / 1000).toFixed(1)} s`; }, 350);
 }
 TOWN.editor = new VillageEditor({ village: TOWN.village, camera, controls, dom: renderer.domElement, container: $('townPanel'), groundAt, scene,
-  roadCanvas: TOWN.canvas, roadChanged: () => { U.roadMap.value.needsUpdate = true; }, changed: () => townRebuild(), defaultLayout: TOWN_DEFAULT });
+  roadCanvas: TOWN.canvas, roadChanged: (rect) => composePathRoad(rect), changed: () => townRebuild(), defaultLayout: TOWN_DEFAULT });
 
 // ── views ─────────────────────────────────────────────────────────────────────
 const VIEWS = {
@@ -1235,12 +1238,26 @@ $('stampFar').value = TS.u.stampFar;               // the tier's (potato 12, nor
 for (const [id, [apply, fmt]] of Object.entries(SL)) { const el = $(id), go = () => { apply(+el.value); $(id + 'Out').textContent = fmt(+el.value); }; el.addEventListener('input', go); go(); }
 for (const [id, on] of Object.entries(TS.checks)) if ($(id)) $(id).checked = on;
 for (const [id, key] of [['hexOn', 'hexOn'], ['macroOn', 'macroOn'], ['farOn', 'farOn'], ['grid', 'grid'], ['stampOn', 'stampOn'], ['mixOn', 'mixOn'], ['wWaveOn', 'wWaveOn'], ['coverFar', 'coverFar']]) { const el = $(id), go = () => { U[key].value = el.checked ? 1 : 0; }; el.addEventListener('change', go); go(); }
-$('tex').addEventListener('change', () => { U.groundMap.value = tex($('tex').value); setAverages(); });
+$('tex').addEventListener('change', () => { const l = $('layLush'); l.value = $('tex').value; l.dispatchEvent(new Event('change')); });   // the ground picture IS the lush layer
 // the layers' pictures, and the land's settings (these rebuild the maps)
-const LAYERS = { layDry: 'grassDry', layLush: 'grassMed', layForest: 'forest', layWet: 'darkDirt', layPath: 'dirt', laySteep: 'concrete', layShore: 'rocks' };
+const LAYERS = { layDry: 'grassDry', layLush: 'grassMed', layForest: 'forest', layPath: 'dirt', laySteep: 'concrete', layShore: 'rocks' };
 // the town's road stones (not in the pictures list: not meant for the land's layers)
 U.layCobble.value = tex('cobbles'); U.layFlag.value = tex('flagstones');
-{ const t = new THREE.CanvasTexture(TOWN.canvas); t.flipY = false; t.minFilter = THREE.LinearMipmapLinearFilter; t.anisotropy = 4; U.roadMap.value = t; }
+// PATHS AND ROADS IN ONE PICTURE (2048 x 2048 over the land): R path, G its trampled shoulder (from the path picture),
+// B cobbles, A flagstones (from the town's road picture, each weighed by its coverage). One picture, not two: a real GPU
+// allows 16 a shader and the ground was at 19. `rect` (canvas pixels): only that part redone (live road painting)
+function composePathRoad(rect = null) {
+  if (!U.pathRoad.value) { const t = new THREE.DataTexture(PATHROAD, 2048, 2048, THREE.RGBAFormat); t.flipY = false; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.anisotropy = 4; U.pathRoad.value = t; }
+  const P = 2048, x0 = rect ? Math.max(0, rect[0] | 0) : 0, y0 = rect ? Math.max(0, rect[1] | 0) : 0, x1 = rect ? Math.min(P, Math.ceil(rect[2])) : P, y1 = rect ? Math.min(P, Math.ceil(rect[3])) : P;
+  if (x1 <= x0 || y1 <= y0 || !MAPS.path) return;
+  const rd = TOWN.canvas.width === P ? TOWN.canvas.getContext('2d', { willReadFrequently: true }).getImageData(x0, y0, x1 - x0, y1 - y0).data : null, w = x1 - x0;
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+    const o = (y * P + x) * 4, q = ((y - y0) * w + (x - x0)) * 4;
+    PATHROAD[o] = MAPS.path[o]; PATHROAD[o + 1] = MAPS.path[o + 1];
+    if (rd) { const a = rd[q + 3] / 255; PATHROAD[o + 2] = rd[q] * a; PATHROAD[o + 3] = rd[q + 1] * a; } else { PATHROAD[o + 2] = PATHROAD[o + 3] = 0; }
+  }
+  U.pathRoad.value.needsUpdate = true;
+}
 for (const [id, def] of Object.entries(LAYERS)) { const el = $(id); for (const n of TEXTURES) el.add(new Option(n, n)); el.value = def; const go = () => { U[id].value = tex(el.value); setAverages(); }; el.addEventListener('change', go); go(); }
 for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'], ['landDry', 'dryHeight', v => v.toFixed(1) + ' m'], ['landForest', 'forest', v => Math.round(v * 100) + '%'], ['landShade', 'shadeReach', v => Math.round(v * TEX) + ' m'], ['landPath', 'pathWidth', v => v.toFixed(1) + ' m'], ['landTreeline', 'treeline', v => v + ' m'], ['landShore', 'shore', v => Math.round(v * TEX) + ' m'], ['landHill', 'hillForest', v => Math.round(v * 100) + '%']]) {
   const el = $(id); el.value = LAND[key]; $(id + 'Out').textContent = fmt(+el.value);
@@ -1419,7 +1436,8 @@ function drawAtlas() {
   if (!sp || !sp.bake) return;
   atlasQuad.material.map = sp.bake.colour; atlasQuad.material.needsUpdate = true;
   const S = Math.min(innerWidth, innerHeight) * 0.42, px = renderer.getPixelRatio();
-  renderer.setScissorTest(true); const y = innerHeight - S - 64; renderer.setViewport(12, y, S, S); renderer.setScissor(12, y, S, S);   // top left, under the readout renderer.autoClear = false; renderer.clearDepth();
+  // top left, under the readout
+  renderer.setScissorTest(true); const y = innerHeight - S - 64; renderer.setViewport(12, y, S, S); renderer.setScissor(12, y, S, S); renderer.autoClear = false; renderer.clearDepth();
   renderer.render(atlasScene, atlasCam); renderer.autoClear = true; renderer.setScissorTest(false); renderer.setViewport(0, 0, innerWidth, innerHeight);
 }
 $('fAtlasOn').addEventListener('change', atlasChoices);

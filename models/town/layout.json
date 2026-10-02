@@ -35,21 +35,21 @@
 "kind": "stall",
 "x": -31,
 "z": -186,
-"rot": 45
+"rot": 131
 },
 {
 "type": "prop",
 "kind": "stall",
 "x": -33,
 "z": -197,
-"rot": 90
+"rot": 99
 },
 {
 "type": "prop",
 "kind": "stall",
 "x": -31,
 "z": -208,
-"rot": 135
+"rot": 63
 },
 {
 "type": "prop",
@@ -210,21 +210,21 @@
 "kind": "easel",
 "x": -20,
 "z": -170,
-"rot": 160
+"rot": 355
 },
 {
 "type": "prop",
 "kind": "easel",
 "x": -23,
 "z": -166,
-"rot": 175
+"rot": 353
 },
 {
 "type": "prop",
 "kind": "easel",
 "x": -18,
 "z": -163,
-"rot": 190
+"rot": 358
 },
 {
 "type": "prop",
@@ -423,22 +423,6 @@
 "z": -213,
 "rot": 0,
 "size": 0.52
-},
-{
-"type": "tree",
-"kind": "oak",
-"x": 94,
-"z": -193,
-"rot": 0,
-"size": 0.56
-},
-{
-"type": "tree",
-"kind": "ash",
-"x": 110,
-"z": -213,
-"rot": 0,
-"size": 0.6
 },
 {
 "type": "tree",

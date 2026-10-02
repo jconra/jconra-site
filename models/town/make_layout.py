@@ -27,7 +27,7 @@ M('fountain', PX, PZ, 0, 5)
 M('townHall', PX, PZ - 32, 0)                                # at the head of the plaza, steps toward it
 M('tavern', 12, -196, 270)                                   # east side, terrace onto the plaza
 M('brewery', 13, -221, 270)
-P('stall', -31, -186, 45); P('stall', -33, -197, 90); P('stall', -31, -208, 135)   # a little market, west side
+for x, z in ((-31, -186), (-33, -197), (-31, -208)): P('stall', x, z, facing(x, z, PX, PZ))   # a little market, west side, facing the fountain
 P('signpost', 3, -208, 270)
 for k in range(8):                                            # lamps round the plaza's edge
     a = k / 8 * 2 * math.pi + 0.2; P('lamp', PX + math.sin(a) * 18.5, PZ + math.cos(a) * 18.5, 0)
@@ -39,7 +39,7 @@ P('planter', 4, -189, 270); P('planter', 4, -204, 270)       # in front of the t
 P('flowerBed', -6, -168, 0)
 for a in (0, 90, 180, 270):
     r = math.radians(a); x, z = -6 + math.sin(r) * 5, -168 + math.cos(r) * 5; P('bench', x, z, facing(x, z, -6, -168))
-P('easel', -20, -170, 160); P('easel', -23, -166, 175); P('easel', -18, -163, 190)   # painters, looking up at the town hall
+for x, z in ((-20, -170), (-23, -166), (-18, -163)): P('easel', x, z, facing(x, z, PX, PZ - 32) + 180)   # the canvas faces the painter, who looks up at the town hall
 P('picnicTable', 8, -160, 20); P('picnicTable', 14, -170, 70)
 M('workshop', -36, -157, 90)                                 # open end toward the park and the easels
 M('playground', -40, -180, facing(-40, -180, PX, PZ))
@@ -66,5 +66,12 @@ for x, z in ((-40, -130), (-5, -110), (16, -120)): T('pine', x, z, 0.5)
 for x in range(-70, 125, 25):                                   # street lamps, every 25 m on the north side
     if -40 < x < 10 or 34 < x < 52: continue
     P('lamp', x, -207.5, 0)
+# no tree inside a building (the street trees are laid on a simple rhythm)
+models = [i for i in items if i['type'] == 'model']
+def clear_of_buildings(t):
+    for m in models:
+        if math.hypot(t['x'] - m['x'], t['z'] - m['z']) < max(6, m.get('size', 10) * 0.65): return False
+    return True
+items[:] = [i for i in items if i['type'] != 'tree' or clear_of_buildings(i)]
 json.dump({'v': 1, 'items': items, 'roads': roads}, open('/home/bitwizard/jconra-site/models/town/layout.json', 'w'), indent=0)
 print(len(items), 'things,', len(roads), 'roads')

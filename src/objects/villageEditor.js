@@ -6,7 +6,7 @@
 //   level the ground under it or not, duplicate (Ctrl+D), delete (Delete). Undo / redo (Ctrl+Z / Ctrl+Y).
 // Every change is saved in this browser at once; Copy layout gives it as text (for Claude, or another browser).
 import * as THREE from 'three';
-import { TOWN_ASSETS, TOWN_TREES, footprintOf, drawStroke, newId, normalise } from './village.js';
+import { TOWN_ASSETS, TOWN_TREES, footprintOf, drawStroke, newId, levels } from './village.js';
 import { PROP_KINDS } from './townProps.js';
 
 const KEY = 'jconra.town';
@@ -82,7 +82,7 @@ export class VillageEditor {
     $('tRot').value = it.rot; $('tRotOut').textContent = Math.round(it.rot) + '°';
     const big = it.type === 'model'; $('tSize').min = big ? 2 : 0.2; $('tSize').max = big ? 80 : 4; $('tSize').step = big ? 0.5 : 0.05;
     $('tSize').value = it.size; $('tSizeOut').textContent = big ? it.size.toFixed(1) + ' m long' : it.size.toFixed(2) + '×';
-    $('tLevel').checked = it.level !== false; $('tLevel').parentElement.style.display = big ? '' : 'none';
+    $('tLevel').checked = levels(it); $('tLevel').parentElement.style.display = big && TOWN_ASSETS[it.kind].level !== false ? '' : 'none';   // (the bridge never levels)
   }
 
   // ── changes: every one undoable, saved, and reported to the lab ────────────────────────────────────────────────
@@ -99,6 +99,10 @@ export class VillageEditor {
   afterLayout() { this.select(null); this.save(); this.redrawRoads(); this.changed('layout'); }
   undo() { if (!this.undoStack.length) return; this.redoStack.push(JSON.stringify(this.village.layout)); this.village.setLayout(JSON.parse(this.undoStack.pop())); this.afterLayout(); }
   redo() { if (!this.redoStack.length) return; this.undoStack.push(JSON.stringify(this.village.layout)); this.village.setLayout(JSON.parse(this.redoStack.pop())); this.afterLayout(); }
+  // the road picture's pixels a stroke segment touched (for redoing only that part)
+  dirty(pts, w) { const P = this.roadCanvas.width, k = P / this.village.size, r = (w / 2 + 2) * k; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (const [x, z] of pts) { const px = (x + this.village.size / 2) * k, py = (z + this.village.size / 2) * k; x0 = Math.min(x0, px - r); y0 = Math.min(y0, py - r); x1 = Math.max(x1, px + r); y1 = Math.max(y1, py + r); }
+    return [x0, y0, x1, y1]; }
   redrawRoads() { const g = this.roadCanvas.getContext('2d'), P = this.roadCanvas.width; g.clearRect(0, 0, P, P); g.lineCap = g.lineJoin = 'round'; for (const r of this.village.layout.roads) drawStroke(g, r, this.village.size, P); this.roadChanged(); }
   add(at) {
     const [type, kind] = this.addKind.split(':'); this.snapshot();
@@ -134,36 +138,47 @@ export class VillageEditor {
   }
   bindPointer() {
     // capturing, so it runs before the camera's own controls and can hold them still while dragging
+    // one pointer at a time: a second finger (a pinch) never takes over a drag or a road stroke
     this.dom.addEventListener('pointerdown', (e) => {
       if (!this.on || e.button !== 0) return;
+      if (this.pid != null) return;                                // already dragging or painting with another pointer
       const ground = this.groundAt(e.clientX, e.clientY);
+      this.down = { x: e.clientX, y: e.clientY, id: e.pointerId };
       if (this.mode === 'select') {
-        const id = this.pickAt(e.clientX, e.clientY); this.select(id);
-        if (id && ground) { const it = this.village.item(id); this.drag = { id, dx: it.x - ground.x, dz: it.z - ground.z, moved: false }; this.hold(e); }
+        const id = this.pickAt(e.clientX, e.clientY);
+        if (id) { this.select(id); if (ground) { const it = this.village.item(id); this.drag = { id, dx: it.x - ground.x, dz: it.z - ground.z, moved: false }; this.hold(e); } }
       } else if (this.mode === 'add' && ground) { this.add(ground); this.hold(e); this.drag = { none: true }; }
       else if ((this.mode === 'road' || this.mode === 'erase') && ground) {
         this.snapshot(); this.stroke = { mat: this.mode === 'erase' ? 'erase' : this.roadMat, w: this.roadW, pts: [[+ground.x.toFixed(2), +ground.z.toFixed(2)]] };
-        this.village.layout.roads.push(this.stroke); drawStroke(this.roadCanvas.getContext('2d'), this.stroke, this.village.size, this.roadCanvas.width); this.roadChanged(); this.hold(e);
+        this.village.layout.roads.push(this.stroke); drawStroke(this.roadCanvas.getContext('2d'), this.stroke, this.village.size, this.roadCanvas.width); this.roadChanged(this.dirty(this.stroke.pts.slice(-1), this.stroke.w)); this.hold(e);
       }
     }, { capture: true });
     this.dom.addEventListener('pointermove', (e) => {
       if (!this.on) return;
-      if (this.drag && this.drag.id) { const g = this.groundAt(e.clientX, e.clientY); if (!g) return; const it = this.village.item(this.drag.id);
+      if (this.pid != null && e.pointerId !== this.pid) return;
+      if (this.drag && this.drag.id) {
+        // a click selects; only a real drag (past a few pixels) moves it
+        if (!this.drag.moved && Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) < 5) return;
+        const g = this.groundAt(e.clientX, e.clientY); if (!g) return; const it = this.village.item(this.drag.id);
         if (!this.drag.moved) { this.snapshot(); this.drag.moved = true; }
         it.x = +(g.x + this.drag.dx).toFixed(2); it.z = +(g.z + this.drag.dz).toFixed(2); this.village.place(this.village.objs.get(it.id)); this.markSel(); this.showSel(); return; }
       if (this.stroke) { const g = this.groundAt(e.clientX, e.clientY); if (!g) return; const last = this.stroke.pts[this.stroke.pts.length - 1];
         if (Math.hypot(g.x - last[0], g.z - last[1]) < Math.max(0.5, this.stroke.w / 4)) return;
-        this.stroke.pts.push([+g.x.toFixed(2), +g.z.toFixed(2)]); drawStroke(this.roadCanvas.getContext('2d'), this.stroke, this.village.size, this.roadCanvas.width, this.stroke.pts.length - 2); this.roadChanged(); return; }
+        this.stroke.pts.push([+g.x.toFixed(2), +g.z.toFixed(2)]); drawStroke(this.roadCanvas.getContext('2d'), this.stroke, this.village.size, this.roadCanvas.width, this.stroke.pts.length - 2); this.roadChanged(this.dirty(this.stroke.pts.slice(-2), this.stroke.w)); return; }
       if (this.mode === 'select' && e.buttons === 0) this.hover(this.pickAt(e.clientX, e.clientY));
     });
-    const up = () => {
+    const up = (e) => {
+      if (this.pid != null && e.pointerId !== this.pid) return;
       if (this.drag) { const moved = this.drag.moved; this.drag = null; this.release(); if (moved) this.commit('move'); }
-      if (this.stroke) { this.stroke = null; this.release(); this.commit('roads'); }
+      else if (this.stroke) { this.stroke = null; this.release(); this.commit('roads'); }
+      // a click (not a drag to turn the camera) on empty ground lets go of the selection
+      else if (this.on && this.mode === 'select' && this.down && e.pointerId === this.down.id && Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) < 5 && !this.pickAt(e.clientX, e.clientY)) this.select(null);
+      this.down = null;
     };
     this.dom.addEventListener('pointerup', up); this.dom.addEventListener('pointercancel', up);
   }
-  hold(e) { this.controls.enabled = false; try { this.dom.setPointerCapture(e.pointerId); } catch (err) { /* fine */ } }
-  release() { this.controls.enabled = true; }
+  hold(e) { this.pid = e.pointerId; this.controls.enabled = false; try { this.dom.setPointerCapture(e.pointerId); } catch (err) { /* fine */ } }
+  release() { this.pid = null; this.controls.enabled = true; }
   bindKeys() {
     addEventListener('keydown', (e) => {
       if (!this.on || ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement && document.activeElement.tagName) && document.activeElement.type !== 'range' && document.activeElement.type !== 'checkbox') return;
@@ -174,6 +189,7 @@ export class VillageEditor {
       if (!it) return;
       if ((e.ctrlKey || e.metaKey) && k === 'd') { e.preventDefault(); this.duplicate(); return; }
       if (k === 'delete' || k === 'backspace') { e.preventDefault(); this.remove(); return; }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;           // (Ctrl+E, Alt+[ and the like are the browser's)
       const step = e.shiftKey ? 5 : 15;
       if (k === 'q' || k === 'e') this.edit(i => { i.rot = ((i.rot + (k === 'e' ? -step : step)) % 360 + 360) % 360; }, 'turn');
       if (k === '[' || k === ']') this.edit(i => { i.size = +(i.size * (k === ']' ? 1.08 : 1 / 1.08)).toFixed(2); }, 'size');

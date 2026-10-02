@@ -39,16 +39,21 @@ export function footprintOf(it) {
   if (it.type === 'model') { const A = TOWN_ASSETS[it.kind]; if (!A) return { w: 4, d: 4, h: 4 };
     const side = A.front === '+X' || A.front === '-X', bx = side ? A.box[2] : A.box[0], bz = side ? A.box[0] : A.box[2], s = it.size / Math.max(A.box[0], A.box[2]);
     return { w: bx * s, d: bz * s, h: A.box[1] * s }; }
-  if (it.type === 'prop') { const P = PROP_KINDS.find(p => p.kind === it.kind); const f = P ? P.footprint : [1.5, 1.5]; return { w: f[0] * it.size, d: f[1] * it.size, h: 2 * it.size }; }
+  if (it.type === 'prop') { const P = PROP_KINDS.find(p => p.kind === it.kind); const f = P ? P.footprint : [1.5, 1.5]; return { w: f[0] * it.size, d: f[1] * it.size, h: propHeight(it.kind) * it.size }; }
   return { w: 5 * it.size, d: 5 * it.size, h: 14 * it.size };                               // a tree: its trunk's surroundings
 }
+// a prop's real height (measured once a kind), for its pick box
+const PROP_H = {};
+function propHeight(kind) { if (!(kind in PROP_H)) { try { const b = new THREE.Box3().setFromObject(makeProp(kind)); PROP_H[kind] = Math.max(0.5, b.max.y); } catch (e) { PROP_H[kind] = 2; } } return PROP_H[kind]; }
 export const levels = (it) => it.type === 'model' && it.level !== false && (TOWN_ASSETS[it.kind] || {}).level !== false;
 
 // (world -> an item's own frame: x' = cos x - sin z, z' = sin x + cos z, its turn being rot)
 // THE GROUND PADS: H = Hpre, then under each building that levels the ground, its footprint flattened (to the average
 // height there) and blended back to the land over `margin` m. Grid N x N over SIZE m, a cell TEX m.
+// Order doesn't matter: each cell takes the pad that holds it most (inside a footprint beats a neighbour's blend).
 export function levelPads(H, Hpre, layout, N, SIZE, TEX, margin = 5) {
   H.set(Hpre);
+  const F = new Float32Array(N * N), TGT = new Float32Array(N * N);
   for (const it of layout.items) {
     if (!levels(it)) continue;
     const { w, d } = footprintOf(it), a = it.rot * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), hw = w / 2 + 1, hd = d / 2 + 1, R = Math.hypot(hw, hd) + margin;
@@ -63,8 +68,9 @@ export function levelPads(H, Hpre, layout, N, SIZE, TEX, margin = 5) {
     }
     if (!n) continue;
     const target = sum / n;
-    for (const [k, out] of cells) { const t = out / margin, f = 1 - t * t * (3 - 2 * t); H[k] = H[k] + (target - H[k]) * f; }
+    for (const [k, out] of cells) { const t = out / margin, f = out <= 0 ? 1.01 : 1 - t * t * (3 - 2 * t); if (f > F[k]) { F[k] = f; TGT[k] = target; } }
   }
+  for (let k = 0; k < N * N; k++) if (F[k] > 0) H[k] = Hpre[k] + (TGT[k] - Hpre[k]) * Math.min(1, F[k]);
 }
 
 // THE ROADS, painted: a picture over the whole land (P x P, R cobbles, G flagstones), strokes drawn in order, erase strokes
@@ -78,7 +84,7 @@ export function paintRoads(canvas, layout, SIZE, P = 2048) {
 }
 export function drawStroke(g, r, SIZE, P = 2048, from = 0) {
   const k = P / SIZE;
-  g.globalCompositeOperation = r.mat === 'erase' ? 'destination-out' : 'lighter';
+  g.globalCompositeOperation = r.mat === 'erase' ? 'destination-out' : 'source-over';   // the newest stroke wins: cobbles over flagstones and back
   g.strokeStyle = g.fillStyle = r.mat === 'flagstones' ? 'rgb(0,255,0)' : r.mat === 'erase' ? '#fff' : 'rgb(255,0,0)';
   g.lineWidth = Math.max(1, r.w * k);
   const p = (q) => [(q[0] + SIZE / 2) * k, (q[1] + SIZE / 2) * k];
@@ -173,6 +179,8 @@ export function normalise(L) {
   for (const it of (L && L.items) || []) {
     if (!['model', 'prop', 'tree'].includes(it.type)) continue;
     if (it.type === 'model' && !TOWN_ASSETS[it.kind]) continue;
+    if (it.type === 'prop' && !PROP_KINDS.some(p => p.kind === it.kind)) continue;   // (a layout from a newer page: skipped, not a crash)
+    if (it.type === 'tree' && !TOWN_TREES[it.kind]) continue;
     out.items.push({ id: it.id || newId(), type: it.type, kind: it.kind, x: +it.x || 0, z: +it.z || 0, rot: ((+it.rot || 0) % 360 + 360) % 360,
       size: +it.size || (it.type === 'model' ? TOWN_ASSETS[it.kind].size : 1), ...(it.level === false ? { level: false } : {}) });
   }
