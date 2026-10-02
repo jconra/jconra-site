@@ -46,8 +46,9 @@
   #head { position:fixed; top:36px; left:12px; z-index:6; pointer-events:none; background:rgba(10,13,17,.72); border-radius:6px; padding:6px 10px; }
   #head b { display:block; font:400 20px nasa, ui-sans-serif, sans-serif; letter-spacing:.05em; color:#e8f1f5; }
   #head span { font:11.5px/1.5 ui-monospace,monospace; color:#9fb3c2; }
-  .tag { position:fixed; z-index:4; pointer-events:none; transform:translate(-50%,-100%); background:rgba(10,13,17,.8); border:1px solid #2f7d55;
-         border-radius:4px; padding:2px 7px; font:600 12px ui-monospace,monospace; color:#e8f1f5; white-space:nowrap; }
+  .tag { position:fixed; z-index:4; cursor:pointer; transform:translate(-50%,-100%); background:rgba(10,13,17,.8); border:1px solid #2f7d55;
+         border-radius:4px; padding:3px 8px; font:600 12px ui-monospace,monospace; color:#e8f1f5; white-space:nowrap; }
+  .tag.on { background:#2f7d55; border-color:#35e07d; }
   .tag small { color:#9fb3c2; font-weight:400; }
   button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid #35e07d; outline-offset:1px; }
   @media (max-width:700px) { #panel, #panel.min { width:auto; left:12px; top:auto; bottom:12px; max-height:50vh; } #head span { display:none; } }
@@ -90,7 +91,7 @@
 
     <details class="sec" open><summary>3D builds</summary>
       <p class="note">Pick a build to tune. Each stone's triangles: the top (corners &minus; 2, or one per corner round a raised middle), plus (footing points per corner + 1) for each corner, for the sides. <b>Soft shading</b> costs nothing: untick it to see the bare facets.</p>
-      <div class="row"><label for="tuneBuild">Tune build</label><select id="tuneBuild" style="grid-column:2"></select></div>
+      <div class="row"><label for="tuneBuild">Tuning<small>or tap a road's label; standing on a road picks its build too. The highlighted label is the one these sliders change.</small></label><select id="tuneBuild" style="grid-column:2"></select></div>
       <div id="secBuild"></div>
       <p class="note" id="buildTris"></p>
       <div class="btns"><button class="btn quiet" id="buildReset" type="button">Reset this build</button></div>

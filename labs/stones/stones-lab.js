@@ -32,7 +32,7 @@ const ROADS = [{ name: 'North', ang: -Math.PI / 2 }, { name: 'East', ang: 0 }, {
 const roadOf = (x, z) => (((Math.round(Math.atan2(z, x) / (Math.PI / 2)) % 4) + 4) % 4 + 1) % 4;   // which road's quarter a spot is in
 
 const DEFAULTS = {
-  roads: ['A', 'B', 'C', 'D'],
+  roads: ['A', 'E', 'C', 'D'],
   size: 0.45, jitter: 0.8, variety: 0.25, gap: 0.03, seed: 1,
   base: '#8d8a83', shade: 0.18, hue: 0.12, grain: 0.22, grainSize: 0.35, speck: 0.12, pic: 0, picScale: 1.5,
   soil: '#3a3126', moss: 0.35, edgeDark: 0.35, edgeWidth: 0.05,
@@ -315,14 +315,16 @@ const BUILD_KEYS = Object.keys(BUILD_DEFAULTS);
 for (const b of BUILD_KEYS) if (b !== 'A') $('tuneBuild').insertAdjacentHTML('beforeend', `<option value="${b}">${b} · ${BUILD_DEFAULTS[b].name}</option>`);
 $('tuneBuild').value = 'C';
 const tuned = () => S.builds[$('tuneBuild').value];
+// which build the sliders tune: picked here, by a road's label, by the road you stand on, or by giving a road a build
+function tune(b) { if (!b || S.builds[b].painted) return; $('tuneBuild').value = b; syncPanel(); showStats(); placeTags(); }
 for (const [key, label, help, min, max, step, fmt] of BUILD_SPEC)
   SHOWS.push(min === 'check' ? row($('secBuild'), 'b_' + key, label, help, 'check', null, null, null, () => tuned()[key], (v) => { tuned()[key] = v; }, 'geo')
     : row($('secBuild'), 'b_' + key, label, help, min, max, step, fmt, () => tuned()[key], (v) => { tuned()[key] = v; }, 'geo'));
-$('tuneBuild').addEventListener('change', () => { syncPanel(); showStats(); });
+$('tuneBuild').addEventListener('change', () => { syncPanel(); showStats(); placeTags(); });
 $('buildReset').addEventListener('click', () => { const b = $('tuneBuild').value; S.builds[b] = clone(BUILD_DEFAULTS[b]); syncPanel(); changed('geo'); });
 ROADS.forEach((r, k) => {
   $('roadPick').insertAdjacentHTML('beforeend', `<label for="road${k}">${r.name} road</label><select id="road${k}">${BUILD_KEYS.map((b) => `<option value="${b}">${b} · ${BUILD_DEFAULTS[b].name}</option>`).join('')}</select>`);
-  $('road' + k).addEventListener('change', (e) => { S.roads[k] = e.target.value; changed('geo'); });
+  $('road' + k).addEventListener('change', (e) => { S.roads[k] = e.target.value; changed('geo'); tune(S.roads[k]); });
 });
 function syncPanel() { SHOWS.forEach((f) => f()); ROADS.forEach((r, k) => { $('road' + k).value = S.roads[k]; }); }
 $('reseed').addEventListener('click', () => { S.seed = (S.seed % 9973) + 1; changed('field'); });
@@ -346,7 +348,7 @@ const along = (k, d) => { const pts = LINES[k], i = Math.max(0, Math.min(pts.len
 function view(kind) {
   if (kind === 'all') { camera.position.set(22, 30, 36); controls.target.set(0, 0, 2); $('camNote').textContent = 'Standing and kneeling turn to the next road each time you press them.'; }
   else {
-    camRoad = (camRoad + 1) % 4; const r = ROADS[camRoad];
+    camRoad = (camRoad + 1) % 4; const r = ROADS[camRoad]; tune(S.roads[camRoad]);
     if (kind === 'stand') { const [x, z] = along(camRoad, 1), [tx, tz] = along(camRoad, 14); camera.position.set(x - Math.cos(r.ang) * 3, 1.7, z - Math.sin(r.ang) * 3); controls.target.set(tx, 0.2, tz); }
     else { const [x, z] = along(camRoad, 9), [tx, tz] = along(camRoad, 15); camera.position.set(x, 0.55, z); controls.target.set(tx, 0, tz); }
     $('camNote').textContent = `Looking down the ${r.name.toLowerCase()} road: ${S.roads[camRoad]} · ${S.builds[S.roads[camRoad]].name}. Press again for the next road.`;
@@ -356,7 +358,7 @@ function view(kind) {
 document.querySelectorAll('[data-cam]').forEach((b) => b.addEventListener('click', () => view(b.dataset.cam)));
 
 // the road labels, floating over each road
-const TAGS = ROADS.map(() => { const t = document.createElement('div'); t.className = 'tag'; $('tags').appendChild(t); return t; });
+const TAGS = ROADS.map((r, k) => { const t = document.createElement('button'); t.type = 'button'; t.className = 'tag'; t.title = 'Tune this build'; t.addEventListener('click', () => tune(S.roads[k])); $('tags').appendChild(t); return t; });
 const tv = new THREE.Vector3();
 function placeTags() {
   ROADS.forEach((r, k) => {
@@ -366,6 +368,7 @@ function placeTags() {
     t.style.display = ''; t.style.left = ((tv.x + 1) / 2 * innerWidth) + 'px'; t.style.top = ((1 - tv.y) / 2 * innerHeight) + 'px';
     const ps = perStone(b);
     t.innerHTML = `${b} · ${S.builds[b].name} <small>${ps ? ps.toFixed(1) + ' a stone' : 'painted'}</small>`;
+    t.classList.toggle('on', b === $('tuneBuild').value);
   });
 }
 
