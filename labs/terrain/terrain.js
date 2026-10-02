@@ -31,11 +31,11 @@ const Q = new URLSearchParams(location.search);
 // flat colours (each picture's average) instead of read from the pictures, one noise read where
 // there were four.
 const TIER_SET = {
-  potato: { ratio: 0.5, lite: true, lawn: { radius: 0, density: 0 }, stones: 1500, treeShare: 0.45, shadow: null, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 8000, near: 0, radius: 90 },
+  potato: { ratio: 0.5, lite: true, coverFarX: 1.8, lawn: { radius: 0, density: 0 }, stones: 1500, treeShare: 0.45, shadow: null, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 8000, near: 0, radius: 90 },
             u: { wWaveOn: 0, stampFar: 12 }, checks: { stampOn: false, hexOn: false, farOn: false, wWaveOn: false, cloudsOn: false } },
-  normal: { ratio: 1.5, lawn: { radius: 40, density: 10 }, stones: 14000, shadow: { range: 80, size: 1024, cover: false }, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 40000, near: 35, radius: 140 },
+  normal: { ratio: 1.5, coverFarX: 2.5, lawn: { radius: 40, density: 10 }, stones: 14000, shadow: { range: 80, size: 1024, cover: false }, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 40000, near: 35, radius: 140 },
             u: { wWaveOn: 1, stampFar: 30 }, checks: { stampOn: true, hexOn: true, farOn: false, wWaveOn: true, cloudsOn: true } },
-  gaming: { ratio: 2, lawn: { radius: 60, density: 14 }, stones: 26000, shadow: { range: 150, size: 2048, cover: true }, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 66000, near: 45, radius: 180 },
+  gaming: { ratio: 2, coverFarX: 2.5, lawn: { radius: 60, density: 14 }, stones: 26000, shadow: { range: 150, size: 2048, cover: true }, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 66000, near: 45, radius: 180 },
             u: { wWaveOn: 1, stampFar: 45 }, checks: { stampOn: true, hexOn: true, farOn: true, wWaveOn: true, cloudsOn: true } },
 };
 // the tier is picked on a throwaway context first, so the real one can be made without smoothing
@@ -888,7 +888,7 @@ function placeTrees() {
 // nothing on paths, steep or muddy ground.
 // counts by tier: Jacob's thickness from the Growth Lab (40,000 in a 140 m circle) over each tier's circle; potato
 // at half that, gaming over a 180 m circle rather than 220 (that thickness out to 220 m would be ~99,000)
-const COVER = { at: new THREE.Vector3(), on: true, count: 40000, radius: 140, size: COVER_DEFAULTS.size, near: 35, parts: null, meshes: [] };   // ~5 M triangles to start: the readout says what more costs
+const COVER = { at: new THREE.Vector3(), ahead: 0.6, farX: TS.coverFarX, on: true, count: 40000, radius: 140, size: COVER_DEFAULTS.size, near: 35, parts: null, meshes: [] };   // ~5 M triangles to start: the readout says what more costs
 Object.assign(COVER, TS.cover);
 // THE 16 GROUND PLANTS and how they grow: src/objects/growth.js (KIND_INFO), shared with the Growth Lab
 // `cell` (optional): [width, height] of a cell in the model's units, counted from 0, instead of the model's box / grid
@@ -1068,18 +1068,20 @@ const GROW = { ...GROW_DEFAULTS }, PLANT_KINDS = defaultKinds();
 function followCover() {
   if (!coverForest || RAIN.gen) return;
   const fwd = new THREE.Vector3().subVectors(controls.target, camera.position).setY(0);
-  const at = camera.position.clone().addScaledVector(fwd.lengthSq() > 1e-6 ? fwd.normalize() : fwd, COVER.radius * 0.35); at.y = 0;
+  // like the trees' circle: pushed ahead of the camera by `ahead` of its radius, so it covers what's in view
+  // rather than the ground under and behind you
+  const at = camera.position.clone().addScaledVector(fwd.lengthSq() > 1e-6 ? fwd.normalize() : fwd, COVER.radius * COVER.ahead); at.y = 0;
   if (at.distanceTo(COVER.at) > COVER.radius * 0.25) { COVER.at.copy(at); placeCover(); }
 }
 function placeCover() {
-  U.coverR.value = COVER.radius; U.coverAt.value.copy(COVER.at);
+  U.coverR.value = COVER.radius * COVER.farX; U.coverAt.value.copy(COVER.at);   // (the far paint takes over where the sparse far plants end)
   for (const im of COVER.meshes) { scene.remove(im); im.dispose(); }
   COVER.meshes = [];
   if (!COVER.parts || !MAPS.wet) return;
   const ground = coverGround;
 
   // where they go: src/objects/growth.js (shared with the Growth Lab)
-  const fixed = growPlants({ ground, at: COVER.at, radius: COVER.radius, count: COVER.on ? COVER.count : 0, size: COVER.size, kinds: PLANT_KINDS, grow: GROW }), placed = fixed.length;
+  const fixed = growPlants({ ground, at: COVER.at, radius: COVER.radius, far: COVER.farX, count: COVER.on ? COVER.count : 0, size: COVER.size, kinds: PLANT_KINDS, grow: GROW }), placed = fixed.length;
   // one Forest for all of them: meshes out to COVER.near, imposters beyond, crossfaded
   if (coverForest) { scene.remove(coverForest.group); for (const b of coverForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
   const species = coverForest ? coverForest.species : COVER.plantSp;
@@ -1226,7 +1228,7 @@ for (const [id, key, fmt] of [['stoneCount', 'count', v => v.toLocaleString()], 
 for (const [id, key, fmt] of [['calmAmount', 'amount', v => Math.round(v * 100) + '%'], ['calmFrom', 'from', v => v + ' m'], ['calmTo', 'to', v => v + ' m']]) {
   const el = $(id); el.value = CALM[key]; const go = () => { CALM[key] = +el.value; $(id + 'Out').textContent = fmt(+el.value); calmCover(); }; el.addEventListener('input', go); go();
 }
-for (const [id, key, fmt] of [['coverCount', 'count', v => v.toLocaleString()], ['coverRadius', 'radius', v => v + ' m'], ['coverSize', 'size', v => v.toFixed(2) + '×'], ['coverNear', 'near', v => v + ' m']]) {
+for (const [id, key, fmt] of [['coverCount', 'count', v => v.toLocaleString()], ['coverRadius', 'radius', v => v + ' m'], ['coverSize', 'size', v => v.toFixed(2) + '×'], ['coverNear', 'near', v => v + ' m'], ['coverAhead', 'ahead', v => Math.round(v * 100) + '% ahead'], ['coverFarX', 'farX', v => v.toFixed(1) + '× (sparser, bigger)']]) {
   const el = $(id); el.value = COVER[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { COVER[key] = +el.value; placeCover(); });
