@@ -8,11 +8,13 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { bakeImposterSteps, imposterMaterial } from './imposter.js';
 import { swayMaterial } from './wind.js';
+import { shapeFoliage, SHAPE_DEFAULTS } from './foliage.js';
 
 function rnd(seed) { let s = seed >>> 0 || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
 
 export const FOREST_SPECIES = [
   // soften: the foliage's normals bent this far toward up (both the meshes and the imposters)
+  // shape (optional): light the leaves by the lumps they form, darker inside (src/objects/foliage.js settings)
   { name: 'ash',   file: 'ash',   height: 20, weight: 1, soften: 0.5 },
   { name: 'aspen', file: 'aspen', height: 17, weight: 1, soften: 0.5 },
   { name: 'oak',   file: 'oak',   height: 18, weight: 1.2, soften: 0.5 },
@@ -45,16 +47,20 @@ export class Forest {
   async load() {
     const loader = new GLTFLoader();
     for (const sp of this.species) {
-      const root = sp.root || (await loader.loadAsync(`${this.base}${sp.file}${this.detail === 'fine' ? '' : '_' + this.detail}.glb`)).scene; root.updateMatrixWorld(true);
+      if (!sp.root) { sp.root = (await loader.loadAsync(`${this.base}${sp.file}${this.detail === 'fine' ? '' : '_' + this.detail}.glb`)).scene; sp.ownRoot = true; }
+      if (this.disposed) return;                                          // replaced while it loaded: go no further
+      const root = sp.root; root.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(root), size = box.getSize(new THREE.Vector3());
       sp.unit = sp.height / size.y; sp.baseY = box.min.y; sp.root = root;
+      const shapeKey = sp.shape ? JSON.stringify(sp.shape) : '';          // (a species handed on to a new forest is already shaped)
+      if (sp.shape && root.userData.shapedWith !== shapeKey) { sp.shapeInfo = shapeFoliage(root, sp.unit, sp.shape); root.userData.shapedWith = shapeKey; }
       root.traverse(o => { if (o.isMesh && !Array.isArray(o.material)) { o.material.side = THREE.DoubleSide; if (o.material.map) o.material.map.anisotropy = 4; if (o.material.transparent) { o.material.alphaTest = 0.5; o.material.transparent = false; } } });
     }
     // the atlases, a row of views per frame
     const todo = this.species.slice();
     const self = this;
     const steps = (function* () { for (const sp of todo) { if (sp.bake) continue;   // brought already baked
- const it = bakeImposterSteps(self.renderer, sp.root, { grid: self.light ? Math.min(8, sp.grid || self.grid) : (sp.grid || self.grid), cell: sp.cell || self.cell, hemi: true, upNormals: !!(sp.upNormals || sp.soften) }); for (;;) { const s = it.next(); if (s.done) { sp.bake = s.value; break; } yield; } } })();
+ const it = bakeImposterSteps(self.renderer, sp.root, { grid: self.light ? Math.min(8, sp.grid || self.grid) : (sp.grid || self.grid), cell: sp.cell || self.cell, hemi: true, upNormals: !!(sp.upNormals || sp.soften || sp.shape) }); try { for (;;) { const s = it.next(); if (s.done) { sp.bake = s.value; break; } yield; } } finally { if (!sp.bake) it.return(); } } })();   // (abandoned: the half-done bake cleans up)
     this.baking = steps;
   }
   get progress() { return this.species.filter(s => s.bake).length / this.species.length; }
@@ -154,6 +160,9 @@ export class Forest {
         m.count = 0; m.frustumCulled = false; m.castShadow = this.shadows; m.receiveShadow = this.shadows;
         const mf = new THREE.InstancedBufferAttribute(new Float32Array(NC), 1); mf.setUsage(THREE.DynamicDrawUsage); m.geometry.setAttribute('iFade', mf);
         m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(NC * 3), 3); m.instanceColor.setUsage(THREE.DynamicDrawUsage);
+        // shaped leaves (they carry how much sky each corner sees): a sprig seen from underneath darker, and
+        // sunlight through the outer leaves when you look toward the sun
+        const leafy = !!(sp.shape && o.geometry.attributes.aSky), under = sp.shape?.under ?? SHAPE_DEFAULTS.under, glow = sp.shape?.glow ?? SHAPE_DEFAULTS.glow;
         for (const mat of [].concat(m.material)) {
           mat.onBeforeCompile = (sh) => {
             Object.assign(sh.uniforms, this.landU);
@@ -161,11 +170,21 @@ export class Forest {
             sh.fragmentShader = 'uniform sampler2D landShade; uniform float landShadeSize; uniform vec4 landShadeK; varying vec2 vLand;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
               if (landShadeK.w > 0.5) { vec3 sd = texture2D(landShade, vLand / landShadeSize + 0.5).rgb;
                 diffuseColor.rgb *= mix(1.0, 0.4 + 0.6 * sd.r, landShadeK.x) * mix(1.0, 0.3 + 0.7 * sd.g, landShadeK.y) * (1.0 - landShadeK.z * sd.b); }`);
-            if (sp.upNormals || sp.soften) sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('gl_FrontFacing ? 1.0 : - 1.0', '1.0')
+            if (sp.upNormals || sp.soften || sp.shape) sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('gl_FrontFacing ? 1.0 : - 1.0', '1.0')
               + (sp.soften ? `\nnormal = normalize(mix(normal, normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz), ${sp.soften.toFixed(2)}));` : ''));
+            if (leafy) {
+              sh.vertexShader = 'attribute float aSky; varying float vSky;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvSky = aSky;');
+              sh.fragmentShader = 'varying float vSky;\n' + sh.fragmentShader
+                .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+                  diffuseColor.rgb *= mix(${(1 - under).toFixed(3)}, 1.0, smoothstep(-0.3, 0.2, dot(normal, normalize(vViewPosition))));`)
+                .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+                  #if NUM_DIR_LIGHTS > 0
+                  reflectedLight.directDiffuse += directionalLights[0].color * diffuseColor.rgb * pow(max(0.0, dot(-normalize(vViewPosition), directionalLights[0].direction)), 3.0) * vSky * vSky * ${glow.toFixed(3)};
+                  #endif`);
+            }
             sh.fragmentShader = 'varying float vFade;\n' + sh.fragmentShader.replace('#include <alphatest_fragment>', '#include <alphatest_fragment>\n{ float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))); if (vFade < dither) discard; }');
           };
-          mat.customProgramCacheKey = () => 'forest-mesh' + (sp.upNormals ? '-up' : '') + (sp.soften ? '-s' + sp.soften : ''); mat.needsUpdate = true;
+          mat.customProgramCacheKey = () => 'forest-mesh' + (sp.upNormals ? '-up' : '') + (sp.soften ? '-s' + sp.soften : '') + (sp.shape ? '-shape' : '') + (leafy ? `-leaf${under}-${glow}` : ''); mat.needsUpdate = true;
           if (this.wind) { m.geometry.computeBoundingBox(); swayMaterial(mat, Math.max(0.001, m.geometry.boundingBox.max.y), sp.sway ?? 1, '-' + (sp.sway ?? 1)); }
         }
         m.userData.local = o.matrixWorld.clone(); m.userData.fade = mf;
@@ -174,6 +193,29 @@ export class Forest {
       this.built.push({ sp, imposter, meshes, trees: [] });
     }
     this.refill();
+  }
+
+  // gone for good: off the scene, its draws freed, and its baked atlases too unless another forest goes on
+  // using these species (bakes: false)
+  dispose({ bakes = true } = {}) {
+    this.disposed = true;
+    if (this.baking) { this.baking.return(); this.baking = null; }
+    this.scene.remove(this.group);
+    for (const b of this.built) {
+      b.imposter.geometry.dispose(); for (const m of b.meshes) { m.geometry.dispose(); m.dispose(); }
+      if (bakes) {                                                        // (kept when the species go on: the next forest compiles the same shaders)
+        b.imposter.material.dispose(); b.imposter.material.userData.depthMaterial?.dispose();
+        for (const m of b.meshes) [].concat(m.material).forEach((x) => x.dispose());
+      }
+    }
+    if (bakes) for (const sp of this.species) {
+      if (sp.bake && sp.bake.targets) { sp.bake.targets.forEach((t) => t.dispose()); sp.bake = null; }
+      if (sp.ownRoot && sp.root) {                                        // the tree as loaded: its geometry and every picture it has
+        sp.root.traverse((o) => { if (!o.isMesh) return; o.geometry.dispose(); for (const mt of [].concat(o.material)) { for (const v of Object.values(mt)) if (v && v.isTexture) v.dispose(); mt.dispose(); } });
+        sp.root = null;
+      }
+    }
+    this.built = []; this.ready = false;
   }
 
   // far plants calmed toward one colour: { calmCol (THREE.Color), calmFrom, calmTo (m), calmAmt (0..1) };

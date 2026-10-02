@@ -12,6 +12,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Forest, FOREST_SPECIES } from '../../src/objects/forest.js';
+import { SHAPE_DEFAULTS } from '../../src/objects/foliage.js';
 import { chooseTier, saveTier, watchFrames, TIERS } from '../../src/quality.js';
 import { makeCloudSky, SKY_GLSL } from '../../src/objects/cloudSky.js';
 import { WIND, tickWind } from '../../src/objects/wind.js';
@@ -911,6 +912,9 @@ const TREE_SPECIES = FOREST_SPECIES.filter(sp => sp.name !== 'bush');
 // the Tree Lab's settings, now here (Jacob's defaults, 2026-09-23)
 const FOREST = { imposterAt: 150, band: 120, ahead: 0.6, grid: 12, cell: 192, detail: 'sparse', rebake: false };
 Object.assign(FOREST, TS.forest);
+// SHAPED LIGHTING (src/objects/foliage.js, tuned in the Foliage Lab): which trees light their leaves by how
+// much sky each leaf sees through the tree, instead of card by card ('off', 'pine' or 'all'), and how
+const LEAF = { on: 'off', ...SHAPE_DEFAULTS };
 let treeForest = null;
 // WHICH TREE WHERE: src/objects/growth.js (shared with the Growth Lab); here it is handed the land's
 // height, slope, wet and dry at each tree
@@ -927,8 +931,10 @@ function townTrees(species) {
     return { x: it.x, z: it.z, sp, scale: it.size, tint, yaw: it.rot ? it.rot * Math.PI / 180 : hash(it.x * 0.37, it.z * 0.71) * 6.283 }; });   // (unturned: each its own way)
 }
 function placeTrees() {
-  if (treeForest) { scene.remove(treeForest.group); for (const b of treeForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
-  const species = treeForest && !FOREST.rebake ? treeForest.species : TREE_SPECIES.map(sp => ({ ...sp }));   // keeps the baked atlases unless the atlas settings changed
+  if (treeForest) treeForest.dispose({ bakes: FOREST.rebake });   // (the atlases go too when they are about to be baked again)
+  const shaped = (sp) => LEAF.on === 'all' || (LEAF.on === 'pine' && sp.name === 'pine');
+  const species = treeForest && !FOREST.rebake ? treeForest.species : TREE_SPECIES.map(sp => shaped(sp)   // keeps the baked atlases unless the atlas settings changed
+    ? { ...sp, soften: LEAF.soften, shape: { lump: LEAF.lump, mix: LEAF.mix, dark: LEAF.dark, tip: LEAF.tip, olive: LEAF.olive, branchDark: LEAF.branchDark, under: LEAF.under, glow: LEAF.glow } } : { ...sp });
   FOREST.rebake = false;
   treeForest = new Forest(renderer, scene, { species, shadows: SHADOW.on, detail: FOREST.detail, grid: FOREST.grid, cell: FOREST.cell, imposterAt: FOREST.imposterAt, band: FOREST.band, ahead: FOREST.ahead, sunDir: SUN_DIR, heightAt, nearCap: 600,
     fixed: [...trees.map(([x, , z, s]) => { const [sp, tint] = pickTree(x, z, species); return { x, z, sp, scale: s, tint }; }), ...townTrees(species)] });
@@ -1423,6 +1429,14 @@ for (const [id, key, fmt, live] of [['fImp', 'imposterAt', v => v + ' m', true],
   if (!live) el.addEventListener('change', () => { FOREST[key] = +el.value; FOREST.rebake = true; placeTrees(); atlasInfo(); });
 }
 $('fDetail').value = FOREST.detail; $('fDetail').addEventListener('change', e => { FOREST.detail = e.target.value; FOREST.rebake = true; placeTrees(); });
+$('fShape').value = LEAF.on; $('fShape').addEventListener('change', e => { LEAF.on = e.target.value; FOREST.rebake = true; placeTrees(); });
+$('fShapePaste').addEventListener('click', async () => {   // the Foliage Lab's Copy settings
+  let text = ''; try { text = await navigator.clipboard.readText(); } catch (e) { text = prompt('Paste the Foliage Lab settings here') || ''; }
+  let o = null; try { o = JSON.parse(text); } catch (e) { /* not JSON */ }
+  if (!o || typeof o.lump !== 'number') { $('fShapeNote').textContent = "That isn't Foliage Lab settings."; return; }
+  for (const k of ['lump', 'mix', 'dark', 'tip', 'olive', 'branchDark', 'under', 'glow', 'soften']) if (typeof o[k] === 'number') LEAF[k] = o[k];
+  if (LEAF.on === 'off') { LEAF.on = o.species === 'pine' ? 'pine' : 'all'; $('fShape').value = LEAF.on; }
+  $('fShapeNote').textContent = 'Pasted.'; FOREST.rebake = true; placeTrees(); });
 function atlasInfo() { const e = FOREST.grid * FOREST.cell, mb = e * e * 4 / 1048576; $('fAtlasInfo').textContent = `each species: a ${e} × ${e} atlas, ${mb.toFixed(0)} MB colour + ${mb.toFixed(0)} MB normal and depth; ${TREE_SPECIES.length} species = ${(mb * 2 * TREE_SPECIES.length).toFixed(0)} MB. Plants: 8 × 8 of 128 px, 8 MB each.`; }
 atlasInfo();
 // the atlas viewer: one species' colour atlas in the corner

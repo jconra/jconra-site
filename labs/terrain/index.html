@@ -31,6 +31,7 @@
   .check { display:flex; gap:8px; align-items:center; margin:6px 0; color:#aeb9c2; cursor:pointer; }
   .check input { accent-color:#35e07d; }
   .btns { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }
+  .row label small { display:block; color:#59656f; font-size:11px; }
   .btns button { font:600 11px ui-monospace,monospace; letter-spacing:.05em; text-transform:uppercase; background:rgba(53,224,125,.12); color:#35e07d; border:1px solid #2f7d55; border-radius:4px; padding:6px 8px; cursor:pointer; }
   #hud { position:fixed; top:36px; left:16px; z-index:6; pointer-events:none; font:11.5px/1.5 ui-monospace,monospace; color:#e8f1f5; text-shadow:0 1px 4px #000; }
   #hud b { color:#35e07d; font-weight:600; }
@@ -238,6 +239,9 @@
       <div class="row"><label for="fGrid">Views across (re-bakes)</label><output id="fGridOut"></output><input id="fGrid" type="range" min="4" max="24" step="2"></div>
       <div class="row"><label for="fCell">View size (re-bakes)</label><output id="fCellOut"></output><input id="fCell" type="range" min="64" max="256" step="32"></div>
       <p class="note" id="fAtlasInfo"></p>
+      <div class="row"><label for="fShape">Shaped lighting<small>each leaf lit by how much sky it sees through the tree: bright tier tops, dark undersides (tuned in the Foliage Lab; re-bakes)</small></label><select id="fShape"><option value="off">off</option><option value="pine">pines</option><option value="all">all trees</option></select></div>
+      <div class="btns"><button class="btn quiet" id="fShapePaste" type="button">Paste Foliage Lab settings</button></div>
+      <p class="note" id="fShapeNote"></p>
       <label class="check" for="fAtlasOn"><input id="fAtlasOn" type="checkbox"> Show an atlas</label>
       <div class="row"><label for="fAtlasOf">Of</label><select id="fAtlasOf"></select></div>
       <p class="note"><b>What costs what:</b> a second of frames with each part switched off in turn, from where you are looking.</p>

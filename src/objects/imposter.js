@@ -52,7 +52,8 @@ export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, he
   // colour pass: the material's own map, unlit; normal pass: the normal in the tree's frame
   const materials = new Map();
   object.traverse(o => { if (o.isMesh) materials.set(o, o.material); });
-  const colourMat = (m) => { const c = new THREE.MeshBasicMaterial({ map: m.map || null, color: m.map ? 0xffffff : m.color, alphaTest: m.alphaTest || (m.transparent ? 0.5 : 0), side: THREE.DoubleSide }); if (m.map) c.map.colorSpace = m.map.colorSpace; return c; };
+  const colourMat = (m) => { const c = new THREE.MeshBasicMaterial({ map: m.map || null, color: m.map ? 0xffffff : m.color, alphaTest: m.alphaTest || (m.transparent ? 0.5 : 0), side: THREE.DoubleSide, vertexColors: !!m.vertexColors });   // (vertex colours: shaped foliage's inside darkness)
+  if (m.map) c.map.colorSpace = m.map.colorSpace; return c; };
   // the normal in the tree's frame, and in alpha the depth: 0 at the near face of the tree's sphere,
   // 0.5 at its centre plane (where the quad is drawn), 1 at the far face
   const normalMat = (m) => new THREE.ShaderMaterial({
@@ -63,6 +64,8 @@ export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, he
       void main(){ if (useMap > 0.5 && texture2D(map, vUv).a < alphaTest) discard; vec3 n = normalize(gl_FrontFacing || UP_NORMALS ? vN : -vN); gl_FragColor = vec4(n * 0.5 + 0.5, clamp((vZ - radius) / (2.0 * radius), 0.0, 1.0)); }`,
     side: THREE.DoubleSide });
   const oldTarget = renderer.getRenderTarget(), oldClear = renderer.getClearColor(new THREE.Color()), oldAlpha = renderer.getClearAlpha();
+  let done = false;
+  try {                                   // (a bake abandoned between rows, by .return(): the tree and renderer put back, the half-made atlases freed)
   for (const [rt, mkMat] of [[colourRT, colourMat], [normalRT, normalMat]]) {
     for (const [o, m] of materials) o.material = Array.isArray(m) ? m.map(mkMat) : mkMat(m);     // a mesh with a material per face keeps them
     rt.viewport.set(0, 0, size, size); rt.scissorTest = false;
@@ -84,11 +87,15 @@ export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, he
     } }
     rt.viewport.set(0, 0, size, size); rt.scissorTest = false;
   }
+  done = true;
+  } finally {
+    if (!done) { for (const [o, m] of materials) o.material = m; renderer.setRenderTarget(oldTarget); renderer.setClearColor(oldClear, oldAlpha); holder.remove(object); if (parent) parent.add(object); colourRT.dispose(); normalRT.dispose(); }
+  }
   for (const [o, m] of materials) o.material = m;
   renderer.setRenderTarget(oldTarget); renderer.setClearColor(oldClear, oldAlpha);
   holder.remove(object); if (parent) parent.add(object);
   object.updateMatrixWorld(true);          // the meshes' world matrices carried the holder's offset: refreshed, or anything placed by them stands half a tree low
-  return { colour: colourRT.texture, normal: normalRT.texture, radius, halfW, halfH, centre, grid, hemi, cell };
+  return { colour: colourRT.texture, normal: normalRT.texture, targets: [colourRT, normalRT], radius, halfW, halfH, centre, grid, hemi, cell };   // targets: to free the atlases (a render target's texture can't free itself)
 }
 
 // The vertex stage shared by the drawing and the shadow-casting materials: the quad turned to
