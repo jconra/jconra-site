@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stone Lab</title>
+<script src="/src/oops.js"></script>
+<style>
+  @font-face { font-family: nasa; src: url("../../fonts/nasalization-rg.ttf"); font-display: swap; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; background:#0b1015; color:#ccd6de; font:13px/1.45 ui-sans-serif, system-ui, sans-serif; }
+  canvas { display:block; touch-action:none; }
+  #panel { position:fixed; top:12px; right:12px; bottom:12px; width:340px; overflow-y:auto; z-index:5;
+           background:rgba(10,13,17,.94); border:1px solid #212a34; border-radius:6px; padding:12px 14px; }
+  #panel.min { bottom:auto; }
+  #panel.min .body { display:none; }
+  h1 { font:400 17px/1 nasa, ui-sans-serif, sans-serif; letter-spacing:.05em; color:#e8f1f5; display:flex; justify-content:space-between; align-items:center; }
+  h1 button { font:600 11px ui-monospace,monospace; background:none; border:1px solid #212a34; color:#8494a0; border-radius:3px; padding:3px 7px; cursor:pointer; }
+  details.sec { margin:10px 0 0; border-top:1px solid #1a2129; padding-top:6px; }
+  details.sec summary { font:600 10.5px/1 ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:#8494a0; cursor:pointer; list-style:none; padding:6px 0; user-select:none; }
+  details.sec summary::before { content:"▸ "; color:#35e07d; }
+  details.sec[open] > summary::before { content:"▾ "; }
+  details.sec[open] > summary { color:#e8f1f5; }
+  .note { color:#6d7a85; font-size:11.5px; margin:6px 0 4px; }
+  .note b { color:#aeb9c2; font-weight:600; }
+  .row { display:grid; grid-template-columns:1fr auto; gap:2px 8px; align-items:center; margin:6px 0; }
+  .row label { color:#aeb9c2; }
+  .row label small { display:block; color:#59656f; font-size:11px; }
+  .row output { font:12px ui-monospace,monospace; color:#e8f1f5; font-variant-numeric:tabular-nums; }
+  .row input[type=range] { grid-column:1 / -1; width:100%; accent-color:#35e07d; }
+  .row select, .row input[type=color] { background:#0d1218; color:#cfd8de; border:1px solid #212a34; border-radius:3px; font:12px ui-sans-serif, system-ui; padding:2px 4px; }
+  .row input[type=color] { width:44px; height:22px; padding:0 2px; }
+  .check { display:flex; gap:8px; align-items:center; margin:5px 0; color:#aeb9c2; cursor:pointer; }
+  .check input { accent-color:#35e07d; }
+  .btns { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }
+  .btn { font:600 11px ui-monospace,monospace; letter-spacing:.05em; text-transform:uppercase; background:rgba(53,224,125,.12);
+         color:#35e07d; border:1px solid #2f7d55; border-radius:4px; padding:6px 9px; cursor:pointer; }
+  .btn.quiet { background:none; color:#8494a0; border-color:#212a34; }
+  .btn.on { background:rgba(53,224,125,.22); color:#e8f1f5; }
+  .roads { display:grid; grid-template-columns:auto 1fr; gap:4px 8px; align-items:center; margin:6px 0; }
+  .roads label { color:#aeb9c2; font:11.5px ui-monospace,monospace; }
+  .roads select { background:#0d1218; color:#cfd8de; border:1px solid #212a34; border-radius:3px; font:12px ui-sans-serif, system-ui; padding:2px 4px; }
+  #stats { font:11.5px/1.6 ui-monospace,monospace; color:#9fb3c2; margin:6px 0; }
+  #stats b { color:#e8f1f5; font-weight:600; }
+  #back { position:fixed; top:14px; left:16px; z-index:6; font:11px ui-monospace,monospace; letter-spacing:.14em; color:#8494a0; text-decoration:none; text-transform:uppercase; }
+  #head { position:fixed; top:36px; left:12px; z-index:6; pointer-events:none; background:rgba(10,13,17,.72); border-radius:6px; padding:6px 10px; }
+  #head b { display:block; font:400 20px nasa, ui-sans-serif, sans-serif; letter-spacing:.05em; color:#e8f1f5; }
+  #head span { font:11.5px/1.5 ui-monospace,monospace; color:#9fb3c2; }
+  .tag { position:fixed; z-index:4; pointer-events:none; transform:translate(-50%,-100%); background:rgba(10,13,17,.8); border:1px solid #2f7d55;
+         border-radius:4px; padding:2px 7px; font:600 12px ui-monospace,monospace; color:#e8f1f5; white-space:nowrap; }
+  .tag small { color:#9fb3c2; font-weight:400; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid #35e07d; outline-offset:1px; }
+  @media (max-width:700px) { #panel, #panel.min { width:auto; left:12px; top:auto; bottom:12px; max-height:50vh; } #head span { display:none; } }
+</style>
+</head>
+<body>
+<a id="back" href="../">&larr; labs</a>
+<div id="head"><b>Stone Lab</b><span id="info"></span></div>
+<div id="tags"></div>
+<div id="panel">
+  <h1>Stone Lab <button id="min" type="button">hide</button></h1>
+  <div class="body">
+    <p class="note">Ways to pave the town's roads with irregular stones, side by side: a square with four roads, each road (and its quarter of the square) paved its own way. <b>A</b> is painted on the ground (no triangles); the others are real 3D stones sitting on their painted copies, with live triangle counts. Drag to look round, scroll or pinch to zoom.</p>
+    <div class="btns"><button class="btn" id="copy" type="button">Copy settings</button><button class="btn quiet" id="paste" type="button">Paste settings</button><button class="btn quiet" id="reset" type="button">Start over</button></div>
+    <p class="note" id="copyNote"></p>
+
+    <details class="sec" open><summary>Compare</summary>
+      <div class="roads" id="roadPick"></div>
+      <div id="stats"></div>
+      <div class="btns"><button class="btn quiet" data-cam="all" type="button">See it all</button><button class="btn quiet" data-cam="stand" type="button">Stand in the square</button><button class="btn quiet" data-cam="kneel" type="button">Kneel on a road</button></div>
+      <p class="note" id="camNote">Standing and kneeling turn to the next road each time you press them.</p>
+      <div id="secShow"></div>
+    </details>
+
+    <details class="sec" open><summary>The stones</summary>
+      <p class="note">One point per square of the grid, nudged at random; each point owns the ground nearest it. A stone exists where its point falls inside the road, so the edges are ragged rows of whole stones.</p>
+      <div id="secField"></div>
+      <div class="btns"><button class="btn quiet" id="reseed" type="button">New layout</button></div>
+    </details>
+
+    <details class="sec" open><summary>Rock look (no picture needed)</summary>
+      <p class="note">Every colour here is worked out from the spot on the stone, never from the frame, so nothing flickers as you move. Each stone draws its own shade and tint, then grain from noise; the finest speckle fades out with distance before it can sparkle.</p>
+      <div id="secLook"></div>
+    </details>
+
+    <details class="sec"><summary>Painted stones (A, and far away)</summary>
+      <p class="note">How the painted stones are drawn. Under the 3D stones these show only in the gaps; past the 3D distance they are all you see.</p>
+      <div id="secPaint"></div>
+    </details>
+
+    <details class="sec" open><summary>3D builds</summary>
+      <p class="note">Pick a build to tune. Each stone's triangles: the top (corners &minus; 2, or one per corner round a raised middle), plus (footing points per corner + 1) for each corner, for the sides. <b>Soft shading</b> costs nothing: untick it to see the bare facets.</p>
+      <div class="row"><label for="tuneBuild">Tune build</label><select id="tuneBuild" style="grid-column:2"></select></div>
+      <div id="secBuild"></div>
+      <p class="note" id="buildTris"></p>
+      <div class="btns"><button class="btn quiet" id="buildReset" type="button">Reset this build</button></div>
+    </details>
+
+    <details class="sec"><summary>The roads</summary>
+      <div id="secRoad"></div>
+    </details>
+
+    <details class="sec"><summary>Light</summary>
+      <div id="secLight"></div>
+    </details>
+  </div>
+</div>
+<script type="importmap">
+  { "imports": { "three": "https://unpkg.com/three@0.158.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/" } }
+</script>
+<script type="module" src="./stones-lab.js"></script>
+</body>
+</html>
