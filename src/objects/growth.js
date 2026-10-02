@@ -48,9 +48,9 @@ export const LIT_SOFTEN = 0.35;
 //   lonerBare (0..1): loners kept to the bare ground (1: only there), so the open areas hold the flowers
 //   longClear (0..1): long grasses kept out from under and beside the trees (1: none in the trees' shade)
 //   lawn (0..1): how much of the bare ground the short lawn grass covers (see lawnSpots)
-// (the defaults are Jacob's, set in the Growth Lab on 2026-10-01)
-export const GROW_DEFAULTS = { patchSize: 63, patchSharp: 1, clumpShare: 0.39, clumpSize: 2.5, clumpCount: 10, lonerShare: 0.11, fertSize: 110, fert: 0.33,
-  winner: true, bare: 0.39, bareSize: 20, wetSize: 0, clumpEdge: 1, lonerBare: 1, longClear: 1, lawn: 1 };
+// (the defaults are Jacob's: the Growth Lab on 2026-10-01, then the Terrain Lab's on 2026-10-02)
+export const GROW_DEFAULTS = { patchSize: 90, patchSharp: 1, clumpShare: 0.23, clumpSize: 2.5, clumpCount: 10, lonerShare: 0.11, fertSize: 110, fert: 0.33,
+  winner: true, bare: 0.59, bareSize: 43, wetSize: 0.88, clumpEdge: 1, lonerBare: 0.16, longClear: 1, lawn: 1 };
 export const COVER_DEFAULTS = { size: 2.6, density: 40000 };   // density: how many in a circle 140 m round (the Growth Lab's "how many")
 export const FAMILY_DEFAULTS = { size: 90, strength: 0.7, pineFrom: 25 };
 const KIND_SIZES = [1.8, 1.95, 1.85, 1.55, 0.65, 1.6, 1.9, 1.45, 1.15, 1.1, 1.6, 1.4, 1, 1.65, 1.05, 1.55];   // Jacob's, 2026-10-01

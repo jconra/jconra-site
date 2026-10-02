@@ -31,12 +31,12 @@ const Q = new URLSearchParams(location.search);
 // flat colours (each picture's average) instead of read from the pictures, one noise read where
 // there were four.
 const TIER_SET = {
-  potato: { ratio: 0.5, lite: true, coverFarX: 1.8, lawn: { radius: 0, density: 0 }, stones: 1500, treeShare: 0.45, shadow: null, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 8000, near: 0, radius: 90 },
+  potato: { ratio: 0.5, lite: true, coverFarX: 1.8, lawn: { radius: 0, density: 0 }, stones: 1500, treeShare: 0.45, shadow: null, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 2900, near: 0, radius: 90 },
             u: { wWaveOn: 0, stampFar: 12 }, checks: { stampOn: false, hexOn: false, farOn: false, wWaveOn: false, cloudsOn: false } },
-  normal: { ratio: 1.5, coverFarX: 2.5, lawn: { radius: 40, density: 10 }, stones: 14000, shadow: { range: 80, size: 1024, cover: false }, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 40000, near: 35, radius: 140 },
+  normal: { ratio: 1.5, coverFarX: 3.1, lawn: { radius: 40, density: 1 }, stones: 14000, shadow: { range: 80, size: 1024, cover: false }, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 7000, near: 35, radius: 140 },
             u: { wWaveOn: 1, stampFar: 30 }, checks: { stampOn: true, hexOn: true, farOn: false, wWaveOn: true, cloudsOn: true } },
-  gaming: { ratio: 2, coverFarX: 2.5, lawn: { radius: 60, density: 14 }, stones: 26000, shadow: { range: 150, size: 2048, cover: true }, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 66000, near: 45, radius: 180 },
-            u: { wWaveOn: 1, stampFar: 45 }, checks: { stampOn: true, hexOn: true, farOn: true, wWaveOn: true, cloudsOn: true } },
+  gaming: { ratio: 2, coverFarX: 3.1, lawn: { radius: 60, density: 1 }, stones: 26000, shadow: { range: 150, size: 2048, cover: true }, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 30000, near: 45, radius: 290 },
+            u: { wWaveOn: 1, stampFar: 73 }, checks: { stampOn: true, hexOn: true, farOn: true, wWaveOn: true, cloudsOn: true } },
 };
 // the tier is picked on a throwaway context first, so the real one can be made without smoothing
 // (multisampling) on potato; smoothing can't be changed after a context exists, so a tier switch
@@ -53,6 +53,7 @@ const scene = new THREE.Scene();
 const SKY = new THREE.Color(0xa9c8e4); scene.background = SKY; scene.fog = new THREE.Fog(SKY, 150, 1400);   // the haze does its share of hiding the repeat far off
 // the sky: blue deepening overhead, clouds drifting; the water reflects the same sky (potato: plain colour)
 const sky = makeCloudSky({ horizon: SKY }); scene.add(sky.mesh);
+sky.uniforms.cloudCover.value = 0.64; sky.uniforms.cloudSoft.value = 0.39; sky.uniforms.cloudScale.value = 850; sky.uniforms.cloudSpeed.value = 0.064;   // (Jacob's sky)
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 5000);
 const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
 scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x6b5a44, 0.9));
@@ -105,8 +106,8 @@ function baseHeight(x, z) {
   return out;
 }
 // (the land's shape as Jacob set it, 2026-10-01)
-const SHAPE = { terraceOn: true, step: 30, riser: 0.03, terraceAmount: 0.22, terraceFrom: 1, terraceSpread: 0.35, erodeOn: true, erodeSmooth: 3, drops: 90000, erodeStrength: 0.35, ravines: 40, ravineStrength: 4, ravineScale: 4, ravineRound: 0.8, crags: 40, cragSize: 60, cragSharp: 0.5 };
-const LAND = { wetDepth: 7, dryHeight: 6.0, forest: 0.55, shadeReach: 4, pathWidth: 2.2, treeline: 280, hillForest: 0.3, shore: 2 };   // (the land maps' settings; up here because the crags read the treeline)
+const SHAPE = { terraceOn: true, step: 30, riser: 0.03, terraceAmount: 0.22, terraceFrom: 1, terraceSpread: 0.35, erodeOn: true, erodeSmooth: 3, drops: 110000, erodeStrength: 0.28, ravines: 35, ravineStrength: 4, ravineScale: 4, ravineRound: 0.8, crags: 28, cragSize: 120, cragSharp: 0.5 };
+const LAND = { wetDepth: 6.6, dryHeight: 6.0, forest: 0.7, shadeReach: 4, pathWidth: 3.6, treeline: 280, hillForest: 0.43, shore: 2 };   // (the land maps' settings; up here because the crags read the treeline)
 const Hg = new Float32Array(N * N), FLOW = new Float32Array(N * N), SETTLE = new Float32Array(N * N);
 const cellX = (i) => (i + 0.5) * TEX - SIZE / 2;
 // TERRACES: the height is stepped - a flat top, then a short steep riser - the way rock bands break a
@@ -170,7 +171,7 @@ function* erodeSteps(H, drops, chunk, trail = null) {
 // they run into the ponds and out over the spill. Pond ground is flattened to its surface and river
 // channels are carved a little; the shader paints the water on (no see-through mesh).
 let trees = [], maskA = null, pathCanvas = null; const MAPS = {};
-const WATER = { on: true, river: 1200, width: 0.6, carve: 0.8, channel: 2, pondDepth: 0.35, pondMin: 30, outlet: 5 };
+const WATER = { on: true, river: 8200, width: 0.6, carve: 1.3, channel: 2, pondDepth: 0.05, pondMin: 4, outlet: 19 };
 const POND = new Uint8Array(N * N), WDEPTH = new Float32Array(N * N), ACC = new Float32Array(N * N), DOWN = new Int32Array(N * N);
 let waterCanvas = null, waterTex = null;          // (the shader's uniforms are made later; they pick waterTex up)
 // the priority flood: F is the land with every hollow filled to its spill level, DOWN the cell each
@@ -579,7 +580,7 @@ const U = {
   // stamps: one object at most in each cell of a world grid, its kind drawn by the weights
   stampOn: { value: 1 }, stampAtlas: { value: null }, stampCell: { value: 0.55 }, stampDensity: { value: 0.55 }, stampSize: { value: 1 },
   stampCum: { value: [0, 0, 0, 0, 0, 0, 0, 0] }, stampBase: { value: [0.13, 0.28, 0.13, 0.16, 0.34, 0.12, 0.26, 0.4] },
-  stampHue: { value: 0.35 }, stampShade: { value: 0.45 }, stampFar: { value: 30 },
+  stampHue: { value: 0.35 }, stampShade: { value: 0.45 }, stampFar: { value: 30 }, stampPatch: { value: 0.8 }, stampPatchSize: { value: 5 }, stampClump: { value: 0.6 },
   // mixing by the land: the masks, the layers' pictures, and how they meet
   mixOn: { value: 1 }, maskA: { value: null }, maskB: { value: null },
   waterMap: { value: waterTex }, waterOn: { value: 1 }, time: { value: 0 }, sunDirW: { value: new THREE.Vector3() }, skyCol: { value: SKY.clone() },
@@ -587,7 +588,7 @@ const U = {
   coverR: { value: 140 }, coverAt: { value: new THREE.Vector3() }, coverMap: { value: null }, coverFar: { value: 1 }, rockFrom: { value: 0.25 },
   gullyStr: { value: 0.65 }, fanStr: { value: 0.35 }, strataStr: { value: 1.5 }, strataSize: { value: 6 }, lushTint: { value: new THREE.Color(0.86, 1.0, 0.8) }, dampTint: { value: new THREE.Color(0.78, 0.92, 0.76) }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
   slopeTint: { value: new THREE.Color(0.5, 0.66, 0.4) },
-  shadeMap: { value: null }, shadowRange: { value: 0 }, shadowAt: { value: new THREE.Vector3() }, hillShade: { value: 1 }, aoShade: { value: 0.9 }, treeShade: { value: 0.5 },
+  shadeMap: { value: null }, shadowRange: { value: 0 }, shadowAt: { value: new THREE.Vector3() }, hillShade: { value: 1 }, aoShade: { value: 1 }, treeShade: { value: 0.9 },
   avgGround: { value: new THREE.Color(0x6b8a3a) }, avgDry: { value: new THREE.Color(0x8a8a4a) }, avgLush: { value: new THREE.Color(0x5b7a2a) }, avgForest: { value: new THREE.Color(0x4a4a2a) }, avgWet: { value: new THREE.Color(0x4a3a2a) }, avgPath: { value: new THREE.Color(0x6a5238) }, avgSteep: { value: new THREE.Color(0x7a7a7a) }, avgShore: { value: new THREE.Color(0x77706a) }, shoreStr: { value: 1 }, layShore: { value: null },
   layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layWet: { value: null }, layPath: { value: null }, laySteep: { value: null },
   mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.06 },
@@ -602,7 +603,7 @@ mat.onBeforeCompile = (sh) => {
   sh.fragmentShader = SKY_GLSL + `
     uniform sampler2D groundMap; uniform float tile, split; uniform vec2 res;
     uniform float hexOn, hexSize, hexRot, hexSharp, hexBright, macroOn, macroStr, macroSize, macroHue, farOn, farFrom, grid;
-    uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
+    uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar, stampPatch, stampPatchSize, stampClump; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
     uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 coverAt; uniform sampler2D coverMap; uniform vec3 lushTint, dampTint, slopeTint;
     uniform sampler2D waterMap; uniform float waterOn, wFroth, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow;
     float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gShadowFade = 0.0; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathMap; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange; uniform vec3 shadowAt;
@@ -653,8 +654,14 @@ mat.onBeforeCompile = (sh) => {
       for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) {
         vec2 id = c0 + vec2(float(i), float(j));
         vec2 r = h2(id * 1.37 + 5.1), r2 = h2(id * 2.71 + 9.3);
-        if (r.x > stampDensity) continue;
-        float pick = r.y, kind = 7.0;
+        // PATCHY: two slow maps read once a cell. How many: stamps bunch up, bare stretches between. What kind:
+        // the pick leans toward a slowly changing value, so neighbouring cells take the same kind (bark here,
+        // leaves there), with a little of each cell's own chance left so the edges mix
+        vec2 cw = id * stampCell / stampPatchSize;
+        float many = mix(1.0, smoothstep(0.32, 0.68, vn(cw * 0.7 + 41.0)) * 1.8, stampClump);
+        if (r.x > stampDensity * many) continue;
+        float lean = smoothstep(0.18, 0.82, vn(cw + 17.0));
+        float pick = mix(r.y, lean, stampPatch * (0.75 + 0.25 * r2.x)), kind = 7.0;
         for (int k = 7; k >= 0; k--) if (pick < stampCum[k]) kind = float(k);
         float size = 0.0; for (int k = 0; k < 8; k++) if (float(k) == kind) size = stampBase[k];
         size *= stampSize * (0.7 + 0.6 * r2.x);
@@ -864,7 +871,7 @@ mat.onBeforeCompile = (sh) => {
     #include <dithering_fragment>
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-23' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-24' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground); ground.receiveShadow = SHADOW.on;
 // THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
@@ -897,8 +904,8 @@ function placeTrees() {
 // cell its middle is in, and each plant becomes one instanced mesh (16 draws for all of them).
 // Grasses go in the open and in part shade, shrubs along the forest's edge and a few inside it,
 // nothing on paths, steep or muddy ground.
-// counts by tier: Jacob's thickness from the Growth Lab (40,000 in a 140 m circle) over each tier's circle; potato
-// at half that, gaming over a 180 m circle rather than 220 (that thickness out to 220 m would be ~99,000)
+// counts by tier: Jacob's thickness (his gaming setting, 30,000 in a 290 m circle: 0.114 plants a square metre) over
+// each tier's circle
 const COVER = { cache: {}, at: new THREE.Vector3(), ahead: 0.6, farX: TS.coverFarX, on: true, count: 40000, radius: 140, size: COVER_DEFAULTS.size, near: 35, parts: null, meshes: [] };   // ~5 M triangles to start: the readout says what more costs
 Object.assign(COVER, TS.cover);
 // THE 16 GROUND PLANTS and how they grow: src/objects/growth.js (KIND_INFO), shared with the Growth Lab
@@ -999,7 +1006,7 @@ function calmCover() {
   const a = U.layLush.value && U.layLush.value.userData.avg, col = (a ? a.clone() : new THREE.Color(0.25, 0.33, 0.1)).multiply(U.lushTint.value).multiplyScalar(0.9);
   coverForest.setCalm({ calmCol: col, calmFrom: CALM.from, calmTo: CALM.to, calmAmt: CALM.amount });
 }
-const CALM = { from: 60, to: 260, amount: 0.35 };   // gentle: far plants keep most of their own colour and shading
+const CALM = { from: 80, to: 600, amount: 0.63 };   // gentle: far plants keep most of their own colour and shading
 // STONES: simple rocks (a lumpy, flattened ball in four shapes, drawn faceted) scattered by the land:
 // thick on steep and rocky ground and in the scree at the foot of the cliffs, a few out in the
 // meadows, many along the streams and shores (in the creeks too), none out in the lakes or on the paths. Mostly small, the odd boulder. 20 faces each (80 on gaming).
@@ -1154,6 +1161,9 @@ const SL = {
   stampHue: [v => { U.stampHue.value = v; }, v => Math.round(v * 57.3) + '°'],
   stampShade: [v => { U.stampShade.value = v; }, v => Math.round(v * 100) + '%'],
   stampFar: [v => { U.stampFar.value = v; }, v => v + ' m'],
+  stampPatch: [v => { U.stampPatch.value = v; }, v => Math.round(v * 100) + '%'],
+  stampPatchSize: [v => { U.stampPatchSize.value = v; }, v => v + ' m'],
+  stampClump: [v => { U.stampClump.value = v; }, v => Math.round(v * 100) + '%'],
   mixSharp: [v => { U.mixSharp.value = v; }, v => v.toFixed(1)],
   mixHeight: [v => { U.mixHeight.value = v; }, v => v.toFixed(2)],
   mixBreak: [v => { U.mixBreak.value = v; }, v => Math.round(v * 100) + '%'],
@@ -1161,6 +1171,7 @@ const SL = {
   steepFrom: [v => { U.steepFrom.value = v; }, v => Math.round(Math.acos(1 - v) * 57.3) + '°'],
   rockFrom: [v => { U.rockFrom.value = v; }, v => Math.round(Math.acos(1 - v) * 57.3) + '°'],
 };
+$('stampFar').value = TS.u.stampFar;               // the tier's (potato 12, normal 30, gaming 73), not the page's
 for (const [id, [apply, fmt]] of Object.entries(SL)) { const el = $(id), go = () => { apply(+el.value); $(id + 'Out').textContent = fmt(+el.value); }; el.addEventListener('input', go); go(); }
 for (const [id, on] of Object.entries(TS.checks)) if ($(id)) $(id).checked = on;
 for (const [id, key] of [['hexOn', 'hexOn'], ['macroOn', 'macroOn'], ['farOn', 'farOn'], ['grid', 'grid'], ['stampOn', 'stampOn'], ['mixOn', 'mixOn'], ['wWaveOn', 'wWaveOn'], ['coverFar', 'coverFar']]) { const el = $(id), go = () => { U[key].value = el.checked ? 1 : 0; }; el.addEventListener('change', go); go(); }
@@ -1371,7 +1382,7 @@ const MIXES = {
   'Forest floor': [5, 2, 3, 1, 2, 0.4, 1, 0.5], 'Pine forest': [0.5, 2, 5, 1, 2, 0.3, 0.5, 0.5],
   'Meadow': [0.2, 0.2, 0, 1, 0.5, 0.1, 3, 6], 'Rocky': [0.3, 1, 0.3, 6, 3, 0, 0.3, 1],
 };
-const weights = [...MIXES['Forest floor']];
+const weights = [3.8, 3.7, 0.3, 6, 3, 0, 0.3, 1];   // (Jacob's mix: leaves, twigs and bark, stones, moss)
 function applyWeights() { const t = weights.reduce((a, b) => a + b, 0) || 1; let run = 0; for (let k = 0; k < 8; k++) { run += weights[k] / t; U.stampCum.value[k] = run; } U.stampCum.value[7] = 1.0001; }
 for (let k = 0; k < 8; k++) {
   const d = document.createElement('div'); d.className = 'row';

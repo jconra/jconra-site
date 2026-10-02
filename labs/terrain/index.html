@@ -105,7 +105,7 @@
       <p class="note"><b>Cliff faces:</b> steep ground reads its picture from the side (triplanar, so it is not smeared down the face) and is banded into rock strata.</p>
       <div class="row"><label for="cCrags">Crags: jagged rock up high (above the treeline, on steep ground)</label><output id="cCragsOut"></output><input id="cCrags" type="range" min="0" max="40" step="1"></div>
       <div class="row"><label for="cCragSharp">Crags: rounded to sharp and jagged</label><output id="cCragSharpOut"></output><input id="cCragSharp" type="range" min="0" max="1" step="0.01"></div>
-      <div class="row"><label for="cCragSize">Crags: how wide the ribs are</label><output id="cCragSizeOut"></output><input id="cCragSize" type="range" min="10" max="120" step="5"></div>
+      <div class="row"><label for="cCragSize">Crags: how wide the ribs are</label><output id="cCragSizeOut"></output><input id="cCragSize" type="range" min="10" max="250" step="5"></div>
       <div class="row"><label for="strataStr">Strata</label><output id="strataStrOut"></output><input id="strataStr" type="range" min="0" max="1.5" step="0.05" value="1.5"></div>
       <div class="row"><label for="strataSize">Strata thickness</label><output id="strataSizeOut"></output><input id="strataSize" type="range" min="0.3" max="6" step="0.1" value="6"></div>
       </details>
@@ -120,8 +120,8 @@
       <div class="row"><label for="wWidth">River width</label><output id="wWidthOut"></output><input id="wWidth" type="range" min="0.3" max="4" step="0.1"></div>
       <div class="row"><label for="wCarve">Channel depth</label><output id="wCarveOut"></output><input id="wCarve" type="range" min="0" max="3" step="0.1"></div>
       <div class="row"><label for="wChannel">Channel width (a rounded trough, so deep channels stay smooth)</label><output id="wChannelOut"></output><input id="wChannel" type="range" min="0" max="5" step="1"></div>
-      <div class="row"><label for="wPondDepth">A pond is deeper than</label><output id="wPondDepthOut"></output><input id="wPondDepth" type="range" min="0.05" max="3" step="0.05"></div>
-      <div class="row"><label for="wPondMin">Smallest pond</label><output id="wPondMinOut"></output><input id="wPondMin" type="range" min="4" max="400" step="2"></div>
+      <div class="row"><label for="wPondDepth">A pond is deeper than</label><output id="wPondDepthOut"></output><input id="wPondDepth" type="range" min="0.01" max="3" step="0.01"></div>
+      <div class="row"><label for="wPondMin">Smallest pond</label><output id="wPondMinOut"></output><input id="wPondMin" type="range" min="1" max="400" step="1"></div>
       <div class="row"><label for="wOutlet">Outlet worn down (a canyon cut where each lake spills; the lake drops with it)</label><output id="wOutletOut"></output><input id="wOutlet" type="range" min="0" max="40" step="1"></div>
       </details>
       <details class="sec"><summary>Sky and clouds (reflected in the water)</summary>
@@ -167,12 +167,12 @@
       <div class="row"><label for="landShade">Part shade reaches</label><output id="landShadeOut"></output><input id="landShade" type="range" min="1" max="10" step="1"></div>
       <div class="row"><label for="landPath">Path width</label><output id="landPathOut"></output><input id="landPath" type="range" min="0.8" max="6" step="0.1"></div>
       <p class="note"><b>The edges</b></p>
-      <div class="row"><label for="mixSharp">Sharpness</label><output id="mixSharpOut"></output><input id="mixSharp" type="range" min="1" max="20" step="0.5" value="6"></div>
-      <div class="row"><label for="mixHeight">Taller parts come through first</label><output id="mixHeightOut"></output><input id="mixHeight" type="range" min="0" max="4" step="0.05" value="1.2"></div>
-      <div class="row"><label for="mixBreak">Roughness</label><output id="mixBreakOut"></output><input id="mixBreak" type="range" min="0" max="1" step="0.01" value="0.35"></div>
-      <div class="row"><label for="mixBreakSize">Roughness grain</label><output id="mixBreakSizeOut"></output><input id="mixBreakSize" type="range" min="0.5" max="20" step="0.1" value="4"></div>
-      <div class="row"><label for="rockFrom">Rock from a slope of</label><output id="rockFromOut"></output><input id="rockFrom" type="range" min="0.05" max="0.8" step="0.005" value="0.25"></div>
-      <div class="row"><label for="steepFrom">Bare dirt from a slope of</label><output id="steepFromOut"></output><input id="steepFrom" type="range" min="0.01" max="0.5" step="0.005" value="0.06"></div>
+      <div class="row"><label for="mixSharp">Sharpness</label><output id="mixSharpOut"></output><input id="mixSharp" type="range" min="1" max="20" step="0.5" value="4.5"></div>
+      <div class="row"><label for="mixHeight">Taller parts come through first</label><output id="mixHeightOut"></output><input id="mixHeight" type="range" min="0" max="4" step="0.05" value="1.4"></div>
+      <div class="row"><label for="mixBreak">Roughness</label><output id="mixBreakOut"></output><input id="mixBreak" type="range" min="0" max="2" step="0.01" value="1"></div>
+      <div class="row"><label for="mixBreakSize">Roughness grain</label><output id="mixBreakSizeOut"></output><input id="mixBreakSize" type="range" min="0.5" max="20" step="0.1" value="13.7"></div>
+      <div class="row"><label for="rockFrom">Rock from a slope of</label><output id="rockFromOut"></output><input id="rockFrom" type="range" min="0.05" max="0.8" step="0.005" value="0.33"></div>
+      <div class="row"><label for="steepFrom">Bare dirt from a slope of</label><output id="steepFromOut"></output><input id="steepFrom" type="range" min="0.01" max="0.5" step="0.005" value="0.265"></div>
       <p class="note"><b>Tints</b> (multiplied onto the lush picture: no extra texture)</p>
       <div class="row"><label for="lushTint">Lush grass, fans</label><input id="lushTint" type="color" style="grid-column:2;width:48px;height:22px;border:0;background:none"></div>
       <div class="row"><label for="slopeTint">Slopes (dark green scrub)</label><input id="slopeTint" type="color" style="grid-column:2;width:48px;height:22px;border:0;background:none"></div>
@@ -194,8 +194,8 @@
     <details class="sec" open><summary>2 · Large-scale variation</summary>
       <p class="note">Big, slow patches of lighter, darker, greener and drier ground laid over everything, the way real ground is never one colour for a whole hillside. Read from noise, so it costs no texture at all.</p>
       <label class="check" for="macroOn"><input id="macroOn" type="checkbox" checked> On</label>
-      <div class="row"><label for="macroStr">Strength</label><output id="macroStrOut"></output><input id="macroStr" type="range" min="0" max="1" step="0.01" value="0.55"></div>
-      <div class="row"><label for="macroSize">Patch size</label><output id="macroSizeOut"></output><input id="macroSize" type="range" min="5" max="300" step="1" value="60"></div>
+      <div class="row"><label for="macroStr">Strength</label><output id="macroStrOut"></output><input id="macroStr" type="range" min="0" max="1" step="0.01" value="1"></div>
+      <div class="row"><label for="macroSize">Patch size</label><output id="macroSizeOut"></output><input id="macroSize" type="range" min="1" max="300" step="1" value="5"></div>
       <div class="row"><label for="macroHue">Colour shift (dry to green)</label><output id="macroHueOut"></output><input id="macroHue" type="range" min="0" max="1" step="0.01" value="0.5"></div>
     </details>
 
@@ -204,12 +204,15 @@
       <label class="check" for="stampOn"><input id="stampOn" type="checkbox" checked> On</label>
       <div class="btns" id="mixes"></div>
       <div id="kinds"></div>
-      <div class="row"><label for="stampDensity">How many</label><output id="stampDensityOut"></output><input id="stampDensity" type="range" min="0" max="1" step="0.01" value="0.55"></div>
-      <div class="row"><label for="stampCell">Spacing</label><output id="stampCellOut"></output><input id="stampCell" type="range" min="0.15" max="2" step="0.01" value="0.55"></div>
-      <div class="row"><label for="stampSize">Size</label><output id="stampSizeOut"></output><input id="stampSize" type="range" min="0.3" max="3" step="0.05" value="1"></div>
-      <div class="row"><label for="stampHue">Colour variety (leaves, moss, plants)</label><output id="stampHueOut"></output><input id="stampHue" type="range" min="0" max="1.5" step="0.01" value="0.35"></div>
-      <div class="row"><label for="stampShade">Shadow</label><output id="stampShadeOut"></output><input id="stampShade" type="range" min="0" max="0.9" step="0.01" value="0.45"></div>
-      <div class="row"><label for="stampFar">Fade out by</label><output id="stampFarOut"></output><input id="stampFar" type="range" min="5" max="120" step="1" value="30"></div>
+      <div class="row"><label for="stampDensity">How many</label><output id="stampDensityOut"></output><input id="stampDensity" type="range" min="0" max="1" step="0.01" value="0.96"></div>
+      <div class="row"><label for="stampPatch">Grouped by kind (bark here, leaves there)</label><output id="stampPatchOut"></output><input id="stampPatch" type="range" min="0" max="1" step="0.01" value="0.8"></div>
+      <div class="row"><label for="stampPatchSize">How big the groups are</label><output id="stampPatchSizeOut"></output><input id="stampPatchSize" type="range" min="1" max="30" step="0.5" value="5"></div>
+      <div class="row"><label for="stampClump">Bunched up, with bare stretches between</label><output id="stampClumpOut"></output><input id="stampClump" type="range" min="0" max="1" step="0.01" value="0.6"></div>
+      <div class="row"><label for="stampCell">Spacing</label><output id="stampCellOut"></output><input id="stampCell" type="range" min="0.15" max="2" step="0.01" value="1.08"></div>
+      <div class="row"><label for="stampSize">Size</label><output id="stampSizeOut"></output><input id="stampSize" type="range" min="0.3" max="3" step="0.05" value="1.85"></div>
+      <div class="row"><label for="stampHue">Colour variety (leaves, moss, plants)</label><output id="stampHueOut"></output><input id="stampHue" type="range" min="0" max="1.5" step="0.01" value="0.68"></div>
+      <div class="row"><label for="stampShade">Shadow</label><output id="stampShadeOut"></output><input id="stampShade" type="range" min="0" max="0.9" step="0.01" value="0.32"></div>
+      <div class="row"><label for="stampFar">Fade out by</label><output id="stampFarOut"></output><input id="stampFar" type="range" min="5" max="120" step="1" value="73"></div>
     </details>
 
     <details class="sec"><summary>3 · Far-away second scale</summary>
@@ -276,10 +279,10 @@
       <p class="note"><b>Far off</b>, plants blend toward one colour (the grass's, darker), so a far field reads as one tone instead of speckle</p>
       <div class="row"><label for="calmAmount">How much they blend</label><output id="calmAmountOut"></output><input id="calmAmount" type="range" min="0" max="1" step="0.01"></div>
       <div class="row"><label for="calmFrom">Starting at</label><output id="calmFromOut"></output><input id="calmFrom" type="range" min="0" max="300" step="5"></div>
-      <div class="row"><label for="calmTo">Fully by</label><output id="calmToOut"></output><input id="calmTo" type="range" min="20" max="600" step="10"></div>
+      <div class="row"><label for="calmTo">Fully by</label><output id="calmToOut"></output><input id="calmTo" type="range" min="20" max="1500" step="10"></div>
       <p class="note"><b>Lawn</b>: short grass tufts (the Grass Lab's blades) on the bare ground near you.</p>
       <div class="row"><label for="lawnAmount">How much of the bare ground</label><output id="lawnAmountOut"></output><input id="lawnAmount" type="range" min="0" max="1" step="0.01"></div>
-      <div class="row"><label for="lawnDensity">How thick</label><output id="lawnDensityOut"></output><input id="lawnDensity" type="range" min="1" max="30" step="1"></div>
+      <div class="row"><label for="lawnDensity">How thick</label><output id="lawnDensityOut"></output><input id="lawnDensity" type="range" min="0.2" max="30" step="0.1"></div>
       <div class="row"><label for="lawnRadius">Out to (0: off)</label><output id="lawnRadiusOut"></output><input id="lawnRadius" type="range" min="0" max="100" step="5"></div>
       <p class="note"><b>Breeze</b>: the plants, their far stand-ins and the lawn sway together, big plants less.</p>
       <label class="check" for="windOn"><input id="windOn" type="checkbox" checked> Breeze</label>
