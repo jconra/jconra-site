@@ -75,9 +75,7 @@ export class Forest {
   relay(at) {
     if (this.fixed) {                                       // a set list: laid once
       if (this.tilesLaid.size) return false;
-      this.tilesLaid.set('fixed', this.fixed.map((f, i) => { const r = rnd(i * 2654435761 + 7), sp = this.species[f.sp];
-        return { pos: new THREE.Vector3(f.x, this.heightAt ? this.heightAt(f.x, f.z) : 0, f.z), yaw: f.yaw ?? r() * Math.PI * 2, scale: f.scale ?? 0.7 + r() * 0.6,
-          tint: f.tint ? f.tint.clone() : sp.tint === false ? new THREE.Color(1, 1, 1).multiplyScalar(0.85 + r() * 0.3) : new THREE.Color().setHSL(0.26 + r() * 0.08, 0.35 + r() * 0.25, 0.62 + r() * 0.18), sp }; }));
+      this.tilesLaid.set('fixed', this.fixed.map((f, i) => this.layOne(f, i)));
       return true;
     }
     const T = this.tile, half = (this.tiles - 1) / 2, cx = Math.round(at.x / T), cz = Math.round(at.z / T);
@@ -102,9 +100,41 @@ export class Forest {
     return out;
   }
 
+  // a new set list (the same species, already built): laid in place of the old one, the draws kept (grown if
+  // the list outgrew them), so moving it costs the laying, not a rebuild. `laid` (optional): the list already laid
+  // by layFixedSteps, a little at a time
+  setFixed(list, laid = null) {
+    this.fixed = list; this.tilesLaid.clear(); this.assignDirty = true;
+    if (!this.ready) return;
+    if (list.length > this.cap) this.growDraws(Math.ceil(list.length * 1.25));
+    if (laid) this.tilesLaid.set('fixed', laid); else this.relay();
+    this.refill();
+  }
+  // lays a set list (heights, turns, sizes, colours) yielding whenever `budget` ms have gone; returns the laid list
+  *layFixedSteps(list, budget = 6) {
+    const out = new Array(list.length); let t0 = performance.now();
+    for (let i = 0; i < list.length; i++) {
+      out[i] = this.layOne(list[i], i);
+      if ((i & 255) === 0 && performance.now() - t0 > budget) { yield; t0 = performance.now(); }
+    }
+    return out;
+  }
+  layOne(f, i) {
+    const r = rnd(i * 2654435761 + 7), sp = this.species[f.sp];
+    return { pos: new THREE.Vector3(f.x, this.heightAt ? this.heightAt(f.x, f.z) : 0, f.z), yaw: f.yaw ?? r() * Math.PI * 2, scale: f.scale ?? 0.7 + r() * 0.6,
+      tint: f.tint ? f.tint.clone() : sp.tint === false ? new THREE.Color(1, 1, 1).multiplyScalar(0.85 + r() * 0.3) : new THREE.Color().setHSL(0.26 + r() * 0.08, 0.35 + r() * 0.25, 0.62 + r() * 0.18), sp };
+  }
+  growDraws(cap) {
+    for (const b of this.built) { const g = b.imposter.geometry;
+      for (const [name, size] of [['iPos', 3], ['iYaw', 1], ['iScale', 1], ['iTint', 3], ['iFade', 1]]) { const a = new THREE.InstancedBufferAttribute(new Float32Array(cap * size), size); a.setUsage(THREE.DynamicDrawUsage); g.setAttribute(name, a); }
+      g.instanceCount = 0; }
+    this.cap = cap;
+  }
+
   // the draws: per species, an imposter draw with room for every tree of that species, and mesh draws for the near ring
   buildDraws() {
-    const cap = this.fixed ? Math.max(1, this.fixed.length) : this.tiles * this.tiles * this.perTile;
+    const cap = this.fixed ? Math.max(1, Math.ceil(this.fixed.length * 1.25)) : this.tiles * this.tiles * this.perTile;
+    this.cap = cap;
     for (const sp of this.species) {
       const geo = new THREE.InstancedBufferGeometry();
       const quad = new THREE.PlaneGeometry(1, 1); geo.index = quad.index; geo.setAttribute('position', quad.attributes.position); geo.setAttribute('uv', quad.attributes.uv);
@@ -145,12 +175,6 @@ export class Forest {
     }
     this.refill();
   }
-  // the trees of the current tiles, grouped by species
-  refill() {
-    for (const b of this.built) b.trees = [];
-    for (const list of this.tilesLaid.values()) for (const t of list) this.built.find(b => b.sp === t.sp).trees.push(t);
-    this.assignDirty = true;
-  }
 
   // far plants calmed toward one colour: { calmCol (THREE.Color), calmFrom, calmTo (m), calmAmt (0..1) };
   // kept for species not built yet
@@ -159,36 +183,54 @@ export class Forest {
     for (const b of this.built) { const u = b.imposter.material.uniforms; for (const [k, v] of Object.entries(this.calm)) if (u[k]) u[k].value = v; }
   }
 
+  // what changes as you move: which plants near you are real meshes (and how far faded). Each plant's own data
+  // (place, turn, size, colour) was written once, by refill; here only the plants within the mesh range are
+  // looked at closely and only their imposters' fades changed, so a move costs a pass over distances, not a sort
+  // and rewrite of every plant (with 90,000 of them that stalled a frame for ~0.1 s every 2 m)
   assign(camera, target) {
     const D = this.imposterAt, B = this.band / 2;
     const fwd = new THREE.Vector3().subVectors(target, camera.position).setY(0).normalize();
     const camP = camera.position.clone().addScaledVector(fwd, D * this.ahead);
     if (!this.assignDirty && this.lastAt && this.lastAt.distanceToSquared(camP) < 4) return;
     this.assignDirty = false; this.lastAt = camP.clone();
-    const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpS = new THREE.Vector3(), tmpP = new THREE.Vector3();
+    const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpS = new THREE.Vector3(), tmpP = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+    const reach = D + B, reach2 = reach * reach, cx = camP.x, cy = camP.y, cz = camP.z;
     for (const b of this.built) {
-      const { sp, imposter, meshes, trees } = b;
-      for (const t of trees) t.d = t.pos.distanceTo(camP);
-      trees.sort((a, c) => a.d - c.d);
-      const g = imposter.geometry, aPos = g.attributes.iPos.array, aYaw = g.attributes.iYaw.array, aScl = g.attributes.iScale.array, aTint = g.attributes.iTint.array, aFade = g.attributes.iFade.array;
-      const near = [];
-      for (let k = 0; k < trees.length; k++) {
-        const t = trees[k];
-        const meshFade = meshes.length && D > 0 ? (B > 0 ? THREE.MathUtils.clamp((D + B - t.d) / (2 * B), 0, 1) : t.d < D ? 1 : 0) : 0;   // imposterAt 0: all imposters
-        const room = meshFade > 0 && meshes.length && near.length < meshes[0].instanceMatrix.count;
-        aFade[k] = room || !meshes.length ? 1 - meshFade : 1;           // past the cap of real meshes, the imposter stays whole (else it faded out with nothing in its place)
-        aPos[k * 3] = t.pos.x; aPos[k * 3 + 1] = t.pos.y - sp.baseY * t.scale * sp.unit; aPos[k * 3 + 2] = t.pos.z;
-        aYaw[k] = t.yaw; aScl[k] = t.scale * sp.unit; aTint[k * 3] = t.tint.r; aTint[k * 3 + 1] = t.tint.g; aTint[k * 3 + 2] = t.tint.b;
-        if (room) near.push([t, meshFade]);
+      const { sp, imposter, meshes, trees } = b, aFade = imposter.geometry.attributes.iFade.array;
+      if (b.near) for (const k of b.near) aFade[k] = 1;                  // last time's near plants: whole imposters again
+      b.near = [];
+      if (!meshes.length || D <= 0) { imposter.geometry.attributes.iFade.needsUpdate = true; for (const m of meshes) m.count = 0; continue; }
+      const cand = [];
+      for (let k = 0; k < trees.length; k++) { const p = trees[k].pos, dx = p.x - cx, dy = p.y - cy, dz = p.z - cz, d2 = dx * dx + dy * dy + dz * dz; if (d2 < reach2) cand.push([k, Math.sqrt(d2)]); }
+      const cap = meshes[0].instanceMatrix.count;
+      if (cand.length > cap) cand.sort((p, q) => p[1] - q[1]);           // more than fit: the nearest win (past the cap the imposter stays whole)
+      const n = Math.min(cap, cand.length);
+      for (let i = 0; i < n; i++) {
+        const [k, d] = cand[i], t = trees[k];
+        const f = B > 0 ? THREE.MathUtils.clamp((D + B - d) / (2 * B), 0, 1) : d < D ? 1 : 0;
+        aFade[k] = 1 - f; b.near.push(k);
+        tmpQ.setFromAxisAngle(Y, t.yaw); tmpS.setScalar(t.scale * sp.unit); tmpP.copy(t.pos); tmpP.y -= sp.baseY * t.scale * sp.unit; tmpM.compose(tmpP, tmpQ, tmpS);
+        for (const m of meshes) { m.setMatrixAt(i, tmpM.clone().multiply(m.userData.local)); m.userData.fade.array[i] = f; m.setColorAt(i, t.tint); }
       }
-      g.instanceCount = trees.length;
-      for (const a of ['iPos', 'iYaw', 'iScale', 'iTint', 'iFade']) g.attributes[a].needsUpdate = true;
-      near.forEach(([t, f], k) => {
-        tmpQ.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.yaw); tmpS.setScalar(t.scale * sp.unit); tmpP.copy(t.pos); tmpP.y -= sp.baseY * t.scale * sp.unit;
-        tmpM.compose(tmpP, tmpQ, tmpS);
-        for (const m of meshes) { m.setMatrixAt(k, tmpM.clone().multiply(m.userData.local)); m.userData.fade.array[k] = f; m.setColorAt(k, t.tint); }
-      });
-      for (const m of meshes) { m.count = near.length; m.instanceMatrix.needsUpdate = true; m.userData.fade.needsUpdate = true; m.instanceColor.needsUpdate = true; }
+      imposter.geometry.attributes.iFade.needsUpdate = true;
+      for (const m of meshes) { m.count = n; m.instanceMatrix.needsUpdate = true; m.userData.fade.needsUpdate = true; m.instanceColor.needsUpdate = true; }
     }
   }
+  // the plants of the current tiles, grouped by species, and each one's imposter data written (once per list)
+  refill() {
+    for (const b of this.built) { b.trees = []; b.near = null; }
+    const bySp = new Map(this.built.map(b => [b.sp, b]));
+    for (const list of this.tilesLaid.values()) for (const t of list) bySp.get(t.sp).trees.push(t);
+    for (const b of this.built) {
+      const { sp, imposter, trees } = b, g = imposter.geometry, aPos = g.attributes.iPos.array, aYaw = g.attributes.iYaw.array, aScl = g.attributes.iScale.array, aTint = g.attributes.iTint.array, aFade = g.attributes.iFade.array;
+      const n = Math.min(trees.length, aYaw.length);
+      for (let k = 0; k < n; k++) { const t = trees[k];
+        aPos[k * 3] = t.pos.x; aPos[k * 3 + 1] = t.pos.y - sp.baseY * t.scale * sp.unit; aPos[k * 3 + 2] = t.pos.z;
+        aYaw[k] = t.yaw; aScl[k] = t.scale * sp.unit; aTint[k * 3] = t.tint.r; aTint[k * 3 + 1] = t.tint.g; aTint[k * 3 + 2] = t.tint.b; aFade[k] = 1; }
+      g.instanceCount = n;
+      for (const a of ['iPos', 'iYaw', 'iScale', 'iTint', 'iFade']) g.attributes[a].needsUpdate = true;
+    }
+    this.assignDirty = true;
+  }
+
 }

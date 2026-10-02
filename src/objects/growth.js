@@ -96,80 +96,104 @@ export function patchAt(x, z, ground, kinds, grow) {
 // its spot.
 // far (>= 1): past `radius` the plants carry on out to radius x far, ever sparser but bigger (each standing in for
 // the several it replaces, up to 3x), fading out over the last fifth: cheap, they are all imposters out there
-export function growPlants({ ground, at, radius, count, size = 1, kinds, grow, far = 1 }) {
+export function growPlants(opts) { const it = growPlantsSteps(opts); let n; while (!(n = it.next()).done); return n.value; }
+// the same, a little at a time: yields whenever `budget` ms have gone (so a page can spread it over frames),
+// and returns the list at the end
+export function* growPlantsSteps({ ground, at, radius, count, size = 1, kinds, grow, far = 1, cache = null, budget = Infinity }) {
+  let t0 = performance.now();
   const out = [], G = grow, K = kinds; longClear = G.longClear ?? 0;
-  const scaleOf = (k, t) => (0.7 + 0.6 * r(t, 11.3)) * size * K[k].size;
-  const fertile = (x, z) => fertileAt(G, x, z);
-  const TILE = 30, C = at, R = radius, RF = R * Math.max(1, far), tiles = [];
+  const TILE = 30, C = at, R = radius, RF = R * Math.max(1, far);
   // how thin the plants are at a distance (1 inside the inner 80%, then falling with the square of the distance)
   const thinAt = (d) => d <= R * 0.8 ? 1 : Math.pow(R * 0.8 / d, 2);
-  for (let tz = Math.floor((C.z - RF) / TILE); tz <= Math.floor((C.z + RF) / TILE); tz++) for (let tx = Math.floor((C.x - RF) / TILE); tx <= Math.floor((C.x + RF) / TILE); tx++) {
-    const d = Math.hypot((tx + 0.5) * TILE - C.x, (tz + 0.5) * TILE - C.z);
-    if (d < RF + TILE * 0.72) tiles.push([tx, tz, ((tx + 200) * 1000 + tz + 200) * 37, thinAt(Math.max(0, d - TILE * 0.72))]);   // [3]: the tile's thinning (from its nearest edge)
-  }
-  const inTile = (tile, t, seed) => [(tile[0] + r(tile[2] + t, seed + 1.7)) * TILE, (tile[1] + r(tile[2] + t, seed + 3.1)) * TILE];
-  const inRange = (x, z) => Math.hypot(x - C.x, z - C.z) <= RF;
-  const perTile = (n, tile) => n / (Math.PI * R * R) * TILE * TILE * (tile ? tile[3] : 1);   // a count over the circle, as a count per tile (thinned far off)
-  // far off a plant stands in for the ones thinned away (bigger by the square root of the thinning, at most 3x);
-  // each tile was thinned by its nearest edge, so the rest is thinned here to the plant's own distance; the last
-  // fifth of the way fades out
-  const plant = (k, x, z, t, g, tile) => { const d = Math.hypot(x - C.x, z - C.z), th = thinAt(d), keep = th / (tile ? tile[3] : 1);
-    if ((keep < 1 && r(t, 401.9) > keep) || (d > RF * 0.8 && r(t, 403.1) > smooth(d, RF, RF * 0.8))) return;
-    out.push({ x, z, sp: k, scale: scaleOf(k, t) * wetScale(G, g) * Math.min(3, 1 / Math.sqrt(th)), yaw: r(t, 13.7) * 6.283 }); };
-  const seed = 0, on = K.map((_, k) => k).filter(k => K[k].on);
+  // THE TILES' PLANTS ARE REMEMBERED (in `cache`, when given): a tile always grows the same plants for the same
+  // settings and thinning, so as the circle moves only the tiles new to it are worked out. A tile is grown at a
+  // thinning rounded UP to a power of two (from its nearest edge), so it keeps that level while the circle moves
+  // a little; each plant is then thinned the rest of the way to its own distance, which is quick.
+  const sig = JSON.stringify([G, K, count, size, R]);
+  if (cache && cache.sig !== sig) { cache.tiles = new Map(); cache.sig = sig; }
+  const on = K.map((_, k) => k).filter(k => K[k].on);
   if (!on.length || !count) return out;
   const pk = on.filter(k => K[k].style === 'patch'), ck = on.filter(k => K[k].style === 'clump'), lk = on.filter(k => K[k].style === 'loner');
   let nL = lk.length ? Math.round(count * G.lonerShare) : 0, nC = ck.length ? Math.round(count * G.clumpShare) : 0;
   if (!pk.length) { if (ck.length) nC = count - nL; else nL = count; }
   const nP = pk.length ? count - nC - nL : 0;
-  // patches: every patch kind has its own slow noise; where the ground suits it, the strongest wins
-  for (const tile of tiles) for (let t = 1, got = 0, want_ = Math.round(perTile(nP, tile)); got < want_ && t < want_ * 16; t++) {
-    const [x, z] = inTile(tile, t, seed), g = ground(x, z); if (g.hard >= 1) continue;
-    if (G.bare > 0 && r(tile[2] + t, seed + 17.9) < bareAt(G, x, z)) { got++; continue; }       // open ground: the spot stays empty   (a tile runs the same wherever the circle is; only the planting asks if it's in range)
-    let total = 0, hab = 0; const w = pk.map(k => { const h = want(k, g) * K[k].weight; hab += h; const v = h * Math.pow(patchN(G, k, x, z), 1 + G.patchSharp * 8); total += v; return v; });
-    if (r(tile[2] + t, seed + 5.3) > hab / pk.length * 0.9 * fertile(x, z) || total <= 0) continue;
-    let k = pk[pk.length - 1];
-    if (G.winner) { let b = -1; w.forEach((v, n) => { if (v > b) { b = v; k = pk[n]; } }); }
-    else { let q = r(tile[2] + t, seed + 9.1) * total; for (let n = 0; n < pk.length; n++) if ((q -= w[n]) <= 0) { k = pk[n]; break; } }
-    if (inRange(x, z)) plant(k, x, z, tile[2] + t + seed * 1000, g, tile); got++;
-  }
-  // clumps: a centre where the kind likes it (families: nearby clumps lean the same way), then its plants
-  // scattered round the centre
-  for (const tile of tiles) for (let c = 1, got = 0, want_ = Math.round(perTile(nC, tile)); got < want_ && c < want_ * (G.clumpEdge > 0 ? 14 : 4); c++) {
-    const [cx, cz] = inTile(tile, c, seed + 40), g = ground(cx, cz); if (g.hard >= 0.6) continue;
-    const b = G.bare > 0 ? bareAt(G, cx, cz) : 0; if (b > 0.85) continue;                    // not out in the open ground
-    if (G.clumpEdge > 0) {                                                                    // kept to where patches meet, or the bare ground's rim
-      const edge = Math.max(1 - clarity(G, K, g, cx, cz), G.bare > 0 ? 1 - Math.abs(2 * b - 1) : 0);
-      if (r(tile[2] + c, seed + 39.7) > 1 - G.clumpEdge * (1 - Math.pow(edge, 0.7))) continue;
+  const perTile = (n, level) => n / (Math.PI * R * R) * TILE * TILE * level;          // a count over the circle, as a count per tile (thinned far off)
+  // one tile's plants at a thinning level: [{ k, x, z, t, s (size before the distance), kr, fr (its two draws for thinning and fading) }]
+  function growTile(tx, tz, level) {
+    const list = [], seed = 0, ts = ((tx + 200) * 1000 + tz + 200) * 37;
+    const inTile = (t, sd) => [(tx + r(ts + t, sd + 1.7)) * TILE, (tz + r(ts + t, sd + 3.1)) * TILE];
+    const add = (k, x, z, t, g) => list.push({ k, x, z, t, s: (0.7 + 0.6 * r(t, 11.3)) * size * K[k].size * wetScale(G, g), kr: r(t, 401.9), fr: r(t, 403.1) });
+    // patches: every patch kind has its own slow noise; where the ground suits it, the strongest wins
+    for (let t = 1, got = 0, want_ = Math.round(perTile(nP, level)); got < want_ && t < want_ * 16; t++) {
+      const [x, z] = inTile(t, seed), g = ground(x, z); if (g.hard >= 1) continue;
+      if (G.bare > 0 && r(ts + t, seed + 17.9) < bareAt(G, x, z)) { got++; continue; }       // open ground: the spot stays empty
+      let total = 0, hab = 0; const w = pk.map(k => { const h = want(k, g) * K[k].weight; hab += h; const v = h * Math.pow(patchN(G, k, x, z), 1 + G.patchSharp * 8); total += v; return v; });
+      if (r(ts + t, seed + 5.3) > hab / pk.length * 0.9 * fertileAt(G, x, z) || total <= 0) continue;
+      let k = pk[pk.length - 1];
+      if (G.winner) { let b = -1; w.forEach((v, n) => { if (v > b) { b = v; k = pk[n]; } }); }
+      else { let q = r(ts + t, seed + 9.1) * total; for (let n = 0; n < pk.length; n++) if ((q -= w[n]) <= 0) { k = pk[n]; break; } }
+      add(k, x, z, ts + t + seed * 1000, g); got++;
     }
-    let total = 0, hab = 0; const w = ck.map(k => { const h = want(k, g) * K[k].weight; hab += h; const v = h * Math.pow(patchN(G, k + 50, cx * 0.5, cz * 0.5), 3); total += v; return v; });
-    const cs = tile[2] + c;
-    if (r(cs, seed + 41.3) > hab / ck.length * 1.2 * fertile(cx, cz) || total <= 0) continue;
-    let q = r(cs, seed + 43.9) * total, k = ck[ck.length - 1]; for (let n = 0; n < ck.length; n++) if ((q -= w[n]) <= 0) { k = ck[n]; break; }
-    const n = Math.max(2, Math.round(G.clumpCount * (0.6 + 0.8 * r(cs, seed + 47.1))));
-    for (let m = 0; m < n && got < want_; m++) {
-      const a = r(cs * 31 + m, seed + 51.7) * Math.PI * 2, d = G.clumpSize * Math.sqrt(-2 * Math.log(Math.max(1e-4, r(cs * 31 + m, seed + 53.3)))) * 0.5;   // gathered toward the middle
-      const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d, gm = ground(x, z); if (blk(k, gm) >= 0.8) continue;
-      if (inRange(x, z)) plant(k, x, z, tile[2] + c * 31 + m + seed * 1000, gm, tile); got++;
+    // clumps: a centre where the kind likes it (families: nearby clumps lean the same way), then its plants
+    // scattered round the centre
+    for (let c = 1, got = 0, want_ = Math.round(perTile(nC, level)); got < want_ && c < want_ * (G.clumpEdge > 0 ? 14 : 4); c++) {
+      const [cx, cz] = inTile(c, seed + 40), g = ground(cx, cz); if (g.hard >= 0.6) continue;
+      const b = G.bare > 0 ? bareAt(G, cx, cz) : 0; if (b > 0.85) continue;                  // not out in the open ground
+      if (G.clumpEdge > 0) {                                                                  // kept to where patches meet, or the bare ground's rim
+        const edge = Math.max(1 - clarity(G, K, g, cx, cz), G.bare > 0 ? 1 - Math.abs(2 * b - 1) : 0);
+        if (r(ts + c, seed + 39.7) > 1 - G.clumpEdge * (1 - Math.pow(edge, 0.7))) continue;
+      }
+      let total = 0, hab = 0; const w = ck.map(k => { const h = want(k, g) * K[k].weight; hab += h; const v = h * Math.pow(patchN(G, k + 50, cx * 0.5, cz * 0.5), 3); total += v; return v; });
+      const cs = ts + c;
+      if (r(cs, seed + 41.3) > hab / ck.length * 1.2 * fertileAt(G, cx, cz) || total <= 0) continue;
+      let q = r(cs, seed + 43.9) * total, k = ck[ck.length - 1]; for (let n = 0; n < ck.length; n++) if ((q -= w[n]) <= 0) { k = ck[n]; break; }
+      const n = Math.max(2, Math.round(G.clumpCount * (0.6 + 0.8 * r(cs, seed + 47.1))));
+      for (let m = 0; m < n && got < want_; m++) {
+        const a = r(cs * 31 + m, seed + 51.7) * Math.PI * 2, d = G.clumpSize * Math.sqrt(-2 * Math.log(Math.max(1e-4, r(cs * 31 + m, seed + 53.3)))) * 0.5;   // gathered toward the middle
+        const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d, gm = ground(x, z); if (blk(k, gm) >= 0.8) continue;
+        add(k, x, z, ts + c * 31 + m + seed * 1000, gm); got++;
+      }
+    }
+    // loners: here and there, where the kind likes it
+    for (let t = 1, got = 0, want_ = perTile(nL, level); got < want_ && t < Math.max(1, want_) * 20; t++) {
+      if (want_ < 1 && r(ts, seed + 77.7) > want_) break;                                    // under one a tile: some tiles get one
+      const [x, z] = inTile(t, seed + 70), g = ground(x, z); if (g.hard >= 0.6) continue;
+      if (G.bare > 0) { const b = bareAt(G, x, z), lb = G.lonerBare || 0;                     // kept out of the bare ground, or (lonerBare) kept to it
+        if (lb > 0 ? r(ts + t, seed + 79.3) > lb * b + (1 - lb) * (1 - b) : r(ts + t, seed + 79.3) < b) continue; }
+      const k = lk[Math.floor(r(ts + t, seed + 71.9) * lk.length) % lk.length]; if (r(ts + t, seed + 75.7) > want(k, g) + 0.1) continue;   // (its own draw: 73.1 is the spot's depth in the tile)
+      add(k, x, z, ts + t + seed * 1000 + 500, g); got++;
+    }
+    return list;
+  }
+  // the tiles round the circle, each at its level, from the cache or grown; then every plant thinned to its own
+  // distance (far off a plant stands in for the ones thinned away: bigger by the square root of the thinning, at
+  // most 3x) and faded over the last fifth
+  for (let tz = Math.floor((C.z - RF) / TILE); tz <= Math.floor((C.z + RF) / TILE); tz++) for (let tx = Math.floor((C.x - RF) / TILE); tx <= Math.floor((C.x + RF) / TILE); tx++) {
+    const dt = Math.hypot((tx + 0.5) * TILE - C.x, (tz + 0.5) * TILE - C.z); if (dt >= RF + TILE * 0.72) continue;
+    const level = Math.min(1, Math.pow(2, Math.ceil(Math.log2(thinAt(Math.max(0, dt - TILE * 0.72))))));
+    // a tile grown denser than it now needs is reused (its plants thinned further below); grown again only when
+    // it needs to be denser, i.e. as you come toward it
+    let list, lv = level; const key = tx * 100003 + tz;
+    if (cache) { const e = cache.tiles.get(key); if (e && e.level >= level) { list = e.list; lv = e.level; cache.hits = (cache.hits || 0) + 1; } else { list = growTile(tx, tz, level); cache.tiles.set(key, { level, list }); cache.misses = (cache.misses || 0) + 1; } }
+    else list = growTile(tx, tz, level);
+    if (performance.now() - t0 > budget) { yield; t0 = performance.now(); }
+    for (const p of list) {
+      const d = Math.hypot(p.x - C.x, p.z - C.z); if (d > RF) continue;
+      const th = thinAt(d); if (p.kr > th / lv || (d > RF * 0.8 && p.fr > smooth(d, RF, RF * 0.8))) continue;
+      out.push({ x: p.x, z: p.z, sp: p.k, scale: p.s * Math.min(3, 1 / Math.sqrt(th)), yaw: r(p.t, 13.7) * 6.283 });
     }
   }
-  // loners: here and there, where the kind likes it
-  for (const tile of tiles) for (let t = 1, got = 0, want_ = perTile(nL, tile); got < want_ && t < Math.max(1, want_) * 20; t++) {
-    if (want_ < 1 && r(tile[2], seed + 77.7) > want_) break;                      // under one a tile: some tiles get one
-    const [x, z] = inTile(tile, t, seed + 70), g = ground(x, z); if (g.hard >= 0.6) continue;
-    if (G.bare > 0) { const b = bareAt(G, x, z), lb = G.lonerBare || 0;                        // kept out of the bare ground, or (lonerBare) kept to it
-      if (lb > 0 ? r(tile[2] + t, seed + 79.3) > lb * b + (1 - lb) * (1 - b) : r(tile[2] + t, seed + 79.3) < b) continue; }
-    const k = lk[Math.floor(r(tile[2] + t, seed + 71.9) * lk.length) % lk.length]; if (r(tile[2] + t, seed + 75.7) > want(k, g) + 0.1) continue;   // (its own draw: 73.1 is the spot's depth in the tile)
-    if (inRange(x, z)) plant(k, x, z, tile[2] + t + seed * 1000 + 500, g, tile); got++;
-  }
+  // tiles far behind the circle are forgotten, so the cache doesn't grow without end
+  if (cache && cache.tiles.size > 6000) for (const k of [...cache.tiles.keys()].slice(0, 2000)) cache.tiles.delete(k);
   return out;
 }
 
 // THE LAWN: short grass tufts (src/objects/lawn.js) on the bare ground, `density` tufts a square metre, within
 // `radius` m of `at`; tiled like the plants, so tufts that stay in range keep their spots as `at` moves.
 // grow.lawn (0..1): how much of the bare ground they cover. Returns [{ x, z, turn, size, yellow, light }].
-export function lawnSpots({ ground, at, radius, density, grow }) {
-  const out = [], G = grow; if (!(G.bare > 0) || !(G.lawn > 0) || !(density > 0)) return out;
+export function lawnSpots(opts) { const it = lawnSpotsSteps(opts); let n; while (!(n = it.next()).done); return n.value; }
+export function* lawnSpotsSteps({ ground, at, radius, density, grow, budget = Infinity }) {
+  const out = [], G = grow; let t0 = performance.now(); if (!(G.bare > 0) || !(G.lawn > 0) || !(density > 0)) return out;
   const TILE = 10, C = at, R = radius, per = Math.round(density * TILE * TILE);
   for (let tz = Math.floor((C.z - R) / TILE); tz <= Math.floor((C.z + R) / TILE); tz++) for (let tx = Math.floor((C.x - R) / TILE); tx <= Math.floor((C.x + R) / TILE); tx++) {
     if (Math.hypot((tx + 0.5) * TILE - C.x, (tz + 0.5) * TILE - C.z) > R + TILE) continue;
@@ -181,6 +205,7 @@ export function lawnSpots({ ground, at, radius, density, grow }) {
       const g = ground(x, z); if (g.hard >= 0.5) continue;
       out.push({ x, z, turn: r(ts + t, 304.9) * 6.283, size: 0.7 + 0.7 * r(ts + t, 305.3), yellow: r(ts + t, 306.1) < 0.2 ? 0.35 : 0, light: (r(ts + t, 307.9) - 0.5) * 0.25 });
     }
+    if (performance.now() - t0 > budget) { yield; t0 = performance.now(); }
   }
   return out;
 }

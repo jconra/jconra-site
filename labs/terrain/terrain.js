@@ -16,7 +16,7 @@ import { chooseTier, saveTier, watchFrames, TIERS } from '../../src/quality.js';
 import { makeCloudSky, SKY_GLSL } from '../../src/objects/cloudSky.js';
 import { WIND, tickWind } from '../../src/objects/wind.js';
 import { makeLawn } from '../../src/objects/lawn.js';
-import { KIND_INFO, LIT_SOFTEN, GROW_DEFAULTS, FAMILY_DEFAULTS, COVER_DEFAULTS, defaultKinds, growPlants, lawnSpots, patchAt, pickTree as pickTreeKind, settingsJSON, applySettings } from '../../src/objects/growth.js';
+import { KIND_INFO, LIT_SOFTEN, GROW_DEFAULTS, FAMILY_DEFAULTS, COVER_DEFAULTS, defaultKinds, growPlants, growPlantsSteps, lawnSpots, lawnSpotsSteps, patchAt, pickTree as pickTreeKind, settingsJSON, applySettings } from '../../src/objects/growth.js';
 
 const $ = (id) => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
@@ -534,6 +534,7 @@ function buildLand() {
   if (!U.pathMap.value) { const t = new THREE.CanvasTexture(pathCanvas); t.flipY = false; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; U.pathMap.value = t; }
   U.pathMap.value.needsUpdate = true; U.maskA.value = maskA;
   MAPS.path = pathCanvas.getContext('2d').getImageData(0, 0, P, P).data; MAPS.P = P;
+  COVER.cache = {};                                   // the land changed: the remembered tiles are stale
   placeTrees(); placeStones(); if (COVER.parts) placeCover();
 }
 
@@ -888,7 +889,7 @@ function placeTrees() {
 // nothing on paths, steep or muddy ground.
 // counts by tier: Jacob's thickness from the Growth Lab (40,000 in a 140 m circle) over each tier's circle; potato
 // at half that, gaming over a 180 m circle rather than 220 (that thickness out to 220 m would be ~99,000)
-const COVER = { at: new THREE.Vector3(), ahead: 0.6, farX: TS.coverFarX, on: true, count: 40000, radius: 140, size: COVER_DEFAULTS.size, near: 35, parts: null, meshes: [] };   // ~5 M triangles to start: the readout says what more costs
+const COVER = { cache: {}, at: new THREE.Vector3(), ahead: 0.6, farX: TS.coverFarX, on: true, count: 40000, radius: 140, size: COVER_DEFAULTS.size, near: 35, parts: null, meshes: [] };   // ~5 M triangles to start: the readout says what more costs
 Object.assign(COVER, TS.cover);
 // THE 16 GROUND PLANTS and how they grow: src/objects/growth.js (KIND_INFO), shared with the Growth Lab
 // `cell` (optional): [width, height] of a cell in the model's units, counted from 0, instead of the model's box / grid
@@ -1071,9 +1072,27 @@ function followCover() {
   // like the trees' circle: pushed ahead of the camera by `ahead` of its radius, so it covers what's in view
   // rather than the ground under and behind you
   const at = camera.position.clone().addScaledVector(fwd.lengthSq() > 1e-6 ? fwd.normalize() : fwd, COVER.radius * COVER.ahead); at.y = 0;
-  if (at.distanceTo(COVER.at) > COVER.radius * 0.25) { COVER.at.copy(at); placeCover(); }
+  // moving: the new plants are worked out a few milliseconds a frame (the old ones stay up meanwhile), then
+  // swapped in; doing it all at once stalled a phone for a quarter of a second every 35 m
+  if (COVER.job) { COVER.job.next(); return; }
+  if (at.distanceTo(COVER.at) > COVER.radius * 0.25 && coverForest.ready) { COVER.at.copy(at); COVER.job = moveCover(COVER.at.clone()); }
 }
-function placeCover() {
+// moving the plants, a few milliseconds a frame: where they go, then their drawing data, then the lawn's tufts;
+// then two quick frames to hand them over (plants, then lawn)
+function* moveCover(at) {
+  const B = 6;
+  const list = yield* growPlantsSteps({ ground: coverGround, cache: COVER.cache, at, radius: COVER.radius, far: COVER.farX, count: COVER.on ? COVER.count : 0, size: COVER.size, kinds: PLANT_KINDS, grow: GROW, budget: B });
+  const laid = yield* coverForest.layFixedSteps(list, B);
+  const spots = LAWN.radius > 0 ? yield* lawnSpotsSteps({ ground: coverGround, at, radius: LAWN.radius, density: LAWN.density, grow: GROW, budget: B }) : [];
+  for (let i = 0; i < spots.length; i++) { spots[i].y = heightAt(spots[i].x, spots[i].z); if ((i & 2047) === 0) yield; }
+  yield;
+  coverForest.setFixed(list, laid); U.coverR.value = COVER.radius * COVER.farX; U.coverAt.value.copy(at);
+  yield;
+  LAWN.count = lawn.set(spots);
+  COVER.job = null;
+}
+// `ready` (optional): the plants, already worked out (by the spread-over-frames job in followCover)
+function placeCover(ready = null) {
   U.coverR.value = COVER.radius * COVER.farX; U.coverAt.value.copy(COVER.at);   // (the far paint takes over where the sparse far plants end)
   for (const im of COVER.meshes) { scene.remove(im); im.dispose(); }
   COVER.meshes = [];
@@ -1081,8 +1100,15 @@ function placeCover() {
   const ground = coverGround;
 
   // where they go: src/objects/growth.js (shared with the Growth Lab)
-  const fixed = growPlants({ ground, at: COVER.at, radius: COVER.radius, far: COVER.farX, count: COVER.on ? COVER.count : 0, size: COVER.size, kinds: PLANT_KINDS, grow: GROW }), placed = fixed.length;
+  if (!ready) COVER.job = null;                       // laid now: any job in flight is stale
+  const fixed = ready || growPlants({ ground, cache: COVER.cache, at: COVER.at, radius: COVER.radius, far: COVER.farX, count: COVER.on ? COVER.count : 0, size: COVER.size, kinds: PLANT_KINDS, grow: GROW }), placed = fixed.length;
   // one Forest for all of them: meshes out to COVER.near, imposters beyond, crossfaded
+  // the drawer is kept and handed the new list (a rebuild cost ~0.1 s a move); only rebuilt when its range changed
+  if (coverForest && coverForest.ready && coverForest.imposterAt === COVER.near) {
+    coverForest.setFixed(fixed); calmCover(); placeLawn(); bakeCoverMap();
+    $('coverInfo').textContent = `${placed.toLocaleString()} plants of 16 kinds: meshes to ${COVER.near} m, imposters beyond` + (LAWN.count ? ` · ${LAWN.count.toLocaleString()} lawn tufts (${(LAWN.count * lawn.trisPerTuft / 1e6).toFixed(2)} M triangles) out to ${LAWN.radius} m` : '');
+    return;
+  }
   if (coverForest) { scene.remove(coverForest.group); for (const b of coverForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
   const species = coverForest ? coverForest.species : COVER.plantSp;
   coverForest = new Forest(renderer, scene, { species, shadows: SHADOW.on && TS.shadow.cover, fixed, heightAt, imposterAt: COVER.near, band: COVER.near * 0.5, ahead: 0.5, sunDir: SUN_DIR, nearCap: 12000, wind: true });   // (Jacob's thickness puts ~7,000 within 60 m)
@@ -1384,4 +1410,4 @@ renderer.setAnimationLoop(() => {
   }
   renderer.render(scene, camera); drawAtlas();
 });
-if (Q.has('probe')) Object.assign(window, { groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest] });
+if (Q.has('probe')) Object.assign(window, { __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest] });
