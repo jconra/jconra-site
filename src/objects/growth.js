@@ -104,7 +104,9 @@ export function growPlants({ ground, at, radius, count, size = 1, kinds, grow })
   const inTile = (tile, t, seed) => [(tile[0] + r(tile[2] + t, seed + 1.7)) * TILE, (tile[1] + r(tile[2] + t, seed + 3.1)) * TILE];
   const inRange = (x, z) => Math.hypot(x - C.x, z - C.z) <= R;
   const perTile = (n) => n / (Math.PI * R * R) * TILE * TILE;                       // a count over the circle, as a count per tile
-  const plant = (k, x, z, t, g) => out.push({ x, z, sp: k, scale: scaleOf(k, t) * wetScale(G, g), yaw: r(t, 13.7) * 6.283 });
+  // the circle's outer 30% thins out toward its edge (no hard line where the plants stop)
+  const plant = (k, x, z, t, g) => { const d = Math.hypot(x - C.x, z - C.z); if (d > R * 0.7 && r(t, 401.9) > smooth(d, R, R * 0.7)) return;
+    out.push({ x, z, sp: k, scale: scaleOf(k, t) * wetScale(G, g), yaw: r(t, 13.7) * 6.283 }); };
   const seed = 0, on = K.map((_, k) => k).filter(k => K[k].on);
   if (!on.length || !count) return out;
   const pk = on.filter(k => K[k].style === 'patch'), ck = on.filter(k => K[k].style === 'clump'), lk = on.filter(k => K[k].style === 'loner');

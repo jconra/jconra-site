@@ -16,7 +16,7 @@ import { chooseTier, saveTier, watchFrames, TIERS } from '../../src/quality.js';
 import { makeCloudSky, SKY_GLSL } from '../../src/objects/cloudSky.js';
 import { WIND, tickWind } from '../../src/objects/wind.js';
 import { makeLawn } from '../../src/objects/lawn.js';
-import { KIND_INFO, LIT_SOFTEN, GROW_DEFAULTS, FAMILY_DEFAULTS, COVER_DEFAULTS, defaultKinds, growPlants, lawnSpots, pickTree as pickTreeKind, settingsJSON, applySettings } from '../../src/objects/growth.js';
+import { KIND_INFO, LIT_SOFTEN, GROW_DEFAULTS, FAMILY_DEFAULTS, COVER_DEFAULTS, defaultKinds, growPlants, lawnSpots, patchAt, pickTree as pickTreeKind, settingsJSON, applySettings } from '../../src/objects/growth.js';
 
 const $ = (id) => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
@@ -573,7 +573,7 @@ const U = {
   mixOn: { value: 1 }, maskA: { value: null }, maskB: { value: null },
   waterMap: { value: waterTex }, waterOn: { value: 1 }, time: { value: 0 }, sunDirW: { value: new THREE.Vector3() }, skyCol: { value: SKY.clone() },
   wDeep: { value: new THREE.Color('#123a4a') }, wShallow: { value: new THREE.Color('#3f7f86') }, wWave: { value: 2.2 }, wSpeed: { value: 0.6 }, wSpec: { value: 0.8 }, wReflect: { value: 0.55 }, wFroth: { value: 1 }, wWaveOn: { value: 1 },
-  coverR: { value: 140 }, coverAt: { value: new THREE.Vector3() }, coverFar: { value: 1 }, rockFrom: { value: 0.25 },
+  coverR: { value: 140 }, coverAt: { value: new THREE.Vector3() }, coverMap: { value: null }, coverFar: { value: 1 }, rockFrom: { value: 0.25 },
   gullyStr: { value: 0.65 }, fanStr: { value: 0.35 }, strataStr: { value: 1.5 }, strataSize: { value: 6 }, lushTint: { value: new THREE.Color(0.86, 1.0, 0.8) }, dampTint: { value: new THREE.Color(0.78, 0.92, 0.76) }, pathMap: { value: null }, landSize: { value: SIZE }, view: { value: 0 },
   slopeTint: { value: new THREE.Color(0.5, 0.66, 0.4) },
   shadeMap: { value: null }, shadowRange: { value: 0 }, shadowAt: { value: new THREE.Vector3() }, hillShade: { value: 1 }, aoShade: { value: 0.9 }, treeShade: { value: 0.5 },
@@ -592,7 +592,7 @@ mat.onBeforeCompile = (sh) => {
     uniform sampler2D groundMap; uniform float tile, split; uniform vec2 res;
     uniform float hexOn, hexSize, hexRot, hexSharp, hexBright, macroOn, macroStr, macroSize, macroHue, farOn, farFrom, grid;
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
-    uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 coverAt; uniform vec3 lushTint, dampTint, slopeTint;
+    uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 coverAt; uniform sampler2D coverMap; uniform vec3 lushTint, dampTint, slopeTint;
     uniform sampler2D waterMap; uniform float waterOn, wFroth, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow;
     float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gShadowFade = 0.0; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathMap; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange; uniform vec3 shadowAt;
     uniform vec3 avgGround, avgDry, avgLush, avgForest, avgWet, avgPath, avgSteep, avgShore; uniform float shoreStr; uniform sampler2D layShore; uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layWet; uniform sampler2D layPath; uniform sampler2D laySteep;
@@ -759,9 +759,14 @@ mat.onBeforeCompile = (sh) => {
       float far = smoothstep(coverR * 0.7, coverR * 1.05, length(vW.xz - coverAt.xz));
       if (far > 0.001 && coverFar > 0.5) {
         float clump = fbm(vW.xz / 7.0), speck = vn(vW.xz / 0.9) * 0.6 + vn(vW.xz / 0.35 + 7.0) * 0.4;
-        float c = er.b * far * smoothstep(0.55, 0.85, speck + (clump - 0.5) * 0.9);
-        vec3 shrub = mix(g * vec3(0.78, 0.88, 0.72), g * vec3(1.04, 1.01, 0.88), step(0.72, vn(vW.xz / 2.3 + 3.0)));   // mostly darker green clumps, some dry tufts, kept close to the ground's tone
-        g = mix(g, shrub, c * 0.8 * (1.0 - steep));
+        // what grows there (the cover map: the winning patch kind's colour, the lawn's on bare ground, alpha how
+        // thick), in clumps and specks, so the far ground carries on the near plants' patches
+        vec4 cv = texture2D(coverMap, luv);
+        // seen from afar a thick meadow is its plants' colour with dark gaps between: so the ground there takes
+        // the cover's colour, mottled light (tops) and dark (shadow between), thicker where the plants are
+        float k = cv.a * far * (1.0 - steep), m = speck + (clump - 0.5) * 0.9;
+        vec3 tops = cv.rgb * (0.85 + 0.45 * speck), gaps = mix(g, cv.rgb, 0.4) * 0.55;
+        g = mix(g, mix(gaps, tops, smoothstep(0.35, 0.7, m)), k * 0.85);
       }
       // the maps themselves, in false colour
       if (view > 0.5) {
@@ -848,7 +853,7 @@ mat.onBeforeCompile = (sh) => {
     #include <dithering_fragment>
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-22' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-23' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground); ground.receiveShadow = SHADOW.on;
 // THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
@@ -936,6 +941,34 @@ function coverGround(x, z) {
 const LAWN = { ...TS.lawn, count: 0 };
 const lawn = makeLawn({ cap: 90000, shade: { shadeMap: U.shadeMap, landSize: U.landSize, hillShade: U.hillShade, aoShade: U.aoShade, treeShade: U.treeShade } });
 scene.add(lawn.mesh);
+// THE COVER MAP (512 x 512 over the land, a pixel 3 m): what grows at each spot as one colour and a thickness,
+// for the ground shader to paint past where the plants end: the winning patch kind's colour (each kind's
+// average, read from the sheet's picture), the lawn's colour on bare ground, alpha how thick. Baked when the
+// growth settings change (~0.2 s), only if they did.
+let coverTex = null, coverKey = '';
+function kindColours() {
+  if (COVER.kindCol) return COVER.kindCol;
+  const img = COVER.material && COVER.material.map && COVER.material.map.image; if (!img || !COVER.parts) return null;
+  const S = 256, cv = document.createElement('canvas'); cv.width = cv.height = S; const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0, S, S); const d = g.getImageData(0, 0, S, S).data;
+  COVER.kindCol = COVER.parts.map(geo => { const uv = geo.attributes.uv; let r = 0, gg = 0, b = 0, n = 0;
+    for (let q = 0; q < uv.count; q += 3) { const i = Math.min(S - 1, Math.max(0, Math.floor(uv.getX(q) * S))), j = Math.min(S - 1, Math.max(0, Math.floor(uv.getY(q) * S))), o = (j * S + i) * 4; r += d[o]; gg += d[o + 1]; b += d[o + 2]; n++; }
+    return new THREE.Color().setRGB(r / n / 255, gg / n / 255, b / n / 255, THREE.SRGBColorSpace); });
+  return COVER.kindCol;
+}
+function bakeCoverMap() {
+  const kc = kindColours(); if (!kc || !MAPS.wet) return;
+  const key = JSON.stringify([GROW, PLANT_KINDS.map(K => [K.on, K.style])]); if (key === coverKey && coverTex) return; coverKey = key;
+  const M = 512, data = new Uint8Array(M * M * 4), lawnC = lawn.uniforms.tip.value.clone().lerp(lawn.uniforms.root.value, 0.5), col = new THREE.Color();
+  for (let j = 0; j < M; j++) for (let i = 0; i < M; i++) {
+    const x = (i + 0.5) / M * SIZE - SIZE / 2, z = (j + 0.5) / M * SIZE - SIZE / 2, a = patchAt(x, z, coverGround, PLANT_KINDS, GROW), o = (j * M + i) * 4;
+    if (!a) { data[o + 3] = 0; continue; }
+    col.copy(kc[a.kind]).lerp(lawnC, a.bare * (GROW.lawn ?? 1)); const thick = a.thick * (1 - a.bare * (1 - (GROW.lawn ?? 1) * 0.7));
+    const c = col.clone().convertLinearToSRGB(); data[o] = c.r * 255; data[o + 1] = c.g * 255; data[o + 2] = c.b * 255; data[o + 3] = Math.min(1, thick) * 255;
+  }
+  if (!coverTex) { coverTex = new THREE.DataTexture(data, M, M, THREE.RGBAFormat); coverTex.colorSpace = THREE.SRGBColorSpace; coverTex.magFilter = coverTex.minFilter = THREE.LinearFilter; U.coverMap.value = coverTex; }
+  else coverTex.image.data.set(data);
+  coverTex.needsUpdate = true;
+}
 function placeLawn() {
   const spots = LAWN.radius > 0 ? lawnSpots({ ground: coverGround, at: COVER.at, radius: LAWN.radius, density: LAWN.density, grow: GROW }) : [];
   for (const t of spots) t.y = heightAt(t.x, t.z);
@@ -1051,7 +1084,7 @@ function placeCover() {
   if (coverForest) { scene.remove(coverForest.group); for (const b of coverForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
   const species = coverForest ? coverForest.species : COVER.plantSp;
   coverForest = new Forest(renderer, scene, { species, shadows: SHADOW.on && TS.shadow.cover, fixed, heightAt, imposterAt: COVER.near, band: COVER.near * 0.5, ahead: 0.5, sunDir: SUN_DIR, nearCap: 12000, wind: true });   // (Jacob's thickness puts ~7,000 within 60 m)
-  calmCover(); placeLawn();
+  calmCover(); placeLawn(); bakeCoverMap();
   $('coverInfo').textContent = `${placed.toLocaleString()} plants of 16 kinds: meshes to ${COVER.near} m, imposters beyond (atlases bake over the first seconds)` + (LAWN.count ? ` · ${LAWN.count.toLocaleString()} lawn tufts (${(LAWN.count * lawn.trisPerTuft / 1e6).toFixed(2)} M triangles) out to ${LAWN.radius} m` : '');
 }
 buildLand();
