@@ -72,6 +72,8 @@
       <label class="check" for="winner"><input id="winner" type="checkbox"> Winner takes all (each spot to the strongest patch kind: pure patches, no strays)</label>
       <div class="row"><label for="bare">Bare ground (open areas with no plants)</label><output id="bareOut"></output><input id="bare" type="range" min="0" max="1" step="0.01"></div>
       <div class="row"><label for="bareSize">Bare ground: how big the open areas are</label><output id="bareSizeOut"></output><input id="bareSize" type="range" min="5" max="120" step="1"></div>
+      <div class="row"><label for="lonerBare">Loners in the bare ground (100%: only there)</label><output id="lonerBareOut"></output><input id="lonerBare" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="longClear">Long grass kept away from the trees</label><output id="longClearOut"></output><input id="longClear" type="range" min="0" max="1" step="0.01"></div>
       <div class="row"><label for="wetSize">Bigger where it's wet, smaller where it's dry</label><output id="wetSizeOut"></output><input id="wetSize" type="range" min="0" max="1" step="0.01"></div>
       <div class="row"><label for="clumpEdge">Clumps on the edges (where patches meet and round the bare ground)</label><output id="clumpEdgeOut"></output><input id="clumpEdge" type="range" min="0" max="1" step="0.01"></div>
       <div class="row"><label for="clumpShare">Share in clumps</label><output id="clumpShareOut"></output><input id="clumpShare" type="range" min="0" max="1" step="0.01"></div>
@@ -80,7 +82,7 @@
       <div class="row"><label for="lonerShare">Share as loners</label><output id="lonerShareOut"></output><input id="lonerShare" type="range" min="0" max="0.4" step="0.01"></div>
       <div class="row"><label for="fertSize">Thick and thin ground: patch size</label><output id="fertSizeOut"></output><input id="fertSize" type="range" min="20" max="400" step="5"></div>
       <div class="row"><label for="fert">Thick and thin ground: how much</label><output id="fertOut"></output><input id="fert" type="range" min="0" max="1" step="0.01"></div>
-      <div class="row"><label for="count">How many plants (as in the Terrain Lab; normal: 11,000)</label><output id="countOut"></output><input id="count" type="range" min="0" max="40000" step="500"></div>
+      <div class="row"><label for="count">How many plants (in a 140 m circle, as the Terrain Lab's normal setting counts them)</label><output id="countOut"></output><input id="count" type="range" min="0" max="40000" step="500"></div>
       <div class="row"><label for="size">Size of them all</label><output id="sizeOut"></output><input id="size" type="range" min="0.2" max="3" step="0.05"></div>
     </details>
 
@@ -116,7 +118,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { chooseTier } from '../../src/quality.js';
-import { KIND_INFO, GROW_DEFAULTS, FAMILY_DEFAULTS, defaultKinds, growPlants, patchAt, pickTree, settingsJSON, applySettings, vnoise, hash } from '../../src/objects/growth.js';
+import { KIND_INFO, LIT_SOFTEN, GROW_DEFAULTS, FAMILY_DEFAULTS, COVER_DEFAULTS, defaultKinds, growPlants, patchAt, pickTree, settingsJSON, applySettings, vnoise, hash } from '../../src/objects/growth.js';
 
 // QUALITY: a small patch of land, no ground textures, no shadows, and a frame is drawn only when the
 // view or a setting changes. The tier sets the drawing resolution and smoothing.
@@ -184,7 +186,7 @@ function ground(x, z) {
 }
 
 // ── the settings ──────────────────────────────────────────────────────────────────────────
-const GROW = { ...GROW_DEFAULTS }, FAMILY = { ...FAMILY_DEFAULTS }, KINDS = defaultKinds(), COVER = { count: 11000, size: 1 };
+const GROW = { ...GROW_DEFAULTS }, FAMILY = { ...FAMILY_DEFAULTS }, KINDS = defaultKinds(), COVER = { count: COVER_DEFAULTS.density, size: COVER_DEFAULTS.size };
 try { const t = localStorage.getItem(KEY); if (t) applySettings(t, GROW, FAMILY, KINDS, COVER); } catch (e) { /* no storage */ }
 const save = () => { try { localStorage.setItem(KEY, settingsJSON(GROW, FAMILY, KINDS, COVER)); } catch (e) { /* none */ } };
 // a colour a kind, spread round the wheel, the grasses greener
@@ -194,7 +196,7 @@ const COLORS = ['#c9d65a', '#9ee07a', '#5fc46b', '#d9c36a', '#2fa07a', '#e0505a'
 const SLIDERS = [['patchSize', GROW, 'patchSize', v => v + ' m'], ['patchSharp', GROW, 'patchSharp', v => Math.round(v * 100) + '%'], ['clumpShare', GROW, 'clumpShare', v => Math.round(v * 100) + '%'],
   ['clumpSize', GROW, 'clumpSize', v => v + ' m'], ['clumpCount', GROW, 'clumpCount', v => v + ' plants'], ['lonerShare', GROW, 'lonerShare', v => Math.round(v * 100) + '%'],
   ['fertSize', GROW, 'fertSize', v => v + ' m'], ['fert', GROW, 'fert', v => Math.round(v * 100) + '%'],
-  ['bare', GROW, 'bare', v => Math.round(v * 100) + '%'], ['bareSize', GROW, 'bareSize', v => v + ' m'], ['wetSize', GROW, 'wetSize', v => v > 0 ? `${(1 - 0.25 * v).toFixed(2)}× dry … ${(1 + 0.3 * v).toFixed(2)}× wet` : 'off'], ['clumpEdge', GROW, 'clumpEdge', v => Math.round(v * 100) + '%'], ['count', COVER, 'count', v => v.toLocaleString()], ['size', COVER, 'size', v => v.toFixed(2) + '×'],
+  ['bare', GROW, 'bare', v => Math.round(v * 100) + '%'], ['bareSize', GROW, 'bareSize', v => v + ' m'], ['wetSize', GROW, 'wetSize', v => v > 0 ? `${(1 - 0.25 * v).toFixed(2)}× dry … ${(1 + 0.3 * v).toFixed(2)}× wet` : 'off'], ['clumpEdge', GROW, 'clumpEdge', v => Math.round(v * 100) + '%'], ['lonerBare', GROW, 'lonerBare', v => Math.round(v * 100) + '%'], ['longClear', GROW, 'longClear', v => Math.round(v * 100) + '%'], ['count', COVER, 'count', v => v.toLocaleString()], ['size', COVER, 'size', v => v.toFixed(2) + '×'],
   ['famSize', FAMILY, 'size', v => v + ' m'], ['famStrict', FAMILY, 'strength', v => Math.round(v * 100) + '%'], ['famPine', FAMILY, 'pineFrom', v => v + ' m up']];
 for (const [id, obj, key, fmt] of SLIDERS) {
   const el = $(id);
@@ -233,7 +235,7 @@ $('paste').addEventListener('click', async () => {
   if (!applySettings(text, GROW, FAMILY, KINDS, COVER)) { $('copyNote').textContent = "That isn't growth settings."; return; }
   syncPanel(); save(); growAll(); growTrees(); $('copyNote').textContent = 'Pasted.';
 });
-$('reset').addEventListener('click', () => { Object.assign(GROW, GROW_DEFAULTS); Object.assign(FAMILY, FAMILY_DEFAULTS); defaultKinds().forEach((d, k) => Object.assign(KINDS[k], d)); Object.assign(COVER, { count: 11000, size: 1 }); syncPanel(); save(); growAll(); growTrees(); });
+$('reset').addEventListener('click', () => { Object.assign(GROW, GROW_DEFAULTS); Object.assign(FAMILY, FAMILY_DEFAULTS); defaultKinds().forEach((d, k) => Object.assign(KINDS[k], d)); Object.assign(COVER, { count: COVER_DEFAULTS.density, size: COVER_DEFAULTS.size }); syncPanel(); save(); growAll(); growTrees(); });
 $('min').addEventListener('click', () => { const p = $('panel'); p.classList.toggle('min'); $('min').textContent = p.classList.contains('min') ? 'show' : 'hide'; });
 
 // ── the scene ─────────────────────────────────────────────────────────────────────────────
@@ -298,7 +300,8 @@ async function loadPlants() {
     for (const a of Object.keys(geo0.attributes)) { const A = geo0.attributes[a], n = A.itemSize, arr = new Float32Array(tris.length * 3 * n); tris.forEach((t, q) => { for (let v = 0; v < 3; v++) for (let c = 0; c < n; c++) arr[(q * 3 + v) * n + c] = A.array[(t + v) * n + c]; }); gg.setAttribute(a, new THREE.BufferAttribute(arr, n)); }
     gg.computeBoundingBox(); const b = gg.boundingBox; gg.translate(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2);
     const h = b.max.y - b.min.y; gg.scale(KIND_INFO[k].height / h, KIND_INFO[k].height / h, KIND_INFO[k].height / h);   // its real height at scale 1
-    const nr = gg.attributes.normal; for (let q = 0; q < nr.count; q++) nr.setXYZ(q, 0, 1, 0);
+    const nr = gg.attributes.normal;   // grasses and flowers lit as if every face pointed up; the bigger plants by their own shapes, bent toward up
+    for (let q = 0; q < nr.count; q++) { if (KIND_INFO[k].lit) { const x = nr.getX(q) * (1 - LIT_SOFTEN), y = nr.getY(q) * (1 - LIT_SOFTEN) + LIT_SOFTEN, z = nr.getZ(q) * (1 - LIT_SOFTEN), l = Math.hypot(x, y, z) || 1; nr.setXYZ(q, x / l, y / l, z / l); } else nr.setXYZ(q, 0, 1, 0); }
     const im = new THREE.InstancedMesh(gg, mat, PLANT_CAP); im.count = 0; im.userData.kind = k; im.frustumCulled = false; scene.add(im); plantMeshes.push(im);
   });
 }

@@ -14,7 +14,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Forest, FOREST_SPECIES } from '../../src/objects/forest.js';
 import { chooseTier, saveTier, watchFrames, TIERS } from '../../src/quality.js';
 import { makeCloudSky, SKY_GLSL } from '../../src/objects/cloudSky.js';
-import { KIND_INFO, GROW_DEFAULTS, FAMILY_DEFAULTS, defaultKinds, growPlants, pickTree as pickTreeKind, settingsJSON, applySettings } from '../../src/objects/growth.js';
+import { KIND_INFO, LIT_SOFTEN, GROW_DEFAULTS, FAMILY_DEFAULTS, COVER_DEFAULTS, defaultKinds, growPlants, pickTree as pickTreeKind, settingsJSON, applySettings } from '../../src/objects/growth.js';
 
 const $ = (id) => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
@@ -28,11 +28,11 @@ const Q = new URLSearchParams(location.search);
 // flat colours (each picture's average) instead of read from the pictures, one noise read where
 // there were four.
 const TIER_SET = {
-  potato: { ratio: 0.5, lite: true, stones: 1500, treeShare: 0.45, shadow: null, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 3300, near: 0, radius: 90 },
+  potato: { ratio: 0.5, lite: true, stones: 1500, treeShare: 0.45, shadow: null, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 8000, near: 0, radius: 90 },
             u: { wWaveOn: 0, stampFar: 12 }, checks: { stampOn: false, hexOn: false, farOn: false, wWaveOn: false, cloudsOn: false } },
-  normal: { ratio: 1.5, stones: 14000, shadow: { range: 80, size: 1024, cover: false }, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 11000, near: 35, radius: 140 },
+  normal: { ratio: 1.5, stones: 14000, shadow: { range: 80, size: 1024, cover: false }, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 40000, near: 35, radius: 140 },
             u: { wWaveOn: 1, stampFar: 30 }, checks: { stampOn: true, hexOn: true, farOn: false, wWaveOn: true, cloudsOn: true } },
-  gaming: { ratio: 2, stones: 26000, shadow: { range: 150, size: 2048, cover: true }, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 22000, near: 60, radius: 220 },
+  gaming: { ratio: 2, stones: 26000, shadow: { range: 150, size: 2048, cover: true }, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 66000, near: 45, radius: 180 },
             u: { wWaveOn: 1, stampFar: 45 }, checks: { stampOn: true, hexOn: true, farOn: true, wWaveOn: true, cloudsOn: true } },
 };
 // the tier is picked on a throwaway context first, so the real one can be made without smoothing
@@ -857,11 +857,14 @@ function placeTrees() {
 // cell its middle is in, and each plant becomes one instanced mesh (16 draws for all of them).
 // Grasses go in the open and in part shade, shrubs along the forest's edge and a few inside it,
 // nothing on paths, steep or muddy ground.
-const COVER = { at: new THREE.Vector3(), on: true, count: 11000, radius: 140, size: 1, near: 35, parts: null, meshes: [] };   // ~5 M triangles to start: the readout says what more costs
+// counts by tier: Jacob's thickness from the Growth Lab (40,000 in a 140 m circle) over each tier's circle; potato
+// at half that, gaming over a 180 m circle rather than 220 (that thickness out to 220 m would be ~99,000)
+const COVER = { at: new THREE.Vector3(), on: true, count: 40000, radius: 140, size: COVER_DEFAULTS.size, near: 35, parts: null, meshes: [] };   // ~5 M triangles to start: the readout says what more costs
 Object.assign(COVER, TS.cover);
 // THE 16 GROUND PLANTS and how they grow: src/objects/growth.js (KIND_INFO), shared with the Growth Lab
 // `cell` (optional): [width, height] of a cell in the model's units, counted from 0, instead of the model's box / grid
-function loadSheet(url, grid, done, cell = null) {
+// `lit(k)` (optional): part k keeps its own normals (bent toward up) instead of every one pointing up
+function loadSheet(url, grid, done, cell = null, lit = () => false) {
   new GLTFLoader().load(url, (g) => {
     let src = null; g.scene.traverse(o => { if (o.isMesh && !src) src = o; }); if (!src) return;
     src.updateMatrixWorld(true);
@@ -873,12 +876,13 @@ function loadSheet(url, grid, done, cell = null) {
       const cx = (pos.getX(t) + pos.getX(t + 1) + pos.getX(t + 2)) / 3, cy = (pos.getY(t) + pos.getY(t + 1) + pos.getY(t + 2)) / 3;
       buckets[Math.min(grid - 1, Math.floor((bb.max.y - cy) / ch)) * grid + Math.min(grid - 1, Math.floor((cx - bb.min.x) / cw))].push(t);
     }
-    const attrs = Object.keys(geo0.attributes);
+    const attrs = Object.keys(geo0.attributes); let parts_k = 0;
     const parts = buckets.map(tris => {
       const gg = new THREE.BufferGeometry();
       for (const a of attrs) { const A = geo0.attributes[a], n = A.itemSize, arr = new Float32Array(tris.length * 3 * n); tris.forEach((t, q) => { for (let v = 0; v < 3; v++) for (let c = 0; c < n; c++) arr[(q * 3 + v) * n + c] = A.array[(t + v) * n + c]; }); gg.setAttribute(a, new THREE.BufferAttribute(arr, n)); }
       gg.computeBoundingBox(); const b = gg.boundingBox; gg.translate(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2);
-      const nr = gg.attributes.normal; if (nr) { for (let q = 0; q < nr.count; q++) nr.setXYZ(q, 0, 1, 0); }
+      const nr = gg.attributes.normal, k = parts_k++;
+      if (nr) for (let q = 0; q < nr.count; q++) { if (lit(k)) { const x = nr.getX(q) * (1 - LIT_SOFTEN), y = nr.getY(q) * (1 - LIT_SOFTEN) + LIT_SOFTEN, z = nr.getZ(q) * (1 - LIT_SOFTEN), l = Math.hypot(x, y, z) || 1; nr.setXYZ(q, x / l, y / l, z / l); } else nr.setXYZ(q, 0, 1, 0); }
       return gg;
     });
     const m = new THREE.MeshStandardMaterial({ map: src.material.map, side: THREE.DoubleSide, roughness: 0.9, metalness: 0, alphaTest: src.material.alphaTest || 0 });
@@ -891,9 +895,9 @@ function loadSheet(url, grid, done, cell = null) {
 // the plants as Forest species: each its own root, lit like the ground, a cheap atlas (8 x 8 views
 // of 128 px over the top half: 1024 px, 4 MB colour + 4 MB normal and depth) and no green tint
 function plantSpecies(parts, material) {
-  return parts.map((g, k) => { const root = new THREE.Group(); root.add(new THREE.Mesh(g, material)); return { name: 'ground ' + KIND_INFO[k].name, root, height: KIND_INFO[k].height, weight: 1, grid: 8, cell: 128, upNormals: true, tint: false }; });
+  return parts.map((g, k) => { const root = new THREE.Group(); root.add(new THREE.Mesh(g, material)); return { name: 'ground ' + KIND_INFO[k].name, root, height: KIND_INFO[k].height, weight: 1, grid: 8, cell: 128, upNormals: !KIND_INFO[k].lit, soften: KIND_INFO[k].lit ? LIT_SOFTEN : 0, tint: false }; });
 }
-loadSheet('/models/props/groundPlants.glb', 4, (parts, m) => { COVER.parts = parts; COVER.material = m; COVER.plantSp = plantSpecies(parts, m); placeCover(); }, [0.5, 1.0]);
+loadSheet('/models/props/groundPlants.glb', 4, (parts, m) => { COVER.parts = parts; COVER.material = m; COVER.plantSp = plantSpecies(parts, m); placeCover(); }, [0.5, 1.0], (k) => !!KIND_INFO[k].lit);
 let coverForest = null;
 // far plants blend toward the grass's own colour (its picture's average, tinted as the ground is),
 // darkened a little: bushes are darker than the grass they stand in
@@ -1008,7 +1012,7 @@ function placeCover() {
   // one Forest for all of them: meshes out to COVER.near, imposters beyond, crossfaded
   if (coverForest) { scene.remove(coverForest.group); for (const b of coverForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
   const species = coverForest ? coverForest.species : COVER.plantSp;
-  coverForest = new Forest(renderer, scene, { species, shadows: SHADOW.on && TS.shadow.cover, fixed, heightAt, imposterAt: COVER.near, band: COVER.near * 0.5, ahead: 0.5, sunDir: SUN_DIR, nearCap: 3000 });
+  coverForest = new Forest(renderer, scene, { species, shadows: SHADOW.on && TS.shadow.cover, fixed, heightAt, imposterAt: COVER.near, band: COVER.near * 0.5, ahead: 0.5, sunDir: SUN_DIR, nearCap: 12000 });   // (Jacob's thickness puts ~7,000 within 60 m)
   calmCover();
   $('coverInfo').textContent = `${placed.toLocaleString()} plants of 16 kinds: meshes to ${COVER.near} m, imposters beyond (atlases bake over the first seconds)`;
 }
@@ -1086,7 +1090,9 @@ $('mixView').addEventListener('change', e => { U.view.value = +e.target.value; }
 $('treesOn').addEventListener('change', e => { if (treeForest) treeForest.group.visible = e.target.checked; });
 $('coverOn').addEventListener('change', e => { COVER.on = e.target.checked; placeCover(); });
 // how the plants grow, and each kind's settings
-for (const [id, key, fmt] of [['gPatchSize', 'patchSize', v => v + ' m'], ['gPatchSharp', 'patchSharp', v => Math.round(v * 100) + '%'], ['gClumpShare', 'clumpShare', v => Math.round(v * 100) + '%'], ['gClumpSize', 'clumpSize', v => v + ' m'],
+$('gWinner').checked = !!GROW.winner; $('gWinner').addEventListener('change', e => { GROW.winner = e.target.checked; placeCover(); });
+for (const [id, key, fmt] of [['gBare', 'bare', v => Math.round(v * 100) + '%'], ['gBareSize', 'bareSize', v => v + ' m'], ['gWetSize', 'wetSize', v => v > 0 ? `${(1 - 0.25 * v).toFixed(2)}× dry … ${(1 + 0.3 * v).toFixed(2)}× wet` : 'off'],
+  ['gClumpEdge', 'clumpEdge', v => Math.round(v * 100) + '%'], ['gLonerBare', 'lonerBare', v => Math.round(v * 100) + '%'], ['gLongClear', 'longClear', v => Math.round(v * 100) + '%'], ['gPatchSize', 'patchSize', v => v + ' m'], ['gPatchSharp', 'patchSharp', v => Math.round(v * 100) + '%'], ['gClumpShare', 'clumpShare', v => Math.round(v * 100) + '%'], ['gClumpSize', 'clumpSize', v => v + ' m'],
   ['gClumpCount', 'clumpCount', v => v + ' plants'], ['gLonerShare', 'lonerShare', v => Math.round(v * 100) + '%'], ['gFertSize', 'fertSize', v => v + ' m'], ['gFert', 'fert', v => Math.round(v * 100) + '%']]) {
   const el = $(id); el.value = GROW[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); }); el.addEventListener('change', () => { GROW[key] = +el.value; placeCover(); });
@@ -1113,7 +1119,8 @@ for (const [id, key, fmt] of [['gPatchSize', 'patchSize', v => v + ' m'], ['gPat
 // as if moved by hand, but the plants and trees are laid once at the end, not once a control
 function syncGrowthPanel() {
   const put = (id, v) => { const el = $(id); if (!el) return; if (el.type === 'checkbox') el.checked = v; else el.value = v; el.dispatchEvent(new Event('input')); };
-  for (const [id, key] of [['gPatchSize', 'patchSize'], ['gPatchSharp', 'patchSharp'], ['gClumpShare', 'clumpShare'], ['gClumpSize', 'clumpSize'], ['gClumpCount', 'clumpCount'], ['gLonerShare', 'lonerShare'], ['gFertSize', 'fertSize'], ['gFert', 'fert']]) put(id, GROW[key]);
+  put('gWinner', !!GROW.winner);
+  for (const [id, key] of [['gBare', 'bare'], ['gBareSize', 'bareSize'], ['gWetSize', 'wetSize'], ['gClumpEdge', 'clumpEdge'], ['gLonerBare', 'lonerBare'], ['gLongClear', 'longClear'], ['gPatchSize', 'patchSize'], ['gPatchSharp', 'patchSharp'], ['gClumpShare', 'clumpShare'], ['gClumpSize', 'clumpSize'], ['gClumpCount', 'clumpCount'], ['gLonerShare', 'lonerShare'], ['gFertSize', 'fertSize'], ['gFert', 'fert']]) put(id, GROW[key]);
   for (const [id, key] of [['famSize', 'size'], ['famStrict', 'strength'], ['famPine', 'pineFrom']]) put(id, FAMILY[key]);
   PLANT_KINDS.forEach((K, k) => { put('kOn' + k, K.on); put('kStyle' + k, K.style); put('kSize' + k, K.size); });
   put('coverCount', COVER.count); put('coverSize', COVER.size);

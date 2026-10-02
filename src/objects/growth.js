@@ -29,6 +29,10 @@ export const KIND_INFO = [
   ['paintbrush', 0.5, 'long', 'clump'], ['snowdrops', 0.3, 'shade', 'clump'], ['columbine', 0.55, 'shade', 'loner'], ['violets', 0.2, 'shade', 'patch'],
   ['cattails', 1.4, 'wet', 'clump'], ['sprig shrub', 0.8, 'shrub', 'clump'], ['spruce sapling', 1.1, 'shrub', 'loner'], ['marsh marigold', 0.4, 'wet', 'clump'],
 ].map(([name, height, hab, style]) => ({ name, height, hab, style }));
+// the bigger plants are lit by the sun as the shapes they are (their own normals, bent 35% toward up so a
+// leaf seen from behind isn't black); the grasses and flowers are lit like the ground (every face as if up)
+for (const n of ['cattails', 'yucca', 'sprig shrub', 'spruce sapling']) KIND_INFO.find(K => K.name === n).lit = true;
+export const LIT_SOFTEN = 0.35;
 
 // the settings, with their starting values; each page keeps its own copy and changes it from its panel
 //   grow: patchSize (m) and patchSharp (0 mixed .. 1 clean edges); clumpShare of the plants in clumps,
@@ -41,14 +45,20 @@ export const KIND_INFO = [
 //   bare (0..1): how much of the ground is open, no plants (bareSize m across)
 //   wetSize (0..1): plants bigger in damp ground, smaller on dry (at 1: 0.75x on the driest, 1.3x in the wettest)
 //   clumpEdge (0..1): clumps kept to where patches meet (and round the bare ground) instead of anywhere
-export const GROW_DEFAULTS = { patchSize: 30, patchSharp: 0.6, clumpShare: 0.3, clumpSize: 3, clumpCount: 6, lonerShare: 0.04, fertSize: 120, fert: 0.5,
-  winner: false, bare: 0, bareSize: 25, wetSize: 0, clumpEdge: 0 };
+//   lonerBare (0..1): loners kept to the bare ground (1: only there), so the open areas hold the flowers
+//   longClear (0..1): long grasses kept out from under and beside the trees (1: none in the trees' shade)
+// (the defaults are Jacob's, set in the Growth Lab on 2026-10-01)
+export const GROW_DEFAULTS = { patchSize: 63, patchSharp: 1, clumpShare: 0.39, clumpSize: 2.5, clumpCount: 10, lonerShare: 0.11, fertSize: 110, fert: 0.33,
+  winner: true, bare: 0.39, bareSize: 20, wetSize: 0, clumpEdge: 1, lonerBare: 1, longClear: 1 };
+export const COVER_DEFAULTS = { size: 2.6, density: 40000 };   // density: how many in a circle 140 m round (the Growth Lab's "how many")
 export const FAMILY_DEFAULTS = { size: 90, strength: 0.7, pineFrom: 25 };
-export const defaultKinds = () => KIND_INFO.map(K => ({ on: true, style: K.style, size: 1, weight: 1 }));
+const KIND_SIZES = [1.8, 1.95, 1.85, 1.55, 0.65, 1.6, 1.9, 1.45, 1.15, 1.1, 1.6, 1.4, 1, 1.65, 1.05, 1.55];   // Jacob's, 2026-10-01
+export const defaultKinds = () => KIND_INFO.map((K, k) => ({ on: true, style: K.style, size: KIND_SIZES[k], weight: 1 }));
 
 // the rules growPlants uses, kept outside it so patchAt (the Growth Lab's picture of the patches) uses the same
 const blk = (k, g) => Math.min(1, KIND_INFO[k].hab === 'wet' ? g.hard : g.blocked);   // how far the ground keeps kind k out
-const want = (k, g) => g[KIND_INFO[k].hab] * (1 - blk(k, g));                         // how much kind k likes the ground
+let longClear = 1;                                                                       // (set from grow.longClear by each call)
+const want = (k, g) => g[KIND_INFO[k].hab] * (1 - blk(k, g)) * (KIND_INFO[k].hab === 'long' ? Math.max(0, 1 - g.shade * 3 * longClear) : 1);   // how much kind k likes the ground; long grass stays out of the trees' shade
 const patchN = (G, k, x, z) => { const s = G.patchSize; return vnoise(x / s + k * 37.1, z / s - k * 19.7) * 0.7 + vnoise(x / s * 2.3 + k * 11.3, z / s * 2.3 + k * 5.9) * 0.3; };   // kind k's patch map
 const patchW = (G, K, k, g, x, z) => want(k, g) * K[k].weight * Math.pow(patchN(G, k, x, z), 1 + G.patchSharp * 8);   // kind k's claim on a spot
 const fertileAt = (G, x, z) => 1 - G.fert * (1 - smooth(vnoise(x / G.fertSize + 61, z / G.fertSize - 23), 0.3, 0.7));
@@ -68,6 +78,7 @@ const wetScale = (G, g) => { if (!(G.wetSize > 0)) return 1; const m = Math.max(
 // all the claims (1: it holds the spot alone, near 1/n: n kinds are close and the pick there is a toss-up),
 // and how thick the plants are there (fertility, 0..1). null where no patch kind can grow.
 export function patchAt(x, z, ground, kinds, grow) {
+  longClear = grow.longClear ?? 0;
   const g = ground(x, z); if (g.hard >= 1) return null;
   let best = -1, bw = 0, total = 0;
   kinds.forEach((K, k) => { if (!K.on || K.style !== 'patch') return; const w = patchW(grow, kinds, k, g, x, z); total += w; if (w > bw) { bw = w; best = k; } });
@@ -83,7 +94,7 @@ export function patchAt(x, z, ground, kinds, grow) {
 // (its own seeds), so moving the circle brings tiles in and drops others while every plant that stays keeps
 // its spot.
 export function growPlants({ ground, at, radius, count, size = 1, kinds, grow }) {
-  const out = [], G = grow, K = kinds;
+  const out = [], G = grow, K = kinds; longClear = G.longClear ?? 0;
   const scaleOf = (k, t) => (0.7 + 0.6 * r(t, 11.3)) * size * K[k].size;
   const fertile = (x, z) => fertileAt(G, x, z);
   const TILE = 30, C = at, R = radius, tiles = [];
@@ -134,7 +145,8 @@ export function growPlants({ ground, at, radius, count, size = 1, kinds, grow })
   for (const tile of tiles) for (let t = 1, got = 0, want_ = perTile(nL); got < want_ && t < Math.max(1, want_) * 20; t++) {
     if (want_ < 1 && r(tile[2], seed + 77.7) > want_) break;                      // under one a tile: some tiles get one
     const [x, z] = inTile(tile, t, seed + 70), g = ground(x, z); if (g.hard >= 0.6) continue;
-    if (G.bare > 0 && r(tile[2] + t, seed + 79.3) < bareAt(G, x, z)) continue;
+    if (G.bare > 0) { const b = bareAt(G, x, z), lb = G.lonerBare || 0;                        // kept out of the bare ground, or (lonerBare) kept to it
+      if (lb > 0 ? r(tile[2] + t, seed + 79.3) > lb * b + (1 - lb) * (1 - b) : r(tile[2] + t, seed + 79.3) < b) continue; }
     const k = lk[Math.floor(r(tile[2] + t, seed + 71.9) * lk.length) % lk.length]; if (r(tile[2] + t, seed + 75.7) > want(k, g) + 0.1) continue;   // (its own draw: 73.1 is the spot's depth in the tile)
     if (inRange(x, z)) plant(k, x, z, tile[2] + t + seed * 1000 + 500, g); got++;
   }

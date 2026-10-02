@@ -172,10 +172,11 @@ export class Forest {
       for (let k = 0; k < trees.length; k++) {
         const t = trees[k];
         const meshFade = meshes.length && D > 0 ? (B > 0 ? THREE.MathUtils.clamp((D + B - t.d) / (2 * B), 0, 1) : t.d < D ? 1 : 0) : 0;   // imposterAt 0: all imposters
-        aFade[k] = 1 - meshFade;
+        const room = meshFade > 0 && meshes.length && near.length < meshes[0].instanceMatrix.count;
+        aFade[k] = room || !meshes.length ? 1 - meshFade : 1;           // past the cap of real meshes, the imposter stays whole (else it faded out with nothing in its place)
         aPos[k * 3] = t.pos.x; aPos[k * 3 + 1] = t.pos.y - sp.baseY * t.scale * sp.unit; aPos[k * 3 + 2] = t.pos.z;
         aYaw[k] = t.yaw; aScl[k] = t.scale * sp.unit; aTint[k * 3] = t.tint.r; aTint[k * 3 + 1] = t.tint.g; aTint[k * 3 + 2] = t.tint.b;
-        if (meshFade > 0 && meshes.length && near.length < meshes[0].instanceMatrix.count) near.push([t, meshFade]);
+        if (room) near.push([t, meshFade]);
       }
       g.instanceCount = trees.length;
       for (const a of ['iPos', 'iYaw', 'iScale', 'iTint', 'iFade']) g.attributes[a].needsUpdate = true;
