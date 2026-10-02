@@ -301,8 +301,10 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
       #include <packing>
       ` + LOOKUP + `
       void main() {
-        float dither = 1.0 - fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-        if (vFade < dither) discard;
+        // in the shadow map a card casts whole once it is at least half faded in (the mesh casts whole too while
+        // it's drawn; a shadow is there or not, so both casting at once does no harm). The screen-door fade used here
+        // before was a pattern in the shadow map's own pixels: it crawled as the map moved, and shadows flickered
+        if (vFade < 0.5) discard;
         vec4 col; vec4 nrm; lookup(col, nrm);
         if (col.a < 0.45) discard;
         float z = gl_FragCoord.z;

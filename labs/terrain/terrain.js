@@ -64,14 +64,19 @@ if (TS.shadow) {
   sun.castShadow = true; sun.shadow.mapSize.set(TS.shadow.size, TS.shadow.size); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.4;
   scene.add(sun.target);
 }
-// the shadow map's square follows where you look, stepped a texel at a time so the edges don't crawl
+// the shadow map's square follows where you look, stepped A WHOLE TEXEL AT A TIME IN THE SUN'S OWN AXES, so every
+// shadow stays locked to the land as it moves. (Stepping along the ground's x and z, as this did, isn't stepping along
+// the map's texels, since the sun looks at the land slantwise: each camera move slid the map a fraction of a texel
+// and every shadow edge shimmered. Its height followed the ground under it too, which slid it more.)
+const SUN_AT = sun.position.clone().normalize(), SUN_X = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), SUN_AT).normalize(), SUN_Y = new THREE.Vector3().crossVectors(SUN_AT, SUN_X);   // the shadow camera's right and up (from the sun's place, set above)
 function followShadow() {
   if (!SHADOW.on) return;
   const R = SHADOW.range, c = sun.shadow.camera, t = controls.target, fwd = new THREE.Vector3().subVectors(t, camera.position).setY(0);
-  const at = camera.position.clone().addScaledVector(fwd.lengthSq() > 1e-6 ? fwd.normalize() : fwd, R * 0.5);
-  const texel = 2 * R / sun.shadow.mapSize.x; at.x = Math.round(at.x / texel) * texel; at.z = Math.round(at.z / texel) * texel; at.y = heightAt(at.x, at.z);
+  const at = camera.position.clone().addScaledVector(fwd.lengthSq() > 1e-6 ? fwd.normalize() : fwd, R * 0.5); at.y = 0;
+  const texel = 2 * R / sun.shadow.mapSize.x, px = at.dot(SUN_X), py = at.dot(SUN_Y);
+  at.addScaledVector(SUN_X, Math.round(px / texel) * texel - px).addScaledVector(SUN_Y, Math.round(py / texel) * texel - py);
   c.left = -R; c.right = R; c.top = R; c.bottom = -R; c.near = 1; c.far = 2000; c.updateProjectionMatrix();
-  sun.target.position.copy(at); sun.position.copy(at).addScaledVector(SUN_DIR, 900);
+  sun.target.position.copy(at); sun.position.copy(at).addScaledVector(SUN_AT, 900);
   U.shadowRange.value = R; U.shadowAt.value.copy(at);
 }
 
@@ -1433,4 +1438,4 @@ renderer.setAnimationLoop(() => {
   }
   renderer.render(scene, camera); drawAtlas();
 });
-if (Q.has('probe')) Object.assign(window, { __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest] });
+if (Q.has('probe')) Object.assign(window, { __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest] });
