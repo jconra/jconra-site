@@ -13,6 +13,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Forest, FOREST_SPECIES } from '../../src/objects/forest.js';
 import { SHAPE_DEFAULTS } from '../../src/objects/foliage.js';
+import { makeLowPine } from '../../src/objects/lowTrees/cards.js';
 import { stoneField, stoneGeometry, STONE_UNIFORMS, STONE_GLSL } from '../../src/objects/stones.js';
 import { PlantTool } from '../../src/objects/plantTool.js';
 import { paintedPlants, keepProcedural } from '../../src/objects/planting.js';
@@ -133,7 +134,7 @@ function baseHeight(x, z) {
 }
 // (the land's shape as Jacob set it, 2026-10-01)
 const SHAPE = { terraceOn: true, step: 30, riser: 0.03, terraceAmount: 0.22, terraceFrom: 1, terraceSpread: 0.35, erodeOn: true, erodeSmooth: 3, drops: 110000, erodeStrength: 0.28, ravines: 35, ravineStrength: 4, ravineScale: 4, ravineRound: 0.8, crags: 28, cragSize: 120, cragSharp: 0.5 };
-const LAND = { wetDepth: 6.6, dryHeight: 6.0, forest: 0.7, shadeReach: 4, pathWidth: 3.6, treeline: 280, hillForest: 0.43, shore: 2 };   // (the land maps' settings; up here because the crags read the treeline)
+const LAND = { wetDepth: 6.6, dryHeight: 6.0, forest: 0.7, shadeReach: 4, pathWidth: 3.6, treeline: 280, hillForest: 0.43, shore: 2, edgeTrees: 0.35, giants: 0.15, giantSize: 1.9 };   // (the land maps' settings; up here because the crags read the treeline)
 const Hg = new Float32Array(N * N), FLOW = new Float32Array(N * N), SETTLE = new Float32Array(N * N);
 const cellX = (i) => (i + 0.5) * TEX - SIZE / 2;
 // TERRACES: the height is stepped - a flat top, then a short steep riser - the way rock bands break a
@@ -512,6 +513,18 @@ function buildLand() {
       * (1 - THREE.MathUtils.smoothstep(sl, 0.75, 1.0)) * (1 - THREE.MathUtils.smoothstep(Hg[k], LAND.treeline - 40, LAND.treeline)) * (1 - TOWN.block[k]);   // (none in the town's buildings and roads)
     // (potato keeps under half of them: treeShare)
     if (waterAt(jx, jz) < 0.05 && hash(jx * 1.3, jz * 0.7) < F * 0.85 * (TS.treeShare || 1)) { trees.push([jx, heightAt(jx, jz), jz, 0.8 + hash(jx, jz * 2) * 0.5]); tree[k] = 1; }
+  }
+  // SIZE BY HOW DEEP IN ITS FOREST A TREE STANDS (the share of the ground round it, ~25 m, holding trees, against the
+  // deepest forest's): smaller along the edge (edgeTrees), and now and then a giant (giants: the share, giantSize: how
+  // big) in the deep middle, where the medium trees round it hide its sides
+  if (LAND.edgeTrees > 0 || LAND.giants > 0) {
+    const deep = blur(tree, 8), at = (x, z) => deep[Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))) * N + Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX)))];
+    const ds = trees.map((t) => at(t[0], t[2])).sort((a, b) => a - b), full = Math.max(1e-6, ds[Math.floor(ds.length * 0.9)] || 1);
+    for (const t of trees) {
+      const d = Math.min(1, at(t[0], t[2]) / full);
+      t[3] *= 1 - LAND.edgeTrees * (1 - THREE.MathUtils.smoothstep(d, 0.2, 0.7));
+      if (hash(t[0] * 0.37 + 5.1, t[2] * 0.53 - 2.7) < LAND.giants * THREE.MathUtils.smoothstep(d, 0.7, 0.95)) t[3] *= LAND.giantSize;
+    }
   }
   const canopy = blur(tree, 1), wide = blur(tree, LAND.shadeReach);
   for (let k = 0; k < N * N; k++) canopy[k] = Math.min(1, canopy[k] * 3.2);
@@ -941,7 +954,7 @@ const ground = new THREE.Mesh(geo, mat); scene.add(ground); ground.receiveShadow
 const SUN_DIR = sun.position.clone().normalize();
 const TREE_SPECIES = FOREST_SPECIES.filter(sp => sp.name !== 'bush');
 // the Tree Lab's settings, now here (Jacob's defaults, 2026-09-23)
-const FOREST = { imposterAt: 150, band: 120, ahead: 0.6, grid: 12, cell: 192, detail: 'sparse', rebake: false };
+const FOREST = { imposterAt: 150, band: 120, ahead: 0.6, grid: 12, cell: 192, detail: 'sparse', rebake: false, lowPine: !!TS.lite };   // lowPine: the ~100-triangle pine (the potato's, to start)
 Object.assign(FOREST, TS.forest);
 // SHAPED LIGHTING (src/objects/foliage.js, tuned in the Foliage Lab): which trees light their leaves by how
 // much sky each leaf sees through the tree, instead of card by card ('off', 'pine' or 'all'), and how
@@ -959,16 +972,18 @@ function pickTree(x, z, species) {
 function townTrees(species) {
   return (TOWN.village ? TOWN.village.layout : TOWN.layout).items.filter(it => it.type === 'tree').map(it => {
     const sp = Math.max(0, species.findIndex(s => s.name === it.kind)), tint = new THREE.Color().setHSL(...pickTreeKind(it.x, it.z, [it.kind], { height: 0, slope: 0, wet: 0, dry: 0 }, FAMILY).hsl);   // its own kind's tint
-    return { x: it.x, z: it.z, sp, scale: it.size, tint, yaw: it.rot ? it.rot * Math.PI / 180 : hash(it.x * 0.37, it.z * 0.71) * 6.283 }; });   // (unturned: each its own way)
+    return { x: it.x, z: it.z, sp, scale: it.size, tint: species[sp].tint === false ? undefined : tint, yaw: it.rot ? it.rot * Math.PI / 180 : hash(it.x * 0.37, it.z * 0.71) * 6.283 }; });   // (unturned: each its own way)
 }
 function placeTrees() {
   if (treeForest) treeForest.dispose({ bakes: FOREST.rebake });   // (the atlases go too when they are about to be baked again)
   const shaped = (sp) => LEAF.on === 'all' || (LEAF.on === 'pine' && sp.name === 'pine');
-  const species = treeForest && !FOREST.rebake ? treeForest.species : TREE_SPECIES.map(sp => shaped(sp)   // keeps the baked atlases unless the atlas settings changed
-    ? { ...sp, soften: LEAF.soften, shape: { lump: LEAF.lump, mix: LEAF.mix, dark: LEAF.dark, tip: LEAF.tip, olive: LEAF.olive, branchDark: LEAF.branchDark, under: LEAF.under, glow: LEAF.glow } } : { ...sp });
+  // the low-poly pine (src/objects/lowTrees/cards.js, ~100 triangles): its own colour and lighting (no tint, no shaping)
+  const low = (sp) => FOREST.lowPine && sp.name === 'pine' ? { name: 'pine', root: makeLowPine(), height: sp.height, weight: sp.weight, tint: false } : null;
+  const species = treeForest && !FOREST.rebake ? treeForest.species : TREE_SPECIES.map(sp => low(sp) || (shaped(sp)   // keeps the baked atlases unless the atlas settings changed
+    ? { ...sp, soften: LEAF.soften, shape: { lump: LEAF.lump, mix: LEAF.mix, dark: LEAF.dark, tip: LEAF.tip, olive: LEAF.olive, branchDark: LEAF.branchDark, under: LEAF.under, glow: LEAF.glow } } : { ...sp }));
   FOREST.rebake = false;
   treeForest = new Forest(renderer, scene, { species, shadows: SHADOW.on, detail: FOREST.detail, grid: FOREST.grid, cell: FOREST.cell, imposterAt: FOREST.imposterAt, band: FOREST.band, ahead: FOREST.ahead, sunDir: SUN_DIR, heightAt, nearCap: 600,
-    fixed: [...trees.map(([x, , z, s]) => { const [sp, tint] = pickTree(x, z, species); return { x, z, sp, scale: s, tint }; }), ...townTrees(species)] });
+    fixed: [...trees.map(([x, , z, s]) => { const [sp, tint] = pickTree(x, z, species); return { x, z, sp, scale: s, tint: species[sp].tint === false ? undefined : tint }; }), ...townTrees(species)] });
   treeForest.group.visible = $('treesOn').checked;
   $('landInfo').textContent = `${trees.length.toLocaleString()} trees, 4 paths`;
 }
@@ -1153,7 +1168,7 @@ const CALM = { from: 80, to: 600, amount: 0.63 };   // gentle: far plants keep m
 // STONES: simple rocks (a lumpy, flattened ball in four shapes, drawn faceted) scattered by the land:
 // thick on steep and rocky ground and in the scree at the foot of the cliffs, a few out in the
 // meadows, many along the streams and shores (in the creeks too), none out in the lakes or on the paths. Mostly small, the odd boulder. 20 faces each (80 on gaming).
-const STONES = { on: true, count: TS.stones, size: 1, meshes: [], shapes: null };
+const STONES = { on: true, count: TS.stones, size: 1, seen: 0.8, meshes: [], shapes: null };   // seen: kept to where they'll be seen (out from under the trees; by paths, creeks, clearings, rises), and bigger there
 function stoneShapes() {
   const out = [];
   for (let v = 0; v < 4; v++) {
@@ -1205,8 +1220,9 @@ function placeStones() {
     const pi = Math.floor((x + SIZE / 2) / SIZE * MAPS.P), pj = Math.floor((z + SIZE / 2) / SIZE * MAPS.P); if (MAPS.path[(pj * MAPS.P + pi) * 4] > 60) continue;
     const creek = MAPS.shore ? Math.min(1, MAPS.shore[k] * 2.5) : 0;             // along streams and shores the soil is washed off the stones
     const sl = slopeAt(i, j), want = 0.14 + 1.6 * creek + 0.8 * THREE.MathUtils.smoothstep(sl, 0.45, 0.9) + 0.9 * Math.max(0, scree[k] - MAPS.steep[k]) * 2;
-    if (r(t, 47.1) > want) continue;
-    const u = r(t, 49.9), size = STONES.size * (0.22 + 1.7 * u * u * u) * (1 + 0.6 * Math.max(0, scree[k] - MAPS.steep[k]));
+    const vis = Math.min(1, (1 - MAPS.canopy[k]) * 0.7 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 255 * 1.2 + creek * 0.6 + MAPS.dry[k] * 0.5);   // (how open and looked at the spot is)
+    if (r(t, 47.1) > want * (1 - STONES.seen * (0.9 - 0.9 * vis))) continue;
+    const u = r(t, 49.9), size = STONES.size * (0.22 + 1.7 * u * u * u) * (1 + 0.6 * Math.max(0, scree[k] - MAPS.steep[k])) * (1 + STONES.seen * 0.7 * (vis - 0.4));
     per[Math.floor(r(t, 51.7) * 4) % 4].push([x, heightAt(x, z) - size * 0.22, z, size, r(t, 53.3) * 6.283, r(t, 57.1)]);
     placed++;
   }
@@ -1437,7 +1453,7 @@ function composePathRoad(rect = null) {
   U.pathRoad.value.needsUpdate = true;
 }
 for (const [id, def] of Object.entries(LAYERS)) { const el = $(id); for (const n of TEXTURES) el.add(new Option(n, n)); el.value = def; const go = () => { U[id].value = tex(el.value); setAverages(); }; el.addEventListener('change', go); go(); }
-for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'], ['landDry', 'dryHeight', v => v.toFixed(1) + ' m'], ['landForest', 'forest', v => Math.round(v * 100) + '%'], ['landShade', 'shadeReach', v => Math.round(v * TEX) + ' m'], ['landPath', 'pathWidth', v => v.toFixed(1) + ' m'], ['landTreeline', 'treeline', v => v + ' m'], ['landShore', 'shore', v => Math.round(v * TEX) + ' m'], ['landHill', 'hillForest', v => Math.round(v * 100) + '%']]) {
+for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'], ['landEdgeTrees', 'edgeTrees', v => Math.round(v * 100) + '% smaller'], ['landGiants', 'giants', v => Math.round(v * 100) + '%'], ['landGiantSize', 'giantSize', v => v.toFixed(1) + '×'], ['landDry', 'dryHeight', v => v.toFixed(1) + ' m'], ['landForest', 'forest', v => Math.round(v * 100) + '%'], ['landShade', 'shadeReach', v => Math.round(v * TEX) + ' m'], ['landPath', 'pathWidth', v => v.toFixed(1) + ' m'], ['landTreeline', 'treeline', v => v + ' m'], ['landShore', 'shore', v => Math.round(v * TEX) + ' m'], ['landHill', 'hillForest', v => Math.round(v * 100) + '%']]) {
   const el = $(id); el.value = LAND[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { LAND[key] = +el.value; buildLand(); });
@@ -1526,7 +1542,7 @@ for (const [id, obj, key, fmt] of [['lawnAmount', GROW, 'lawn', v => Math.round(
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); }); el.addEventListener('change', () => { obj[key] = +el.value; placeLawn(); placeCover(); });
 }
 $('stonesOn').checked = STONES.on; $('stonesOn').addEventListener('change', e => { STONES.on = e.target.checked; placeStones(); });
-for (const [id, key, fmt] of [['stoneCount', 'count', v => v.toLocaleString()], ['stoneSize', 'size', v => v.toFixed(1) + '×']]) {
+for (const [id, key, fmt] of [['stoneCount', 'count', v => v.toLocaleString()], ['stoneSize', 'size', v => v.toFixed(1) + '×'], ['stoneSeen', 'seen', v => Math.round(v * 100) + '%']]) {
   const el = $(id); el.value = STONES[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); }); el.addEventListener('change', () => { STONES[key] = +el.value; placeStones(); });
 }
@@ -1602,6 +1618,7 @@ for (const [id, key, fmt, live] of [['fImp', 'imposterAt', v => v + ' m', true],
   if (!live) el.addEventListener('change', () => { FOREST[key] = +el.value; FOREST.rebake = true; placeTrees(); atlasInfo(); });
 }
 $('fDetail').value = FOREST.detail; $('fDetail').addEventListener('change', e => { FOREST.detail = e.target.value; FOREST.rebake = true; placeTrees(); });
+$('fLowPine').checked = FOREST.lowPine; $('fLowPine').addEventListener('change', e => { FOREST.lowPine = e.target.checked; FOREST.rebake = true; placeTrees(); });
 $('fShape').value = LEAF.on; $('fShape').addEventListener('change', e => { LEAF.on = e.target.value; FOREST.rebake = true; placeTrees(); });
 $('fShapePaste').addEventListener('click', async () => {   // the Foliage Lab's Copy settings
   let text = ''; try { text = await navigator.clipboard.readText(); } catch (e) { text = prompt('Paste the Foliage Lab settings here') || ''; }

@@ -227,11 +227,11 @@ const LOOKUP = `
 // `soften` (0..1) bends the foliage's normals toward straight up, the usual trick for leaves (cards
 // facing every way, half of them 'away' from the sun, read as black otherwise)
 // wind (0..1): sway in the shared breeze (src/objects/wind.js), 0 still
-export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3), blend = true, depth = true, shadows = true, soften = 0, wind = 0 } = {}) {
+export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3), blend = true, depth = true, shadows = true, soften = 0, wind = 0, glow = 0 } = {}) {   // glow: the tree's own even light (its material's light map), so far matches near
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, THREE.UniformsLib.fog, { soften: { value: soften },
     atlas: { value: null }, atlasN: { value: null }, grid: { value: bake.grid }, hemi: { value: bake.hemi ? 1 : 0 },
     radius: { value: bake.radius }, halfW: { value: bake.halfW }, halfH: { value: bake.halfH }, centre: { value: bake.centre.clone() }, sunDir: { value: sunDir.clone().normalize() },
-    blend: { value: blend ? 1 : 0 }, blendDist: { value: 400 }, parallax: { value: 0 }, halfWc: { value: bake.halfW }, halfHc: { value: bake.halfH }, ambient: { value: 0.45 }, useDepth: { value: depth ? 1 : 0 }, useShadow: { value: shadows ? 1 : 0 },
+    blend: { value: blend ? 1 : 0 }, blendDist: { value: 400 }, parallax: { value: 0 }, halfWc: { value: bake.halfW }, halfHc: { value: bake.halfH }, ambient: { value: 0.45 }, glowLight: { value: glow }, useDepth: { value: depth ? 1 : 0 }, useShadow: { value: shadows ? 1 : 0 },
     viewDirOverride: { value: new THREE.Vector3(0, 1, 0) }, useOverride: { value: 0 },
     calmCol: { value: new THREE.Color(0.3, 0.4, 0.15) }, calmFrom: { value: 60 }, calmTo: { value: 250 }, calmAmt: { value: 0 },
     landShade: { value: null }, landShadeSize: { value: 1600 }, landShadeK: { value: new THREE.Vector4() },
@@ -247,7 +247,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
       #include <shadowmap_pars_fragment>
       #include <lights_pars_begin>
       #include <fog_pars_fragment>
-      uniform vec3 sunDir; uniform float ambient; uniform float useShadow; uniform float soften;
+      uniform vec3 sunDir; uniform float ambient; uniform float useShadow; uniform float soften; uniform float glowLight;
       uniform vec3 calmCol; uniform float calmFrom, calmTo, calmAmt;
       uniform sampler2D landShade; uniform float landShadeSize; uniform vec4 landShadeK;
       ` + LOOKUP + `
@@ -285,6 +285,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
         #if NUM_HEMI_LIGHTS > 0
         irradiance += mix(hemisphereLights[0].groundColor, hemisphereLights[0].skyColor, dot(nv, hemisphereLights[0].direction) * 0.5 + 0.5);
         #endif
+        irradiance += vec3(glowLight);                                     // (as a light map adds it to the mesh)
         vec3 albedo = mix(col.rgb / max(col.a, 0.001) * vTint, calmCol, calm);
         // the land's baked shade where the plant stands (hill shadow, hollows, under trees), if given:
         // landShadeK = (hill, hollow, tree strengths, on)

@@ -172,6 +172,9 @@
       <div class="row"><label for="landDry">Dry: how high a rise is fully dry</label><output id="landDryOut"></output><input id="landDry" type="range" min="0.5" max="10" step="0.1"></div>
       <div class="row"><label for="landForest">Forest cover</label><output id="landForestOut"></output><input id="landForest" type="range" min="0" max="1" step="0.01"></div>
       <div class="row"><label for="landHill">Extra forest up the slopes</label><output id="landHillOut"></output><input id="landHill" type="range" min="0" max="0.6" step="0.01"></div>
+      <div class="row"><label for="landEdgeTrees">Trees smaller along a forest's edge<small>small at the border, medium inside</small></label><output id="landEdgeTreesOut"></output><input id="landEdgeTrees" type="range" min="0" max="0.7" step="0.01"></div>
+      <div class="row"><label for="landGiants">Giants in the middle of the forests<small>how many of the deep-forest trees are giants, hidden on the sides by the medium ones</small></label><output id="landGiantsOut"></output><input id="landGiants" type="range" min="0" max="0.6" step="0.01"></div>
+      <div class="row"><label for="landGiantSize">How big the giants are</label><output id="landGiantSizeOut"></output><input id="landGiantSize" type="range" min="1" max="3" step="0.05"></div>
       <div class="row"><label for="landShore">Stony shore, how wide</label><output id="landShoreOut"></output><input id="landShore" type="range" min="0" max="6" step="1"></div>
       <div class="row"><label for="shoreStr">Stony shore, how much</label><output id="shoreStrOut"></output><input id="shoreStr" type="range" min="0" max="2" step="0.05"></div>
       <div class="row"><label for="landTreeline">Treeline (height where the trees stop)</label><output id="landTreelineOut"></output><input id="landTreeline" type="range" min="0" max="300" step="5"></div>
@@ -241,6 +244,7 @@
       <div class="row"><label for="fImp">Imposters from</label><output id="fImpOut"></output><input id="fImp" type="range" min="0" max="600" step="10"></div>
       <div class="row"><label for="fBand">Crossfade band</label><output id="fBandOut"></output><input id="fBand" type="range" min="0" max="300" step="5"></div>
       <div class="row"><label for="fAhead">Mesh circle pushed ahead</label><output id="fAheadOut"></output><input id="fAhead" type="range" min="0" max="1" step="0.05"></div>
+      <label class="check" for="fLowPine"><input id="fLowPine" type="checkbox"> Low-poly pines (about 100 triangles, from the Foliage Lab; re-bakes)</label>
       <div class="row"><label for="fDetail">Leaf detail</label><select id="fDetail"><option value="fine">fine</option><option value="coarse">coarse</option><option value="sparse">sparse</option></select></div>
       <div class="row"><label for="fGrid">Views across (re-bakes)</label><output id="fGridOut"></output><input id="fGrid" type="range" min="4" max="24" step="2"></div>
       <div class="row"><label for="fCell">View size (re-bakes)</label><output id="fCellOut"></output><input id="fCell" type="range" min="64" max="256" step="32"></div>
@@ -306,6 +310,7 @@
       <label class="check" for="stonesOn"><input id="stonesOn" type="checkbox" checked> Stones (thick on slopes and in the scree below cliffs, a few in the meadows)</label>
       <div class="row"><label for="stoneCount">How many</label><output id="stoneCountOut"></output><input id="stoneCount" type="range" min="0" max="30000" step="500"></div>
       <div class="row"><label for="stoneSize">Size</label><output id="stoneSizeOut"></output><input id="stoneSize" type="range" min="0.3" max="3" step="0.1"></div>
+      <div class="row"><label for="stoneSeen">Only where they'll be seen<small>fewer under the trees; more, and bigger, by paths, creeks, clearings and rises</small></label><output id="stoneSeenOut"></output><input id="stoneSeen" type="range" min="0" max="1" step="0.01"></div>
       <p class="note" id="stoneInfo"></p>
       <div class="row"><label for="coverNear">Real meshes out to (imposters beyond)</label><output id="coverNearOut"></output><input id="coverNear" type="range" min="0" max="250" step="5"></div>
       <div class="row"><label for="coverFade">Mesh-to-card fade: how wide (wider is softer)</label><output id="coverFadeOut"></output><input id="coverFade" type="range" min="0.1" max="1.5" step="0.05"></div>

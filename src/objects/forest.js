@@ -147,7 +147,8 @@ export class Forest {
       const n = cap;
       for (const [name, size] of [['iPos', 3], ['iYaw', 1], ['iScale', 1], ['iTint', 3], ['iFade', 1]]) { const a = new THREE.InstancedBufferAttribute(new Float32Array(n * size), size); a.setUsage(THREE.DynamicDrawUsage); geo.setAttribute(name, a); }
       geo.instanceCount = 0;
-      const mat = imposterMaterial(sp.bake, { sunDir: this.sunDir, blend: true, depth: !this.light, shadows: this.shadows, soften: sp.soften || 0, wind: this.wind ? (sp.sway ?? 1) : 0 });
+      let glow = 0; sp.root.traverse((o) => { if (o.isMesh && !Array.isArray(o.material) && o.material.lightMap) glow = Math.max(glow, o.material.lightMapIntensity); });   // (a tree with its own even light, as the low-poly pines have: its far versions get it too)
+      const mat = imposterMaterial(sp.bake, { sunDir: this.sunDir, blend: true, depth: !this.light, shadows: this.shadows, soften: sp.soften || 0, wind: this.wind ? (sp.sway ?? 1) : 0, glow });
       if (this.calm) for (const [k, v] of Object.entries(this.calm)) mat.uniforms[k].value = v;
       Object.assign(mat.uniforms, this.landU);
       mat.uniforms.blendDist.value = 300;
