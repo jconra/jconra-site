@@ -6,6 +6,12 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { chooseTier } from '../../src/quality.js';
 import { Forest, FOREST_SPECIES } from '../../src/objects/forest.js';
 import { SHAPE_DEFAULTS } from '../../src/objects/foliage.js';
+import { makeLowPine as cardsPine } from '../../src/objects/lowTrees/cards.js';
+import { makeLowPine as conesPine } from '../../src/objects/lowTrees/cones.js';
+import { makeLowPine as starsPine } from '../../src/objects/lowTrees/stars.js';
+// THE LOW-POLY PINES (src/objects/lowTrees): about a hundred triangles each, against today's pine's ~4,650; three
+// takes, cards the judges' pick. Chosen as the tree, they stand on the right with today's pine (as it is now) on the left
+const LOW = { 'low:cards': ['low-poly pine: cards (101 triangles)', cardsPine], 'low:cones': ['low-poly pine: cones (106 triangles)', conesPine], 'low:stars': ['low-poly pine: stars (114 triangles)', starsPine] };
 
 const $ = (id) => document.getElementById(id);
 const KEY = 'jconra.foliageLab';
@@ -48,6 +54,8 @@ const GROVE = [[0, 7, 1.05, 0.3], [-4.5, -1, 0.95, 1.7], [4.2, -1.6, 1.1, 4.1], 
 const SIDE = 18;                                                       // each grove's middle, this far either side
 let now = null, shaped = null, shapeMs = 0;
 function speciesFor(shapedOne) {
+  if (LOW[S.species]) return shapedOne ? [{ name: 'pine', root: LOW[S.species][1](), height: 22, weight: 1, tint: false }]   // (its own colour and lighting: no shaping, no tint)
+    : [{ ...FOREST_SPECIES.find((s) => s.name === 'pine'), weight: 1, soften: S.nowSoften }];
   const base = FOREST_SPECIES.find((s) => s.name === S.species) || FOREST_SPECIES[3];
   const sp = { ...base, weight: 1, soften: shapedOne ? S.soften : S.nowSoften };
   if (shapedOne) sp.shape = { lump: S.lump, mix: S.mix, dark: S.dark, tip: S.tip, olive: S.olive, branchDark: S.branchDark, under: S.under, glow: S.glow };
@@ -55,7 +63,9 @@ function speciesFor(shapedOne) {
 }
 function grove(shapedOne) {
   const sx = shapedOne ? SIDE : -SIDE, tint = new THREE.Color().setHSL(0.30, 0.47, 0.71);
-  const f = new Forest(renderer, scene, { species: speciesFor(shapedOne), fixed: GROVE.map(([x, z, s, yaw]) => ({ x: x + sx, z, sp: 0, scale: s, yaw, tint })), shadows: !LIGHT, light: LIGHT,
+  const species = speciesFor(shapedOne), own = species[0].tint === false;
+  $('tagShaped').textContent = LOW[S.species] ? LOW[S.species][0] : 'Shaped';
+  const f = new Forest(renderer, scene, { species, fixed: GROVE.map(([x, z, s, yaw]) => ({ x: x + sx, z, sp: 0, scale: s, yaw, tint: own ? undefined : tint })), shadows: !LIGHT, light: LIGHT,
     detail: S.detail, imposterAt: S.far ? 0 : 500, band: 0, sunDir: SUN_DIR, nearCap: 40 });
   return f;
 }
@@ -74,7 +84,7 @@ function showInfo() {
 const pct = (v) => Math.round(v * 100) + '%', m = (v) => v.toFixed(1) + ' m';
 const compass = (v) => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round(v / 45) % 8];
 const SPEC = {
-  secLook: [['species', 'Tree', '', 'select', FOREST_SPECIES.map((s) => [s.name, s.name]), 'both'],
+  secLook: [['species', 'Tree', 'the low-poly pines: today\'s pine on the left, the low one on the right', 'select', [...FOREST_SPECIES.map((s) => [s.name, s.name]), ...Object.entries(LOW).map(([k, v]) => [k, v[0]])], 'both'],
     ['detail', 'Leaf detail', 'the Terrain Lab draws sparse (coarse on gaming)', 'select', [['sparse', 'sparse'], ['coarse', 'coarse'], ['fine', 'fine']], 'both'],
     ['far', 'Show the far-off versions (imposters) instead', '', 'check', null, 'far'],
     ['nowSoften', '"Now": bent toward up', 'as in the Terrain Lab today (50%)', 0, 1, 0.01, pct, 'now']],
