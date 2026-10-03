@@ -30,7 +30,10 @@ export class PlantTool {
     this.ray = new THREE.Raycaster();
     // the placed plants: one instanced mesh a kind
     this.group = new THREE.Group(); this.scene.add(this.group);
-    this.meshes = this.parts.map((g, k) => { const m = new THREE.InstancedMesh(g, this.materials[k], 256); m.count = 0; m.frustumCulled = false; m.castShadow = m.receiveShadow = !!o.shadows; m.userData.kind = k; this.group.add(m); return m; });
+    // (a kind the page draws itself, as trees go into its forest: an unseen post a tree tall, only for picking it)
+    this.kindOf = (k) => this.kinds.find((x) => x.id === k) || {};
+    this.post = new THREE.CylinderGeometry(0.35, 0.35, 1, 6).translate(0, 0.5, 0); this.unseen = new THREE.MeshBasicMaterial({ visible: false });
+    this.meshes = this.kinds.map((kd) => kd.id).map((k) => this.makeMesh(k, 256));
     // the brush: a ring on the ground (green paint, red clear) and the stroke's trail
     const ringGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(65 * 3), 3));
     this.ring = new THREE.Line(ringGeo, new THREE.LineBasicMaterial({ color: 0x35e07d, depthTest: false, transparent: true, opacity: 0.9 }));
@@ -46,6 +49,10 @@ export class PlantTool {
     this.listen();
     this.syncItems(); this.syncUndo();
   }
+  makeMesh(k, n) {
+    const picker = !this.parts[k], m = new THREE.InstancedMesh(picker ? this.post : this.parts[k], picker ? this.unseen : this.materials[k], n);
+    m.count = 0; m.frustumCulled = false; m.castShadow = m.receiveShadow = !picker && !!this.shadows; m.userData.kind = k; m.userData.picker = picker; this.group.add(m); return m;
+  }
   get active() { return !!this.bar.state.open; }
   // open or hide the bar from outside (the town editor taking over): as if its own button was pressed, so the
   // chosen plant is let go and the page hears of it
@@ -56,7 +63,7 @@ export class PlantTool {
   barChanged(s, key) {
     if (key === 'open') { if (!s.open) { this.select(null); this.ring.visible = false; this.dom.style.cursor = ''; } if (this.opened) this.opened(s.open); }
     if (key === 'mode') { if (s.mode !== 'select' && s.mode !== 'place') this.select(null); this.dom.style.cursor = s.mode === 'paint' || s.mode === 'clear' || s.mode === 'place' ? 'crosshair' : ''; this.ring.visible = false; }
-    if (key === 'gizmo') this.gizmo.mode = s.gizmo;
+    if (key === 'gizmo') { this.gizmo.mode = s.gizmo; this.limits(); }
     if (key === 'procedural') { this.before(); this.planting.procedural = s.procedural; this.commit(); }
     if (key === 'clearRadius' && this.sel) { const it = this.item(this.sel); if (it) { this.before(true); it.clear = s.clearRadius; this.commit(); } }
   }
@@ -111,14 +118,15 @@ export class PlantTool {
     return out.compose(new THREE.Vector3(it.x, this.heightAt(it.x, it.z) + it.y, it.z), q, new THREE.Vector3(it.sx, it.sy, it.sz));
   }
   syncItems() {                                                          // the placed plants into their kinds' meshes
-    const per = this.meshes.map(() => []);
-    for (const it of this.planting.items) if (per[it.kind]) per[it.kind].push(it);
-    const M = new THREE.Matrix4();
-    per.forEach((list, k) => {
-      let mesh = this.meshes[k];
-      if (list.length > mesh.instanceMatrix.count) { this.group.remove(mesh); mesh.dispose(); mesh = this.meshes[k] = new THREE.InstancedMesh(this.parts[k], this.materials[k], Math.ceil(list.length * 1.5)); mesh.frustumCulled = false; mesh.castShadow = mesh.receiveShadow = !!this.shadows; mesh.userData.kind = k; this.group.add(mesh); }
+    const per = this.meshes.map(() => []), at = new Map(this.meshes.map((m, i) => [m.userData.kind, i]));
+    for (const it of this.planting.items) if (at.has(it.kind)) per[at.get(it.kind)].push(it);
+    const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0);
+    per.forEach((list, i) => {
+      let mesh = this.meshes[i]; const k = mesh.userData.kind;
+      if (list.length > mesh.instanceMatrix.count) { this.group.remove(mesh); mesh.dispose(); mesh = this.meshes[i] = this.makeMesh(k, Math.ceil(list.length * 1.5)); }
       mesh.userData.ids = list.map((it) => it.id); mesh.visible = list.length > 0;   // (an empty kind is no draw at all)
-      list.forEach((it, i) => mesh.setMatrixAt(i, this.matrixOf(it, M)));
+      const h = this.kindOf(k).height || 10;                             // (a picking post: the tree's height, a third as wide)
+      list.forEach((it, j) => mesh.setMatrixAt(j, mesh.userData.picker ? M.compose(new THREE.Vector3(it.x, this.heightAt(it.x, it.z) + it.y, it.z), Q.setFromAxisAngle(Y, 0), new THREE.Vector3(h * it.sx * 0.35, h * it.sy, h * it.sz * 0.35)) : this.matrixOf(it, M)));
       mesh.count = list.length; mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere();
     });
   }
@@ -132,9 +140,16 @@ export class PlantTool {
     this.sel = id; this.dragFrom = null; const it = id && this.item(id);
     if (!it) { this.sel = null; this.gizmo.detach(); return; }
     this.toProxy(it);
-    this.gizmo.mode = this.st.gizmo;
+    this.gizmo.mode = this.st.gizmo; this.limits();
     this.gizmo.attach(this.proxy, { onChange: () => this.fromProxy(it, false), onCommit: () => this.fromProxy(it, true) });
     this.bar.setState({ clearRadius: it.clear });
+  }
+  // the gizmo's arms for the chosen thing: all of them, or for a kind with `upright` (a forest tree: the forest stands
+  // them up straight and sizes them evenly) sliding across the ground, turning about the upright, sizing evenly
+  limits() {
+    const it = this.sel && this.item(this.sel), up = it && this.kindOf(it.kind).upright, m = this.gizmo.mode;
+    this.gizmo.axes = !up ? { x: true, y: true, z: true } : m === 'translate' ? { x: true, y: false, z: true } : m === 'rotate' ? { x: false, y: true, z: false } : { x: true, y: true, z: true };
+    this.gizmo.uniform = !!up && m === 'scale';
   }
   toProxy(it) {
     this.proxy.position.set(it.x, this.heightAt(it.x, it.z) + it.y, it.z);
@@ -158,13 +173,13 @@ export class PlantTool {
   // square on, the one whose middle is nearest on screen is taken if it is close enough (further for a finger)
   pick(cx, cy, finger = false) {
     this.setRay(cx, cy);
-    const hit = this.ray.intersectObjects(this.meshes.filter((m) => m.count), false)[0];
+    const hit = this.ray.intersectObjects(this.meshes.filter((m) => m.count), false)[0];   // (a picking post counts though unseen: three's picking doesn't look at visibility)
     if (hit && hit.instanceId != null) return hit.object.userData.ids[hit.instanceId];
     const r = this.dom.getBoundingClientRect(), v = new THREE.Vector3(); let best = null, near = finger ? 30 : 14;
     for (const it of this.planting.items) {
-      const g = this.parts[it.kind]; if (!g) continue;
-      if (!g.boundingBox) g.computeBoundingBox();
-      v.set(it.x, this.heightAt(it.x, it.z) + it.y + g.boundingBox.max.y * it.sy * 0.5, it.z).project(this.camera);
+      const g = this.parts[it.kind], kh = this.kindOf(it.kind).height; if (!g && !kh) continue;
+      if (g && !g.boundingBox) g.computeBoundingBox();
+      v.set(it.x, this.heightAt(it.x, it.z) + it.y + (g ? g.boundingBox.max.y : kh) * it.sy * 0.5, it.z).project(this.camera);
       if (v.z < -1 || v.z > 1) continue;                                 // (behind the camera)
       const d = Math.hypot(r.left + (v.x + 1) / 2 * r.width - cx, r.top + (1 - v.y) / 2 * r.height - cy);
       if (d < near) { near = d; best = it.id; }
@@ -199,7 +214,7 @@ export class PlantTool {
   }
   place(cx, cy) {
     const p = this.surfaceAt(cx, cy), k = this.st.kind;
-    if (k != null && !this.parts[k]) { this.bar.setInfo('That one can only be painted (choose Paint).'); return; }
+    if (k != null && !this.parts[k] && !this.kindOf(k).height) { this.bar.setInfo('That one can only be painted (choose Paint).'); return; }
     if (!p || k == null) return;
     const s = +(this.sizeOf(k) * this.st.size * (0.9 + 0.2 * Math.random())).toFixed(3);   // (rounded as a reload would: what's saved is what's shown)
     const it = { id: newId(), kind: k, x: +p.x.toFixed(2), y: +Math.max(0, p.y).toFixed(2), z: +p.z.toFixed(2), rx: 0, ry: +(Math.random() * 360 - 180).toFixed(1), rz: 0, sx: s, sy: s, sz: s, clear: this.st.clearRadius };
@@ -236,7 +251,7 @@ export class PlantTool {
       const m = this.st.mode;
       if (m === 'paint' || m === 'clear') {
         const g = this.groundAt(e.clientX, e.clientY); if (!g) return;
-        this.stroke = { id: newId(), mode: m, kind: this.st.kind ?? 0, r: this.st.brush, density: this.st.density, size: this.st.size, seed: newSeed(), pts: [[+g.x.toFixed(2), +g.z.toFixed(2)]] };
+        this.stroke = { id: newId(), mode: m, kind: this.st.kind ?? 0, r: this.st.brush, density: +(this.st.density * (this.kindOf(this.st.kind ?? 0).densityScale || 1)).toPrecision(3), size: this.st.size, seed: newSeed(), pts: [[+g.x.toFixed(2), +g.z.toFixed(2)]] };
         this.painting = { id: e.pointerId, t0: performance.now(), x: e.clientX, y: e.clientY };
         this.hold(e); this.showTrail();
       } else if (m === 'place') this.down = { x: e.clientX, y: e.clientY, id: e.pointerId, place: true };
@@ -277,7 +292,7 @@ export class PlantTool {
       else if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); this.action('redo'); }
       else if ((k === 'delete' || k === 'backspace') && this.sel) { e.preventDefault(); this.removeSel(); }
       else if (k === 'escape') this.select(null);
-      else if (!e.ctrlKey && !e.metaKey && !e.altKey && this.sel && (k === '1' || k === '2' || k === '3')) { const g = ['translate', 'rotate', 'scale'][+k - 1]; this.bar.setState({ gizmo: g }); this.gizmo.mode = g; }   // (setState tells nobody: the gizmo is told here)
+      else if (!e.ctrlKey && !e.metaKey && !e.altKey && this.sel && (k === '1' || k === '2' || k === '3')) { const g = ['translate', 'rotate', 'scale'][+k - 1]; this.bar.setState({ gizmo: g }); this.gizmo.mode = g; this.limits(); }   // (setState tells nobody: the gizmo is told here)
     };
     addEventListener('pointerdown', this.onDown, { capture: true });
     addEventListener('pointermove', this.onMove, { capture: true });
@@ -302,23 +317,26 @@ export class PlantTool {
   }
 
   // the bar's plant icons: each kind drawn small, from a little above, on a transparent ground
-  makeIcons() {
-    const S = 96, rt = new THREE.WebGLRenderTarget(S, S), scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(30, 1, 0.01, 100);
+  // a kind's icon from any object (say a tree as loaded), for the kinds the page draws itself
+  iconFrom(k, object) { this.makeIcons([[k, object]]); }
+  makeIcons(only = null) {
+    const S = 96, rt = new THREE.WebGLRenderTarget(S, S), scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(30, 1, 0.01, 2000);
     scene.add(new THREE.HemisphereLight(0xffffff, 0x445533, 2.2)); const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(1, 2, 1.5); scene.add(sun);
     const px = new Uint8Array(S * S * 4), cv = document.createElement('canvas'); cv.width = cv.height = S; const g2 = cv.getContext('2d'), img = g2.createImageData(S, S);
     const oldT = this.renderer.getRenderTarget(), oldC = this.renderer.getClearColor(new THREE.Color()), oldA = this.renderer.getClearAlpha();
-    this.parts.forEach((geo, k) => {
-      const m = new THREE.Mesh(geo, this.materials[k]); scene.add(m);
-      geo.computeBoundingBox(); const b = geo.boundingBox, h = b.max.y - b.min.y, w = Math.max(b.max.x - b.min.x, b.max.z - b.min.z), d = Math.max(h, w) * 2.3;
+    (only || this.parts.map((geo, k) => geo && [k, new THREE.Mesh(geo, this.materials[k])]).filter(Boolean)).forEach(([k, m]) => {
+      const parent = m.parent, b = new THREE.Box3().setFromObject(m); scene.add(m);
+      const h = b.max.y - b.min.y, w = Math.max(b.max.x - b.min.x, b.max.z - b.min.z), d = Math.max(h, w) * 2.3, c = b.getCenter(new THREE.Vector3());
+      m.position.x -= c.x; m.position.z -= c.z; m.position.y -= b.min.y; m.updateMatrixWorld(true);
       cam.position.set(d * 0.55, h * 0.5 + d * 0.45, d * 0.7); cam.lookAt(0, h * 0.45, 0);
       this.renderer.setRenderTarget(rt); this.renderer.setClearColor(0x000000, 0); this.renderer.clear(); this.renderer.render(scene, cam);
       this.renderer.readRenderTargetPixels(rt, 0, 0, S, S, px);
       for (let y = 0; y < S; y++) img.data.set(px.subarray((S - 1 - y) * S * 4, (S - y) * S * 4), y * S * 4);   // (the picture comes out upside down)
       g2.putImageData(img, 0, 0); this.bar.setIcon(k, cv.toDataURL());
-      scene.remove(m);
+      scene.remove(m); m.position.set(0, 0, 0); if (parent) parent.add(m);
     });
     this.renderer.setRenderTarget(oldT); this.renderer.setClearColor(oldC, oldA); rt.dispose();
-    for (const kd of this.kinds) if (!this.parts[kd.id] && kd.icon) this.bar.setIcon(kd.id, kd.icon);
+    if (!only) for (const kd of this.kinds) if (!this.parts[kd.id] && kd.icon) this.bar.setIcon(kd.id, kd.icon);
   }
 
   update() {

@@ -313,7 +313,7 @@ export class PlantingHistory {
     this.planting = planting; this.max = max; this.undos = []; this.redos = [];
     if (planting && typeof planting === 'object') this.undos.push(JSON.stringify(planting));
   }
-  snapshot(planting) {                                // (pass the planting if you swapped in a different object)
+  snapshot(planting) {                                // (take it just BEFORE each change; pass the planting if you swapped in a different object)
     if (planting) this.planting = planting;
     const t = JSON.stringify(this.planting);
     if (this.undos[this.undos.length - 1] !== t) { this.undos.push(t); if (this.undos.length > this.max) this.undos.shift(); }

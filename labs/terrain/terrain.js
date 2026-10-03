@@ -16,7 +16,7 @@ import { SHAPE_DEFAULTS } from '../../src/objects/foliage.js';
 import { makeLowPine } from '../../src/objects/lowTrees/cards.js';
 import { stoneField, stoneGeometry, STONE_UNIFORMS, STONE_GLSL } from '../../src/objects/stones.js';
 import { PlantTool } from '../../src/objects/plantTool.js';
-import { paintedPlants, keepProcedural } from '../../src/objects/planting.js';
+import { paintedPlants, keepProcedural, PlantIndex } from '../../src/objects/planting.js';
 import { flyKeys } from '../../src/objects/flyKeys.js';
 import { chooseTier, saveTier, watchFrames, TIERS } from '../../src/quality.js';
 import { makeCloudSky, SKY_GLSL } from '../../src/objects/cloudSky.js';
@@ -983,7 +983,7 @@ function placeTrees() {
     ? { ...sp, soften: LEAF.soften, shape: { lump: LEAF.lump, mix: LEAF.mix, dark: LEAF.dark, tip: LEAF.tip, olive: LEAF.olive, branchDark: LEAF.branchDark, under: LEAF.under, glow: LEAF.glow } } : { ...sp }));
   FOREST.rebake = false;
   treeForest = new Forest(renderer, scene, { species, shadows: SHADOW.on, detail: FOREST.detail, grid: FOREST.grid, cell: FOREST.cell, imposterAt: FOREST.imposterAt, band: FOREST.band, ahead: FOREST.ahead, sunDir: SUN_DIR, heightAt, nearCap: 600,
-    fixed: [...trees.map(([x, , z, s]) => { const [sp, tint] = pickTree(x, z, species); return { x, z, sp, scale: s, tint: species[sp].tint === false ? undefined : tint }; }), ...townTrees(species)] });
+    fixed: [...trees.filter(([x, , z]) => keepWild('tree', x, z)).map(([x, , z, s]) => { const [sp, tint] = pickTree(x, z, species); return { x, z, sp, scale: s, tint: species[sp].tint === false ? undefined : tint }; }), ...townTrees(species), ...plantedTrees(species)] });
   treeForest.group.visible = $('treesOn').checked;
   $('landInfo').textContent = `${trees.length.toLocaleString()} trees, 4 paths`;
 }
@@ -1091,7 +1091,23 @@ loadSheet('/models/props/groundPlants.glb', 4, (parts, m) => { COVER.parts = par
 // strokes grow their plants here, with the land's, so they get the same imposters, wind and shade; where it was painted,
 // cleared or placed a plant (its clear radius), or everywhere when the land's plants are switched off, the land's own
 // plants and lawn stay out. Kind 16 is the lawn's short grass (painted as tufts, near you only, like the lawn).
-const PLANT = { tool: null, LAWN_KIND: KIND_INFO.length };
+// kinds: the 16 ground plants, the lawn (16), the four trees (17..20: ash, aspen, oak, pine, drawn by the forest), the four
+// rock shapes (21..24, drawn with the stones). Painting a kind replaces only the land's own of its sort (grass painted over a
+// wood leaves the trees); a clear stroke clears every sort.
+const PLANT = { tool: null, LAWN_KIND: KIND_INFO.length, TREE0: KIND_INFO.length + 1, ROCK0: KIND_INFO.length + 5 };
+const SORT = { plant: (k) => k <= PLANT.LAWN_KIND, tree: (k) => k >= PLANT.TREE0 && k < PLANT.ROCK0, rock: (k) => k >= PLANT.ROCK0 };
+// the planting seen by one sort: its paint strokes and every clear (the land's own plants follow the procedural switch;
+// trees and rocks always), with its own index; made once a change
+const sortParts = new WeakMap();
+function plantingFor(sort) {
+  const t = PLANT.tool, P = t.planting; let m = sortParts.get(t.index); if (!m) sortParts.set(t.index, m = {});
+  if (!m[sort]) {   // (a placed plant's clear circle keeps the meadow back, not the trees: trees and rocks heed only their own sort's)
+    const pl = { ...P, procedural: sort === 'plant' ? P.procedural : true, strokes: P.strokes.filter((st) => st.mode === 'clear' || SORT[sort](st.kind)), items: sort === 'plant' ? P.items : P.items.filter((i) => SORT[sort](i.kind)) };
+    m[sort] = { planting: pl, index: new PlantIndex(pl) };
+  }
+  return m[sort];
+}
+const keepWild = (sort, x, z) => { if (!PLANT.tool) return true; const v = plantingFor(sort); return keepProcedural(v.planting, v.index, x, z); };
 // a painted plant stays out of the water (the wet-ground kinds may stand in it), off the paved roads (where the road
 // picture lays stones) and out of the buildings, as the land's own plants do; a placed plant goes wherever it is put
 function paintable(p) {
@@ -1105,17 +1121,17 @@ function paintable(p) {
 // kept in their places with no thickness, as a clear stroke rubs out only what was painted before it): a thick lawn
 // stroke made the plants' share work out tens of thousands of tufts only to throw them away. Made once a change.
 const plantingParts = new WeakMap();
-function paintedOnly(t, lawn) {
+function paintedOnly(t, lawn) {   // (lawn: false the plants, true the lawn, or 'trees' / 'rocks')
   let v = plantingParts.get(t.index);
   if (!v) {
-    const P = t.planting, part = (lawnToo) => ({ ...P, strokes: P.strokes.map((s) => s.mode !== 'clear' && (s.kind === PLANT.LAWN_KIND) !== lawnToo ? { ...s, density: 0 } : s) });
-    v = { plants: part(false), lawn: part(true) }; plantingParts.set(t.index, v);
+    const P = t.planting, part = (want) => ({ ...P, strokes: P.strokes.map((s) => s.mode !== 'clear' && !want(s.kind) ? { ...s, density: 0 } : s) });
+    v = { plants: part((k) => k < PLANT.LAWN_KIND), lawn: part((k) => k === PLANT.LAWN_KIND), trees: part(SORT.tree), rocks: part(SORT.rock) }; plantingParts.set(t.index, v);
   }
-  return lawn ? v.lawn : v.plants;
+  return typeof lawn === 'string' ? v[lawn] : lawn ? v.lawn : v.plants;
 }
 function withPlanting(list, at) {
   const t = PLANT.tool; if (!t) return list;
-  const kept = list.filter((p) => keepProcedural(t.planting, t.index, p.x, p.z));
+  const kept = list.filter((p) => keepWild('plant', p.x, p.z));
   const painted = paintedPlants(paintedOnly(t, false), null, { at, radius: COVER.radius, far: COVER.farX, sizeOf: (k) => k < PLANT.LAWN_KIND ? COVER.size * PLANT_KINDS[k].size : 1 });
   for (const p of painted) if (p.sp < PLANT.LAWN_KIND && paintable(p)) kept.push(p);
   return kept;
@@ -1129,7 +1145,7 @@ function lawnCentre() {
 }
 function withLawnPlanting(spots) {
   const t = PLANT.tool; if (!t) return spots;
-  const kept = spots.filter((p) => keepProcedural(t.planting, t.index, p.x, p.z)), R2 = LAWN.radius * LAWN.radius, at = lawnCentre();
+  const kept = spots.filter((p) => keepWild('plant', p.x, p.z)), R2 = LAWN.radius * LAWN.radius, at = lawnCentre();
   const painted = paintedPlants(paintedOnly(t, true), null, { at, radius: LAWN.radius, far: 1, sizeOf: () => 1 });
   for (const p of painted) if (p.sp === PLANT.LAWN_KIND && (p.x - at.x) ** 2 + (p.z - at.z) ** 2 < R2 && paintable(p)) {
     const h = Math.sin(p.x * 12.9898 + p.z * 78.233) * 43758.5453, r = h - Math.floor(h);
@@ -1137,6 +1153,18 @@ function withLawnPlanting(spots) {
   }
   return kept;
 }
+// the planting's trees, for the forest: painted ones (out of water, roads and buildings) and placed ones, each its kind's tint
+function plantedTrees(species) {
+  const t = PLANT.tool; if (!t) return [];
+  const tintOf = (sp, x, z) => species[sp].tint === false ? undefined : new THREE.Color().setHSL(...pickTreeKind(x, z, [species[sp].name], { height: 0, slope: 0, wet: 0, dry: 0 }, FAMILY).hsl);
+  const out = [], spOf = (k) => species.findIndex((s) => s.name === TREE_SPECIES[k - PLANT.TREE0].name);
+  for (const p of paintedPlants(paintedOnly(t, 'trees'), null, { sizeOf: () => 1 })) { const sp = spOf(p.sp); if (sp >= 0 && SORT.tree(p.sp) && paintable(p)) out.push({ x: p.x, z: p.z, sp, scale: p.scale, yaw: p.yaw, tint: tintOf(sp, p.x, p.z) }); }
+  for (const it of t.planting.items) if (SORT.tree(it.kind)) { const sp = spOf(it.kind); if (sp >= 0) out.push({ x: it.x, z: it.z, sp, scale: it.sy, yaw: it.ry * Math.PI / 180, tint: tintOf(sp, it.x, it.z) }); }
+  return out;
+}
+// what of the planting the trees and the stones were last laid from, so a change to plants alone doesn't lay them again
+const sortSig = (sort) => { const t = PLANT.tool; return t ? JSON.stringify([t.planting.strokes.filter((s) => s.mode === 'clear' || SORT[sort](s.kind)), t.planting.items.filter((i) => SORT[sort](i.kind))]) : ''; };
+const lastSig = { tree: '', rock: '' };
 function makePlantTool() {
   if (PLANT.tool) return;
   const groups = { long: 'Tall meadow', grass: 'Meadow', shade: 'Shade', dry: 'Dry ground', wet: 'Wet ground', shrub: 'Shrubs' };   // (by where each grows: a dandelion is no grass)
@@ -1145,16 +1173,34 @@ function makePlantTool() {
   const cv = document.createElement('canvas'); cv.width = cv.height = 96; const g2 = cv.getContext('2d'); g2.lineCap = 'round';
   for (let i = 0; i < 9; i++) { const x = 30 + i * 4.5, lean = (i - 4) * 4; g2.strokeStyle = i % 3 ? '#6f9a32' : '#8fb447'; g2.lineWidth = 3; g2.beginPath(); g2.moveTo(x, 84); g2.quadraticCurveTo(x + lean * 0.3, 50, x + lean, 22 + (i % 4) * 6); g2.stroke(); }
   kinds.push({ id: PLANT.LAWN_KIND, name: 'lawn grass (short tufts, near you)', group: 'Meadow', icon: cv.toDataURL() });
+  // trees (drawn by the forest: they stand upright and size evenly; painted fifty times thinner) and rocks (the stones' shapes)
+  TREE_SPECIES.forEach((sp, i) => kinds.push({ id: PLANT.TREE0 + i, name: sp.name, group: 'Trees', height: sp.height, upright: true, densityScale: 0.02 }));
+  const shapes = STONES.shapes || (STONES.shapes = stoneShapes());
+  ['round boulder', 'flat slab', 'tall rock', 'broken rock'].forEach((n, i) => kinds.push({ id: PLANT.ROCK0 + i, name: n, group: 'Rocks', densityScale: 0.1 }));
   // the placed plants' look: the land's plant material, swaying in the same breeze (each kind its own height)
   const materials = COVER.parts.map((g, k) => { g.computeBoundingBox(); const m = COVER.material.clone(); m.onBeforeCompile = COVER.material.onBeforeCompile; m.customProgramCacheKey = COVER.material.customProgramCacheKey; return swayMaterial(m, Math.max(0.05, g.boundingBox.max.y), KIND_INFO[k].lit ? 0.45 : 1, '-placed'); });
+  const parts = [...COVER.parts], mats = [...materials];
+  shapes.forEach((g, i) => { parts[PLANT.ROCK0 + i] = g; mats[PLANT.ROCK0 + i] = landShaded(new THREE.MeshStandardMaterial({ color: ROCK_TEX ? 0xffffff : 0x8d8a84, roughness: 0.92, flatShading: true }), ROCK_TEX ? ROCK_TEX[i % 2] : null); });
   let relay = 0;
   PLANT.tool = new PlantTool({ renderer, scene, camera, controls, dom: renderer.domElement, heightAt, groundAt, shadows: SHADOW.on,
-    surfaces: () => TOWN.village ? [TOWN.village.group] : [], parts: COVER.parts, materials, kinds,
-    sizeOf: (k) => COVER.size * PLANT_KINDS[k].size,
+    surfaces: () => TOWN.village ? [TOWN.village.group] : [], parts, materials: mats, kinds,
+    sizeOf: (k) => SORT.tree(k) ? 1 : SORT.rock(k) ? STONES.size * 1.2 : COVER.size * PLANT_KINDS[k].size,
     changed: (p) => { U.coverFar.value = p.procedural && $('coverFar').checked ? 1 : 0;   // (a blank palette: no far ground painted with the land's plants either)
-      clearTimeout(relay); relay = setTimeout(() => { COVER.job = moveCover(COVER.at.clone()); }, 120); },   // (the plants laid again round where they are, a few ms a frame)
+      clearTimeout(relay); relay = setTimeout(() => { COVER.job = moveCover(COVER.at.clone());   // (the plants laid again round where they are, a few ms a frame)
+        const st = sortSig('tree'), sr = sortSig('rock');                // (the trees and the stones only when their part changed)
+        if (st !== lastSig.tree) { lastSig.tree = st; placeTrees(); }
+        if (sr !== lastSig.rock) { lastSig.rock = sr; placeStones(); } }, 120); },
     opened: (on) => { document.body.classList.toggle('planting', on); if (on && TOWN.editor && TOWN.editor.on) { $('tEdit').checked = false; TOWN.editor.setOn(false); } } });   // (one tool at a time; on a phone the settings panel steps aside)
   $('tEdit').addEventListener('change', (e) => { if (e.target.checked && PLANT.tool) PLANT.tool.setOpen(false); });
+  lastSig.tree = sortSig('tree'); lastSig.rock = sortSig('rock');
+  if (lastSig.tree.length > 8) placeTrees(); if (lastSig.rock.length > 8) placeStones();   // (a saved planting with trees or rocks in it: laid now)
+  treeIcons();
+}
+// the trees' icons, drawn from the forest's own trees once they are in (a copy each: the forest keeps its own)
+function treeIcons() {
+  const go = () => { if (!treeForest || !treeForest.species.every((s) => s.root)) return setTimeout(go, 1000);
+    TREE_SPECIES.forEach((sp, i) => { const s = treeForest.species.find((x) => x.name === sp.name); if (s && s.root) PLANT.tool.iconFrom(PLANT.TREE0 + i, s.root.clone()); }); };
+  go();
 }
 let coverForest = null;
 // far plants blend toward the grass's own colour (its picture's average, tinted as the ground is),
@@ -1217,6 +1263,7 @@ function placeStones() {
     const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
     if (POND[k]) continue;                                                    // none out in the lakes; streams are fine (stones in a creek)
     if (TOWN.block && TOWN.block[k] > 0.1) continue;                         // none in the town
+    if (!keepWild('rock', x, z)) continue;                                     // (cleared, or painted with rocks by hand)
     const pi = Math.floor((x + SIZE / 2) / SIZE * MAPS.P), pj = Math.floor((z + SIZE / 2) / SIZE * MAPS.P); if (MAPS.path[(pj * MAPS.P + pi) * 4] > 60) continue;
     const creek = MAPS.shore ? Math.min(1, MAPS.shore[k] * 2.5) : 0;             // along streams and shores the soil is washed off the stones
     const sl = slopeAt(i, j), want = 0.14 + 1.6 * creek + 0.8 * THREE.MathUtils.smoothstep(sl, 0.45, 0.9) + 0.9 * Math.max(0, scree[k] - MAPS.steep[k]) * 2;
@@ -1225,6 +1272,11 @@ function placeStones() {
     const u = r(t, 49.9), size = STONES.size * (0.22 + 1.7 * u * u * u) * (1 + 0.6 * Math.max(0, scree[k] - MAPS.steep[k])) * (1 + STONES.seen * 0.7 * (vis - 0.4));
     per[Math.floor(r(t, 51.7) * 4) % 4].push([x, heightAt(x, z) - size * 0.22, z, size, r(t, 53.3) * 6.283, r(t, 57.1)]);
     placed++;
+  }
+  let painted = 0;
+  if (PLANT.tool) for (const p of paintedPlants(paintedOnly(PLANT.tool, 'rocks'), null, { sizeOf: () => STONES.size * 1.2 })) {   // the planting's painted rocks
+    if (!SORT.rock(p.sp) || !paintable(p)) continue;
+    per[(p.sp - PLANT.ROCK0) % 4].push([p.x, heightAt(p.x, p.z) - p.scale * 0.22, p.z, p.scale, p.yaw, r(p.x, p.z)]); painted++;
   }
   const base = new THREE.Color(0x8d8a84), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), c = new THREE.Color();
   per.forEach((list, v) => {
@@ -1237,7 +1289,7 @@ function placeStones() {
     });
     mesh.frustumCulled = false; mesh.castShadow = mesh.receiveShadow = SHADOW.on; scene.add(mesh); STONES.meshes.push(mesh);
   });
-  if ($('stoneInfo')) $('stoneInfo').textContent = `${placed.toLocaleString()} stones`;
+  if ($('stoneInfo')) $('stoneInfo').textContent = `${placed.toLocaleString()} stones` + (painted ? ` and ${painted.toLocaleString()} painted by hand` : '');
 }
 const GROW = { ...GROW_DEFAULTS }, PLANT_KINDS = defaultKinds();
 // the plants' circle follows where you look: once its centre (a little ahead of the camera, on the

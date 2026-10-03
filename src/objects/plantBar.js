@@ -6,7 +6,8 @@
 //   handles the chosen plant shows, for Select and Place one); only the sliders that matter for the mode; Procedural
 //   plants (off: start from bare ground); Undo / Redo, Copy / Paste, Delete (Select and Place one), Start over, Hide.
 //
-//   const bar = new PlantBar({ kinds: [{ id, name, group }], onChange(state, key) {}, onAction(name) {}, container })
+//   const bar = new PlantBar({ kinds: [{ id, name, group, densityScale }], onChange(state, key) {}, onAction(name) {}, container })
+//     (densityScale: that kind's thickness is the slider's times this, e.g. trees 0.02; the readout shows the result)
 //   bar.state                      { open, mode, kind, gizmo, brush, density, size, clearRadius, procedural }: read it, change it with setState
 //   bar.setIcon(id, url)           a kind's picture (any image url, data: and blob: too; '' goes back to its letters)
 //   bar.setInfo(text)              a short line of news just over the plant row ('' hides it)
@@ -231,7 +232,10 @@ export class PlantBar {
 
   // ── the numbers on the sliders ─────────────────────────────────────────────────────────────────────────────────
   slider(key) { return SLIDERS.find((s) => s[0] === key); }
-  fmt(key, v) { return this.slider(key)[6](v); }
+  fmt(key, v) {                                       // (a kind with densityScale, say trees, paints that much thinner: the thickness shows what it paints)
+    const k = key === 'density' && this.kinds.find((x) => x.id === this.state.kind);
+    return this.slider(key)[6](k && k.densityScale ? +(v * k.densityScale).toPrecision(2) : v);
+  }
   toSlider(key, v) { const [, , , lo, hi, step] = this.slider(key); return step ? v : Math.round(Math.log(v / lo) / Math.log(hi / lo) * STEPS); }
   fromSlider(key, s) { const [, , , lo, hi, step] = this.slider(key); return step ? s : +(lo * Math.pow(hi / lo, s / STEPS)).toPrecision(2); }   // (two figures: 0.05, 1.5, 20)
 
