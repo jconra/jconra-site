@@ -14,9 +14,12 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Forest, FOREST_SPECIES } from '../../src/objects/forest.js';
 import { SHAPE_DEFAULTS } from '../../src/objects/foliage.js';
 import { stoneField, stoneGeometry, STONE_UNIFORMS, STONE_GLSL } from '../../src/objects/stones.js';
+import { PlantTool } from '../../src/objects/plantTool.js';
+import { paintedPlants, keepProcedural } from '../../src/objects/planting.js';
+import { flyKeys } from '../../src/objects/flyKeys.js';
 import { chooseTier, saveTier, watchFrames, TIERS } from '../../src/quality.js';
 import { makeCloudSky, SKY_GLSL } from '../../src/objects/cloudSky.js';
-import { WIND, tickWind } from '../../src/objects/wind.js';
+import { WIND, tickWind, swayMaterial } from '../../src/objects/wind.js';
 import { Village, levelPads, blockGrid, paintRoads, normalise as normaliseTown } from '../../src/objects/village.js';
 import { VillageEditor, savedLayout as savedTown } from '../../src/objects/villageEditor.js';
 // THE TOWN's layout: the one saved in this browser, else the first town (models/town/layout.json)
@@ -1058,7 +1061,7 @@ function bakeCoverMap() {
   coverTex.needsUpdate = true;
 }
 function placeLawn() {
-  const spots = LAWN.radius > 0 ? lawnSpots({ ground: coverGround, at: COVER.at, radius: LAWN.radius, density: LAWN.density, grow: GROW }) : [];
+  const spots = withLawnPlanting(LAWN.radius > 0 ? lawnSpots({ ground: coverGround, at: COVER.at, radius: LAWN.radius, density: LAWN.density, grow: GROW }) : [], COVER.at);
   for (const t of spots) t.y = heightAt(t.x, t.z);
   LAWN.count = lawn.set(spots);
   const a = U.layLush.value && U.layLush.value.userData.avg, base = (a ? a.clone() : new THREE.Color(0.25, 0.33, 0.1)).multiply(U.lushTint.value);
@@ -1067,7 +1070,47 @@ function placeLawn() {
 function plantSpecies(parts, material) {
   return parts.map((g, k) => { const root = new THREE.Group(); root.add(new THREE.Mesh(g, material)); return { name: 'ground ' + KIND_INFO[k].name, root, height: KIND_INFO[k].height, weight: 1, grid: 8, cell: 128, upNormals: !KIND_INFO[k].lit, soften: KIND_INFO[k].lit ? LIT_SOFTEN : 0, sway: KIND_INFO[k].lit ? 0.45 : 1, tint: false }; });   // big plants sway less
 }
-loadSheet('/models/props/groundPlants.glb', 4, (parts, m) => { COVER.parts = parts; COVER.material = m; COVER.plantSp = plantSpecies(parts, m); placeCover(); }, [0.5, 1.0], (k) => !!KIND_INFO[k].lit);
+loadSheet('/models/props/groundPlants.glb', 4, (parts, m) => { COVER.parts = parts; COVER.material = m; COVER.plantSp = plantSpecies(parts, m); makePlantTool(); placeCover(); }, [0.5, 1.0], (k) => !!KIND_INFO[k].lit);
+// HAND PLANTING (src/objects/plantTool.js, planting.js): Jacob's own planting over (or instead of) the land's. Painted
+// strokes grow their plants here, with the land's, so they get the same imposters, wind and shade; where he painted,
+// cleared or placed a plant (its clear radius), or everywhere when the land's plants are switched off, the land's own
+// plants and lawn stay out. Kind 16 is the lawn's short grass (painted as tufts, near you only, like the lawn).
+const PLANT = { tool: null, LAWN_KIND: KIND_INFO.length };
+function withPlanting(list, at) {
+  const t = PLANT.tool; if (!t) return list;
+  const kept = list.filter((p) => keepProcedural(t.planting, t.index, p.x, p.z));
+  const painted = paintedPlants(t.planting, t.index, { at, radius: COVER.radius, far: COVER.farX, sizeOf: (k) => k < PLANT.LAWN_KIND ? COVER.size * PLANT_KINDS[k].size : 1 });
+  for (const p of painted) if (p.sp < PLANT.LAWN_KIND) kept.push(p);
+  return kept;
+}
+function withLawnPlanting(spots, at) {
+  const t = PLANT.tool; if (!t) return spots;
+  const kept = spots.filter((p) => keepProcedural(t.planting, t.index, p.x, p.z)), R2 = LAWN.radius * LAWN.radius;
+  const painted = paintedPlants(t.planting, t.index, { at, radius: LAWN.radius, far: 1, sizeOf: () => 1 });
+  for (const p of painted) if (p.sp === PLANT.LAWN_KIND && (p.x - at.x) ** 2 + (p.z - at.z) ** 2 < R2) {
+    const h = Math.sin(p.x * 12.9898 + p.z * 78.233) * 43758.5453, r = h - Math.floor(h);
+    kept.push({ x: p.x, z: p.z, turn: p.yaw, size: 0.7 + 0.7 * Math.min(1, p.scale / 1.25), yellow: r < 0.2 ? 0.35 : 0, light: (r - 0.5) * 0.25 });
+  }
+  return kept;
+}
+function makePlantTool() {
+  if (PLANT.tool) return;
+  const groups = { long: 'Grasses', grass: 'Grasses', shade: 'Shade', dry: 'Dry ground', wet: 'Wet ground', shrub: 'Shrubs' };
+  const kinds = KIND_INFO.map((K, k) => ({ id: k, name: K.name, group: groups[K.hab] || 'Plants' }));
+  // the lawn's tuft, drawn: a few curved green blades
+  const cv = document.createElement('canvas'); cv.width = cv.height = 96; const g2 = cv.getContext('2d'); g2.lineCap = 'round';
+  for (let i = 0; i < 9; i++) { const x = 30 + i * 4.5, lean = (i - 4) * 4; g2.strokeStyle = i % 3 ? '#6f9a32' : '#8fb447'; g2.lineWidth = 3; g2.beginPath(); g2.moveTo(x, 84); g2.quadraticCurveTo(x + lean * 0.3, 50, x + lean, 22 + (i % 4) * 6); g2.stroke(); }
+  kinds.push({ id: PLANT.LAWN_KIND, name: 'lawn grass (short tufts, near you)', group: 'Grasses', icon: cv.toDataURL() });
+  // the placed plants' look: the land's plant material, swaying in the same breeze (each kind its own height)
+  const materials = COVER.parts.map((g, k) => { g.computeBoundingBox(); const m = COVER.material.clone(); m.onBeforeCompile = COVER.material.onBeforeCompile; m.customProgramCacheKey = COVER.material.customProgramCacheKey; return swayMaterial(m, Math.max(0.05, g.boundingBox.max.y), KIND_INFO[k].lit ? 0.45 : 1, '-placed' + k); });
+  let relay = 0;
+  PLANT.tool = new PlantTool({ renderer, scene, camera, controls, dom: renderer.domElement, heightAt, groundAt, shadows: SHADOW.on,
+    surfaces: () => TOWN.village ? [TOWN.village.group] : [], parts: COVER.parts, materials, kinds,
+    sizeOf: (k) => COVER.size * PLANT_KINDS[k].size,
+    changed: () => { clearTimeout(relay); relay = setTimeout(() => { COVER.job = moveCover(COVER.at.clone()); }, 120); },   // (the plants laid again round where they are, a few ms a frame)
+    opened: (on) => { document.body.classList.toggle('planting', on); if (on && TOWN.editor && TOWN.editor.on) { $('tEdit').checked = false; TOWN.editor.setOn(false); } } });   // (one tool at a time; on a phone the settings panel steps aside)
+  $('tEdit').addEventListener('change', (e) => { if (e.target.checked && PLANT.tool) PLANT.tool.bar.setState({ open: false }); });
+}
 let coverForest = null;
 // far plants blend toward the grass's own colour (its picture's average, tinted as the ground is),
 // darkened a little: bushes are darker than the grass they stand in
@@ -1169,9 +1212,9 @@ function followCover() {
 // then two quick frames to hand them over (plants, then lawn)
 function* moveCover(at) {
   const B = 6;
-  const list = yield* growPlantsSteps({ ground: coverGround, cache: COVER.cache, at, radius: COVER.radius, far: COVER.farX, count: COVER.on ? COVER.count : 0, size: COVER.size, kinds: PLANT_KINDS, grow: GROW, budget: B });
+  const list = withPlanting(yield* growPlantsSteps({ ground: coverGround, cache: COVER.cache, at, radius: COVER.radius, far: COVER.farX, count: COVER.on ? COVER.count : 0, size: COVER.size, kinds: PLANT_KINDS, grow: GROW, budget: B }), at);
   const laid = yield* coverForest.layFixedSteps(list, B);
-  const spots = LAWN.radius > 0 ? yield* lawnSpotsSteps({ ground: coverGround, at, radius: LAWN.radius, density: LAWN.density, grow: GROW, budget: B }) : [];
+  const spots = withLawnPlanting(LAWN.radius > 0 ? yield* lawnSpotsSteps({ ground: coverGround, at, radius: LAWN.radius, density: LAWN.density, grow: GROW, budget: B }) : [], at);
   for (let i = 0; i < spots.length; i++) { spots[i].y = heightAt(spots[i].x, spots[i].z); if ((i & 2047) === 0) yield; }
   yield;
   coverForest.setFixed(list, laid); U.coverR.value = COVER.radius * COVER.farX; U.coverAt.value.copy(at);
@@ -1189,7 +1232,7 @@ function placeCover(ready = null) {
 
   // where they go: src/objects/growth.js (shared with the Growth Lab)
   if (!ready) COVER.job = null;                       // laid now: any job in flight is stale
-  const fixed = ready || growPlants({ ground, cache: COVER.cache, at: COVER.at, radius: COVER.radius, far: COVER.farX, count: COVER.on ? COVER.count : 0, size: COVER.size, kinds: PLANT_KINDS, grow: GROW }), placed = fixed.length;
+  const fixed = ready || withPlanting(growPlants({ ground, cache: COVER.cache, at: COVER.at, radius: COVER.radius, far: COVER.farX, count: COVER.on ? COVER.count : 0, size: COVER.size, kinds: PLANT_KINDS, grow: GROW }), COVER.at), placed = fixed.length;
   // one Forest for all of them: meshes out to COVER.near, imposters beyond, crossfaded
   // the drawer is kept and handed the new list (a rebuild cost ~0.1 s a move); only rebuilt when its range changed
   if (coverForest && coverForest.ready && coverForest.imposterAt === COVER.near) {
@@ -1613,6 +1656,8 @@ $('qTier').addEventListener('change', e => { const v = e.target.value; if (v ===
 const watch = watchFrames(QUAL, (c) => { applyTier(c.tier); showTier(); });
 showTier();
 const clock = new THREE.Clock(); let fps = 60, shown = 0; renderer.info.autoReset = false;   // the readout counts the scene, not the atlas viewer
+// FLYING: W A S D across, Space up, C down (src/objects/flyKeys.js), faster the higher you are
+const fly = flyKeys({ camera, controls, heightAt, speed: 10 });
 renderer.setAnimationLoop(() => {
   const dt = clock.getDelta();
   if (dt > 0) fps += (1 / dt - fps) * Math.min(1, dt * 2);
@@ -1623,7 +1668,9 @@ renderer.setAnimationLoop(() => {
     f.landU.landShade.value = U.shadeMap.value; f.landU.landShadeK.value.set(U.hillShade.value, U.aoShade.value, U.treeShade.value * 0.6, U.shadeMap.value ? 1 : 0);   // the land's baked shade, on the plants too
     f.update(camera, controls.target, camera.position, dt);
   }
+  fly.update(dt);
+  if (PLANT.tool) PLANT.tool.update();
   U.eyePos.value.copy(camera.position);                              // (the paving's 3D stones sink past PAVE.lod from here)
   renderer.render(scene, camera); drawAtlas();
 });
-if (Q.has('probe')) Object.assign(window, { __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest] });
+if (Q.has('probe')) Object.assign(window, { __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest], __plant: () => PLANT });
