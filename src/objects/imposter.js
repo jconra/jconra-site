@@ -130,7 +130,7 @@ const VERTEX = `
         vec3 off = dTree - dc;                                        // how far the true direction is from the baked one
         return vec2(dot(off, rightTree), dot(off, upTree));
       }
-      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius; varying vec4 vShadowToCam; varying vec2 vLand;
+      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius; varying vec4 vShadowToCam; varying vec4 vShadowToSun; uniform vec3 sunDir; varying vec2 vLand;
       // direction (in the tree's frame) -> the square
       vec2 octEncode(vec3 d) {
         float s = abs(d.x) + abs(d.y) + abs(d.z); float x = d.x / s, z = d.z / s;
@@ -182,12 +182,13 @@ const VERTEX = `
         #include <shadowmap_vertex>
         #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
         vShadowToCam = directionalShadowMatrix[0] * vec4(toCam, 0.0);      // so the shadow can be looked up at the surface's depth, not the card's
+        vShadowToSun = directionalShadowMatrix[0] * vec4(normalize(sunDir), 0.0);
         #endif
       }`;
 // the atlas lookup shared by both fragment stages: colour (straight alpha = coverage) and normal + depth
 const LOOKUP = `
       uniform sampler2D atlas; uniform sampler2D atlasN; uniform float grid; uniform float blend;
-      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius; varying vec4 vShadowToCam; varying vec2 vLand;
+      varying vec2 vQuad; varying vec2 vFrame; varying vec3 vTint; varying float vFade; varying float vYaw; varying vec3 vViewPos; varying vec3 vToCamView; varying float vRadius; varying vec4 vShadowToCam; varying vec4 vShadowToSun; varying vec2 vLand;
       varying vec2 vC0; varying vec2 vC1; varying vec2 vC2; varying vec3 vW; varying vec2 vP0; varying vec2 vP1; varying vec2 vP2;
       uniform mat4 projectionMatrix; uniform float useDepth; uniform float parallax; uniform float halfWc; uniform float halfHc;
       vec4 cellSampleAt(sampler2D t, vec2 cell, vec2 q) { vec2 uv = (cell + clamp(q, 0.002, 0.998)) / grid; return texture2D(t, uv); }
@@ -276,7 +277,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
         {
           float shadow = 1.0;
           #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
-          if (useShadow > 0.5) shadow = getShadow(directionalShadowMap[0], directionalLightShadows[0].shadowMapSize, directionalLightShadows[0].shadowBias, directionalLightShadows[0].shadowRadius, vDirectionalShadowCoord[0] + vShadowToCam * (useDepth > 0.5 ? off : 0.0));
+          if (useShadow > 0.5) shadow = getShadow(directionalShadowMap[0], directionalLightShadows[0].shadowMapSize, directionalLightShadows[0].shadowBias, directionalLightShadows[0].shadowRadius, vDirectionalShadowCoord[0] + vShadowToCam * (useDepth > 0.5 ? off : 0.0) + vShadowToSun * vRadius * 0.25);   // (a fifth of the way toward the sun: the card's guess at its own surface is a metre or so out, which left its lower half in its own shadow; neighbours' shadows still fall)
           #endif
           irradiance += directionalLights[0].color * max(0.0, dot(nv, directionalLights[0].direction)) * shadow;
         }
