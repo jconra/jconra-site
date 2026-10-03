@@ -32,7 +32,7 @@ const TOWN = { layout: normaliseTown(savedTown() || TOWN_DEFAULT), Hpre: null, b
 // near the camera real low 3D stones on top (TIER_SET paving3D), which sink into the ground past `lod` metres where
 // the painted ones take over. Jacob's settings (2026-10-02); `build` is which Stone Lab build the 3D stones use.
 const PAVE = { build: 'C', size: 0.92, jitter: 0.47, variety: 0.25, gap: 0.018, seed: 1, base: '#8d8a83', shade: 0.18, hue: 0.26, grain: 0.43, grainSize: 0.6, speck: 0.12,
-  soil: '#3a3126', moss: 0.12, edgeDark: 1, edgeWidth: 0.05, pRound: 0.06, lod: 80, bevelDark: 0.55, edgeSink: 1,   // (the grout is the footpaths' own dirt now; edgeSink: how far the stones at the paving's ends go down into it)
+  soil: '#3a3126', moss: 0.12, edgeDark: 1, edgeWidth: 0.05, pRound: 0.06, lod: 80, bevelDark: 0.55, edgeSink: 1, edgeBand: 0.6,   // (the grout is the footpaths' own dirt; edgeSink: how far the stones where a footpath leaves the paving go down into it; edgeBand: how wide the dirt hugs the stones (m))
   builds: { A: { name: 'Painted only', painted: true }, B: { name: 'Slab', top: 4, per: 1, round: 0, bevel: 0.06, height: 0.03, dome: 0, soft: true, uneven: 0.3 },
     C: { name: 'Cut corners', top: 0, per: 1, round: 0.5, bevel: 0.035, height: 0.12, dome: 0.05, soft: true, uneven: 0.69 },
     D: { name: 'Pillow', top: 5, per: 1, round: 0, bevel: 0.08, height: 0.025, dome: 0.015, soft: true, uneven: 0.3 },
@@ -578,8 +578,16 @@ function buildLand() {
   const P = 2048, k = P / SIZE; pathCanvas = pathCanvas || document.createElement('canvas'); pathCanvas.width = pathCanvas.height = P;
   // (read back below: kept in ordinary memory, not on the graphics card, where a rebuild's blur and read-back stalled for many seconds)
   const g2 = pathCanvas.getContext('2d', { willReadFrequently: true }); g2.fillStyle = '#000'; g2.fillRect(0, 0, P, P); g2.lineCap = g2.lineJoin = 'round';
+  // a path's stretches along the town's paving aren't drawn: the route keeps to a road (its cheapest way) but the land's
+  // cells are ~3 m, so drawn there it stuck out one side of the stones as a strip of dirt; drawn only off the paving, a
+  // path shows where it leaves a road, its end reaching just under the stones
+  const rc = TOWN.canvas.width === P ? TOWN.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, P, P).data : null;
+  const onPaving = ([x, z]) => { if (!rc) return false; const i = Math.floor((x + SIZE / 2) * k), j = Math.floor((z + SIZE / 2) * k); if (i < 0 || j < 0 || i >= P || j >= P) return false; const o = (j * P + i) * 4; return rc[o + 3] / 255 * Math.max(rc[o], rc[o + 1]) / 255 > 0.5; };
+  const runs = []; for (const pts of paths) { let run = []; pts.forEach((pt, q) => { const on = onPaving(pt);
+    if (!on) { if (!run.length && q > 0) run.push(pts[q - 1]); run.push(pt); } else if (run.length) { run.push(pt); runs.push(run); run = []; } });
+    if (run.length > 1) runs.push(run); }
   const stroke = (w, colour, blurPx) => { g2.filter = `blur(${blurPx}px)`; g2.strokeStyle = colour; g2.lineWidth = w * k;
-    for (const pts of paths) { g2.beginPath(); pts.forEach(([x, z], q) => q ? g2.lineTo((x + SIZE / 2) * k, (z + SIZE / 2) * k) : g2.moveTo((x + SIZE / 2) * k, (z + SIZE / 2) * k)); g2.stroke(); } };
+    for (const pts of runs) { g2.beginPath(); pts.forEach(([x, z], q) => q ? g2.lineTo((x + SIZE / 2) * k, (z + SIZE / 2) * k) : g2.moveTo((x + SIZE / 2) * k, (z + SIZE / 2) * k)); g2.stroke(); } };
   g2.globalCompositeOperation = 'lighter'; stroke(LAND.pathWidth * 3.2, 'rgb(0,90,0)', 3); stroke(LAND.pathWidth, 'rgb(255,0,0)', 1.2); g2.filter = 'none'; g2.globalCompositeOperation = 'source-over';
   // pack: R wet, G dry, B canopy, A part shade (and steep into the part-shade texture's spare... kept in the shader from the normal)
   const data = new Uint8Array(N * N * 4);
@@ -638,7 +646,7 @@ const U = {
   pathRoad: { value: null },
   // the paving's stones (PAVE): their layout (stoneCells: one pixel per grid square, see stones.js) and look
   ...STONE_UNIFORMS(), stoneBase: { value: new THREE.Color() }, stoneShade: { value: 0 }, stoneHue: { value: 0 }, grainAmt: { value: 0 }, grainSize: { value: 1 }, speckAmt: { value: 0 },
-  gapCol: { value: new THREE.Color() }, mossAmt: { value: 0 }, edgeDark: { value: 0 }, edgeWidth: { value: 0.05 }, cornerRound: { value: 0 }, gapW: { value: 0 }, paveLod: { value: 80 }, pave3D: { value: 0 },
+  gapCol: { value: new THREE.Color() }, edgeBand: { value: 0.3 }, mossAmt: { value: 0 }, edgeDark: { value: 0 }, edgeWidth: { value: 0.05 }, cornerRound: { value: 0 }, gapW: { value: 0 }, paveLod: { value: 80 }, pave3D: { value: 0 },
   eyePos: { value: new THREE.Vector3() }, bevelDark: { value: 0 },
   shadeMap: { value: null }, shadowRange: { value: 0 }, shadowAt: { value: new THREE.Vector3() }, hillShade: { value: 1 }, aoShade: { value: 1 }, treeShade: { value: 0.9 },
   avgGround: { value: new THREE.Color(0x6b8a3a) }, avgDry: { value: new THREE.Color(0x8a8a4a) }, avgLush: { value: new THREE.Color(0x5b7a2a) }, avgForest: { value: new THREE.Color(0x4a4a2a) }, avgWet: { value: new THREE.Color(0x4a3a2a) }, avgPath: { value: new THREE.Color(0x6a5238) }, avgSteep: { value: new THREE.Color(0x7a7a7a) }, avgShore: { value: new THREE.Color(0x77706a) }, shoreStr: { value: 1 }, layShore: { value: null },
@@ -658,7 +666,7 @@ mat.onBeforeCompile = (sh) => {
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar, stampPatch, stampPatchSize, stampClump; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
     uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 coverAt; uniform sampler2D coverMap; uniform vec3 lushTint, dampTint, slopeTint;
     uniform sampler2D waterMap; uniform float waterOn, wFroth, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow;
-    float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gShadowFade = 0.0, gRoad = 0.0; uniform vec3 gapCol; uniform float mossAmt, edgeDark, edgeWidth, cornerRound, gapW, paveLod, pave3D; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathRoad; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange; uniform vec3 shadowAt;
+    float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gShadowFade = 0.0, gRoad = 0.0; uniform vec3 gapCol; uniform float mossAmt, edgeDark, edgeWidth, cornerRound, gapW, paveLod, pave3D, edgeBand; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathRoad; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange; uniform vec3 shadowAt;
     uniform vec3 avgGround, avgDry, avgLush, avgForest, avgWet, avgPath, avgSteep, avgShore; uniform float shoreStr; uniform sampler2D layShore; uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layPath; uniform sampler2D laySteep;
     varying vec3 vWN;
     varying vec3 vW;
@@ -843,21 +851,29 @@ mat.onBeforeCompile = (sh) => {
       // each its own shade and grain, dark soil and moss in the gaps; a stone near enough to stand in 3D leaves
       // its spot as gap (the 3D stone covers it)
       { float rn = (vn(vW.xz / 0.8) - 0.5) * 0.35;
-        gRoad = smoothstep(0.3, 0.65, max(pr.b, pr.a) + rn);
-        if (gRoad > 0.001) {
+        float roadAny = max(pr.b, pr.a);
+        gRoad = smoothstep(0.3, 0.65, roadAny + rn);
+        if (roadAny > 0.004) {   // (a little past the road picture's own edge: the dirt edging follows the stones, not that line)
           vec3 gapc = mix(pathC * 0.92, vec3(0.05, 0.08, 0.025), mossAmt * (0.4 + 0.6 * vn(vW.xz * 2.5)));   // (the grout and the paving's edges: the footpaths' own dirt)
           #ifdef LITE
-          vec3 paved = mix(gapc, stoneBase * 0.95, 0.85);
+          vec3 paved = mix(gapc, stoneBase * 0.95, 0.85); float cover = gRoad;
           #else
-          vec3 paved = gapc; vec4 sd; vec2 sc; vec4 st = stoneAt(vW.xz, sd, sc);
-          if (sd.r > 0.75) {
-            vec2 q = vec2(cornerRound) - (st.xy - gapW * 0.5);
+          vec3 paved = gapc; float cover = gRoad; vec4 sd; vec2 sc; vec4 st = stoneAt(vW.xz, sd, sc);
+          if (sd.r > 0.55) {
+            cover = 1.0;                                                // (a stone is whole where it is: no fading at the road picture's edge)
+            // a stone sunk into the dirt (R under 1: where the paving ends and a footpath leaves it) shows less of itself, as its 3D one does
+            float sunkK = clamp((1.0 - sd.r) * 2.55, 0.0, 1.0);
+            vec2 q = vec2(cornerRound) - (st.xy - gapW * 0.5 - sunkK * stoneGrid.z * 0.3);
             float e = cornerRound - (length(max(q, 0.0)) + min(max(q.x, q.y), 0.0)), dist = length(vW - cameraPosition);
             float on = smoothstep(-1.0, 1.0, e / (0.002 + dist * 0.0012)) * (1.0 - pave3D * (1.0 - smoothstep(0.15, 0.45, smoothstep(paveLod * 0.8, paveLod, dist))));
-            paved = mix(gapc, stoneColour(vW.xz, sd, sc, smoothstep(6.0, 30.0, dist)) * (1.0 - edgeDark * (1.0 - smoothstep(0.0, edgeWidth, e))), on);
+            paved = mix(gapc, stoneColour(vW.xz, sd, sc, smoothstep(6.0, 30.0, dist)) * (1.0 - edgeDark * (1.0 - smoothstep(0.0, edgeWidth, e))) * (1.0 - 0.2 * sunkK), on);
+          } else if (sd.r < 0.25) {
+            // past the stones: the dirt only in a ragged band hugging them (as wide each side), then the ground as it was
+            float band = edgeBand * (0.35 + vn(vW.xz * 0.8) * 0.9 + vn(vW.xz * 2.7) * 0.35);   // (patchy: wider and narrower as it goes, the same either side)
+            cover = 1.0 - smoothstep(band * 0.45, band, stoneBorder(vW.xz));
           }
           #endif
-          g = mix(g, paved, gRoad * (1.0 - rock));
+          g = mix(g, paved, cover * (1.0 - rock));
         }
       }
       // the maps themselves, in false colour
@@ -1370,7 +1386,7 @@ paveDepth.customProgramCacheKey = () => 'town-paving-depth-1';
 function applyPave() {
   U.stoneBase.value.set(PAVE.base); U.stoneShade.value = PAVE.shade; U.stoneHue.value = PAVE.hue; U.grainAmt.value = PAVE.grain; U.grainSize.value = PAVE.grainSize; U.speckAmt.value = PAVE.speck;
   U.gapCol.value.set(PAVE.soil); U.mossAmt.value = PAVE.moss; U.edgeDark.value = PAVE.edgeDark; U.edgeWidth.value = PAVE.edgeWidth; U.cornerRound.value = PAVE.pRound; U.gapW.value = PAVE.gap;
-  U.paveLod.value = PAVE.lod; U.bevelDark.value = PAVE.bevelDark;
+  U.paveLod.value = PAVE.lod; U.bevelDark.value = PAVE.bevelDark; U.edgeBand.value = PAVE.edgeBand;
 }
 applyPave();
 function buildPaving() {
@@ -1387,21 +1403,23 @@ function buildPaving() {
     x0: x0 * k - SIZE / 2 - 3, z0: y0 * k - SIZE / 2 - 3, width: Math.max(x1 - x0, y1 - y0) * k + 6, inside }, U);
   const shape = PAVE.builds[PAVE.build];
   U.pave3D.value = TS.paving3D && shape && !shape.painted ? 1 : 0;
+  // where a footpath leaves the paving the stones go down into its dirt: the stones near the paving's edge (by how much of
+  // the ground round each, 1.2 and 2.4 m out, is paved) with the path picture out past that edge (a path drawn only off the
+  // paving, so along the sides there is none). Kept in the stone's pixel too (R under 1), so its painted copy matches
+  const top = shape && !shape.painted ? shape.height + (shape.dome || 0) + 0.01 : 0.1, PP = MAPS.P || 0, sinkOf = new Map();
+  const pathAt = (x, z) => { if (!PP) return 0; const i = Math.floor((x + SIZE / 2) / SIZE * PP), j = Math.floor((z + SIZE / 2) / SIZE * PP); return i < 0 || j < 0 || i >= PP || j >= PP ? 0 : MAPS.path[(j * PP + i) * 4] / 255; };
+  for (const st of field.stones) {
+    let inside = 0, n = 0, path = 0;
+    for (let a = 0; a < 8; a++) { const c = Math.cos(a * Math.PI / 4), s2 = Math.sin(a * Math.PI / 4);
+      for (const r of [1.2, 2.4]) { n++; if (inside_(st.x + c * r, st.z + s2 * r)) inside++; }
+      for (const r of [1.2, 2.4, 3.6]) { const x = st.x + c * r, z = st.z + s2 * r; if (!inside_(x, z)) path = Math.max(path, pathAt(x, z)); } }
+    const sinkF = Math.min(1, (1 - THREE.MathUtils.smoothstep(inside / n, 0.6, 0.97)) * Math.min(1, path * 1.5) * PAVE.edgeSink);
+    if (sinkF > 0.02) { sinkOf.set(st.j * field.N + st.i, top * sinkF * 0.9); field.data[(st.j * field.N + st.i) * 4] = 255 - Math.round(sinkF * 100); }   // (0.9: a sunk stone's tip still shows)
+  }
+  field.texture.needsUpdate = true;
   let tris = 0;
   if (U.pave3D.value) {
     const g = stoneGeometry(field, () => shape), pos = g.geometry.attributes.position, edge = g.geometry.attributes.aEdge, cell = g.geometry.attributes.aCell;
-    // where the paving ends the stones go down into the dirt: by how much of the ground round a stone (1.2 and 2.4 m out)
-    // is paved, fully where a footpath comes in (the path picture within 2.5 m), only a little along the sides by the grass
-    const top = shape.height + (shape.dome || 0) + 0.01, PP = MAPS.P || 0, sinkOf = new Map();
-    const pathAt = (x, z) => { if (!PP) return 0; const i = Math.floor((x + SIZE / 2) / SIZE * PP), j = Math.floor((z + SIZE / 2) / SIZE * PP); return i < 0 || j < 0 || i >= PP || j >= PP ? 0 : MAPS.path[(j * PP + i) * 4] / 255; };
-    for (const st of field.stones) {
-      let inside = 0, n = 0, path = 0;
-      for (let a = 0; a < 8; a++) { const c = Math.cos(a * Math.PI / 4), s2 = Math.sin(a * Math.PI / 4);
-        for (const r of [1.2, 2.4]) { n++; if (inside_(st.x + c * r, st.z + s2 * r)) inside++; }
-        path = Math.max(path, pathAt(st.x + c * 2.5, st.z + s2 * 2.5), pathAt(st.x + c * 1.2, st.z + s2 * 1.2)); }
-      const edgeK = 1 - THREE.MathUtils.smoothstep(inside / n, 0.6, 0.97), down = top * edgeK * (0.25 + 0.75 * Math.min(1, path * 1.5)) * PAVE.edgeSink;
-      if (down > 0.002) sinkOf.set(st.j * field.N + st.i, down);
-    }
     // stood on the land; the footing taken a little further down, so no stone shows daylight under it on a bump
     for (let i = 0; i < pos.count; i++) pos.setY(i, pos.getY(i) + heightAt(pos.getX(i), pos.getZ(i)) - (edge.getX(i) < 0.5 ? 0.04 : 0) - (sinkOf.get(cell.getY(i) * field.N + cell.getX(i)) || 0));
     g.geometry.computeBoundingSphere(); tris = g.tris;

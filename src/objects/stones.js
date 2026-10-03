@@ -11,7 +11,8 @@
 //            ground), for up close; each sits exactly on its painted copy.
 //
 //   stoneField({ size, jitter, variety, gap, seed, x0, z0, width, inside(x, z) }) -> field
-//     field.texture   one pixel per grid square: R a stone here (255; 128 in the road but too small: gap), G B the point's nudge, A its weight
+//     field.texture   one pixel per grid square: R a stone here (255, or less for one sunk into the ground: over 0.55 is a stone;
+//                     128 in the road but too small: gap), G B the point's nudge, A its weight (a page may lower R and re-upload)
 //     field.stones    [{ i, j, x, z, poly: [[x, z], ...] }] each stone's outline, the gap already taken off
 //     field.uniforms  for STONE_GLSL (share the object: a new field updates them in place)
 //   stoneGeometry(field, shapeFor(stone) -> shape | null) -> { geometry, tris, count }
@@ -221,6 +222,26 @@ export const STONE_GLSL = `
       if (f < e1) { e2 = e1; e1 = f; dir = ab / L; } else if (f < e2) e2 = f;
     }
     return vec4(e1, e2, dir);
+  }
+  // how far a spot off the stones lies from the nearest stone's ground (m; 0 on a stone's own ground): for an edging that
+  // follows the stones' ragged outline. A stone's pixel: R over 0.55 (255 a stone, less a stone sunk into the ground)
+  float stoneBorder(vec2 p) {
+    vec2 g = floor((p - stoneGrid.xy) / stoneGrid.z);
+    float best = 1e9; vec2 a = vec2(0.0); vec4 ad = vec4(0.0); vec2 ac = vec2(-9.0);
+    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+      vec2 q = g + vec2(float(i), float(j)); if (stOut(q)) continue;
+      vec4 e = stCell(q); vec2 b = stPoint(q, e); float pw = dot(p - b, p - b) - stWeight(e);
+      if (pw < best) { best = pw; a = b; ad = e; ac = q; }
+    }
+    if (ad.r > 0.55) return 0.0;
+    float near = 1e9;
+    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+      vec2 q = g + vec2(float(i), float(j)); if (stOut(q) || (q.x == ac.x && q.y == ac.y)) continue;
+      vec4 e = stCell(q); if (e.r < 0.55) continue;
+      vec2 b = stPoint(q, e); float L = length(b - a); if (L < 1e-5) continue;
+      near = min(near, (dot(p - b, p - b) - stWeight(e) - best) / (2.0 * L));
+    }
+    return near;
   }
   float stHash(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
   float stNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);

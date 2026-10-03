@@ -135,7 +135,7 @@ groundMat.onBeforeCompile = (sh) => {
           if (d.r > 0.25) {
             vec3 gapc = mix(soilCol, vec3(0.05, 0.08, 0.025), mossAmt * (0.4 + 0.6 * stNoise(p * 2.5)));
             col = gapc;
-            if (d.r > 0.75) {
+            if (d.r > 0.55) {
               // in from the stone's edge (its gap taken off), its corners rounded
               vec2 q = vec2(cornerRound) - (st.xy - gapW * 0.5);
               float e = cornerRound - (length(max(q, 0.0)) + min(max(q.x, q.y), 0.0));
