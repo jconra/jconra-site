@@ -27,7 +27,7 @@ export class PlantTool {
     this.index = new PlantIndex(this.planting);
     this.history = new PlantingHistory(this.planting);
     this.sel = null; this.stroke = null; this.painting = null; this.down = null; this.fingers = new Set();
-    this.ray = new THREE.Raycaster();
+    this.ray = new THREE.Raycaster(); this.sinkM = new THREE.Matrix4();
     // the placed plants: one instanced mesh a kind
     this.group = new THREE.Group(); this.scene.add(this.group);
     // (a kind the page draws itself, as trees go into its forest: an unseen post a tree tall, only for picking it)
@@ -113,9 +113,14 @@ export class PlantTool {
   }
   syncUndo() { this.bar.setUndo(this.history.canUndo, this.history.canRedo); }
   item(id) { return this.planting.items.find((i) => i.id === id); }
+  // where a plant stands is where it meets the ground: its root clump below (sinkOf(kind), a share of its height), so it
+  // turns and sizes about that point and the ground line stays put
   matrixOf(it, out = new THREE.Matrix4()) {
-    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(it.rx * DEG, it.ry * DEG, it.rz * DEG, 'YXZ'));
-    return out.compose(new THREE.Vector3(it.x, this.heightAt(it.x, it.z) + it.y, it.z), q, new THREE.Vector3(it.sx, it.sy, it.sz));
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(it.rx * DEG, it.ry * DEG, it.rz * DEG, 'YXZ')), g = this.parts[it.kind];
+    out.compose(new THREE.Vector3(it.x, this.heightAt(it.x, it.z) + it.y, it.z), q, new THREE.Vector3(it.sx, it.sy, it.sz));
+    const sink = g && this.sinkOf ? this.sinkOf(it.kind) : 0;
+    if (sink) { if (!g.boundingBox) g.computeBoundingBox(); out.multiply(this.sinkM.makeTranslation(0, -sink * g.boundingBox.max.y, 0)); }
+    return out;
   }
   syncItems() {                                                          // the placed plants into their kinds' meshes
     const per = this.meshes.map(() => []), at = new Map(this.meshes.map((m, i) => [m.userData.kind, i]));

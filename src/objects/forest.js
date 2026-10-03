@@ -15,6 +15,7 @@ function rnd(seed) { let s = seed >>> 0 || 1; return () => ((s = (s * 1664525 + 
 export const FOREST_SPECIES = [
   // soften: the foliage's normals bent this far toward up (both the meshes and the imposters)
   // shape (optional): light the leaves by the lumps they form, darker inside (src/objects/foliage.js settings)
+  // sink (optional): stand it this share of its height down into the ground (a plant's root clump)
   { name: 'ash',   file: 'ash',   height: 20, weight: 1, soften: 0.5 },
   { name: 'aspen', file: 'aspen', height: 17, weight: 1, soften: 0.5 },
   { name: 'oak',   file: 'oak',   height: 18, weight: 1.2, soften: 0.5 },
@@ -51,7 +52,7 @@ export class Forest {
       if (this.disposed) return;                                          // replaced while it loaded: go no further
       const root = sp.root; root.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(root), size = box.getSize(new THREE.Vector3());
-      sp.unit = sp.height / size.y; sp.baseY = box.min.y; sp.root = root;
+      sp.unit = sp.height / size.y; sp.box0 = box.min.y; sp.boxH = size.y; sp.baseY = box.min.y + (sp.sink || 0) * size.y; sp.root = root;   // (sink: that share of its height under the ground)
       const shapeKey = sp.shape ? JSON.stringify(sp.shape) : '';          // (a species handed on to a new forest is already shaped)
       if (sp.shape && root.userData.shapedWith !== shapeKey) { sp.shapeInfo = shapeFoliage(root, sp.unit, sp.shape); root.userData.shapedWith = shapeKey; }
       root.traverse(o => { if (o.isMesh && !Array.isArray(o.material)) { o.material.side = THREE.DoubleSide; if (o.material.map) o.material.map.anisotropy = 4; if (o.material.transparent) { o.material.alphaTest = 0.5; o.material.transparent = false; } } });
@@ -194,6 +195,12 @@ export class Forest {
       this.built.push({ sp, imposter, meshes, trees: [] });
     }
     this.refill();
+  }
+
+  // each species sunk anew (sinkOf(sp, index) -> its share of its height under the ground), the plants laid again in place
+  setSinks(sinkOf) {
+    this.species.forEach((sp, i) => { if (sp.boxH == null) return; sp.sink = sinkOf(sp, i); sp.baseY = sp.box0 + sp.sink * sp.boxH; });
+    if (this.ready) this.refill();
   }
 
   // gone for good: off the scene, its draws freed, and its baked atlases too unless another forest goes on

@@ -32,7 +32,7 @@ const TOWN = { layout: normaliseTown(savedTown() || TOWN_DEFAULT), Hpre: null, b
 // near the camera real low 3D stones on top (TIER_SET paving3D), which sink into the ground past `lod` metres where
 // the painted ones take over. Jacob's settings (2026-10-02); `build` is which Stone Lab build the 3D stones use.
 const PAVE = { build: 'C', size: 0.92, jitter: 0.47, variety: 0.25, gap: 0.018, seed: 1, base: '#8d8a83', shade: 0.18, hue: 0.26, grain: 0.43, grainSize: 0.6, speck: 0.12,
-  soil: '#3a3126', moss: 0.59, edgeDark: 1, edgeWidth: 0.05, pRound: 0.06, lod: 80, bevelDark: 0.55,
+  soil: '#3a3126', moss: 0.12, edgeDark: 1, edgeWidth: 0.05, pRound: 0.06, lod: 80, bevelDark: 0.55, edgeSink: 1,   // (the grout is the footpaths' own dirt now; edgeSink: how far the stones at the paving's ends go down into it)
   builds: { A: { name: 'Painted only', painted: true }, B: { name: 'Slab', top: 4, per: 1, round: 0, bevel: 0.06, height: 0.03, dome: 0, soft: true, uneven: 0.3 },
     C: { name: 'Cut corners', top: 0, per: 1, round: 0.5, bevel: 0.035, height: 0.12, dome: 0.05, soft: true, uneven: 0.69 },
     D: { name: 'Pillow', top: 5, per: 1, round: 0, bevel: 0.08, height: 0.025, dome: 0.015, soft: true, uneven: 0.3 },
@@ -845,7 +845,7 @@ mat.onBeforeCompile = (sh) => {
       { float rn = (vn(vW.xz / 0.8) - 0.5) * 0.35;
         gRoad = smoothstep(0.3, 0.65, max(pr.b, pr.a) + rn);
         if (gRoad > 0.001) {
-          vec3 gapc = mix(gapCol, vec3(0.05, 0.08, 0.025), mossAmt * (0.4 + 0.6 * vn(vW.xz * 2.5)));
+          vec3 gapc = mix(pathC * 0.92, vec3(0.05, 0.08, 0.025), mossAmt * (0.4 + 0.6 * vn(vW.xz * 2.5)));   // (the grout and the paving's edges: the footpaths' own dirt)
           #ifdef LITE
           vec3 paved = mix(gapc, stoneBase * 0.95, 0.85);
           #else
@@ -995,7 +995,7 @@ function placeTrees() {
 // counts by tier: Jacob's thickness (his gaming setting, 30,000 in a 290 m circle: 0.114 plants a square metre) over
 // each tier's circle
 // fade: the mesh-to-card crossfade's width, as a share of the mesh range (0.7 at 100 m: from 65 m to 135 m)
-const COVER = { cache: {}, fade: 0.7, at: new THREE.Vector3(), ahead: 0.6, farX: TS.coverFarX, on: true, count: 40000, radius: 140, size: COVER_DEFAULTS.size, near: 35, parts: null, meshes: [] };   // ~5 M triangles to start: the readout says what more costs
+const COVER = { cache: {}, fade: 0.7, at: new THREE.Vector3(), ahead: 0.6, farX: TS.coverFarX, on: true, count: 40000, radius: 140, size: COVER_DEFAULTS.size, near: 35, parts: null, meshes: [], sink: 1 };   // sink: how far into the ground the plants' root clumps go (1: each kind's own, see KIND_INFO.sink)   // ~5 M triangles to start: the readout says what more costs
 Object.assign(COVER, TS.cover);
 // THE 16 GROUND PLANTS and how they grow: src/objects/growth.js (KIND_INFO), shared with the Growth Lab
 // `cell` (optional): [width, height] of a cell in the model's units, counted from 0, instead of the model's box / grid
@@ -1084,7 +1084,7 @@ function placeLawn() {
   lawn.colours(base.clone().multiplyScalar(0.8), base.clone().multiply(new THREE.Color(1.15, 1.12, 0.85)));   // darker at the root, lighter and yellower at the tips
 }
 function plantSpecies(parts, material) {
-  return parts.map((g, k) => { const root = new THREE.Group(); root.add(new THREE.Mesh(g, material)); return { name: 'ground ' + KIND_INFO[k].name, root, height: KIND_INFO[k].height, weight: 1, grid: 8, cell: 128, upNormals: !KIND_INFO[k].lit, soften: KIND_INFO[k].lit ? LIT_SOFTEN : 0, sway: KIND_INFO[k].lit ? 0.45 : 1, tint: false }; });   // big plants sway less
+  return parts.map((g, k) => { const root = new THREE.Group(); root.add(new THREE.Mesh(g, material)); return { name: 'ground ' + KIND_INFO[k].name, root, height: KIND_INFO[k].height, weight: 1, grid: 8, cell: 128, upNormals: !KIND_INFO[k].lit, soften: KIND_INFO[k].lit ? LIT_SOFTEN : 0, sway: KIND_INFO[k].lit ? 0.45 : 1, tint: false, sink: KIND_INFO[k].sink * COVER.sink }; });   // big plants sway less
 }
 loadSheet('/models/props/groundPlants.glb', 4, (parts, m) => { COVER.parts = parts; COVER.material = m; COVER.plantSp = plantSpecies(parts, m); makePlantTool(); placeCover(); }, [0.5, 1.0], (k) => !!KIND_INFO[k].lit);
 // HAND PLANTING (src/objects/plantTool.js, planting.js): planting by hand over (or instead of) the land's own. Painted
@@ -1185,6 +1185,7 @@ function makePlantTool() {
   PLANT.tool = new PlantTool({ renderer, scene, camera, controls, dom: renderer.domElement, heightAt, groundAt, shadows: SHADOW.on,
     surfaces: () => TOWN.village ? [TOWN.village.group] : [], parts, materials: mats, kinds,
     sizeOf: (k) => SORT.tree(k) ? 1 : SORT.rock(k) ? STONES.size * 1.2 : COVER.size * PLANT_KINDS[k].size,
+    sinkOf: (k) => k < PLANT.LAWN_KIND ? KIND_INFO[k].sink * COVER.sink : 0,   // (a placed plant's root clump under the ground, as the land's are)
     changed: (p) => { U.coverFar.value = p.procedural && $('coverFar').checked ? 1 : 0;   // (a blank palette: no far ground painted with the land's plants either)
       clearTimeout(relay); relay = setTimeout(() => { COVER.job = moveCover(COVER.at.clone());   // (the plants laid again round where they are, a few ms a frame)
         const st = sortSig('tree'), sr = sortSig('rock');                // (the trees and the stones only when their part changed)
@@ -1381,16 +1382,28 @@ function buildPaving() {
   let x0 = P, y0 = P, x1 = -1, y1 = -1;
   for (let y = 0; y < P; y++) for (let x = 0; x < P; x++) if (paved((y * P + x) * 4) > 0.1) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   if (x1 < 0) { U.pave3D.value = 0; return; }
-  const inside = (x, z) => { const px = Math.floor((x + SIZE / 2) / k), py = Math.floor((z + SIZE / 2) / k); return px >= 0 && py >= 0 && px < P && py < P && paved((py * P + px) * 4) > 0.5; };
+  const inside = (x, z) => { const px = Math.floor((x + SIZE / 2) / k), py = Math.floor((z + SIZE / 2) / k); return px >= 0 && py >= 0 && px < P && py < P && paved((py * P + px) * 4) > 0.5; }, inside_ = inside;
   const field = stoneField({ size: PAVE.size, jitter: PAVE.jitter, variety: PAVE.variety, gap: PAVE.gap, seed: PAVE.seed,
     x0: x0 * k - SIZE / 2 - 3, z0: y0 * k - SIZE / 2 - 3, width: Math.max(x1 - x0, y1 - y0) * k + 6, inside }, U);
   const shape = PAVE.builds[PAVE.build];
   U.pave3D.value = TS.paving3D && shape && !shape.painted ? 1 : 0;
   let tris = 0;
   if (U.pave3D.value) {
-    const g = stoneGeometry(field, () => shape), pos = g.geometry.attributes.position, edge = g.geometry.attributes.aEdge;
+    const g = stoneGeometry(field, () => shape), pos = g.geometry.attributes.position, edge = g.geometry.attributes.aEdge, cell = g.geometry.attributes.aCell;
+    // where the paving ends the stones go down into the dirt: by how much of the ground round a stone (1.2 and 2.4 m out)
+    // is paved, fully where a footpath comes in (the path picture within 2.5 m), only a little along the sides by the grass
+    const top = shape.height + (shape.dome || 0) + 0.01, PP = MAPS.P || 0, sinkOf = new Map();
+    const pathAt = (x, z) => { if (!PP) return 0; const i = Math.floor((x + SIZE / 2) / SIZE * PP), j = Math.floor((z + SIZE / 2) / SIZE * PP); return i < 0 || j < 0 || i >= PP || j >= PP ? 0 : MAPS.path[(j * PP + i) * 4] / 255; };
+    for (const st of field.stones) {
+      let inside = 0, n = 0, path = 0;
+      for (let a = 0; a < 8; a++) { const c = Math.cos(a * Math.PI / 4), s2 = Math.sin(a * Math.PI / 4);
+        for (const r of [1.2, 2.4]) { n++; if (inside_(st.x + c * r, st.z + s2 * r)) inside++; }
+        path = Math.max(path, pathAt(st.x + c * 2.5, st.z + s2 * 2.5), pathAt(st.x + c * 1.2, st.z + s2 * 1.2)); }
+      const edgeK = 1 - THREE.MathUtils.smoothstep(inside / n, 0.6, 0.97), down = top * edgeK * (0.25 + 0.75 * Math.min(1, path * 1.5)) * PAVE.edgeSink;
+      if (down > 0.002) sinkOf.set(st.j * field.N + st.i, down);
+    }
     // stood on the land; the footing taken a little further down, so no stone shows daylight under it on a bump
-    for (let i = 0; i < pos.count; i++) pos.setY(i, pos.getY(i) + heightAt(pos.getX(i), pos.getZ(i)) - (edge.getX(i) < 0.5 ? 0.04 : 0));
+    for (let i = 0; i < pos.count; i++) pos.setY(i, pos.getY(i) + heightAt(pos.getX(i), pos.getZ(i)) - (edge.getX(i) < 0.5 ? 0.04 : 0) - (sinkOf.get(cell.getY(i) * field.N + cell.getX(i)) || 0));
     g.geometry.computeBoundingSphere(); tris = g.tris;
     paveMesh = new THREE.Mesh(g.geometry, paveMat); paveMesh.castShadow = paveMesh.receiveShadow = SHADOW.on; paveMesh.customDepthMaterial = paveDepth; paveMesh.frustumCulled = false;
     scene.add(paveMesh);
@@ -1484,8 +1497,8 @@ const LAYERS = { layDry: 'grassDry', layLush: 'grassMed', layForest: 'forest', l
 // allows 16 a shader and the ground was at 19. `rect` (canvas pixels): only that part redone (live road painting)
 function composePathRoad(rect = null) {
   if (!U.pathRoad.value) { const t = new THREE.DataTexture(PATHROAD, 2048, 2048, THREE.RGBAFormat); t.flipY = false; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.anisotropy = 4; U.pathRoad.value = t; }
-  // M: a footpath fades out within this many pixels (~3 m) of a paved road, so paths end at the roads instead of
-  // running beside them as a strip of dirt (both the rectangle written and the road read round it grow by M)
+  // M: a footpath's trampled shoulder fades out within this many pixels (~3 m) of a paved road, so its worn edge can't run
+  // beside one as a strip of dirt; the path itself runs right up to the stones (the rectangle and the road read grow by M)
   const P = 2048, M = 4, x0 = rect ? Math.max(0, (rect[0] | 0) - M) : 0, y0 = rect ? Math.max(0, (rect[1] | 0) - M) : 0, x1 = rect ? Math.min(P, Math.ceil(rect[2]) + M) : P, y1 = rect ? Math.min(P, Math.ceil(rect[3]) + M) : P;
   if (x1 <= x0 || y1 <= y0 || !MAPS.path) return;
   const X0 = Math.max(0, x0 - M), Y0 = Math.max(0, y0 - M), X1 = Math.min(P, x1 + M), Y1 = Math.min(P, y1 + M), W = X1 - X0, H = Y1 - Y0;
@@ -1499,7 +1512,7 @@ function composePathRoad(rect = null) {
   }
   for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
     const o = (y * P + x) * 4, k = (y - Y0) * W + (x - X0), q = k * 4, keep = near ? 1 - Math.min(1, near[k] * 1.5) : 1;
-    PATHROAD[o] = MAPS.path[o] * keep; PATHROAD[o + 1] = MAPS.path[o + 1] * keep;
+    PATHROAD[o] = MAPS.path[o]; PATHROAD[o + 1] = MAPS.path[o + 1] * keep;   // (the path itself runs up to the stones, its dirt meeting their grout; only its trampled shoulder fades)
     if (rd) { const a = rd[q + 3] / 255; PATHROAD[o + 2] = rd[q] * a; PATHROAD[o + 3] = rd[q + 1] * a; } else { PATHROAD[o + 2] = PATHROAD[o + 3] = 0; }
   }
   U.pathRoad.value.needsUpdate = true;
@@ -1605,6 +1618,11 @@ for (const [id, key, fmt] of [['coverCount', 'count', v => v.toLocaleString()], 
   const el = $(id); el.value = COVER[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { COVER[key] = +el.value; placeCover(); });
+}
+{ // how far into the ground the plants' root clumps go: at once, no re-bake (each kind its own share, all scaled by this)
+  const el = $('coverSink'), show = () => { $('coverSinkOut').textContent = (+el.value).toFixed(2) + '×'; };
+  el.value = COVER.sink; show();
+  el.addEventListener('input', () => { show(); COVER.sink = +el.value; if (coverForest) coverForest.setSinks((sp, i) => KIND_INFO[i].sink * COVER.sink); if (PLANT.tool) PLANT.tool.syncItems(); });
 }
 // ── the land's shape: terraces and erosion (these rebuild the land, the maps, trees and plants) ──
 // WATCH IT RAIN: the land without erosion, then drops a chunk a frame with their trails drawn and the

@@ -32,6 +32,9 @@ export const KIND_INFO = [
 // the bigger plants are lit by the sun as the shapes they are (their own normals, bent 35% toward up so a
 // leaf seen from behind isn't black); the grasses and flowers are lit like the ground (every face as if up)
 for (const n of ['cattails', 'yucca', 'sprig shrub', 'spruce sapling']) KIND_INFO.find(K => K.name === n).lit = true;
+// each model's root clump (the light mound its stems come out of) belongs under the ground: the share of its height to
+// sink it by, read from each one's side view and where its width narrows from the mound into the stems (2026-10-03)
+[0.06, 0.06, 0.06, 0.03, 0.04, 0.03, 0.03, 0.04, 0.03, 0.06, 0.03, 0.03, 0.04, 0.03, 0.03, 0.04].forEach((v, k) => { KIND_INFO[k].sink = v; });
 export const LIT_SOFTEN = 0.35;
 
 // the settings, with their starting values; each page keeps its own copy and changes it from its panel
