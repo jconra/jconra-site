@@ -580,6 +580,7 @@ function buildLand() {
   COVER.cache = {};                                   // the land changed: the remembered tiles are stale
   placeTrees(); placeStones(); if (COVER.parts) placeCover();
   if (TOWN.village) { TOWN.village.sync(); if (TOWN.editor) TOWN.editor.markSel(); }   // the town stands on the land as it now is
+  if (PLANT.tool) { PLANT.tool.syncItems(); PLANT.tool.group.visible = true; if (PLANT.tool.sel) PLANT.tool.select(PLANT.tool.sel); }   // and the placed plants
 }
 
 // ── textures ────────────────────────────────────────────────────────────────────
@@ -1061,7 +1062,7 @@ function bakeCoverMap() {
   coverTex.needsUpdate = true;
 }
 function placeLawn() {
-  const spots = withLawnPlanting(LAWN.radius > 0 ? lawnSpots({ ground: coverGround, at: COVER.at, radius: LAWN.radius, density: LAWN.density, grow: GROW }) : [], COVER.at);
+  const spots = withLawnPlanting(LAWN.radius > 0 ? lawnSpots({ ground: coverGround, at: lawnCentre(), radius: LAWN.radius, density: LAWN.density, grow: GROW }) : []);
   for (const t of spots) t.y = heightAt(t.x, t.z);
   LAWN.count = lawn.set(spots);
   const a = U.layLush.value && U.layLush.value.userData.avg, base = (a ? a.clone() : new THREE.Color(0.25, 0.33, 0.1)).multiply(U.lushTint.value);
@@ -1071,23 +1072,51 @@ function plantSpecies(parts, material) {
   return parts.map((g, k) => { const root = new THREE.Group(); root.add(new THREE.Mesh(g, material)); return { name: 'ground ' + KIND_INFO[k].name, root, height: KIND_INFO[k].height, weight: 1, grid: 8, cell: 128, upNormals: !KIND_INFO[k].lit, soften: KIND_INFO[k].lit ? LIT_SOFTEN : 0, sway: KIND_INFO[k].lit ? 0.45 : 1, tint: false }; });   // big plants sway less
 }
 loadSheet('/models/props/groundPlants.glb', 4, (parts, m) => { COVER.parts = parts; COVER.material = m; COVER.plantSp = plantSpecies(parts, m); makePlantTool(); placeCover(); }, [0.5, 1.0], (k) => !!KIND_INFO[k].lit);
-// HAND PLANTING (src/objects/plantTool.js, planting.js): Jacob's own planting over (or instead of) the land's. Painted
-// strokes grow their plants here, with the land's, so they get the same imposters, wind and shade; where he painted,
+// HAND PLANTING (src/objects/plantTool.js, planting.js): planting by hand over (or instead of) the land's own. Painted
+// strokes grow their plants here, with the land's, so they get the same imposters, wind and shade; where it was painted,
 // cleared or placed a plant (its clear radius), or everywhere when the land's plants are switched off, the land's own
 // plants and lawn stay out. Kind 16 is the lawn's short grass (painted as tufts, near you only, like the lawn).
 const PLANT = { tool: null, LAWN_KIND: KIND_INFO.length };
+// a painted plant stays out of the water (the wet-ground kinds may stand in it), off the paved roads (where the road
+// picture lays stones) and out of the buildings, as the land's own plants do; a placed plant goes wherever it is put
+function paintable(p) {
+  if (waterAt(p.x, p.z) > 0.05 && !(KIND_INFO[p.sp] && KIND_INFO[p.sp].hab === 'wet')) return false;
+  const P = 2048, i = Math.floor((p.x / SIZE + 0.5) * P), j = Math.floor((p.z / SIZE + 0.5) * P);
+  if (i >= 0 && j >= 0 && i < P && j < P && Math.max(PATHROAD[(j * P + i) * 4 + 2], PATHROAD[(j * P + i) * 4 + 3]) > 128) return false;
+  if (TOWN.block && TOWN.road) { const k = Math.min(N - 1, Math.max(0, Math.floor((p.z + SIZE / 2) / TEX))) * N + Math.min(N - 1, Math.max(0, Math.floor((p.x + SIZE / 2) / TEX))); if (TOWN.block[k] - TOWN.road[k] > 0.5) return false; }
+  return true;
+}
+// the plants and the lawn's tufts are laid apart, so each is worked out from only its own paint strokes (the others
+// kept in their places with no thickness, as a clear stroke rubs out only what was painted before it): a thick lawn
+// stroke made the plants' share work out tens of thousands of tufts only to throw them away. Made once a change.
+const plantingParts = new WeakMap();
+function paintedOnly(t, lawn) {
+  let v = plantingParts.get(t.index);
+  if (!v) {
+    const P = t.planting, part = (lawnToo) => ({ ...P, strokes: P.strokes.map((s) => s.mode !== 'clear' && (s.kind === PLANT.LAWN_KIND) !== lawnToo ? { ...s, density: 0 } : s) });
+    v = { plants: part(false), lawn: part(true) }; plantingParts.set(t.index, v);
+  }
+  return lawn ? v.lawn : v.plants;
+}
 function withPlanting(list, at) {
   const t = PLANT.tool; if (!t) return list;
   const kept = list.filter((p) => keepProcedural(t.planting, t.index, p.x, p.z));
-  const painted = paintedPlants(t.planting, t.index, { at, radius: COVER.radius, far: COVER.farX, sizeOf: (k) => k < PLANT.LAWN_KIND ? COVER.size * PLANT_KINDS[k].size : 1 });
-  for (const p of painted) if (p.sp < PLANT.LAWN_KIND) kept.push(p);
+  const painted = paintedPlants(paintedOnly(t, false), null, { at, radius: COVER.radius, far: COVER.farX, sizeOf: (k) => k < PLANT.LAWN_KIND ? COVER.size * PLANT_KINDS[k].size : 1 });
+  for (const p of painted) if (p.sp < PLANT.LAWN_KIND && paintable(p)) kept.push(p);
   return kept;
 }
-function withLawnPlanting(spots, at) {
+// the lawn's circle (the land's and the painted): ahead of the camera like the plants' circle, but by its own radius
+// (round the plants' centre, 84 m ahead on normal, the whole 40 m of lawn lay past your feet: none near you)
+function lawnCentre() {
+  const fwd = new THREE.Vector3().subVectors(controls.target, camera.position).setY(0);
+  const c = camera.position.clone().addScaledVector(fwd.lengthSq() > 1e-6 ? fwd.normalize() : fwd, LAWN.radius * COVER.ahead); c.y = 0;
+  return c;
+}
+function withLawnPlanting(spots) {
   const t = PLANT.tool; if (!t) return spots;
-  const kept = spots.filter((p) => keepProcedural(t.planting, t.index, p.x, p.z)), R2 = LAWN.radius * LAWN.radius;
-  const painted = paintedPlants(t.planting, t.index, { at, radius: LAWN.radius, far: 1, sizeOf: () => 1 });
-  for (const p of painted) if (p.sp === PLANT.LAWN_KIND && (p.x - at.x) ** 2 + (p.z - at.z) ** 2 < R2) {
+  const kept = spots.filter((p) => keepProcedural(t.planting, t.index, p.x, p.z)), R2 = LAWN.radius * LAWN.radius, at = lawnCentre();
+  const painted = paintedPlants(paintedOnly(t, true), null, { at, radius: LAWN.radius, far: 1, sizeOf: () => 1 });
+  for (const p of painted) if (p.sp === PLANT.LAWN_KIND && (p.x - at.x) ** 2 + (p.z - at.z) ** 2 < R2 && paintable(p)) {
     const h = Math.sin(p.x * 12.9898 + p.z * 78.233) * 43758.5453, r = h - Math.floor(h);
     kept.push({ x: p.x, z: p.z, turn: p.yaw, size: 0.7 + 0.7 * Math.min(1, p.scale / 1.25), yellow: r < 0.2 ? 0.35 : 0, light: (r - 0.5) * 0.25 });
   }
@@ -1095,21 +1124,22 @@ function withLawnPlanting(spots, at) {
 }
 function makePlantTool() {
   if (PLANT.tool) return;
-  const groups = { long: 'Grasses', grass: 'Grasses', shade: 'Shade', dry: 'Dry ground', wet: 'Wet ground', shrub: 'Shrubs' };
+  const groups = { long: 'Tall meadow', grass: 'Meadow', shade: 'Shade', dry: 'Dry ground', wet: 'Wet ground', shrub: 'Shrubs' };   // (by where each grows: a dandelion is no grass)
   const kinds = KIND_INFO.map((K, k) => ({ id: k, name: K.name, group: groups[K.hab] || 'Plants' }));
   // the lawn's tuft, drawn: a few curved green blades
   const cv = document.createElement('canvas'); cv.width = cv.height = 96; const g2 = cv.getContext('2d'); g2.lineCap = 'round';
   for (let i = 0; i < 9; i++) { const x = 30 + i * 4.5, lean = (i - 4) * 4; g2.strokeStyle = i % 3 ? '#6f9a32' : '#8fb447'; g2.lineWidth = 3; g2.beginPath(); g2.moveTo(x, 84); g2.quadraticCurveTo(x + lean * 0.3, 50, x + lean, 22 + (i % 4) * 6); g2.stroke(); }
-  kinds.push({ id: PLANT.LAWN_KIND, name: 'lawn grass (short tufts, near you)', group: 'Grasses', icon: cv.toDataURL() });
+  kinds.push({ id: PLANT.LAWN_KIND, name: 'lawn grass (short tufts, near you)', group: 'Meadow', icon: cv.toDataURL() });
   // the placed plants' look: the land's plant material, swaying in the same breeze (each kind its own height)
-  const materials = COVER.parts.map((g, k) => { g.computeBoundingBox(); const m = COVER.material.clone(); m.onBeforeCompile = COVER.material.onBeforeCompile; m.customProgramCacheKey = COVER.material.customProgramCacheKey; return swayMaterial(m, Math.max(0.05, g.boundingBox.max.y), KIND_INFO[k].lit ? 0.45 : 1, '-placed' + k); });
+  const materials = COVER.parts.map((g, k) => { g.computeBoundingBox(); const m = COVER.material.clone(); m.onBeforeCompile = COVER.material.onBeforeCompile; m.customProgramCacheKey = COVER.material.customProgramCacheKey; return swayMaterial(m, Math.max(0.05, g.boundingBox.max.y), KIND_INFO[k].lit ? 0.45 : 1, '-placed'); });
   let relay = 0;
   PLANT.tool = new PlantTool({ renderer, scene, camera, controls, dom: renderer.domElement, heightAt, groundAt, shadows: SHADOW.on,
     surfaces: () => TOWN.village ? [TOWN.village.group] : [], parts: COVER.parts, materials, kinds,
     sizeOf: (k) => COVER.size * PLANT_KINDS[k].size,
-    changed: () => { clearTimeout(relay); relay = setTimeout(() => { COVER.job = moveCover(COVER.at.clone()); }, 120); },   // (the plants laid again round where they are, a few ms a frame)
+    changed: (p) => { U.coverFar.value = p.procedural && $('coverFar').checked ? 1 : 0;   // (a blank palette: no far ground painted with the land's plants either)
+      clearTimeout(relay); relay = setTimeout(() => { COVER.job = moveCover(COVER.at.clone()); }, 120); },   // (the plants laid again round where they are, a few ms a frame)
     opened: (on) => { document.body.classList.toggle('planting', on); if (on && TOWN.editor && TOWN.editor.on) { $('tEdit').checked = false; TOWN.editor.setOn(false); } } });   // (one tool at a time; on a phone the settings panel steps aside)
-  $('tEdit').addEventListener('change', (e) => { if (e.target.checked && PLANT.tool) PLANT.tool.bar.setState({ open: false }); });
+  $('tEdit').addEventListener('change', (e) => { if (e.target.checked && PLANT.tool) PLANT.tool.setOpen(false); });
 }
 let coverForest = null;
 // far plants blend toward the grass's own colour (its picture's average, tinted as the ground is),
@@ -1214,7 +1244,7 @@ function* moveCover(at) {
   const B = 6;
   const list = withPlanting(yield* growPlantsSteps({ ground: coverGround, cache: COVER.cache, at, radius: COVER.radius, far: COVER.farX, count: COVER.on ? COVER.count : 0, size: COVER.size, kinds: PLANT_KINDS, grow: GROW, budget: B }), at);
   const laid = yield* coverForest.layFixedSteps(list, B);
-  const spots = withLawnPlanting(LAWN.radius > 0 ? yield* lawnSpotsSteps({ ground: coverGround, at, radius: LAWN.radius, density: LAWN.density, grow: GROW, budget: B }) : [], at);
+  const spots = withLawnPlanting(LAWN.radius > 0 ? yield* lawnSpotsSteps({ ground: coverGround, at: lawnCentre(), radius: LAWN.radius, density: LAWN.density, grow: GROW, budget: B }) : []);
   for (let i = 0; i < spots.length; i++) { spots[i].y = heightAt(spots[i].x, spots[i].z); if ((i & 2047) === 0) yield; }
   yield;
   coverForest.setFixed(list, laid); U.coverR.value = COVER.radius * COVER.farX; U.coverAt.value.copy(at);
@@ -1521,6 +1551,7 @@ function startRain() {
   baseGrid(); RAIN.before = Float32Array.from(Hg);
   WDEPTH.fill(0); ACC.fill(0); paintWater(new Uint8Array(N * N)); fastMesh();   // no water drawn while it rains: the old rivers belong to the finished land, not this bare one
   for (const f of [treeForest, coverForest]) if (f) f.group.visible = false;
+  if (PLANT.tool) PLANT.tool.group.visible = false;
   RAIN.trail = []; RAIN.done = 0; RAIN.paused = false; RAIN.gen = erodeSteps(Hg, SHAPE.drops, () => RAIN.perFrame, RAIN.trail); trailLines.visible = true;
   $('rainPause').textContent = 'pause';
 }
