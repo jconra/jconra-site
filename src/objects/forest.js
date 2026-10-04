@@ -42,6 +42,15 @@ function fillLeaves(root, scale, copies) {
 }
 
 function rnd(seed) { let s = seed >>> 0 || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
+// the shadow edge (see the constructor): how far a tree at vLand has eased from its real shadow to the even shade
+export const EDGE_GLSL = `uniform vec3 shadowAt; uniform float shadowRange, edgeFrom, edgeTo, edgeShade;
+float edgeK(vec2 at) { if (shadowRange <= 0.0) return 0.0; vec2 q = abs(at - shadowAt.xz) / shadowRange; return smoothstep(edgeFrom, edgeTo, max(q.x, q.y)); }
+`;
+// three's own light loop with the sun's shadow eased the same way (the whole tree at once: vLand is its root)
+const EDGE_LIGHTS = (() => { const c = THREE.ShaderChunk.lights_fragment_begin, re = /(getShadow\( directionalShadowMap\[ i \][^;]*?vDirectionalShadowCoord\[ i \] \)) : 1\.0;/;
+  if (!re.test(c)) { console.warn('forest: no shadow line found in lights_fragment_begin; trees keep a hard shadow edge'); return '#include <lights_fragment_begin>'; }
+  return c.replace(re, 'mix($1, edgeShade, edgeK(vLand)) : 1.0;'); })();
+const switchHash = (x, z) => { const v = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453; return v - Math.floor(v); };   // (a tree's own 0..1 from where it stands)
 
 export const FOREST_SPECIES = [
   // soften: the foliage's normals bent this far toward up (both the meshes and the imposters)
@@ -63,9 +72,9 @@ export class Forest {
   // yaw, tint (optional THREE.Color) } to plant instead of the endless tiles; `heightAt(x, z)` stands them on uneven ground.
   constructor(renderer, scene, { base = '/models/trees/', tile = 420, tiles = 7, perTile = 90, imposterAt = 140, band = 40, ahead = 0.75,
                                  grid = 12, cell = 192, light = false, detail = 'coarse', clear = null, sunDir = new THREE.Vector3(0.5, 1, 0.3), shadows = false,
-                                 species = null, fixed = null, heightAt = null, nearCap = 400, wind = false } = {}) {
+                                 species = null, fixed = null, heightAt = null, nearCap = 400, wind = false, spread = 0, shadowEdge = null } = {}) {
     this.wind = wind;                   // sway in the shared breeze (src/objects/wind.js); a species' `sway` (0..1, default 1) says how much
-    Object.assign(this, { renderer, scene, base, tile, tiles, perTile, imposterAt: light ? 0 : imposterAt, band, ahead, grid: light ? 8 : grid, cell, detail, clear, sunDir, shadows: shadows && !light, light, fixed, heightAt, nearCap });
+    Object.assign(this, { renderer, scene, base, tile, tiles, perTile, imposterAt: light ? 0 : imposterAt, band, ahead, spread, grid: light ? 8 : grid, cell, detail, clear, sunDir, shadows: shadows && !light, light, fixed, heightAt, nearCap });
     this.group = new THREE.Group(); scene.add(this.group);
     this.species = (species || FOREST_SPECIES).map(s => ({ ...s }));
     this.tilesLaid = new Map();          // "tx,tz" -> [{ pos, yaw, scale, tint, sp }]
@@ -73,6 +82,12 @@ export class Forest {
     // the land's baked shade, shared by every species' imposter and meshes: set .landShade.value (a
     // texture covering landShadeSize metres, centred on 0,0) and landShadeK (hill, hollow, tree, on)
     this.landU = { landShade: { value: null }, landShadeSize: { value: 1600 }, landShadeK: { value: new THREE.Vector4() } };
+    // SHADOW EDGE: real shadows reach only a square round the camera (the page's shadow camera: centre `at`,
+    // half-width `range`, as uniforms the page moves); past it every tree would light up at once. From `from` to
+    // `to` of the way out (0 centre, 1 edge) each tree's sun shadow eases into an even `shade` (0 dark .. 1 lit),
+    // the average a shadowed wood comes to, so a wood is as dark past the edge as inside it. Range 0: off.
+    const E = shadowEdge || {};
+    this.edgeU = { shadowAt: E.at || { value: new THREE.Vector3() }, shadowRange: E.range || { value: 0 }, edgeFrom: E.from || { value: 0.55 }, edgeTo: E.to || { value: 0.97 }, edgeShade: E.shade || { value: 0.55 } };   // (0.55: what five views of real-shadowed woods averaged, 0.34 to 0.74)
     this.ready = false; this.baking = null;
     this.loaded = this.load();
   }
@@ -181,10 +196,10 @@ export class Forest {
       const n = cap;
       for (const [name, size] of [['iPos', 3], ['iYaw', 1], ['iScale', 1], ['iTint', 3], ['iFade', 1]]) { const a = new THREE.InstancedBufferAttribute(new Float32Array(n * size), size); a.setUsage(THREE.DynamicDrawUsage); geo.setAttribute(name, a); }
       geo.instanceCount = 0;
-      let glow = 0; sp.root.traverse((o) => { if (o.isMesh && !Array.isArray(o.material) && o.material.lightMap) glow = Math.max(glow, o.material.lightMapIntensity); });   // (a tree with its own even light, as the low-poly pines have: its far versions get it too)
-      const mat = imposterMaterial(sp.bake, { sunDir: this.sunDir, blend: true, depth: !this.light, shadows: this.shadows, soften: sp.soften || 0, wind: this.wind ? (sp.sway ?? 1) : 0, glow });
+      let glow = 0, sheen = 0; sp.root.traverse((o) => { if (!o.isMesh) return; for (const m of [].concat(o.material)) { if (m.lightMap) glow = Math.max(glow, m.lightMapIntensity); if (m.isMeshStandardMaterial) sheen = Math.max(sheen, 1 - m.metalness); } });   // (a tree with its own even light, as the low-poly pines have: its far versions get it too; drawn with MeshStandardMaterial: its far versions get the same faint sheen)
+      const mat = imposterMaterial(sp.bake, { sunDir: this.sunDir, blend: true, depth: !this.light, shadows: this.shadows, soften: sp.soften || 0, wind: this.wind ? (sp.sway ?? 1) : 0, glow, sheen });
       if (this.calm) for (const [k, v] of Object.entries(this.calm)) mat.uniforms[k].value = v;
-      Object.assign(mat.uniforms, this.landU);
+      Object.assign(mat.uniforms, this.landU, this.edgeU);
       mat.uniforms.blendDist.value = 300;
       const imposter = new THREE.Mesh(geo, mat); imposter.frustumCulled = false; imposter.castShadow = this.shadows; imposter.customDepthMaterial = mat.userData.depthMaterial;
       this.group.add(imposter);
@@ -200,9 +215,9 @@ export class Forest {
         const leafy = !!(sp.shape && o.geometry.attributes.aSky), under = sp.shape?.under ?? SHAPE_DEFAULTS.under, glow = sp.shape?.glow ?? SHAPE_DEFAULTS.glow;
         for (const mat of [].concat(m.material)) {
           mat.onBeforeCompile = (sh) => {
-            Object.assign(sh.uniforms, this.landU);
+            Object.assign(sh.uniforms, this.landU, this.edgeU);
             sh.vertexShader = 'attribute float iFade; varying float vFade; varying vec2 vLand;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvFade = iFade; vLand = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xz;');
-            sh.fragmentShader = 'uniform sampler2D landShade; uniform float landShadeSize; uniform vec4 landShadeK; varying vec2 vLand;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+            sh.fragmentShader = 'uniform sampler2D landShade; uniform float landShadeSize; uniform vec4 landShadeK; varying vec2 vLand;\n' + EDGE_GLSL + sh.fragmentShader.replace('#include <lights_fragment_begin>', EDGE_LIGHTS).replace('#include <map_fragment>', `#include <map_fragment>
               if (landShadeK.w > 0.5) { vec3 sd = texture2D(landShade, vLand / landShadeSize + 0.5).rgb;
                 diffuseColor.rgb *= mix(1.0, 0.4 + 0.6 * sd.r, landShadeK.x) * mix(1.0, 0.3 + 0.7 * sd.g, landShadeK.y) * (1.0 - landShadeK.z * sd.b); }`);
             if (sp.upNormals || sp.soften || sp.shape) sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('gl_FrontFacing ? 1.0 : - 1.0', '1.0')
@@ -277,20 +292,27 @@ export class Forest {
     if (!this.assignDirty && this.lastAt && this.lastAt.distanceToSquared(camP) < 4) return;
     this.assignDirty = false; this.lastAt = camP.clone();
     const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpS = new THREE.Vector3(), tmpP = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
-    const reach = D + B, reach2 = reach * reach, cx = camP.x, cy = camP.y, cz = camP.z;
+    // SPREAD: each tree switches at its own distance, D * (1 - spread / 2 .. 1 + spread / 2), so the change
+    // comes a tree at a time instead of as one line across the wood
+    const S = THREE.MathUtils.clamp(this.spread || 0, 0, 1.5);
+    const reach = D * (1 + S / 2) + B, reach2 = reach * reach, cx = camP.x, cy = camP.y, cz = camP.z;
     for (const b of this.built) {
       const { sp, imposter, meshes, trees } = b, aFade = imposter.geometry.attributes.iFade.array;
       if (b.near) for (const k of b.near) aFade[k] = 1;                  // last time's near plants: whole imposters again
       b.near = [];
       if (!meshes.length || D <= 0) { imposter.geometry.attributes.iFade.needsUpdate = true; for (const m of meshes) m.count = 0; continue; }
       const cand = [];
-      for (let k = 0; k < trees.length; k++) { const p = trees[k].pos, dx = p.x - cx, dy = p.y - cy, dz = p.z - cz, d2 = dx * dx + dy * dy + dz * dz; if (d2 < reach2) cand.push([k, Math.sqrt(d2)]); }
+      for (let k = 0; k < trees.length; k++) { const t = trees[k], p = t.pos, dx = p.x - cx, dy = p.y - cy, dz = p.z - cz, d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 >= reach2) continue;
+        if (t.sw === undefined) t.sw = switchHash(p.x, p.z);              // (0..1, fixed by where the tree stands)
+        const Dk = D * (1 + S * (t.sw - 0.5)), d = Math.sqrt(d2);
+        if (d < Dk + B) cand.push([k, d, Dk]); }
       const cap = meshes[0].instanceMatrix.count;
-      if (cand.length > cap) cand.sort((p, q) => p[1] - q[1]);           // more than fit: the nearest win (past the cap the imposter stays whole)
+      if (cand.length > cap) cand.sort((p, q) => (p[1] - p[2]) - (q[1] - q[2]));   // more than fit: the deepest inside their own distance win (past the cap the imposter stays whole)
       const n = Math.min(cap, cand.length);
       for (let i = 0; i < n; i++) {
-        const [k, d] = cand[i], t = trees[k];
-        const f = B > 0 ? THREE.MathUtils.clamp((D + B - d) / (2 * B), 0, 1) : d < D ? 1 : 0;
+        const [k, d, Dk] = cand[i], t = trees[k];
+        const f = B > 0 ? THREE.MathUtils.clamp((Dk + B - d) / (2 * B), 0, 1) : d < Dk ? 1 : 0;
         aFade[k] = 1 - f; b.near.push(k);
         tmpQ.setFromAxisAngle(Y, t.yaw); tmpS.setScalar(t.scale * sp.unit); tmpP.copy(t.pos); tmpP.y -= sp.baseY * t.scale * sp.unit; tmpM.compose(tmpP, tmpQ, tmpS);
         for (const m of meshes) { m.setMatrixAt(i, tmpM.clone().multiply(m.userData.local)); m.userData.fade.array[i] = f; m.setColorAt(i, t.tint); }

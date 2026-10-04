@@ -25,8 +25,16 @@ function rng(seed) {                                                   // a smal
 }
 
 export const STONE_UNIFORMS = () => ({
-  stoneCells: { value: null }, stoneGrid: { value: new THREE.Vector3(0, 0, 1) }, stoneShape: { value: new THREE.Vector3(1, 0.8, 0) },
+  stoneCells: { value: null }, stoneGrid: { value: new THREE.Vector3(0, 0, 1) }, stoneShape: { value: new THREE.Vector3(1, 0.8, 0) }, stoneSpread: { value: 0 },
 });
+
+// SPREAD: each stone switches (3D to flat) at its own distance, lod * (1 - spread / 2 .. 1 + spread / 2), judged
+// from its cell's middle, so the change comes a stone at a time and a stone never tilts across the line. Usable in
+// a vertex shader too (no texture reads): declare uniform vec3 stoneGrid; uniform float stoneSpread; first.
+export const STONE_LOD = `
+  float stLod(vec2 c, float lod) { return lod * (1.0 + stoneSpread * (fract(sin(dot(c, vec2(12.9898, 78.233))) * 43758.5453) - 0.5)); }
+  vec2 stMiddle(vec2 c) { return stoneGrid.xy + (c + 0.5) * stoneGrid.z; }
+`;
 
 export function stoneField({ size = 0.45, jitter = 0.8, variety = 0.25, gap = 0.03, seed = 1, x0 = -40, z0 = -40, width = 80, inside = () => true }, uniforms = STONE_UNIFORMS()) {
   const S = size, N = Math.ceil(width / S), rnd = rng(seed * 7919 + 13);
@@ -197,7 +205,8 @@ export function stoneGeometry(field, shapeFor) {
 // finest grain away with distance, where it would only sparkle. #define STONE_PIC first for the rock-picture
 // option (one more picture in the shader: the Stone Lab has it, the Terrain Lab's ground has no room).
 export const STONE_GLSL = `
-  uniform sampler2D stoneCells; uniform vec3 stoneGrid, stoneShape;
+  uniform sampler2D stoneCells; uniform vec3 stoneGrid, stoneShape; uniform float stoneSpread;
+` + STONE_LOD + `
   uniform vec3 stoneBase; uniform float stoneShade, stoneHue, grainAmt, grainSize, speckAmt;
   #ifdef STONE_PIC
   uniform float picAmt, picScale, picAvg; uniform sampler2D rockPic;

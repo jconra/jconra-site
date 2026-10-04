@@ -14,7 +14,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Forest, FOREST_SPECIES } from '../../src/objects/forest.js';
 import { SHAPE_DEFAULTS } from '../../src/objects/foliage.js';
 import { makeLowPine } from '../../src/objects/lowTrees/cards.js';
-import { stoneField, stoneGeometry, STONE_UNIFORMS, STONE_GLSL } from '../../src/objects/stones.js';
+import { stoneField, stoneGeometry, STONE_UNIFORMS, STONE_GLSL, STONE_LOD } from '../../src/objects/stones.js';
 import { PlantTool } from '../../src/objects/plantTool.js';
 import { paintedPlants, keepProcedural, PlantIndex, inStroke } from '../../src/objects/planting.js';
 import { flyKeys } from '../../src/objects/flyKeys.js';
@@ -654,7 +654,7 @@ const U = {
   // stamps: one object at most in each cell of a world grid, its kind drawn by the weights
   stampOn: { value: 1 }, stampAtlas: { value: null }, stampCell: { value: 0.55 }, stampDensity: { value: 0.55 }, stampSize: { value: 1 },
   stampCum: { value: [0, 0, 0, 0, 0, 0, 0, 0] }, stampBase: { value: [0.13, 0.28, 0.13, 0.16, 0.34, 0.12, 0.26, 0.4] },
-  stampHue: { value: 0.35 }, stampShade: { value: 0.45 }, stampFar: { value: 30 }, stampPatch: { value: 0.8 }, stampPatchSize: { value: 5 }, stampClump: { value: 0.6 },
+  stampHue: { value: 0.35 }, stampShade: { value: 0.45 }, stampFar: { value: 30 }, stampSpread: { value: 0 }, stampPatch: { value: 0.8 }, stampPatchSize: { value: 5 }, stampClump: { value: 0.6 },
   // mixing by the land: the masks, the layers' pictures, and how they meet
   mixOn: { value: 1 }, maskA: { value: null }, maskB: { value: null },
   waterMap: { value: waterTex }, waterOn: { value: 1 }, time: { value: 0 }, sunDirW: { value: new THREE.Vector3() }, skyCol: { value: SKY.clone() },
@@ -667,7 +667,7 @@ const U = {
   ...STONE_UNIFORMS(), stoneBase: { value: new THREE.Color() }, stoneShade: { value: 0 }, stoneHue: { value: 0 }, grainAmt: { value: 0 }, grainSize: { value: 1 }, speckAmt: { value: 0 },
   gapCol: { value: new THREE.Color() }, edgeBand: { value: 0.3 }, mossAmt: { value: 0 }, edgeDark: { value: 0 }, edgeWidth: { value: 0.05 }, cornerRound: { value: 0 }, gapW: { value: 0 }, paveLod: { value: 80 }, pave3D: { value: 0 },
   eyePos: { value: new THREE.Vector3() }, bevelDark: { value: 0 },
-  shadeMap: { value: null }, shadowRange: { value: 0 }, shadowAt: { value: new THREE.Vector3() }, hillShade: { value: 1 }, aoShade: { value: 1 }, treeShade: { value: 0.9 },
+  shadeMap: { value: null }, shadowRange: { value: 0 }, shadowAt: { value: new THREE.Vector3() }, edgeFrom: { value: 0.55 }, edgeTo: { value: 0.97 }, edgeShade: { value: 0.55 }, hillShade: { value: 1 }, aoShade: { value: 1 }, treeShade: { value: 0.9 },
   avgGround: { value: new THREE.Color(0x6b8a3a) }, avgDry: { value: new THREE.Color(0x8a8a4a) }, avgLush: { value: new THREE.Color(0x5b7a2a) }, avgForest: { value: new THREE.Color(0x4a4a2a) }, avgWet: { value: new THREE.Color(0x4a3a2a) }, avgPath: { value: new THREE.Color(0x6a5238) }, avgSteep: { value: new THREE.Color(0x7a7a7a) }, avgShore: { value: new THREE.Color(0x77706a) }, shoreStr: { value: 1 }, layShore: { value: null },
   layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layPath: { value: null }, laySteep: { value: null },
   mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.06 },
@@ -682,10 +682,10 @@ mat.onBeforeCompile = (sh) => {
   sh.fragmentShader = SKY_GLSL + STONE_GLSL + `
     uniform float tile, split; uniform vec2 res;   // (the base ground picture is the lush layer, layLush: a real GPU allows 16 pictures a shader)
     uniform float hexOn, hexSize, hexRot, hexSharp, hexBright, macroOn, macroStr, macroSize, macroHue, farOn, farFrom, grid;
-    uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar, stampPatch, stampPatchSize, stampClump; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
+    uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar, stampSpread, stampPatch, stampPatchSize, stampClump; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
     uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 coverAt; uniform sampler2D coverMap; uniform vec3 lushTint, dampTint, slopeTint;
     uniform sampler2D waterMap; uniform float waterOn, wFroth, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow;
-    float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gShadowFade = 0.0, gRoad = 0.0; uniform vec3 gapCol; uniform float mossAmt, edgeDark, edgeWidth, cornerRound, gapW, paveLod, pave3D, edgeBand; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathRoad; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange; uniform vec3 shadowAt;
+    float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gShadowFade = 0.0, gRoad = 0.0; uniform vec3 gapCol; uniform float mossAmt, edgeDark, edgeWidth, cornerRound, gapW, paveLod, pave3D, edgeBand; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathRoad; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange, edgeFrom, edgeTo; uniform vec3 shadowAt;
     uniform vec3 avgGround, avgDry, avgLush, avgForest, avgWet, avgPath, avgSteep, avgShore; uniform float shoreStr; uniform sampler2D layShore; uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layPath; uniform sampler2D laySteep;
     varying vec3 vWN;
     varying vec3 vW;
@@ -726,12 +726,15 @@ mat.onBeforeCompile = (sh) => {
     // THE STAMPS: the four cells round this point each may hold one object; it is placed, turned,
     // sized and tinted from the cell's own random numbers, and laid over the ground with a soft
     // shadow a little down-light of it. The atlas is 8 x 8: a row is a kind.
-    vec3 stamps(vec3 g, vec2 w) {
+    vec3 stamps(vec3 g, vec2 w, float camD) {   // camD: this spot's distance from the camera
       vec2 dW = dFdx(w), dWy = dFdy(w);
       vec2 c0 = floor(w / stampCell - 0.5);
       vec3 col = g; float shade = 0.0;
       for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) {
         vec2 id = c0 + vec2(float(i), float(j));
+        // each one fades out at its own distance, stampFar * (1 - spread / 2 .. 1), so they thin out one by one instead of in a ring
+        float fo = 1.0 - smoothstep(0.8, 1.0, camD / (stampFar * (1.0 - stampSpread * 0.5 * h1(id * 5.3 + 0.7))));
+        if (fo < 0.001) continue;
         vec2 r = h2(id * 1.37 + 5.1), r2 = h2(id * 2.71 + 9.3);
         // PATCHY: two slow maps read once a cell. How many: stamps bunch up, bare stretches between. What kind:
         // the pick leans toward a slowly changing value, so neighbouring cells take the same kind (bark here,
@@ -753,11 +756,11 @@ mat.onBeforeCompile = (sh) => {
         vec2 uv = (cell + vec2(p.x + 0.5, 0.5 - p.y)) / 8.0;
         vec2 inside = step(abs(p), vec2(0.5));
         vec2 ddx = R * dW / size / 8.0 * vec2(1.0, -1.0), ddy = R * dWy / size / 8.0 * vec2(1.0, -1.0);
-        vec4 s = stampRead(uv, ddx, ddy) * inside.x * inside.y;
+        vec4 s = stampRead(uv, ddx, ddy) * inside.x * inside.y * fo;
         // the shadow: the same shape a little way down-light, darkening the ground under it
         vec2 ps = R * (w - centre + vec2(0.035, 0.03) * size / 0.2) / size, us = (cell + vec2(ps.x + 0.5, 0.5 - ps.y)) / 8.0;
         vec2 ins = step(abs(ps), vec2(0.5));
-        shade = max(shade, stampRead(us, ddx, ddy).a * ins.x * ins.y);
+        shade = max(shade, stampRead(us, ddx, ddy).a * ins.x * ins.y * fo);
         // premultiplied: tint and turn only what is there
         vec3 rgb = s.rgb;
         if (kind < 0.5 || kind > 3.5) rgb = max(hueTurn(rgb, (h1(id * 7.7) - 0.5) * 2.0 * stampHue), 0.0);   // leaves, moss, plants: vary the hue
@@ -884,7 +887,8 @@ mat.onBeforeCompile = (sh) => {
             float sunkK = clamp((1.0 - sd.r) * 2.55, 0.0, 1.0);
             vec2 q = vec2(cornerRound) - (st.xy - gapW * 0.5 - sunkK * stoneGrid.z * 0.3);
             float e = cornerRound - (length(max(q, 0.0)) + min(max(q.x, q.y), 0.0)), dist = length(vW - cameraPosition);
-            float on = smoothstep(-1.0, 1.0, e / (0.002 + dist * 0.0012)) * (1.0 - pave3D * (1.0 - smoothstep(0.15, 0.45, smoothstep(paveLod * 0.8, paveLod, dist))));
+            float stL = stLod(sc, paveLod); vec2 stM = stMiddle(sc);         // (each stone's own switch distance, from its middle: as its 3D one sinks)
+            float on = smoothstep(-1.0, 1.0, e / (0.002 + dist * 0.0012)) * (1.0 - pave3D * (1.0 - smoothstep(0.15, 0.45, smoothstep(stL * 0.8, stL, distance(vec3(stM.x, vW.y, stM.y), cameraPosition)))));
             paved = mix(gapc, stoneColour(vW.xz, sd, sc, smoothstep(6.0, 30.0, dist)) * (1.0 - edgeDark * (1.0 - smoothstep(0.0, edgeWidth, e))) * (1.0 - 0.2 * sunkK), on);
           } else if (sd.r < 0.25) {
             // past the stones: the dirt only in a ragged band hugging them (as wide each side), then the ground as it was
@@ -923,9 +927,8 @@ mat.onBeforeCompile = (sh) => {
           g *= mix(1.0, clamp(v, 0.6, 1.5), k * 0.65); }
       }
       if (stampOn > 0.5) {
-        float fade = 1.0 - smoothstep(stampFar * 0.7, stampFar, length(vW - cameraPosition));
-        fade *= 1.0 - gRoad;                                            // no leaves and twigs on the roads
-        if (fade > 0.001) g = mix(g, stamps(g, vW.xz), fade);
+        float stD = length(vW - cameraPosition), fade = stD < stampFar ? 1.0 - gRoad : 0.0;   // (no leaves and twigs on the roads; each fades out by itself, in stamps)
+        if (fade > 0.001) g = mix(g, stamps(g, vW.xz, stD), fade);
       }
       if (macroOn > 0.5) {
         float n = fbm(vW.xz / macroSize), n2 = fbm(vW.xz / (macroSize * 1.7) + 31.0);
@@ -935,7 +938,7 @@ mat.onBeforeCompile = (sh) => {
       // LIGHT AND SHADE (baked): out of the sun behind a ridge, down in a ravine, under the trees
       vec3 sd = texture2D(shadeMap, vW.xz / landSize + 0.5).rgb;
       vec2 inSq = abs(vW.xz - shadowAt.xz) / max(shadowRange, 1.0);                  // inside the real shadows' square, they throw the trees' shade
-      float baked = shadowRange > 0.0 ? smoothstep(0.55, 0.92, max(inSq.x, inSq.y)) : 1.0; gShadowFade = baked;
+      float baked = shadowRange > 0.0 ? smoothstep(edgeFrom, edgeTo, max(inSq.x, inSq.y)) : 1.0; gShadowFade = baked;   // (the trees ease theirs over the same band: Forest's shadowEdge)
       gLit = mix(1.0, 0.4 + 0.6 * sd.r, hillShade) * mix(1.0, 0.3 + 0.7 * sd.g, aoShade) * (1.0 - treeShade * sd.b * mix(0.35, 1.0, baked));
       g *= gLit;
     }
@@ -989,7 +992,7 @@ const ground = new THREE.Mesh(geo, mat); scene.add(ground); ground.receiveShadow
 const SUN_DIR = sun.position.clone().normalize();
 const TREE_SPECIES = FOREST_SPECIES.filter(sp => sp.name !== 'bush');
 // the Tree Lab's settings, now here (Jacob's defaults, 2026-09-23)
-const FOREST = { imposterAt: 150, band: 120, ahead: 0.6, grid: 12, cell: 192, detail: 'sparse', rebake: false, lowPine: !!TS.lite };   // lowPine: the ~100-triangle pine (the potato's, to start)
+const FOREST = { imposterAt: 150, band: 120, ahead: 0.6, spread: 0.5, grid: 12, cell: 192, detail: 'sparse', rebake: false, lowPine: !!TS.lite };   // lowPine: the ~100-triangle pine (the potato's, to start)
 Object.assign(FOREST, TS.forest);
 // SHAPED LIGHTING (src/objects/foliage.js, tuned in the Foliage Lab): which trees light their leaves by how
 // much sky each leaf sees through the tree, instead of card by card ('off', 'pine' or 'all'), and how
@@ -1017,7 +1020,7 @@ function placeTrees() {
   const species = treeForest && !FOREST.rebake ? treeForest.species : TREE_SPECIES.map(sp => low(sp) || (shaped(sp)   // keeps the baked atlases unless the atlas settings changed
     ? { ...sp, soften: LEAF.soften, shape: { lump: LEAF.lump, mix: LEAF.mix, dark: LEAF.dark, tip: LEAF.tip, olive: LEAF.olive, branchDark: LEAF.branchDark, under: LEAF.under, glow: LEAF.glow } } : { ...sp }));
   FOREST.rebake = false;
-  treeForest = new Forest(renderer, scene, { species, shadows: SHADOW.on, detail: FOREST.detail, grid: FOREST.grid, cell: FOREST.cell, imposterAt: FOREST.imposterAt, band: FOREST.band, ahead: FOREST.ahead, sunDir: SUN_DIR, heightAt, nearCap: 600,
+  treeForest = new Forest(renderer, scene, { species, shadows: SHADOW.on, detail: FOREST.detail, grid: FOREST.grid, cell: FOREST.cell, imposterAt: FOREST.imposterAt, band: FOREST.band, ahead: FOREST.ahead, spread: FOREST.spread, sunDir: SUN_DIR, heightAt, nearCap: 600, shadowEdge: { at: U.shadowAt, range: U.shadowRange, from: U.edgeFrom, to: U.edgeTo, shade: U.edgeShade },
     fixed: [...trees.filter(([x, , z]) => keepWild('tree', x, z)).map(([x, , z, s]) => { const [sp, tint] = pickTree(x, z, species); return { x, z, sp, scale: s, tint: species[sp].tint === false ? undefined : tint }; }), ...townTrees(species), ...plantedTrees(species)] });
   treeForest.group.visible = $('treesOn').checked;
   $('landInfo').textContent = `${trees.length.toLocaleString()} trees, 4 paths`;
@@ -1112,7 +1115,7 @@ function bakeCoverMap() {
   coverTex.needsUpdate = true;
 }
 function placeLawn() {
-  const spots = withLawnPlanting(LAWN.radius > 0 ? lawnSpots({ ground: coverGround, at: lawnCentre(), radius: LAWN.radius, density: LAWN.density, grow: GROW }) : []);
+  const spots = withLawnPlanting(LAWN.radius > 0 ? lawnSpots({ ground: coverGround, at: lawnCentre(), radius: LAWN.radius, density: LAWN.density, grow: GROW, spread: FOREST.spread }) : []);
   for (const t of spots) t.y = heightAt(t.x, t.z);
   LAWN.count = lawn.set(spots);
   const a = U.layLush.value && U.layLush.value.userData.avg, base = (a ? a.clone() : new THREE.Color(0.25, 0.33, 0.1)).multiply(U.lushTint.value);
@@ -1184,7 +1187,8 @@ function withLawnPlanting(spots) {
   const t = PLANT.tool; if (!t) return spots;
   const kept = spots.filter((p) => keepWild('plant', p.x, p.z)), R2 = LAWN.radius * LAWN.radius, at = lawnCentre();
   const painted = paintedPlants(paintedOnly(t, true), null, { at, radius: LAWN.radius, far: 1, sizeOf: () => 1 });
-  for (const p of painted) if (p.sp === PLANT.LAWN_KIND && (p.x - at.x) ** 2 + (p.z - at.z) ** 2 < R2 && paintable(p)) {
+  const own = (p) => { const e = Math.sin(p.x * 39.346 + p.z * 11.135) * 24634.6345; return (1 - FOREST.spread * 0.5 * (e - Math.floor(e))) ** 2; };   // (each tuft's own edge, as the land's lawn)
+  for (const p of painted) if (p.sp === PLANT.LAWN_KIND && (p.x - at.x) ** 2 + (p.z - at.z) ** 2 < R2 * own(p) && paintable(p)) {
     const h = Math.sin(p.x * 12.9898 + p.z * 78.233) * 43758.5453, r = h - Math.floor(h);
     kept.push({ x: p.x, z: p.z, turn: p.yaw, size: 0.7 + 0.7 * Math.min(1, p.scale / 1.25), yellow: r < 0.2 ? 0.35 : 0, light: (r - 0.5) * 0.25 });
   }
@@ -1407,7 +1411,7 @@ function* moveCover(at) {
   const B = 6;
   const list = withPlanting(yield* growPlantsSteps({ ground: coverGround, cache: COVER.cache, at, radius: COVER.radius, far: COVER.farX, count: COVER.on ? COVER.count : 0, size: COVER.size, kinds: PLANT_KINDS, grow: GROW, budget: B }), at);
   const laid = yield* coverForest.layFixedSteps(list, B);
-  const spots = withLawnPlanting(LAWN.radius > 0 ? yield* lawnSpotsSteps({ ground: coverGround, at: lawnCentre(), radius: LAWN.radius, density: LAWN.density, grow: GROW, budget: B }) : []);
+  const spots = withLawnPlanting(LAWN.radius > 0 ? yield* lawnSpotsSteps({ ground: coverGround, at: lawnCentre(), radius: LAWN.radius, density: LAWN.density, grow: GROW, budget: B, spread: FOREST.spread }) : []);
   for (let i = 0; i < spots.length; i++) { spots[i].y = heightAt(spots[i].x, spots[i].z); if ((i & 2047) === 0) yield; }
   yield;
   coverForest.setFixed(list, laid); U.coverR.value = COVER.radius * COVER.farX; U.coverAt.value.copy(at);
@@ -1436,31 +1440,33 @@ function placeCover(ready = null) {
   }
   if (coverForest) { scene.remove(coverForest.group); for (const b of coverForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
   const species = coverForest ? coverForest.species : COVER.plantSp;
-  coverForest = new Forest(renderer, scene, { species, shadows: SHADOW.on && TS.shadow.cover, fixed, heightAt, imposterAt: COVER.near, band: COVER.near * COVER.fade, ahead: 0.5, sunDir: SUN_DIR, nearCap: 12000, wind: true });   // (Jacob's thickness puts ~7,000 within 60 m)
+  coverForest = new Forest(renderer, scene, { species, shadows: SHADOW.on && TS.shadow.cover, fixed, heightAt, imposterAt: COVER.near, band: COVER.near * COVER.fade, ahead: 0.5, spread: FOREST.spread, sunDir: SUN_DIR, nearCap: 12000, wind: true });   // (Jacob's thickness puts ~7,000 within 60 m)
   calmCover(); placeLawn(); bakeCoverMap();
   $('coverInfo').textContent = `${placed.toLocaleString()} plants of 16 kinds: meshes to ${COVER.near} m, imposters beyond (atlases bake over the first seconds)` + (LAWN.count ? ` · ${LAWN.count.toLocaleString()} lawn tufts (${(LAWN.count * lawn.trisPerTuft / 1e6).toFixed(2)} M triangles) out to ${LAWN.radius} m` : '');
 }
 // THE PAVING: the stones laid where the town's road picture says (stones.js), their grid over just the roads' bounds;
 // near the camera real low 3D stones stood on the land (TIER_SET paving3D), sinking into it past PAVE.lod metres
 let paveMesh = null, paveTimer = 0;
-const PAVE_U = Object.fromEntries(['stoneCells', 'stoneGrid', 'stoneShape', 'stoneBase', 'stoneShade', 'stoneHue', 'grainAmt', 'grainSize', 'speckAmt', 'eyePos', 'paveLod', 'bevelDark'].map((k) => [k, U[k]]));
+const PAVE_U = Object.fromEntries(['stoneCells', 'stoneGrid', 'stoneShape', 'stoneSpread', 'stoneBase', 'stoneShade', 'stoneHue', 'grainAmt', 'grainSize', 'speckAmt', 'eyePos', 'paveLod', 'bevelDark'].map((k) => [k, U[k]]));
 const PAVE_SINK = `
-  float sunk = smoothstep(paveLod * 0.8, paveLod, distance(transformed, eyePos));
+  float stL = stLod(aCell, paveLod); vec2 stM = stMiddle(aCell);
+  float sunk = smoothstep(stL * 0.8, stL, distance(vec3(stM.x, transformed.y, stM.y), eyePos));
   transformed.y -= sunk * 0.3;`;
+const PAVE_VS = 'uniform vec3 eyePos; uniform float paveLod; uniform vec3 stoneGrid; uniform float stoneSpread;\n' + STONE_LOD;   // (the whole stone sinks together, at its own distance)
 const paveMat = new THREE.MeshStandardMaterial({ roughness: 0.88, metalness: 0 });
 paveMat.onBeforeCompile = (sh) => {
   Object.assign(sh.uniforms, PAVE_U);
-  sh.vertexShader = 'attribute vec2 aCell; attribute float aEdge; varying vec2 vCell; varying float vEdge; varying vec3 vStW; uniform vec3 eyePos; uniform float paveLod;\n' + sh.vertexShader
+  sh.vertexShader = 'attribute vec2 aCell; attribute float aEdge; varying vec2 vCell; varying float vEdge; varying vec3 vStW;\n' + PAVE_VS + sh.vertexShader
     .replace('#include <begin_vertex>', '#include <begin_vertex>\n  vCell = aCell; vEdge = aEdge;' + PAVE_SINK)
     .replace('#include <project_vertex>', '#include <project_vertex>\n  vStW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
   sh.fragmentShader = 'varying vec2 vCell; varying float vEdge; varying vec3 vStW; uniform vec3 eyePos; uniform float bevelDark;\n' + STONE_GLSL + sh.fragmentShader
     .replace('#include <map_fragment>', `#include <map_fragment>
       diffuseColor.rgb = stoneColour(vStW.xz, stCell(vCell), vCell, smoothstep(6.0, 30.0, length(vStW - eyePos))) * (1.0 - bevelDark * (1.0 - vEdge));`);
 };
-paveMat.customProgramCacheKey = () => 'town-paving-1';
+paveMat.customProgramCacheKey = () => 'town-paving-2';
 const paveDepth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });   // their shadows sink with them
-paveDepth.onBeforeCompile = (sh) => { Object.assign(sh.uniforms, { eyePos: U.eyePos, paveLod: U.paveLod }); sh.vertexShader = 'uniform vec3 eyePos; uniform float paveLod;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>' + PAVE_SINK); };
-paveDepth.customProgramCacheKey = () => 'town-paving-depth-1';
+paveDepth.onBeforeCompile = (sh) => { Object.assign(sh.uniforms, { eyePos: U.eyePos, paveLod: U.paveLod, stoneGrid: U.stoneGrid, stoneSpread: U.stoneSpread }); sh.vertexShader = 'attribute vec2 aCell;\n' + PAVE_VS + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>' + PAVE_SINK); };
+paveDepth.customProgramCacheKey = () => 'town-paving-depth-2';
 function applyPave() {
   U.stoneBase.value.set(PAVE.base); U.stoneShade.value = PAVE.shade; U.stoneHue.value = PAVE.hue; U.grainAmt.value = PAVE.grain; U.grainSize.value = PAVE.grainSize; U.speckAmt.value = PAVE.speck;
   U.gapCol.value.set(PAVE.soil); U.mossAmt.value = PAVE.moss; U.edgeDark.value = PAVE.edgeDark; U.edgeWidth.value = PAVE.edgeWidth; U.cornerRound.value = PAVE.pRound; U.gapW.value = PAVE.gap;
@@ -1630,7 +1636,7 @@ $('copySettings').addEventListener('click', async () => {
   else { $('copyNote').textContent = 'Copy this:'; const ta = document.createElement('textarea'); ta.value = text; ta.rows = 4; ta.style.width = '100%'; $('copyNote').after(ta); ta.select(); }
 });
 // light and shade
-for (const [id, key] of [['hillShade', 'hillShade'], ['aoShade', 'aoShade'], ['treeShade', 'treeShade'], ['shoreStr', 'shoreStr']]) {
+for (const [id, key] of [['hillShade', 'hillShade'], ['aoShade', 'aoShade'], ['treeShade', 'treeShade'], ['shoreStr', 'shoreStr'], ['edgeFrom', 'edgeFrom'], ['edgeShade', 'edgeShade']]) {
   const el = $(id), go = () => { U[key].value = +el.value; $(id + 'Out').textContent = Math.round(+el.value * 100) + '%'; }; el.value = U[key].value; el.addEventListener('input', go); go();
 }
 // the sky's controls
@@ -1774,11 +1780,17 @@ for (const [id, key] of [['gullyStr', 'gullyStr'], ['fanStr', 'fanStr'], ['strat
 for (const [id, key] of [['lushTint', 'lushTint'], ['dampTint', 'dampTint'], ['slopeTint', 'slopeTint']]) { const el = $(id); el.value = '#' + U[key].value.clone().convertLinearToSRGB().getHexString(); el.addEventListener('input', () => { U[key].value.set(el.value).convertSRGBToLinear(); calmCover(); }); }
 { const el = $('strataSize'), go = () => { U.strataSize.value = +el.value; $('strataSizeOut').textContent = (+el.value).toFixed(1) + ' m'; }; el.addEventListener('input', go); go(); }
 // ── the forest's settings: distances apply at once, the atlas and leaf detail re-bake ──
-for (const [id, key, fmt, live] of [['fImp', 'imposterAt', v => v + ' m', true], ['fBand', 'band', v => v + ' m', true], ['fAhead', 'ahead', v => Math.round(v * 100) + '% ahead', true], ['fGrid', 'grid', v => v + ' × ' + v, false], ['fCell', 'cell', v => v + ' px', false]]) {
+for (const [id, key, fmt, live] of [['fImp', 'imposterAt', v => v + ' m', true], ['fBand', 'band', v => v + ' m', true], ['fAhead', 'ahead', v => Math.round(v * 100) + '% ahead', true], ['fSpread', 'spread', v => '± ' + Math.round(v * 50) + '%', true], ['fGrid', 'grid', v => v + ' × ' + v, false], ['fCell', 'cell', v => v + ' px', false]]) {
   const el = $(id); el.value = FOREST[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); if (live) { FOREST[key] = +el.value; if (treeForest) { treeForest[key] = FOREST[key]; treeForest.assignDirty = true; } } });
   if (!live) el.addEventListener('change', () => { FOREST[key] = +el.value; FOREST.rebake = true; placeTrees(); atlasInfo(); });
 }
+// one spread for everything that changes with distance: trees, plants, the 3D paving stones, the scattered bits, the lawn's edge
+function applySpread() {
+  const v = FOREST.spread; if (treeForest) treeForest.spread = v; if (coverForest) { coverForest.spread = v; coverForest.assignDirty = true; }
+  U.stoneSpread.value = v; U.stampSpread.value = v;
+}
+applySpread(); $('fSpread').addEventListener('input', applySpread); $('fSpread').addEventListener('change', () => { if (typeof placeLawn === 'function') placeLawn(); });
 $('fDetail').value = FOREST.detail; $('fDetail').addEventListener('change', e => { FOREST.detail = e.target.value; FOREST.rebake = true; placeTrees(); });
 $('fLowPine').checked = FOREST.lowPine; $('fLowPine').addEventListener('change', e => { FOREST.lowPine = e.target.checked; FOREST.rebake = true; placeTrees(); });
 $('fShape').value = LEAF.on; $('fShape').addEventListener('change', e => { LEAF.on = e.target.value; FOREST.rebake = true; placeTrees(); });
@@ -1883,4 +1895,4 @@ renderer.setAnimationLoop(() => {
   U.eyePos.value.copy(camera.position);                              // (the paving's 3D stones sink past PAVE.lod from here)
   renderer.render(scene, camera); drawAtlas();
 });
-if (Q.has('probe')) Object.assign(window, { __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest], __plant: () => PLANT, drawPaths });
+if (Q.has('probe')) Object.assign(window, { renderer, __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest], __plant: () => PLANT, drawPaths });

@@ -195,7 +195,7 @@ export function* growPlantsSteps({ ground, at, radius, count, size = 1, kinds, g
 // `radius` m of `at`; tiled like the plants, so tufts that stay in range keep their spots as `at` moves.
 // grow.lawn (0..1): how much of the bare ground they cover. Returns [{ x, z, turn, size, yellow, light }].
 export function lawnSpots(opts) { const it = lawnSpotsSteps(opts); let n; while (!(n = it.next()).done); return n.value; }
-export function* lawnSpotsSteps({ ground, at, radius, density, grow, budget = Infinity }) {
+export function* lawnSpotsSteps({ ground, at, radius, density, grow, budget = Infinity, spread = 0 }) {   // spread: each tuft keeps to its own radius, radius * (1 - spread / 2 .. 1), so the lawn thins out toward its edge instead of stopping at a circle
   const out = [], G = grow; let t0 = performance.now(); if (!(G.lawn > 0) || !(density > 0)) return out;
   const TILE = 10, C = at, R = radius, per = Math.round(density * TILE * TILE);
   for (let tz = Math.floor((C.z - R) / TILE); tz <= Math.floor((C.z + R) / TILE); tz++) for (let tx = Math.floor((C.x - R) / TILE); tx <= Math.floor((C.x + R) / TILE); tx++) {
@@ -203,7 +203,7 @@ export function* lawnSpotsSteps({ ground, at, radius, density, grow, budget = In
     const ts = ((tx + 5000) * 10007 + tz + 5000) * 13;
     for (let t = 0; t < per; t++) {
       const x = (tx + r(ts + t, 301.1)) * TILE, z = (tz + r(ts + t, 302.3)) * TILE;
-      if (Math.hypot(x - C.x, z - C.z) > R) continue;
+      if (Math.hypot(x - C.x, z - C.z) > R * (1 - spread * 0.5 * r(ts + t, 308.3))) continue;
       const g = ground(x, z), y = g.yard || 0;                     // (yard: a town's mown ground, from the ground function, if it has one)
       if (r(ts + t, 303.7) > Math.max(bareAt(G, x, z) * G.lawn, y)) continue;
       if (g.hard - y >= 0.5) continue;
