@@ -10,14 +10,46 @@ import { bakeImposterSteps, imposterMaterial } from './imposter.js';
 import { swayMaterial } from './wind.js';
 import { shapeFoliage, SHAPE_DEFAULTS } from './foliage.js';
 
+// a thin tree filled out: each leaf card (four corners in a row, as ez-tree makes them) grown about its middle, and `copies`
+// copies of each added, turned about the upright through its middle and nudged out from the trunk, so the crown fills in
+function fillLeaves(root, scale, copies) {
+  root.traverse((o) => {
+    if (!o.isMesh || Array.isArray(o.material) || !(o.material.alphaTest > 0 || /lea[fv]/i.test(o.material.name || ''))) return;
+    const g = o.geometry, P = g.attributes.position, n = P.count; if (n % 4) return;
+    const attrs = Object.keys(g.attributes), out = {}, idx = g.index ? g.index.array : null, v = new THREE.Vector3(), c = new THREE.Vector3(), q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0);
+    for (const a of attrs) out[a] = new Float32Array(g.attributes[a].array.length * (1 + copies));
+    const cards = n / 4;
+    for (let k = 0; k < cards; k++) {
+      c.set(0, 0, 0); for (let i = 0; i < 4; i++) c.add(v.fromBufferAttribute(P, k * 4 + i)); c.multiplyScalar(0.25);
+      for (let r = 0; r <= copies; r++) {
+        q.setFromAxisAngle(Y, r * Math.PI / (copies + 1) + 0.6 * r);          // (each copy turned a different way)
+        const push = r ? 0.15 : 0, out0 = (r * cards + k) * 4;
+        for (let i = 0; i < 4; i++) {
+          const s = k * 4 + i, d = out0 + i;
+          for (const a of attrs) { const A = g.attributes[a], sz = A.itemSize; for (let e = 0; e < sz; e++) out[a][d * sz + e] = A.array[s * sz + e]; }
+          v.fromBufferAttribute(P, s).sub(c).multiplyScalar(scale).applyQuaternion(q);
+          const size = Math.max(1e-6, Math.hypot(c.x, c.z)), ox = r ? c.x / size * push * scale : 0, oz = r ? c.z / size * push * scale : 0;
+          out.position[d * 3] = c.x + v.x + ox; out.position[d * 3 + 1] = c.y + v.y; out.position[d * 3 + 2] = c.z + v.z + oz;
+          if (r && out.normal) { v.set(out.normal[d * 3], out.normal[d * 3 + 1], out.normal[d * 3 + 2]).applyQuaternion(q); out.normal[d * 3] = v.x; out.normal[d * 3 + 1] = v.y; out.normal[d * 3 + 2] = v.z; }
+        }
+      }
+    }
+    const ng = new THREE.BufferGeometry();
+    for (const a of attrs) ng.setAttribute(a, new THREE.BufferAttribute(out[a], g.attributes[a].itemSize));
+    if (idx) { const ni = new (n * (1 + copies) > 65535 ? Uint32Array : Uint16Array)(idx.length * (1 + copies)); for (let r = 0; r <= copies; r++) for (let i = 0; i < idx.length; i++) ni[r * idx.length + i] = idx[i] + r * n; ng.setIndex(new THREE.BufferAttribute(ni, 1)); }
+    o.geometry = ng;
+  });
+}
+
 function rnd(seed) { let s = seed >>> 0 || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
 
 export const FOREST_SPECIES = [
   // soften: the foliage's normals bent this far toward up (both the meshes and the imposters)
   // shape (optional): light the leaves by the lumps they form, darker inside (src/objects/foliage.js settings)
   // sink (optional): stand it this share of its height down into the ground (a plant's root clump)
+  // leafScale, leafCopies (optional): each leaf card made this much bigger about its middle, and this many crossed copies of each added
   { name: 'ash',   file: 'ash',   height: 20, weight: 1, soften: 0.5 },
-  { name: 'aspen', file: 'aspen', height: 17, weight: 1, soften: 0.5 },
+  { name: 'aspen', file: 'aspen', height: 17, weight: 1, soften: 0.5, leafScale: 1.6, leafCopies: 1 },   // (its model has a fifth of the ash's leaves: bigger, and a crossed copy of each)
   { name: 'oak',   file: 'oak',   height: 18, weight: 1.2, soften: 0.5 },
   { name: 'pine',  file: 'pine',  height: 22, weight: 1.4, soften: 0.5 },
   { name: 'bush',  file: 'bush',  height: 5,  weight: 0.5, soften: 0.5 },
@@ -51,6 +83,7 @@ export class Forest {
       if (!sp.root) { sp.root = (await loader.loadAsync(`${this.base}${sp.file}${this.detail === 'fine' ? '' : '_' + this.detail}.glb`)).scene; sp.ownRoot = true; }
       if (this.disposed) return;                                          // replaced while it loaded: go no further
       const root = sp.root; root.updateMatrixWorld(true);
+      if ((sp.leafScale || sp.leafCopies) && !root.userData.leavesGrown) { fillLeaves(root, sp.leafScale || 1, sp.leafCopies || 0); root.userData.leavesGrown = true; }
       const box = new THREE.Box3().setFromObject(root), size = box.getSize(new THREE.Vector3());
       sp.unit = sp.height / size.y; sp.box0 = box.min.y; sp.boxH = size.y; sp.baseY = box.min.y + (sp.sink || 0) * size.y; sp.root = root;   // (sink: that share of its height under the ground)
       const shapeKey = sp.shape ? JSON.stringify(sp.shape) : '';          // (a species handed on to a new forest is already shaped)
