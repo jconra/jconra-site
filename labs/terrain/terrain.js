@@ -16,7 +16,7 @@ import { SHAPE_DEFAULTS } from '../../src/objects/foliage.js';
 import { makeLowPine } from '../../src/objects/lowTrees/cards.js';
 import { stoneField, stoneGeometry, STONE_UNIFORMS, STONE_GLSL } from '../../src/objects/stones.js';
 import { PlantTool } from '../../src/objects/plantTool.js';
-import { paintedPlants, keepProcedural, PlantIndex } from '../../src/objects/planting.js';
+import { paintedPlants, keepProcedural, PlantIndex, inStroke } from '../../src/objects/planting.js';
 import { flyKeys } from '../../src/objects/flyKeys.js';
 import { chooseTier, saveTier, watchFrames, TIERS } from '../../src/quality.js';
 import { makeCloudSky, SKY_GLSL } from '../../src/objects/cloudSky.js';
@@ -620,7 +620,7 @@ function buildLand() {
   COVER.cache = {};                                   // the land changed: the remembered tiles are stale
   placeTrees(); placeStones(); if (COVER.parts) placeCover();
   if (TOWN.village) { TOWN.village.sync(); if (TOWN.editor) TOWN.editor.markSel(); }   // the town stands on the land as it now is
-  if (PLANT.tool) { PLANT.tool.syncItems(); PLANT.tool.group.visible = true; if (PLANT.tool.sel) PLANT.tool.select(PLANT.tool.sel); }   // and the placed plants
+  if (PLANT.tool) { PLANT.tool.syncItems(); PLANT.tool.group.visible = true; if (PLANT.tool.sel) PLANT.tool.select(PLANT.tool.sel); buildFences(); }   // and the placed plants and fences
 }
 
 // ── textures ────────────────────────────────────────────────────────────────────
@@ -1131,8 +1131,8 @@ loadSheet('/models/props/groundPlants.glb', 4, (parts, m) => { COVER.parts = par
 // wood leaves the trees); a clear stroke clears every sort.
 // ...then the footpath (25: paint a path) and its eraser (26), the town's buildings (30 on) and props (50 on), which live in
 // the town's own layout (the tool reaches them through `town`)
-const PLANT = { tool: null, LAWN_KIND: KIND_INFO.length, TREE0: KIND_INFO.length + 1, ROCK0: KIND_INFO.length + 5, PATH: KIND_INFO.length + 9, NOPATH: KIND_INFO.length + 10, BUILD0: 30, PROP0: 50 };
-const SORT = { plant: (k) => k <= PLANT.LAWN_KIND, tree: (k) => k >= PLANT.TREE0 && k < PLANT.ROCK0, rock: (k) => k >= PLANT.ROCK0 && k < PLANT.ROCK0 + 4, path: (k) => k === PLANT.PATH || k === PLANT.NOPATH };
+const PLANT = { tool: null, LAWN_KIND: KIND_INFO.length, TREE0: KIND_INFO.length + 1, ROCK0: KIND_INFO.length + 5, PATH: KIND_INFO.length + 9, NOPATH: KIND_INFO.length + 10, FENCE: KIND_INFO.length + 11, BUILD0: 30, PROP0: 50 };
+const SORT = { plant: (k) => k <= PLANT.LAWN_KIND, tree: (k) => k >= PLANT.TREE0 && k < PLANT.ROCK0, rock: (k) => k >= PLANT.ROCK0 && k < PLANT.ROCK0 + 4, path: (k) => k === PLANT.PATH || k === PLANT.NOPATH, fence: (k) => k === PLANT.FENCE };
 // the planting seen by one sort: its paint strokes and every clear (the land's own plants follow the procedural switch;
 // trees and rocks always), with its own index; made once a change
 const sortParts = new WeakMap();
@@ -1201,7 +1201,7 @@ function plantedTrees(species) {
 }
 // what of the planting the trees and the stones were last laid from, so a change to plants alone doesn't lay them again
 const sortSig = (sort) => { const t = PLANT.tool; return t ? JSON.stringify([t.planting.strokes.filter((s) => s.mode === 'clear' || SORT[sort](s.kind)), t.planting.items.filter((i) => SORT[sort](i.kind))]) : ''; };
-const lastSig = { tree: '', rock: '', path: '' };
+const lastSig = { tree: '', rock: '', path: '', fence: '' };
 function makePlantTool() {
   if (PLANT.tool) return;
   const groups = { long: 'Tall meadow', grass: 'Meadow', shade: 'Shade', dry: 'Dry ground', wet: 'Wet ground', shrub: 'Shrubs' };   // (by where each grows: a dandelion is no grass)
@@ -1219,6 +1219,9 @@ function makePlantTool() {
     g.strokeStyle = '#7a5a3a'; g.lineWidth = 26; g.lineCap = 'round'; g.beginPath(); g.moveTo(14, 82); g.quadraticCurveTo(40, 30, 82, 14); g.stroke();
     if (erase) { g.strokeStyle = '#ff5a4a'; g.lineWidth = 7; g.beginPath(); g.moveTo(22, 22); g.lineTo(74, 74); g.moveTo(74, 22); g.lineTo(22, 74); g.stroke(); } return c.toDataURL(); };
   kinds.push({ id: PLANT.PATH, name: 'footpath (the brush is its width)', group: 'Paths', icon: pathIcon(false) }, { id: PLANT.NOPATH, name: 'rub out footpaths', group: 'Paths', icon: pathIcon(true) });
+  { const c = document.createElement('canvas'); c.width = c.height = 96; const g = c.getContext('2d'); g.fillStyle = '#7a5a3c';   // a fence: posts and two rails
+    for (const x of [14, 40, 66]) g.fillRect(x, 30, 9, 54); g.fillRect(10, 42, 76, 7); g.fillRect(10, 62, 76, 7);
+    kinds.push({ id: PLANT.FENCE, name: 'fence (drag to draw it; Plant size: its height)', group: 'Fences', icon: c.toDataURL() }); }
   // the town's things: buildings and props, one at a time (the gizmo moves, lifts, turns and sizes them)
   Object.entries(TOWN_ASSETS).forEach(([key, A], i) => kinds.push({ id: PLANT.BUILD0 + i, name: A.name || key, group: 'Buildings', town: 'model:' + key }));
   PROP_KINDS.forEach((P, i) => kinds.push({ id: PLANT.PROP0 + i, name: P.name || P.kind, group: 'Props', town: 'prop:' + P.kind }));
@@ -1247,18 +1250,46 @@ function makePlantTool() {
       clearTimeout(relay); relay = setTimeout(() => {
         const sp = sortSig('path'); if (sp !== lastSig.path) { lastSig.path = sp; drawPaths(true); }   // (footpaths first: the plants and stones keep off them)
         COVER.job = moveCover(COVER.at.clone());                        // (the plants laid again round where they are, a few ms a frame)
-        const st = sortSig('tree'), sr = sortSig('rock');                // (the trees and the stones only when their part changed)
+        const st = sortSig('tree'), sr = sortSig('rock'), sf = sortSig('fence');   // (the trees, stones and fences only when their part changed)
+        if (sf !== lastSig.fence) { lastSig.fence = sf; buildFences(); }
         if (st !== lastSig.tree) { lastSig.tree = st; placeTrees(); }
         if (sr !== lastSig.rock) { lastSig.rock = sr; placeStones(); } }, 120); },
     opened: (on) => { document.body.classList.toggle('planting', on); if (on && TOWN.editor && TOWN.editor.on) { $('tEdit').checked = false; TOWN.editor.setOn(false); } } });   // (one tool at a time; on a phone the settings panel steps aside)
   $('tEdit').addEventListener('change', (e) => { if (e.target.checked && PLANT.tool) PLANT.tool.setOpen(false); });
-  lastSig.tree = sortSig('tree'); lastSig.rock = sortSig('rock'); lastSig.path = sortSig('path');
+  lastSig.tree = sortSig('tree'); lastSig.rock = sortSig('rock'); lastSig.path = sortSig('path'); lastSig.fence = sortSig('fence'); buildFences();
   if (lastSig.path.length > 8) drawPaths(true);                       // (a saved planting with footpaths, trees or rocks in it: laid now)
   if (lastSig.tree.length > 8) placeTrees(); if (lastSig.rock.length > 8) placeStones();
   treeIcons();
   // the buildings' and props' icons, from the models (loaded as the town loads them) and the props as made
   Object.keys(TOWN_ASSETS).forEach((key, i) => loadModel(key, QUAL.tier !== 'gaming').then((m) => PLANT.tool.iconFrom(PLANT.BUILD0 + i, m.scene.clone())).catch(() => {}));
   PROP_KINDS.forEach((P, i) => { try { PLANT.tool.iconFrom(PLANT.PROP0 + i, makeProp(P.kind)); } catch (e) { /* no icon then */ } });
+}
+// FENCES (the Build bar's fence, drawn with a drag): rustic posts about every 2.2 m along the line, two rails between each
+// pair, standing on the land (rails slope with it); a later Clear stroke takes posts out, and the rails to them. Two draws
+const FENCE = { meshes: [], mat: null, post: new THREE.BoxGeometry(0.14, 1, 0.14).translate(0, 0.5, 0), rail: new THREE.BoxGeometry(1, 0.08, 0.06).translate(0.5, 0, 0) };
+function buildFences() {
+  for (const m of FENCE.meshes) { scene.remove(m); m.dispose(); }
+  FENCE.meshes = [];
+  const t = PLANT.tool; if (!t) return;
+  const strokes = t.planting.strokes, posts = [], rails = [], GAP = 2.2;
+  strokes.forEach((st, si) => {
+    if (st.kind !== PLANT.FENCE || st.mode === 'clear' || st.pts.length < 2) return;
+    const h = 1.1 * (st.size || 1), at = [st.pts[0]]; let left = GAP;   // (posts every GAP along the line: left is how far to the next)
+    for (let i = 1; i < st.pts.length; i++) { const [ax, az] = st.pts[i - 1], [bx, bz] = st.pts[i], L = Math.hypot(bx - ax, bz - az); let d = left;
+      while (d <= L) { at.push([ax + (bx - ax) * d / L, az + (bz - az) * d / L]); d += GAP; } left = d - L; }
+    const end = st.pts[st.pts.length - 1], last = at[at.length - 1]; if (Math.hypot(end[0] - last[0], end[1] - last[1]) > GAP * 0.35) at.push(end);
+    const kept = at.map(([x, z]) => strokes.some((c, ci) => ci > si && c.mode === 'clear' && inStroke(c, x, z)) ? null : [x, heightAt(x, z), z]);
+    kept.forEach((p, i) => { if (!p) return; posts.push([p, h]); if (kept[i + 1]) rails.push([p, kept[i + 1], h]); });
+  });
+  if (!posts.length) return;
+  FENCE.mat = FENCE.mat || landShaded(new THREE.MeshStandardMaterial({ color: 0x7a5a3c, roughness: 0.92 }), null);
+  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), c = new THREE.Color(), dir = new THREE.Vector3();
+  const pm = new THREE.InstancedMesh(FENCE.post, FENCE.mat, posts.length);
+  posts.forEach(([p, h], i) => { const r = hash(p[0] * 1.7, p[2] * 2.3); pm.setMatrixAt(i, M.compose(new THREE.Vector3(p[0], p[1] - 0.08, p[2]), Q.setFromAxisAngle(Y, r * 6.28), new THREE.Vector3(1, h + 0.08 + r * 0.1, 1))); pm.setColorAt(i, c.setScalar(0.8 + 0.35 * r)); });
+  const rm = new THREE.InstancedMesh(FENCE.rail, FENCE.mat, rails.length * 2 || 1); rm.count = rails.length * 2;
+  rails.forEach(([p, q, h], i) => { dir.set(q[0] - p[0], q[1] - p[1], q[2] - p[2]); const L = dir.length(); dir.normalize(); Q.setFromUnitVectors(X, dir);
+    for (const [k, f] of [[0, 0.42], [1, 0.82]]) { rm.setMatrixAt(i * 2 + k, M.compose(new THREE.Vector3(p[0], p[1] + h * f, p[2]), Q, new THREE.Vector3(L, 1, 1))); rm.setColorAt(i * 2 + k, c.setScalar(0.85 + 0.3 * hash(p[0] + k, p[2]))); } });
+  for (const m of [pm, rm]) { m.castShadow = m.receiveShadow = SHADOW.on; m.frustumCulled = false; scene.add(m); FENCE.meshes.push(m); }
 }
 // the trees' icons, drawn from the forest's own trees once they are in (a copy each: the forest keeps its own)
 function treeIcons() {
