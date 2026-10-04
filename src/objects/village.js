@@ -97,8 +97,17 @@ export function drawStroke(g, r, SIZE, P = 2048, from = 0) {
 // footprints), round the town trees' trunks, and the roads (from the road picture). And THE YARDS: round the buildings
 // (fading out over `yardM` m) and along the roads (~6 m), where the wild meadow gives way to mown lawn
 export function blockGrid(layout, roadCanvas, N, SIZE, TEX, pad = 2, yardM = 14) {
-  const B = new Float32Array(N * N), road = new Float32Array(N * N), yard = new Float32Array(N * N);
+  const B = new Float32Array(N * N), road = new Float32Array(N * N), yard = new Float32Array(N * N), bridge = new Float32Array(N * N);
   for (const it of layout.items) {
+    if (it.type === 'model' && it.kind === 'bridge') {                  // a bridge is a way across, not in the way: its deck counts as road
+      const { w, d } = footprintOf(it), a = it.rot * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), R = Math.hypot(w, d) / 2 + TEX;
+      for (let j = Math.max(0, Math.floor((it.z - R + SIZE / 2) / TEX)); j <= Math.min(N - 1, Math.ceil((it.z + R + SIZE / 2) / TEX)); j++)
+        for (let i = Math.max(0, Math.floor((it.x - R + SIZE / 2) / TEX)); i <= Math.min(N - 1, Math.ceil((it.x + R + SIZE / 2) / TEX)); i++) {
+          const x = (i + 0.5) * TEX - SIZE / 2 - it.x, z = (j + 0.5) * TEX - SIZE / 2 - it.z;
+          if (Math.abs(c * x - s * z) < w / 2 && Math.abs(s * x + c * z) < d / 2 + TEX) bridge[j * N + i] = 1;
+        }
+      continue;
+    }
     const { w, d } = footprintOf(it), a = it.rot * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), hw = w / 2 + pad, hd = d / 2 + pad, Y = it.type === 'model' ? yardM : it.type === 'prop' ? 4 : 0, R = Math.hypot(hw, hd) + Math.max(TEX, Y);
     const i0 = Math.max(0, Math.floor((it.x - R + SIZE / 2) / TEX)), i1 = Math.min(N - 1, Math.ceil((it.x + R + SIZE / 2) / TEX));
     const j0 = Math.max(0, Math.floor((it.z - R + SIZE / 2) / TEX)), j1 = Math.min(N - 1, Math.ceil((it.z + R + SIZE / 2) / TEX));
@@ -120,7 +129,8 @@ export function blockGrid(layout, roadCanvas, N, SIZE, TEX, pad = 2, yardM = 14)
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { let m = 0; for (let d = -2; d <= 2; d++) { const ii = i + d; if (ii >= 0 && ii < N) m = Math.max(m, road[j * N + ii] * (1 - Math.abs(d) * 0.3)); } tmp[j * N + i] = m; }
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { let m = 0; for (let d = -2; d <= 2; d++) { const jj = j + d; if (jj >= 0 && jj < N) m = Math.max(m, tmp[jj * N + i] * (1 - Math.abs(d) * 0.3)); } if (m > yard[j * N + i]) yard[j * N + i] = m; }
   }
-  return { block: B, road, yard };
+  for (let k = 0; k < N * N; k++) if (bridge[k] > road[k]) road[k] = bridge[k];
+  return { block: B, road, yard, bridge };
 }
 
 // ── the things themselves ───────────────────────────────────────────────────────────────────────────────────────
@@ -129,7 +139,7 @@ function loadModel(kind, lo) {
   const key = kind + (lo ? '-lo' : '');
   return modelCache[key] || (modelCache[key] = new Promise((ok, bad) => loader.load(`/models/town/${lo ? 'lo/' : ''}${kind}.glb`, g => {
     const o = g.scene; o.updateMatrixWorld(true);
-    o.traverse(m => { if (m.isMesh) { m.castShadow = m.receiveShadow = true; if (m.material.map) { m.material.map.anisotropy = 4; } } });
+    o.traverse(m => { if (m.isMesh) { m.castShadow = m.receiveShadow = true; for (const mt of [].concat(m.material)) { mt.side = THREE.DoubleSide; if (mt.map) mt.map.anisotropy = 4; } } });   // (both sides: a gable or wall made as one face shows from behind too)
     const bb = new THREE.Box3().setFromObject(o), c = bb.getCenter(new THREE.Vector3());
     ok({ scene: o, centre: c, minY: bb.min.y, box: bb.getSize(new THREE.Vector3()) });
   }, undefined, bad)));

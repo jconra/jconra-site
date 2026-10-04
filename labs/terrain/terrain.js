@@ -21,7 +21,7 @@ import { flyKeys } from '../../src/objects/flyKeys.js';
 import { chooseTier, saveTier, watchFrames, TIERS } from '../../src/quality.js';
 import { makeCloudSky, SKY_GLSL } from '../../src/objects/cloudSky.js';
 import { WIND, tickWind, swayMaterial } from '../../src/objects/wind.js';
-import { Village, levelPads, blockGrid, paintRoads, normalise as normaliseTown } from '../../src/objects/village.js';
+import { Village, levelPads, blockGrid, paintRoads, footprintOf, normalise as normaliseTown } from '../../src/objects/village.js';
 import { VillageEditor, savedLayout as savedTown } from '../../src/objects/villageEditor.js';
 // THE TOWN's layout: the one saved in this browser, else the first town (models/town/layout.json)
 const TOWN_DEFAULT = normaliseTown(await fetch('/models/town/layout.json').then(r => r.ok ? r.json() : null).catch(() => null));
@@ -494,7 +494,7 @@ function bakeShade(canopy, wide) {
 }
 function buildLand() {
   paintRoads(TOWN.canvas, TOWN.village ? TOWN.village.layout : TOWN.layout, SIZE);
-  ({ block: TOWN.block, road: TOWN.road, yard: TOWN.yard } = blockGrid(TOWN.village ? TOWN.village.layout : TOWN.layout, TOWN.canvas, N, SIZE, TEX));
+  ({ block: TOWN.block, road: TOWN.road, yard: TOWN.yard, bridge: TOWN.bridge } = blockGrid(TOWN.village ? TOWN.village.layout : TOWN.layout, TOWN.canvas, N, SIZE, TEX));
   Hb = blur(Hg, 12);
   // wet and dry: how far below or above its surroundings each spot is
   const wet = new Float32Array(N * N), dry = new Float32Array(N * N), steep = new Float32Array(N * N);
@@ -545,7 +545,7 @@ function buildLand() {
   U.maskB.value.needsUpdate = true;
   bakeShade(canopy, wide);
   // paths: cheapest routes over the grid, where steep, wet and thick forest cost more
-  const cost = new Float32Array(N * N); for (let k = 0; k < N * N; k++) cost[k] = (1 + 60 * steep[k] + 8 * wet[k] + 2 * canopy[k] + (POND[k] ? 5000 : WDEPTH[k] > 0 ? 40 : 0)) * (1 - 0.65 * TOWN.road[k]) + 80 * Math.max(0, TOWN.block[k] - TOWN.road[k]);   // round the lakes; over a river only where it must; along the town's roads, round its buildings
+  const cost = new Float32Array(N * N); for (let k = 0; k < N * N; k++) cost[k] = (1 + 60 * steep[k] + 8 * wet[k] + 2 * canopy[k] + (POND[k] ? 5000 : WDEPTH[k] > 0 ? 40 * (1 - TOWN.bridge[k]) : 0)) * (1 - 0.65 * TOWN.road[k]) + 80 * Math.max(0, TOWN.block[k] - TOWN.road[k]);   // round the lakes; over a river only where it must; along the town's roads, round its buildings
   const baseCost = Float32Array.from(cost), trail = new Float32Array(N * N);       // trail: how much cheaper a cell is for being on (or beside) a path already routed
   const route = (ax, az, bx, bz) => {
     const S = N / 2, cell = (x, z) => [Math.round((x + SIZE / 2) / TEX), Math.round((z + SIZE / 2) / TEX)];
@@ -582,7 +582,8 @@ function buildLand() {
   // cells are ~3 m, so drawn there it stuck out one side of the stones as a strip of dirt; drawn only off the paving, a
   // path shows where it leaves a road, its end reaching just under the stones
   const rc = TOWN.canvas.width === P ? TOWN.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, P, P).data : null;
-  const onPaving = ([x, z]) => { if (!rc) return false; const i = Math.floor((x + SIZE / 2) * k), j = Math.floor((z + SIZE / 2) * k); if (i < 0 || j < 0 || i >= P || j >= P) return false; const o = (j * P + i) * 4; return rc[o + 3] / 255 * Math.max(rc[o], rc[o + 1]) / 255 > 0.5; };
+  const onPaving = ([x, z]) => { const bi = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), bj = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))); if (TOWN.bridge && TOWN.bridge[bj * N + bi] > 0.5) return true;   // (over a bridge: the deck carries it, no dirt in the creek under the arch)
+    if (!rc) return false; const i = Math.floor((x + SIZE / 2) * k), j = Math.floor((z + SIZE / 2) * k); if (i < 0 || j < 0 || i >= P || j >= P) return false; const o = (j * P + i) * 4; return rc[o + 3] / 255 * Math.max(rc[o], rc[o + 1]) / 255 > 0.5; };
   const runs = []; for (const pts of paths) { let run = []; pts.forEach((pt, q) => { const on = onPaving(pt);
     if (!on) { if (!run.length && q > 0) run.push(pts[q - 1]); run.push(pt); } else if (run.length) { run.push(pt); runs.push(run); run = []; } });
     if (run.length > 1) runs.push(run); }
@@ -1398,7 +1399,12 @@ function buildPaving() {
   let x0 = P, y0 = P, x1 = -1, y1 = -1;
   for (let y = 0; y < P; y++) for (let x = 0; x < P; x++) if (paved((y * P + x) * 4) > 0.1) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   if (x1 < 0) { U.pave3D.value = 0; return; }
-  const inside = (x, z) => { const px = Math.floor((x + SIZE / 2) / k), py = Math.floor((z + SIZE / 2) / k); return px >= 0 && py >= 0 && px < P && py < P && paved((py * P + px) * 4) > 0.5; }, inside_ = inside;
+  // no stones in the water or under a bridge (the road painted through: the creek and its banks show under the arch,
+  // the paving stops at the bridge's ends, tucked a little under them)
+  const spans = (TOWN.village ? TOWN.village.layout : TOWN.layout).items.filter((it) => it.type === 'model' && it.kind === 'bridge')
+    .map((it) => { const f = footprintOf(it), a = it.rot * Math.PI / 180; return { x: it.x, z: it.z, c: Math.cos(a), s: Math.sin(a), hw: f.w / 2 + 0.4, hd: f.d / 2 * 0.9 }; });
+  const underBridge = (x, z) => spans.some((b) => { const dx = x - b.x, dz = z - b.z; return Math.abs(b.c * dx - b.s * dz) < b.hw && Math.abs(b.s * dx + b.c * dz) < b.hd; });
+  const inside = (x, z) => { const px = Math.floor((x + SIZE / 2) / k), py = Math.floor((z + SIZE / 2) / k); return px >= 0 && py >= 0 && px < P && py < P && paved((py * P + px) * 4) > 0.5 && waterAt(x, z) < 0.1 && !underBridge(x, z); }, inside_ = inside;
   const field = stoneField({ size: PAVE.size, jitter: PAVE.jitter, variety: PAVE.variety, gap: PAVE.gap, seed: PAVE.seed,
     x0: x0 * k - SIZE / 2 - 3, z0: y0 * k - SIZE / 2 - 3, width: Math.max(x1 - x0, y1 - y0) * k + 6, inside }, U);
   const shape = PAVE.builds[PAVE.build];
@@ -1515,22 +1521,13 @@ const LAYERS = { layDry: 'grassDry', layLush: 'grassMed', layForest: 'forest', l
 // allows 16 a shader and the ground was at 19. `rect` (canvas pixels): only that part redone (live road painting)
 function composePathRoad(rect = null) {
   if (!U.pathRoad.value) { const t = new THREE.DataTexture(PATHROAD, 2048, 2048, THREE.RGBAFormat); t.flipY = false; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.anisotropy = 4; U.pathRoad.value = t; }
-  // M: a footpath's trampled shoulder fades out within this many pixels (~3 m) of a paved road, so its worn edge can't run
-  // beside one as a strip of dirt; the path itself runs right up to the stones (the rectangle and the road read grow by M)
-  const P = 2048, M = 4, x0 = rect ? Math.max(0, (rect[0] | 0) - M) : 0, y0 = rect ? Math.max(0, (rect[1] | 0) - M) : 0, x1 = rect ? Math.min(P, Math.ceil(rect[2]) + M) : P, y1 = rect ? Math.min(P, Math.ceil(rect[3]) + M) : P;
+  // (the footpaths come as drawn: their stretches along a road aren't drawn at all, so nothing here needs to keep them back)
+  const P = 2048, x0 = rect ? Math.max(0, rect[0] | 0) : 0, y0 = rect ? Math.max(0, rect[1] | 0) : 0, x1 = rect ? Math.min(P, Math.ceil(rect[2])) : P, y1 = rect ? Math.min(P, Math.ceil(rect[3])) : P;
   if (x1 <= x0 || y1 <= y0 || !MAPS.path) return;
-  const X0 = Math.max(0, x0 - M), Y0 = Math.max(0, y0 - M), X1 = Math.min(P, x1 + M), Y1 = Math.min(P, y1 + M), W = X1 - X0, H = Y1 - Y0;
-  const rd = TOWN.canvas.width === P ? TOWN.canvas.getContext('2d', { willReadFrequently: true }).getImageData(X0, Y0, W, H).data : null;
-  let near = null;                                                    // how close a road is: its coverage, spread M pixels each way (a max, across then down)
-  if (rd) {
-    const cov = new Float32Array(W * H), tmp = new Float32Array(W * H); near = new Float32Array(W * H);
-    for (let q = 0; q < W * H; q++) cov[q] = rd[q * 4 + 3] / 255 * Math.max(rd[q * 4], rd[q * 4 + 1]) / 255;
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let m = 0; for (let d = Math.max(0, x - M); d <= Math.min(W - 1, x + M); d++) m = Math.max(m, cov[y * W + d]); tmp[y * W + x] = m; }
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let m = 0; for (let d = Math.max(0, y - M); d <= Math.min(H - 1, y + M); d++) m = Math.max(m, tmp[d * W + x]); near[y * W + x] = m; }
-  }
+  const rd = TOWN.canvas.width === P ? TOWN.canvas.getContext('2d', { willReadFrequently: true }).getImageData(x0, y0, x1 - x0, y1 - y0).data : null, w = x1 - x0;
   for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
-    const o = (y * P + x) * 4, k = (y - Y0) * W + (x - X0), q = k * 4, keep = near ? 1 - Math.min(1, near[k] * 1.5) : 1;
-    PATHROAD[o] = MAPS.path[o]; PATHROAD[o + 1] = MAPS.path[o + 1] * keep;   // (the path itself runs up to the stones, its dirt meeting their grout; only its trampled shoulder fades)
+    const o = (y * P + x) * 4, q = ((y - y0) * w + (x - x0)) * 4;
+    PATHROAD[o] = MAPS.path[o]; PATHROAD[o + 1] = MAPS.path[o + 1];
     if (rd) { const a = rd[q + 3] / 255; PATHROAD[o + 2] = rd[q] * a; PATHROAD[o + 3] = rd[q + 1] * a; } else { PATHROAD[o + 2] = PATHROAD[o + 3] = 0; }
   }
   U.pathRoad.value.needsUpdate = true;
