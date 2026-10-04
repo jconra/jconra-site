@@ -135,7 +135,7 @@ function baseHeight(x, z) {
 }
 // (the land's shape as Jacob set it, 2026-10-01)
 const SHAPE = { terraceOn: true, step: 30, riser: 0.03, terraceAmount: 0.22, terraceFrom: 1, terraceSpread: 0.35, erodeOn: true, erodeSmooth: 3, drops: 110000, erodeStrength: 0.28, ravines: 35, ravineStrength: 4, ravineScale: 4, ravineRound: 0.8, crags: 28, cragSize: 120, cragSharp: 0.5 };
-const LAND = { wetDepth: 6.6, dryHeight: 6.0, forest: 0.7, shadeReach: 4, pathWidth: 3.6, treeline: 280, hillForest: 0.43, shore: 2, edgeTrees: 0.35, giants: 0.15, giantSize: 1.9 };   // (the land maps' settings; up here because the crags read the treeline)
+const LAND = { wetDepth: 6.6, dryHeight: 6.0, forest: 0.7, shadeReach: 4, pathWidth: 3.6, treeline: 280, hillForest: 0.43, shore: 2, edgeTrees: 0.5, giants: 0.4, giantSize: 2.5 };   // (the forests' giants: Jacob's, 2026-10-04)   // (the land maps' settings; up here because the crags read the treeline)
 const Hg = new Float32Array(N * N), FLOW = new Float32Array(N * N), SETTLE = new Float32Array(N * N);
 const cellX = (i) => (i + 0.5) * TEX - SIZE / 2;
 // TERRACES: the height is stepped - a flat top, then a short steep riser - the way rock bands break a
