@@ -1,7 +1,7 @@
 // PLANT TOOL: hand planting in the Terrain Lab. A bar along the bottom (plantBar.js) picks a plant and a tool:
-//   Paint      drag a brush to scatter the chosen plant (thickness: plants a square metre); kept as the stroke, not the plants
+//   Add        click to stand one plant on the ground, or on whatever the mouse is over (a roof, a wall top); drag a brush
+//              to scatter the chosen plant (thickness: plants a square metre), kept as the stroke, not the plants
 //   Clear      drag to keep every plant out of the ground brushed (the land's own and painted ones)
-//   Place one  click to stand one plant on the ground, or on whatever the mouse is over (a roof, a wall top)
 //   Select     click a placed plant; the gizmo (gizmo.js) moves, turns and sizes it along each axis
 // The planting (planting.js) is kept in this browser and copied out as text. The page grows the painted plants with
 // its own (paintedPlants, keepProcedural), so they get its imposters, wind and shade; the placed ones are drawn here,
@@ -12,6 +12,9 @@
 //     parts[k]: kind k's geometry (base at y 0); materials[k]: its material; kinds: [{ id, name, group }] (ids 0..n-1,
 //     an id past the parts is drawn by the page alone, e.g. the lawn); sizeOf(k): its usual size
 //     changed(planting, index): the planting changed (the page lays its plants again); opened(on): the bar opened or hid
+//     title: the bar's button ('Build'); town (optional): the page's town things (buildings, props, town trees, kept in its
+//       own layout), for kinds carrying `town: 'model:kind'`: { pick(cx, cy) -> id, get(id), add(key, x, z), change(id,
+//       fields, done), remove(id), snapshot(), undo(), redo() }; the gizmo slides, lifts, turns and sizes them
 //   tool.update() each frame; tool.planting, tool.index; tool.active (the bar open)
 import * as THREE from 'three';
 import { Gizmo } from './gizmo.js';
@@ -26,7 +29,7 @@ export class PlantTool {
     this.planting = normalisePlanting(loadPlanting() || o.initial || emptyPlanting());
     this.index = new PlantIndex(this.planting);
     this.history = new PlantingHistory(this.planting);
-    this.sel = null; this.stroke = null; this.painting = null; this.down = null; this.fingers = new Set();
+    this.sel = null; this.stroke = null; this.painting = null; this.down = null; this.fingers = new Set(); this.log = []; this.redoLog = [];
     this.ray = new THREE.Raycaster(); this.sinkM = new THREE.Matrix4();
     // the placed plants: one instanced mesh a kind
     this.group = new THREE.Group(); this.scene.add(this.group);
@@ -43,7 +46,7 @@ export class PlantTool {
     // the gizmo moves a stand-in; its changes are copied to the selected plant
     this.proxy = new THREE.Object3D();
     this.gizmo = new Gizmo({ camera: this.camera, dom: this.dom, scene: this.scene, controls: this.controls });
-    this.bar = new PlantBar({ kinds: this.kinds, onChange: (s, key) => this.barChanged(s, key), onAction: (a) => this.action(a) });
+    this.bar = new PlantBar({ kinds: this.kinds, title: o.title || 'Plants', onChange: (s, key) => this.barChanged(s, key), onAction: (a) => this.action(a) });
     this.bar.setState({ open: false, procedural: this.planting.procedural });
     this.makeIcons();
     this.listen();
@@ -69,9 +72,13 @@ export class PlantTool {
   }
   action(a) {
     if ((a === 'undo' || a === 'redo') && this.gizmo.dragging) return;   // (not in the middle of a drag)
-    if (a === 'undo' || a === 'redo') {                                  // (the chosen plant stays chosen, if it is still there)
-      const keep = this.sel, p = a === 'undo' ? this.history.undo() : this.history.redo();
-      if (p) { this.replace(p, false); if (keep && this.item(keep)) this.select(keep); }
+    if (a === 'undo' || a === 'redo') {                                  // (the chosen thing stays chosen, if it is still there)
+      const from = a === 'undo' ? this.log : this.redoLog, to = a === 'undo' ? this.redoLog : this.log, w = from.pop(), keep = this.sel;
+      if (!w) return;
+      to.push(w);
+      if (w === 'T') { if (a === 'undo') this.town.undo(); else this.town.redo(); this.syncUndo(); if (keep && this.townItem(keep)) this.select(keep); else this.select(null); return; }
+      const p = a === 'undo' ? this.history.undo() : this.history.redo();
+      if (p) { this.replace(p, false); if (keep && (this.item(keep) || this.townItem(keep))) this.select(keep); }
     }
     else if (a === 'delete') this.removeSel();
     else if (a === 'copy') this.copy();
@@ -102,8 +109,9 @@ export class PlantTool {
   before(sliding = false) {
     const go = !sliding || !this.sliding;
     if (sliding) { clearTimeout(this.sliding); this.sliding = setTimeout(() => { this.sliding = 0; }, 800); }
-    if (go) { this.history.planting = this.planting; this.history.snapshot(); }
+    if (go) { this.history.planting = this.planting; this.history.snapshot(); this.log.push('P'); this.redoLog.length = 0; }
   }
+  townBefore() { this.town.snapshot(); this.log.push('T'); this.redoLog.length = 0; this.syncUndo(); }   // (the town's own history keeps its copy)
   commit() {                                                             // after a change: saved, laid again, drawn
     this.index = new PlantIndex(this.planting);
     savePlanting(this.planting); this.syncItems(); this.syncUndo();
@@ -111,7 +119,7 @@ export class PlantTool {
     const n = this.planting.strokes.length, m = this.planting.items.length;
     this.bar.setInfo(`${n} stroke${n === 1 ? '' : 's'}, ${m} placed plant${m === 1 ? '' : 's'} · saved in this browser`);
   }
-  syncUndo() { this.bar.setUndo(this.history.canUndo, this.history.canRedo); }
+  syncUndo() { this.bar.setUndo(this.log.length > 0, this.redoLog.length > 0); }
   item(id) { return this.planting.items.find((i) => i.id === id); }
   // where a plant stands is where it meets the ground: its root clump below (sinkOf(kind), a share of its height), so it
   // turns and sizes about that point and the ground line stays put
@@ -135,14 +143,24 @@ export class PlantTool {
       mesh.count = list.length; mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere();
     });
   }
+  townItem(sel) { return this.town && typeof sel === 'string' && sel.startsWith('T:') ? this.town.get(sel.slice(2)) : null; }
   removeSel() {
     if (!this.sel) return;
+    if (this.townItem(this.sel)) { this.townBefore(); this.town.remove(this.sel.slice(2)); this.select(null); return; }
     this.before(); this.planting.items = this.planting.items.filter((i) => i.id !== this.sel); this.select(null); this.commit();
   }
 
   // ── selecting and the gizmo ──
   select(id) {
-    this.sel = id; this.dragFrom = null; const it = id && this.item(id);
+    this.sel = id; this.dragFrom = null;
+    const t = this.townItem(id);
+    if (t) {                                                             // a building, prop or town tree: slides, lifts, turns upright, sizes evenly
+      this.proxy.position.set(t.x, this.heightAt(t.x, t.z) + (t.y || 0), t.z); this.proxy.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.rot * DEG); this.proxy.scale.set(1, 1, 1);
+      this.townFrom = { size: t.size }; this.gizmo.mode = this.st.gizmo; this.limits();
+      this.gizmo.attach(this.proxy, { onChange: () => this.fromTownProxy(id, false), onCommit: () => this.fromTownProxy(id, true) });
+      return;
+    }
+    const it = id && this.item(id);
     if (!it) { this.sel = null; this.gizmo.detach(); return; }
     this.toProxy(it);
     this.gizmo.mode = this.st.gizmo; this.limits();
@@ -152,9 +170,21 @@ export class PlantTool {
   // the gizmo's arms for the chosen thing: all of them, or for a kind with `upright` (a forest tree: the forest stands
   // them up straight and sizes them evenly) sliding across the ground, turning about the upright, sizing evenly
   limits() {
-    const it = this.sel && this.item(this.sel), up = it && this.kindOf(it.kind).upright, m = this.gizmo.mode;
-    this.gizmo.axes = !up ? { x: true, y: true, z: true } : m === 'translate' ? { x: true, y: false, z: true } : m === 'rotate' ? { x: false, y: true, z: false } : { x: true, y: true, z: true };
+    const it = this.sel && this.item(this.sel), town = !!this.townItem(this.sel), up = town || (it && this.kindOf(it.kind).upright), m = this.gizmo.mode;
+    this.gizmo.axes = !up ? { x: true, y: true, z: true } : m === 'translate' ? { x: true, y: town, z: true } : m === 'rotate' ? { x: false, y: true, z: false } : { x: true, y: true, z: true };
     this.gizmo.uniform = !!up && m === 'scale';
+  }
+  // the gizmo moved a town thing's stand-in: across the ground it keeps its height above the ground; the green arm lifts
+  // or sinks it; it turns about the upright and sizes evenly. Shown as it goes; let go, the town lays its ground again
+  fromTownProxy(sel, done) {
+    const t = this.townItem(sel); if (!t) return;
+    if (done) { this.dragFrom = null; this.town.change(sel.slice(2), {}, true); return; }
+    const p = this.proxy.position;
+    if (!this.dragFrom) { this.townBefore(); this.dragFrom = { y: t.y || 0, wy: this.heightAt(t.x, t.z) + (t.y || 0) }; }
+    const x = +p.x.toFixed(2), z = +p.z.toFixed(2), y = +(this.dragFrom.y + p.y - this.dragFrom.wy).toFixed(2);
+    p.y = this.heightAt(x, z) + y;
+    const rot = +((new THREE.Euler().setFromQuaternion(this.proxy.quaternion, 'YXZ').y / DEG % 360 + 360) % 360).toFixed(1);
+    this.town.change(sel.slice(2), { x, z, y, rot, size: +Math.max(0.05, this.townFrom.size * this.proxy.scale.x).toFixed(3) }, false);
   }
   toProxy(it) {
     this.proxy.position.set(it.x, this.heightAt(it.x, it.z) + it.y, it.z);
@@ -218,10 +248,11 @@ export class PlantTool {
     return hit.face.normal.clone().transformDirection(m);
   }
   place(cx, cy) {
-    const p = this.surfaceAt(cx, cy), k = this.st.kind;
-    if (k != null && !this.parts[k] && !this.kindOf(k).height) { this.bar.setInfo('That one can only be painted (choose Paint).'); return; }
+    const p = this.surfaceAt(cx, cy), k = this.st.kind, kd = this.kindOf(k);
+    if (kd.town) { const g = this.groundAt(cx, cy); if (!g) return; this.townBefore(); this.town.add(kd.town, +g.x.toFixed(2), +g.z.toFixed(2)); this.bar.setInfo(`Added: ${kd.name}. Select it to move, lift, turn or size it.`); return; }
+    if (k != null && !this.parts[k] && !kd.height) { this.bar.setInfo('That one can only be painted (choose Paint).'); return; }
     if (!p || k == null) return;
-    const s = +(this.sizeOf(k) * this.st.size * (0.9 + 0.2 * Math.random())).toFixed(3);   // (rounded as a reload would: what's saved is what's shown)
+    const s = +(this.sizeOf(k) * (this.unitOf ? this.unitOf(k) : 1) * this.st.size * (0.9 + 0.2 * Math.random())).toFixed(3);   // (unitOf: model units to metres, as the brush's plants get; rounded as a reload would)
     const it = { id: newId(), kind: k, x: +p.x.toFixed(2), y: +Math.max(0, p.y).toFixed(2), z: +p.z.toFixed(2), rx: 0, ry: +(Math.random() * 360 - 180).toFixed(1), rz: 0, sx: s, sy: s, sz: s, clear: this.st.clearRadius };
     this.before(); this.planting.items.push(it); this.commit();      // (not chosen: in Place mode its gizmo would sit where the next ones go; Select picks it up)
   }
@@ -255,13 +286,15 @@ export class PlantTool {
       if (!e.isPrimary || e.button !== 0 || this.gizmo.hovered || this.gizmo.dragging) return;   // (the gizmo's handles are its own)
       const m = this.st.mode;
       if (m === 'paint' || m === 'clear') {
+        if (m === 'paint' && this.kindOf(this.st.kind).town) { this.down = { x: e.clientX, y: e.clientY, id: e.pointerId, place: true }; return; }   // (a building or prop: a click puts one down, a drag turns the camera)
         const g = this.groundAt(e.clientX, e.clientY); if (!g) return;
         this.stroke = { id: newId(), mode: m, kind: this.st.kind ?? 0, r: this.st.brush, density: +(this.st.density * (this.kindOf(this.st.kind ?? 0).densityScale || 1)).toPrecision(3), size: this.st.size, seed: newSeed(), pts: [[+g.x.toFixed(2), +g.z.toFixed(2)]] };
-        this.painting = { id: e.pointerId, t0: performance.now(), x: e.clientX, y: e.clientY };
+        this.painting = { id: e.pointerId, t0: performance.now(), x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, touch: e.pointerType !== 'mouse' };
         this.hold(e); this.showTrail();
       } else if (m === 'place') this.down = { x: e.clientX, y: e.clientY, id: e.pointerId, place: true };
       else if (m === 'select') {
-        const id = this.pick(e.clientX, e.clientY, e.pointerType !== 'mouse');
+        let id = this.pick(e.clientX, e.clientY, e.pointerType !== 'mouse');
+        if (!id && this.town) { const t = this.town.pick(e.clientX, e.clientY); if (t) id = 'T:' + t; }   // (a building, prop or town tree)
         if (id) { this.select(id); e.stopPropagation(); e.preventDefault(); }
         else this.down = { x: e.clientX, y: e.clientY, id: e.pointerId };    // a click on nothing (not a drag) lets go of the selection
       }
@@ -279,7 +312,12 @@ export class PlantTool {
     };
     this.onUp = (e) => {
       this.fingers.delete(e.pointerId);
-      if (this.stroke && e.pointerId === this.painting.id) this.endStroke();
+      if (this.stroke && e.pointerId === this.painting.id) {
+        // Add: a click that didn't wander puts one down (a kind that can stand alone: a plant, tree or rock); a drag paints
+        const h = this.painting, k = this.stroke.kind, still = this.stroke.pts.length === 1 && Math.hypot(e.clientX - h.sx, e.clientY - h.sy) < (h.touch ? 10 : 5);
+        if (still && this.stroke.mode === 'paint' && (this.parts[k] || this.kindOf(k).height)) { this.stroke = this.painting = null; this.release(); this.showTrail(); this.place(h.sx, h.sy); }
+        else this.endStroke();
+      }
       else if (this.down && e.pointerId === this.down.id) {
         const d = this.down, still = Math.hypot(e.clientX - d.x, e.clientY - d.y) < (e.pointerType === 'mouse' ? 5 : 10);
         this.down = null;

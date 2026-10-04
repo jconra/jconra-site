@@ -2,9 +2,10 @@
 // reports them; the lab does the planting. It hides into one round 'Plants' button (bottom left) that brings it back.
 //   Bottom row: one square button per plant kind (its picture, a tiny name under it, the full name on hover), grouped
 //   under small headings, scrolling sideways when they don't fit (the mouse wheel scrolls it too); the chosen one is lit.
-//   Above it, the tools: Select / Place one / Paint / Clear (what a click on the ground does); Move / Turn / Size (which
-//   handles the chosen plant shows, for Select and Place one); only the sliders that matter for the mode; Procedural
-//   plants (off: start from bare ground); Undo / Redo, Copy / Paste, Delete (Select and Place one), Start over, Hide.
+//   Above it, the tools: Select / Add / Clear (what a click on the ground does: Add puts one down on a click and paints
+//   with the brush on a drag); Move / Turn / Size (which handles the chosen thing shows, for Select); only the sliders
+//   that matter for the mode; Procedural plants (off: start from bare ground); Undo / Redo, Copy / Paste, Delete, Start
+//   over, Hide.
 //
 //   const bar = new PlantBar({ kinds: [{ id, name, group, densityScale }], onChange(state, key) {}, onAction(name) {}, container })
 //     (densityScale: that kind's thickness is the slider's times this, e.g. trees 0.02; the readout shows the result)
@@ -36,8 +37,8 @@ const ICON = {
   scale: SVG('<path d="M4.5 19.5l8-8"/><rect x="12.5" y="4" width="7.5" height="7.5" rx=".6" fill="currentColor" fill-opacity=".3"/>'),
   plants: SVG('<path d="M12 20v-9"/><path d="M12 14c-4 0-6.5-2.3-6.5-6.5 4.2 0 6.5 2.3 6.5 6.5z"/><path d="M12 12c0-4 2.3-6.5 6.5-6.5 0 4.2-2.3 6.5-6.5 6.5z"/><path d="M8 20h8"/>'),
 };
-const MODES = [['select', 'Select', 'Pick a placed plant, then move, turn or size it'], ['place', 'Place one', 'Click the ground to put one plant there'],
-  ['paint', 'Paint', 'Drag over the ground to paint plants with the brush'], ['clear', 'Clear', 'Drag over the ground to rub plants out']];
+const MODES = [['select', 'Select', 'Pick a placed thing, then move, turn or size it'],
+  ['paint', 'Add', 'Click for one, drag to paint a patch with the brush (buildings and props: a click puts one down)'], ['clear', 'Clear', 'Drag over the ground to rub plants out']];
 const GIZMOS = [['translate', 'Move', 'Move it (drag an arrow)'], ['rotate', 'Turn', 'Turn it round'], ['scale', 'Size', 'Make it bigger or smaller']];
 // key, words, what it does, lowest, highest, step (0: a log slider, so the small numbers get as much room as the big), how it reads
 const SLIDERS = [
@@ -45,7 +46,7 @@ const SLIDERS = [
   ['density', 'Thickness', 'How many plants the brush puts on each square metre', 0.05, 20, 0, (v) => `${+(+v).toPrecision(2)} per m²`],
   ['size', 'Plant size', 'How big the plants come out, against their usual size', 0.3, 3, 0.05, (v) => `${v.toFixed(2)}×`],
   ['clearRadius', 'Clear round placed plants', 'A placed plant clears the painted plants this close round it', 0, 5, 0.1, (v) => `${+v.toFixed(1)} m`]];
-const SHOWN = { select: [], place: ['size', 'clearRadius'], paint: ['brush', 'density', 'size'], clear: ['brush'] };
+const SHOWN = { select: [], place: ['size', 'clearRadius'], paint: ['brush', 'density', 'size', 'clearRadius'], clear: ['brush'] };   // ('place' is no longer offered: Add does both)
 const ACTS = [['undo', 'Undo', 'Undo the last change'], ['redo', 'Redo', 'Put back what Undo took away'], ['copy', 'Copy', 'Copy the planting as text'],
   ['paste', 'Paste', 'Paste planting copied before'], ['delete', 'Delete', 'Delete the chosen plant'], ['reset', 'Start over', 'Take away all the hand planting (press twice)']];
 const STEPS = 1000;   // (the log slider's positions)
@@ -144,8 +145,8 @@ function addStyle() {
 }
 
 export class PlantBar {
-  constructor({ kinds = [], onChange, onAction, container = document.body } = {}) {
-    this.kinds = kinds; this.onChange = onChange; this.onAction = onAction; this.shown = true; this.sure = null;
+  constructor({ kinds = [], onChange, onAction, container = document.body, title = 'Plants' } = {}) {   // title: the round button's word
+    this.kinds = kinds; this.onChange = onChange; this.onAction = onAction; this.shown = true; this.sure = null; this.title = title;
     this.state = { open: true, mode: 'select', kind: kinds.length ? kinds[0].id : null, gizmo: 'translate', brush: 6, density: 2, size: 1, clearRadius: 1.5, procedural: true };
     addStyle(); this.build(container); this.render();
   }
@@ -163,7 +164,7 @@ export class PlantBar {
             <div class="pb-grp" role="group" aria-label="What a click on the ground does">${MODES.map(([m, w, t]) => btn(`data-mode="${m}"`, ICON[m], w, t)).join('')}</div>
             <div class="pb-grp pb-gizmo" role="group" aria-label="Handles on the chosen plant">${GIZMOS.map(([g, w, t]) => btn(`data-gizmo="${g}"`, ICON[g], w, t)).join('')}</div>
             <div class="pb-grp">${ACTS.map(([a, w, t]) => btn(`data-act="${a}"`, '', w, t)).join('')}</div>
-            ${btn('data-act="hide"', '', 'Hide', 'Hide the planting tools (the Plants button brings them back)', ' pb-hide')}
+            ${btn('data-act="hide"', '', 'Hide', `Hide the tools (the ${this.title} button brings them back)`, ' pb-hide')}
           </div>
           <div class="pb-line pb-sets">
             ${SLIDERS.map(([key, w, t, lo, hi, step]) => `<label class="pb-sl" data-key="${key}" title="${esc(t)}"><span>${esc(w)}</span><output></output><input type="range" min="${step ? lo : 0}" max="${step ? hi : STEPS}" step="${step || 1}"></label>`).join('')}
@@ -174,7 +175,7 @@ export class PlantBar {
         <div class="pb-kinds" role="group" aria-label="Plant kinds"${groups.length ? '' : ' hidden'}>${groups.map((g) => `<div class="pb-kgrp">${g.name ? `<div class="pb-kname">${esc(g.name)}</div>` : ''}<div class="pb-krow">${g.items.map(([k, i]) =>
           `<button type="button" class="pb-kind" data-i="${i}" title="${esc(nameOf(k))}" aria-label="${esc(nameOf(k))}"><span class="pb-kpic">${esc(letters(nameOf(k)))}</span><span class="pb-klabel">${esc(nameOf(k))}</span></button>`).join('')}</div></div>`).join('')}</div>
       </div>
-      <button type="button" class="pb-open" title="Show the planting tools">${ICON.plants}<span>Plants</span></button>`;
+      <button type="button" class="pb-open" title="Show the tools">${ICON.plants}<span>${esc(this.title)}</span></button>`;
     container.appendChild(root);
     const q = (s) => root.querySelector(s), qa = (s) => [...root.querySelectorAll(s)];
     this.b = { bar: q('.pb-bar'), open: q('.pb-open'), info: q('.pb-info'), kinds: q('.pb-kinds'), tools: q('.pb-tools'), gizmo: q('.pb-gizmo'), proc: q('.pb-check input'),

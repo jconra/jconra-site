@@ -1,6 +1,6 @@
 // THE VILLAGE: Jacob's Tripo buildings, the procedural props (townProps.js) and town trees, placed from a layout,
 // with stone roads painted on. The layout is plain data, so it saves, copies and pastes:
-//   { v: 1, items: [{ id, type: 'model' | 'prop' | 'tree', kind, x, z, rot (degrees: where the front faces, 0 = +z), size, level }],
+//   { v: 1, items: [{ id, type: 'model' | 'prop' | 'tree', kind, x, z, rot (degrees: where the front faces, 0 = +z), size, level, y (raised or sunk, m) }],
 //          roads: [{ mat: 'cobbles' | 'flagstones' | 'erase', w (m), pts: [[x, z], ...] }] }
 //   size: a model's longest side in metres; a prop's or a tree's scale (1 = as made)
 // It knows nothing of the Terrain Lab: the land is handed in (heights, a ground-ray function), and the lab asks it
@@ -135,7 +135,7 @@ export function blockGrid(layout, roadCanvas, N, SIZE, TEX, pad = 2, yardM = 14)
 
 // ── the things themselves ───────────────────────────────────────────────────────────────────────────────────────
 const loader = new GLTFLoader(), modelCache = {};
-function loadModel(kind, lo) {
+export function loadModel(kind, lo) {   // -> { scene (the model as loaded, shared: clone it to use it), centre, minY, box }
   const key = kind + (lo ? '-lo' : '');
   return modelCache[key] || (modelCache[key] = new Promise((ok, bad) => loader.load(`/models/town/${lo ? 'lo/' : ''}${kind}.glb`, g => {
     const o = g.scene; o.updateMatrixWorld(true);
@@ -174,7 +174,7 @@ export class Village {
   }
   place(o) {
     const it = o.it, { w, d, h } = footprintOf(it);
-    o.group.position.set(it.x, this.heightAt(it.x, it.z), it.z); o.group.rotation.y = it.rot * Math.PI / 180;
+    o.group.position.set(it.x, this.heightAt(it.x, it.z) + (it.y || 0), it.z); o.group.rotation.y = it.rot * Math.PI / 180;   // (y: raised or sunk from the ground, m)
     if (o.inner) { if (it.type === 'model') { const A = TOWN_ASSETS[it.kind]; o.inner.scale.setScalar(it.size / Math.max(A.box[0], A.box[2])); } else o.inner.scale.setScalar(it.size); }
     o.pick.scale.set(w, h, d); o.pick.position.set(0, h / 2, 0);
     o.group.visible = it.type !== 'tree' || !!this.showTreePicks;   // trees are drawn by the forest; their group only holds the pick box
@@ -192,7 +192,7 @@ export function normalise(L) {
     if (it.type === 'prop' && !PROP_KINDS.some(p => p.kind === it.kind)) continue;   // (a layout from a newer page: skipped, not a crash)
     if (it.type === 'tree' && !TOWN_TREES[it.kind]) continue;
     out.items.push({ id: it.id || newId(), type: it.type, kind: it.kind, x: +it.x || 0, z: +it.z || 0, rot: ((+it.rot || 0) % 360 + 360) % 360,
-      size: +it.size || (it.type === 'model' ? TOWN_ASSETS[it.kind].size : 1), ...(it.level === false ? { level: false } : {}) });
+      size: +it.size || (it.type === 'model' ? TOWN_ASSETS[it.kind].size : 1), ...(it.level === false ? { level: false } : {}), ...(+it.y ? { y: +(+it.y).toFixed(2) } : {}) });
   }
   for (const r of (L && L.roads) || []) if (r && r.pts && r.pts.length) out.roads.push({ mat: r.mat || 'cobbles', w: +r.w || 4, pts: r.pts.map(p => [+(+p[0]).toFixed(2), +(+p[1]).toFixed(2)]) });
   return out;

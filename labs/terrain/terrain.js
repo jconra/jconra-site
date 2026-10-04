@@ -21,7 +21,8 @@ import { flyKeys } from '../../src/objects/flyKeys.js';
 import { chooseTier, saveTier, watchFrames, TIERS } from '../../src/quality.js';
 import { makeCloudSky, SKY_GLSL } from '../../src/objects/cloudSky.js';
 import { WIND, tickWind, swayMaterial } from '../../src/objects/wind.js';
-import { Village, levelPads, blockGrid, paintRoads, footprintOf, normalise as normaliseTown } from '../../src/objects/village.js';
+import { Village, levelPads, blockGrid, paintRoads, footprintOf, loadModel, TOWN_ASSETS, newId as newTownId, normalise as normaliseTown } from '../../src/objects/village.js';
+import { PROP_KINDS, makeProp } from '../../src/objects/townProps.js';
 import { VillageEditor, savedLayout as savedTown } from '../../src/objects/villageEditor.js';
 // THE TOWN's layout: the one saved in this browser, else the first town (models/town/layout.json)
 const TOWN_DEFAULT = normaliseTown(await fetch('/models/town/layout.json').then(r => r.ok ? r.json() : null).catch(() => null));
@@ -198,6 +199,28 @@ function* erodeSteps(H, drops, chunk, trail = null) {
 // they run into the ponds and out over the spill. Pond ground is flattened to its surface and river
 // channels are carved a little; the shader paints the water on (no see-through mesh).
 let trees = [], maskA = null, pathCanvas = null; const MAPS = {};
+// THE FOOTPATHS' PICTURE (2048 px over the land, 0.8 m a pixel): R the worn core, G the trampled shoulder. The land's own
+// paths (PATHS.runs, routed with the land) and then the hand-painted ones (the planting's footpath strokes, the brush as
+// wide as the dirt) and the erased ones, in the order made. after: read back and everything that follows paths laid again
+const PATHS = { runs: [] };
+function drawPaths(after = true) {
+  const P = 2048, k = P / SIZE; pathCanvas = pathCanvas || document.createElement('canvas'); pathCanvas.width = pathCanvas.height = P;
+  // (read back afterwards: kept in ordinary memory, not on the graphics card, where a rebuild's blur and read-back stalled for many seconds)
+  const g2 = pathCanvas.getContext('2d', { willReadFrequently: true }); g2.fillStyle = '#000'; g2.fillRect(0, 0, P, P); g2.lineCap = g2.lineJoin = 'round';
+  const line = (pts) => { g2.beginPath(); pts.forEach(([x, z], q) => q ? g2.lineTo((x + SIZE / 2) * k, (z + SIZE / 2) * k) : g2.moveTo((x + SIZE / 2) * k, (z + SIZE / 2) * k)); g2.stroke(); };
+  const dirt = (lines, core) => { g2.globalCompositeOperation = 'lighter';
+    g2.filter = 'blur(3px)'; g2.strokeStyle = 'rgb(0,90,0)'; for (const [pts, w] of lines) { g2.lineWidth = w * 3.2 * k; line(pts); }
+    g2.filter = 'blur(1.2px)'; g2.strokeStyle = 'rgb(255,0,0)'; for (const [pts, w] of lines) { g2.lineWidth = w * k; line(pts); } };
+  dirt(PATHS.runs.map((pts) => [pts, LAND.pathWidth]));
+  if (PLANT.tool) for (const st of PLANT.tool.planting.strokes) {
+    if (st.kind === PLANT.PATH && st.mode !== 'clear') dirt([[st.pts.length > 1 ? st.pts : [st.pts[0], st.pts[0]], st.r * 2 * 0.55]]);   // (the core a little narrower than the ring: the shoulder fills to it)
+    else if (st.kind === PLANT.NOPATH) { g2.globalCompositeOperation = 'source-over'; g2.filter = 'blur(2px)'; g2.strokeStyle = '#000'; g2.lineWidth = st.r * 2 * k; line(st.pts.length > 1 ? st.pts : [st.pts[0], st.pts[0]]); }
+  }
+  g2.filter = 'none'; g2.globalCompositeOperation = 'source-over';
+  if (!after) return;
+  MAPS.path = g2.getImageData(0, 0, P, P).data; MAPS.P = P;
+  composePathRoad(); buildPaving(); placeStones(); COVER.cache = {};   // (the plants keep off paths: their remembered tiles go, they're laid again by the planting's change)
+}
 const WATER = { on: true, river: 8200, width: 0.6, carve: 1.3, channel: 2, pondDepth: 0.05, pondMin: 4, outlet: 19 };
 const POND = new Uint8Array(N * N), WDEPTH = new Float32Array(N * N), ACC = new Float32Array(N * N), DOWN = new Int32Array(N * N);
 let waterCanvas = null, waterTex = null;          // (the shader's uniforms are made later; they pick waterTex up)
@@ -574,10 +597,7 @@ function buildLand() {
     return pts;
   };
   const paths = [route(-760, -520, 740, 380), route(-560, 760, 520, -760), route(40, -790, -60, 790), route(-790, 120, 30, 20)];
-  // the path texture: a worn core and a trampled shoulder, drawn at 0.8 m a pixel
-  const P = 2048, k = P / SIZE; pathCanvas = pathCanvas || document.createElement('canvas'); pathCanvas.width = pathCanvas.height = P;
-  // (read back below: kept in ordinary memory, not on the graphics card, where a rebuild's blur and read-back stalled for many seconds)
-  const g2 = pathCanvas.getContext('2d', { willReadFrequently: true }); g2.fillStyle = '#000'; g2.fillRect(0, 0, P, P); g2.lineCap = g2.lineJoin = 'round';
+  const P = 2048, k = P / SIZE;
   // a path's stretches along the town's paving aren't drawn: the route keeps to a road (its cheapest way) but the land's
   // cells are ~3 m, so drawn there it stuck out one side of the stones as a strip of dirt; drawn only off the paving, a
   // path shows where it leaves a road, its end reaching just under the stones
@@ -587,9 +607,7 @@ function buildLand() {
   const runs = []; for (const pts of paths) { let run = []; pts.forEach((pt, q) => { const on = onPaving(pt);
     if (!on) { if (!run.length && q > 0) run.push(pts[q - 1]); run.push(pt); } else if (run.length) { run.push(pt); runs.push(run); run = []; } });
     if (run.length > 1) runs.push(run); }
-  const stroke = (w, colour, blurPx) => { g2.filter = `blur(${blurPx}px)`; g2.strokeStyle = colour; g2.lineWidth = w * k;
-    for (const pts of runs) { g2.beginPath(); pts.forEach(([x, z], q) => q ? g2.lineTo((x + SIZE / 2) * k, (z + SIZE / 2) * k) : g2.moveTo((x + SIZE / 2) * k, (z + SIZE / 2) * k)); g2.stroke(); } };
-  g2.globalCompositeOperation = 'lighter'; stroke(LAND.pathWidth * 3.2, 'rgb(0,90,0)', 3); stroke(LAND.pathWidth, 'rgb(255,0,0)', 1.2); g2.filter = 'none'; g2.globalCompositeOperation = 'source-over';
+  PATHS.runs = runs; drawPaths(false);
   // pack: R wet, G dry, B canopy, A part shade (and steep into the part-shade texture's spare... kept in the shader from the normal)
   const data = new Uint8Array(N * N * 4);
   for (let q = 0; q < N * N; q++) { data[q * 4] = wet[q] * 255; data[q * 4 + 1] = dry[q] * 255; data[q * 4 + 2] = canopy[q] * 255; data[q * 4 + 3] = Math.min(1, Math.max(0, wide[q] * 2.2 - canopy[q] * 0.8)) * 255; }
@@ -1111,8 +1129,10 @@ loadSheet('/models/props/groundPlants.glb', 4, (parts, m) => { COVER.parts = par
 // kinds: the 16 ground plants, the lawn (16), the four trees (17..20: ash, aspen, oak, pine, drawn by the forest), the four
 // rock shapes (21..24, drawn with the stones). Painting a kind replaces only the land's own of its sort (grass painted over a
 // wood leaves the trees); a clear stroke clears every sort.
-const PLANT = { tool: null, LAWN_KIND: KIND_INFO.length, TREE0: KIND_INFO.length + 1, ROCK0: KIND_INFO.length + 5 };
-const SORT = { plant: (k) => k <= PLANT.LAWN_KIND, tree: (k) => k >= PLANT.TREE0 && k < PLANT.ROCK0, rock: (k) => k >= PLANT.ROCK0 };
+// ...then the footpath (25: paint a path) and its eraser (26), the town's buildings (30 on) and props (50 on), which live in
+// the town's own layout (the tool reaches them through `town`)
+const PLANT = { tool: null, LAWN_KIND: KIND_INFO.length, TREE0: KIND_INFO.length + 1, ROCK0: KIND_INFO.length + 5, PATH: KIND_INFO.length + 9, NOPATH: KIND_INFO.length + 10, BUILD0: 30, PROP0: 50 };
+const SORT = { plant: (k) => k <= PLANT.LAWN_KIND, tree: (k) => k >= PLANT.TREE0 && k < PLANT.ROCK0, rock: (k) => k >= PLANT.ROCK0 && k < PLANT.ROCK0 + 4, path: (k) => k === PLANT.PATH || k === PLANT.NOPATH };
 // the planting seen by one sort: its paint strokes and every clear (the land's own plants follow the procedural switch;
 // trees and rocks always), with its own index; made once a change
 const sortParts = new WeakMap();
@@ -1181,7 +1201,7 @@ function plantedTrees(species) {
 }
 // what of the planting the trees and the stones were last laid from, so a change to plants alone doesn't lay them again
 const sortSig = (sort) => { const t = PLANT.tool; return t ? JSON.stringify([t.planting.strokes.filter((s) => s.mode === 'clear' || SORT[sort](s.kind)), t.planting.items.filter((i) => SORT[sort](i.kind))]) : ''; };
-const lastSig = { tree: '', rock: '' };
+const lastSig = { tree: '', rock: '', path: '' };
 function makePlantTool() {
   if (PLANT.tool) return;
   const groups = { long: 'Tall meadow', grass: 'Meadow', shade: 'Shade', dry: 'Dry ground', wet: 'Wet ground', shrub: 'Shrubs' };   // (by where each grows: a dandelion is no grass)
@@ -1194,25 +1214,51 @@ function makePlantTool() {
   TREE_SPECIES.forEach((sp, i) => kinds.push({ id: PLANT.TREE0 + i, name: sp.name, group: 'Trees', height: sp.height, upright: true, densityScale: 0.02 }));
   const shapes = STONES.shapes || (STONES.shapes = stoneShapes());
   ['round boulder', 'flat slab', 'tall rock', 'broken rock'].forEach((n, i) => kinds.push({ id: PLANT.ROCK0 + i, name: n, group: 'Rocks', densityScale: 0.1 }));
+  // footpaths: painted the brush's width of dirt, or rubbed out (the land's own paths too)
+  const pathIcon = (erase) => { const c = document.createElement('canvas'); c.width = c.height = 96; const g = c.getContext('2d'); g.fillStyle = '#4f7a2a'; g.fillRect(0, 0, 96, 96);
+    g.strokeStyle = '#7a5a3a'; g.lineWidth = 26; g.lineCap = 'round'; g.beginPath(); g.moveTo(14, 82); g.quadraticCurveTo(40, 30, 82, 14); g.stroke();
+    if (erase) { g.strokeStyle = '#ff5a4a'; g.lineWidth = 7; g.beginPath(); g.moveTo(22, 22); g.lineTo(74, 74); g.moveTo(74, 22); g.lineTo(22, 74); g.stroke(); } return c.toDataURL(); };
+  kinds.push({ id: PLANT.PATH, name: 'footpath (the brush is its width)', group: 'Paths', icon: pathIcon(false) }, { id: PLANT.NOPATH, name: 'rub out footpaths', group: 'Paths', icon: pathIcon(true) });
+  // the town's things: buildings and props, one at a time (the gizmo moves, lifts, turns and sizes them)
+  Object.entries(TOWN_ASSETS).forEach(([key, A], i) => kinds.push({ id: PLANT.BUILD0 + i, name: A.name || key, group: 'Buildings', town: 'model:' + key }));
+  PROP_KINDS.forEach((P, i) => kinds.push({ id: PLANT.PROP0 + i, name: P.name || P.kind, group: 'Props', town: 'prop:' + P.kind }));
   // the placed plants' look: the land's plant material, swaying in the same breeze (each kind its own height)
   const materials = COVER.parts.map((g, k) => { g.computeBoundingBox(); const m = COVER.material.clone(); m.onBeforeCompile = COVER.material.onBeforeCompile; m.customProgramCacheKey = COVER.material.customProgramCacheKey; return swayMaterial(m, Math.max(0.05, g.boundingBox.max.y), KIND_INFO[k].lit ? 0.45 : 1, '-placed'); });
   const parts = [...COVER.parts], mats = [...materials];
   shapes.forEach((g, i) => { parts[PLANT.ROCK0 + i] = g; mats[PLANT.ROCK0 + i] = landShaded(new THREE.MeshStandardMaterial({ color: ROCK_TEX ? 0xffffff : 0x8d8a84, roughness: 0.92, flatShading: true }), ROCK_TEX ? ROCK_TEX[i % 2] : null); });
   let relay = 0;
-  PLANT.tool = new PlantTool({ renderer, scene, camera, controls, dom: renderer.domElement, heightAt, groundAt, shadows: SHADOW.on,
+  // the town's layout, for the tool: the town editor keeps its history, saves it and lays the ground again (TOWN.editor)
+  const town = {
+    pick: (cx, cy) => TOWN.editor.pickAt(cx, cy),
+    get: (id) => TOWN.village.item(id),
+    add: (key, x, z) => { const [type, kind] = key.split(':'), it = { id: newTownId(), type, kind, x, z, rot: Math.round(TOWN.editor.camYaw() / 15) * 15, size: type === 'model' ? TOWN_ASSETS[kind].size : 1 };
+      TOWN.village.layout.items.push(it); TOWN.village.sync(); TOWN.editor.commit('add'); return it.id; },
+    change: (id, f, done) => { const it = TOWN.village.item(id); if (!it) return; Object.assign(it, f); if (!it.y) delete it.y; TOWN.village.sync(); if (done) TOWN.editor.commit('move'); },
+    remove: (id) => { TOWN.village.layout.items = TOWN.village.layout.items.filter((i) => i.id !== id); TOWN.village.sync(); TOWN.editor.commit('remove'); },
+    snapshot: () => TOWN.editor.snapshot(), undo: () => TOWN.editor.undo(), redo: () => TOWN.editor.redo(),
+  };
+  PLANT.tool = new PlantTool({ renderer, scene, camera, controls, dom: renderer.domElement, heightAt, groundAt, shadows: SHADOW.on, title: 'Build', town,
+    // a placed plant's own scale: the brush's plants are sized in metres by the forest (its height over the model's), so the placed ones are too
+    unitOf: (k) => { const g = COVER.parts[k]; if (k >= PLANT.LAWN_KIND || !g) return 1; if (!g.boundingBox) g.computeBoundingBox(); return KIND_INFO[k].height / Math.max(1e-4, g.boundingBox.max.y - g.boundingBox.min.y); },
     surfaces: () => TOWN.village ? [TOWN.village.group] : [], parts, materials: mats, kinds,
     sizeOf: (k) => SORT.tree(k) ? 1 : SORT.rock(k) ? STONES.size * 1.2 : COVER.size * PLANT_KINDS[k].size,
     sinkOf: (k) => k < PLANT.LAWN_KIND ? KIND_INFO[k].sink * COVER.sink : 0,   // (a placed plant's root clump under the ground, as the land's are)
     changed: (p) => { U.coverFar.value = p.procedural && $('coverFar').checked ? 1 : 0;   // (a blank palette: no far ground painted with the land's plants either)
-      clearTimeout(relay); relay = setTimeout(() => { COVER.job = moveCover(COVER.at.clone());   // (the plants laid again round where they are, a few ms a frame)
+      clearTimeout(relay); relay = setTimeout(() => {
+        const sp = sortSig('path'); if (sp !== lastSig.path) { lastSig.path = sp; drawPaths(true); }   // (footpaths first: the plants and stones keep off them)
+        COVER.job = moveCover(COVER.at.clone());                        // (the plants laid again round where they are, a few ms a frame)
         const st = sortSig('tree'), sr = sortSig('rock');                // (the trees and the stones only when their part changed)
         if (st !== lastSig.tree) { lastSig.tree = st; placeTrees(); }
         if (sr !== lastSig.rock) { lastSig.rock = sr; placeStones(); } }, 120); },
     opened: (on) => { document.body.classList.toggle('planting', on); if (on && TOWN.editor && TOWN.editor.on) { $('tEdit').checked = false; TOWN.editor.setOn(false); } } });   // (one tool at a time; on a phone the settings panel steps aside)
   $('tEdit').addEventListener('change', (e) => { if (e.target.checked && PLANT.tool) PLANT.tool.setOpen(false); });
-  lastSig.tree = sortSig('tree'); lastSig.rock = sortSig('rock');
-  if (lastSig.tree.length > 8) placeTrees(); if (lastSig.rock.length > 8) placeStones();   // (a saved planting with trees or rocks in it: laid now)
+  lastSig.tree = sortSig('tree'); lastSig.rock = sortSig('rock'); lastSig.path = sortSig('path');
+  if (lastSig.path.length > 8) drawPaths(true);                       // (a saved planting with footpaths, trees or rocks in it: laid now)
+  if (lastSig.tree.length > 8) placeTrees(); if (lastSig.rock.length > 8) placeStones();
   treeIcons();
+  // the buildings' and props' icons, from the models (loaded as the town loads them) and the props as made
+  Object.keys(TOWN_ASSETS).forEach((key, i) => loadModel(key, QUAL.tier !== 'gaming').then((m) => PLANT.tool.iconFrom(PLANT.BUILD0 + i, m.scene.clone())).catch(() => {}));
+  PROP_KINDS.forEach((P, i) => { try { PLANT.tool.iconFrom(PLANT.PROP0 + i, makeProp(P.kind)); } catch (e) { /* no icon then */ } });
 }
 // the trees' icons, drawn from the forest's own trees once they are in (a copy each: the forest keeps its own)
 function treeIcons() {
@@ -1806,4 +1852,4 @@ renderer.setAnimationLoop(() => {
   U.eyePos.value.copy(camera.position);                              // (the paving's 3D stones sink past PAVE.lod from here)
   renderer.render(scene, camera); drawAtlas();
 });
-if (Q.has('probe')) Object.assign(window, { __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest], __plant: () => PLANT });
+if (Q.has('probe')) Object.assign(window, { __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest], __plant: () => PLANT, drawPaths });
