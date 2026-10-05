@@ -3,6 +3,8 @@
 # shrunk toward the picked count, thinned unless the pick says not to), laid out as a 4 x 4 wall (x
 # across, z up, each standing in its cell) and baked onto ONE shared 2K texture: a fresh UV layout for
 # all 16, then each plant's own picture copied across through its old layout (Cycles, Emit bake).
+# Then repack_sheet.cjs: the smart unwrap leaves thousands of tiny padded pieces (~6% of the 2K picture used); it packs
+# them 1:1 into the smallest picture that holds them (1024 on 2026-10-04), the geometry untouched.
 import bpy, bmesh, json, math, os, random
 T = r'C:\Users\bitwizard\AppData\Local\Temp\plantlab'
 picks = json.load(open(os.path.join(T, 'picks.json')))['picks']
