@@ -24,6 +24,35 @@ import { WIND, tickWind, swayMaterial } from '../../src/objects/wind.js';
 import { Village, levelPads, blockGrid, paintRoads, footprintOf, loadModel, TOWN_ASSETS, newId as newTownId, normalise as normaliseTown } from '../../src/objects/village.js';
 import { PROP_KINDS, makeProp } from '../../src/objects/townProps.js';
 import { VillageEditor, savedLayout as savedTown } from '../../src/objects/villageEditor.js';
+import { sunDirection, moonDirection, elevationOf, daylightAt, newDaylight } from '../../src/objects/daylight.js';
+import { Sunbeams } from '../../src/objects/sunbeams.js';
+
+// DIRECTIONAL HAZE (for the time of day): three's fog is one colour; here every material's fog leans toward the sky's own
+// colour the way that pixel looks: warm toward a low sun, cool away from it, by the same amount as the sky dome
+// (skyTowardSun in cloudSky.js), so far land always melts into the sky behind it. It patches three's fog code for this
+// page, with three uniforms every material picks up: a uniform value that isn't a three.js maths object is shared, not
+// copied, when three clones a material's uniforms, so one object updated each frame reaches every material. fogSunCol
+// all zero (the default) is plain fog. fogView: 1 / the drawing buffer's size, and the camera's half-width and
+// half-height at 1 m (to turn a pixel into its direction); fogSunV: the sun's way along the ground, as the camera sees it;
+// fogSun3: the way to the sun itself and fogGlow the sky's glow round it (so the haze has it too). The fog is mixed in after
+// three's tone mapping, so its colours are given as the dome shows them (shownColour: exposed, tone-mapped, sRGB).
+const FOG_DIR = { view: { x: 0, y: 0, z: 1, w: 1 }, sun: { x: 0, y: 0, z: -1 }, col: { x: 0, y: 0, z: 0 }, sun3: { x: 0, y: 1, z: 0 }, glow: { x: 0, y: 0, z: 0 } };
+{ const add = (u) => { u.fogView = { value: FOG_DIR.view }; u.fogSunV = { value: FOG_DIR.sun }; u.fogSunCol = { value: FOG_DIR.col }; u.fogSun3 = { value: FOG_DIR.sun3 }; u.fogGlow = { value: FOG_DIR.glow }; };
+  add(THREE.UniformsLib.fog); for (const k of Object.keys(THREE.ShaderLib)) if (THREE.ShaderLib[k].uniforms && THREE.ShaderLib[k].uniforms.fogColor) add(THREE.ShaderLib[k].uniforms);
+  THREE.ShaderChunk.fog_pars_fragment += '\n#ifdef USE_FOG\nuniform vec4 fogView; uniform vec3 fogSunV, fogSunCol, fogSun3, fogGlow;\n#endif\n';
+  const was = 'gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );';
+  if (!THREE.ShaderChunk.fog_fragment.includes(was)) console.warn('terrain: no fog line found; the haze stays one colour');
+  THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace(was, `vec3 fogC = fogColor;
+	if (fogSunCol.x + fogSunCol.y + fogSunCol.z > 0.0) { vec3 fd = normalize(vec3((gl_FragCoord.xy * fogView.xy * 2.0 - 1.0) * fogView.zw, -1.0));
+		float sd = max(dot(fd, fogSun3), 0.0);
+		fogC = mix(fogColor, fogSunCol, pow(clamp(dot(fd, fogSunV) * 0.5 + 0.5, 0.0, 1.0), 3.0)) + fogGlow * (pow(sd, 5.0) * 0.333 + pow(sd, 48.0) * 0.667); }
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, fogC, fogFactor );`); }
+// THE TIME OF DAY's state (the rest is by the frame loop, see dayFrame): hour, local solar time; turn: the sun's whole
+// path turned round. 192: the sun rises and sets through the valley's two open ends (the hills there 3-4° high from the
+// town and the meadow; everywhere else 20-40°, so a sun setting there left the valley in shadow by mid-afternoon), and
+// at 9:40 it stands as high as the lab's old fixed sun, 12° further round, so the default look is all but the same.
+// season -1 midwinter .. 1 midsummer (0.64: a noon sun 60° up); dayMin: minutes a whole day takes when it goes by itself
+const DAY = { hour: 9 + 40 / 60, auto: false, dayMin: 12, season: 0.64, turn: 192, lat: 45, bake: null, baked: null, dirty: true, stamp: 0, glow: 1, elev: 48 };
 // THE TOWN's layout: the one saved in this browser, else the first town (models/town/layout.json)
 const TOWN_DEFAULT = normaliseTown(await fetch('/models/town/layout.json').then(r => r.ok ? r.json() : null).catch(() => null));
 const PATHROAD = new Uint8Array(2048 * 2048 * 4);              // the paths-and-roads picture's pixels (see composePathRoad)
@@ -48,6 +77,8 @@ const Q = new URLSearchParams(location.search);
 // `lawn`: the short lawn grass on the bare ground, out to `radius` m, `density` tufts a square metre (off on potato)
 // `shadow`: real sun shadows (a shadow map) from trees, stones and, on gaming, the plants, over
 // `range` m round where you look; past it (and on potato) the baked shade does the job.
+// `checks.beamsOn`: sunbeams from a low sun (src/objects/sunbeams.js), drawn over the finished frame (off on potato:
+// a full-screen copy and add a frame; the checkbox can still turn them on)
 // Potato is aimed at a machine with no graphics card (a thin client: every pixel drawn by the
 // processor), so it cuts pixels first: half resolution, every tree and plant an imposter, and `lite`,
 // fixed at load: no smoothing, a land mesh with a quarter of the points, and the ground painted in
@@ -55,11 +86,11 @@ const Q = new URLSearchParams(location.search);
 // there were four.
 const TIER_SET = {
   potato: { ratio: 0.5, lite: true, paving3D: false, coverFarX: 1.8, lawn: { radius: 0, density: 0 }, stones: 1500, treeShare: 0.45, shadow: null, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 2900, near: 0, radius: 90 },
-            u: { wWaveOn: 0, stampFar: 12 }, checks: { stampOn: false, hexOn: false, farOn: false, wWaveOn: false, cloudsOn: false } },
+            u: { wWaveOn: 0, stampFar: 12 }, checks: { stampOn: false, hexOn: false, farOn: false, wWaveOn: false, cloudsOn: false, beamsOn: false } },
   normal: { ratio: 1.5, paving3D: true, coverFarX: 3.1, lawn: { radius: 40, density: 1 }, stones: 14000, shadow: { range: 80, size: 1024, cover: false }, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 7000, near: 70, radius: 140 },
-            u: { wWaveOn: 1, stampFar: 30 }, checks: { stampOn: true, hexOn: true, farOn: false, wWaveOn: true, cloudsOn: true } },
+            u: { wWaveOn: 1, stampFar: 30 }, checks: { stampOn: true, hexOn: true, farOn: false, wWaveOn: true, cloudsOn: true, beamsOn: true } },
   gaming: { ratio: 2, paving3D: true, coverFarX: 3.1, lawn: { radius: 60, density: 1 }, stones: 26000, shadow: { range: 150, size: 2048, cover: true }, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 30000, near: 100, radius: 290 },
-            u: { wWaveOn: 1, stampFar: 73 }, checks: { stampOn: true, hexOn: true, farOn: true, wWaveOn: true, cloudsOn: true } },
+            u: { wWaveOn: 1, stampFar: 73 }, checks: { stampOn: true, hexOn: true, farOn: true, wWaveOn: true, cloudsOn: true, beamsOn: true } },
 };
 // the tier is picked on a throwaway context first, so the real one can be made without smoothing
 // (multisampling) on potato; smoothing can't be changed after a context exists, so a tier switch
@@ -79,7 +110,7 @@ const sky = makeCloudSky({ horizon: SKY }); scene.add(sky.mesh);
 sky.uniforms.cloudCover.value = 0.64; sky.uniforms.cloudSoft.value = 0.39; sky.uniforms.cloudScale.value = 850; sky.uniforms.cloudSpeed.value = 0.064;   // (Jacob's sky)
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 5000);
 const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
-scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x6b5a44, 0.9));
+const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x6b5a44, 0.9); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff1dc, 2.4); sun.position.set(-300, 400, -200); scene.add(sun);
 const SHADOW = { on: !!TS.shadow, range: TS.shadow ? TS.shadow.range : 0 };
 if (TS.shadow) {
@@ -92,6 +123,9 @@ if (TS.shadow) {
 // the map's texels, since the sun looks at the land slantwise: each camera move slid the map a fraction of a texel
 // and every shadow edge shimmered. Its height followed the ground under it too, which slid it more.)
 const SUN_AT = sun.position.clone().normalize(), SUN_X = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), SUN_AT).normalize(), SUN_Y = new THREE.Vector3().crossVectors(SUN_AT, SUN_X);   // the shadow camera's right and up (from the sun's place, set above)
+const SUN_DIR = SUN_AT.clone();                                       // (the light's direction: the sun, or after dark the moon; moved by the time of day, aimLight)
+{ const d = sunDirection(DAY.hour, DAY); if (elevationOf(d) <= -3) moonDirection(d, d);   // (aimed for the starting time now, so the land's first bake is the right one)
+  SUN_DIR.copy(d); SUN_AT.copy(d); SUN_X.set(d.z, 0, -d.x).normalize(); SUN_Y.crossVectors(SUN_AT, SUN_X); sun.position.copy(d).multiplyScalar(900); }
 function followShadow() {
   if (!SHADOW.on) return;
   const R = SHADOW.range, c = sun.shadow.camera, t = controls.target, fwd = new THREE.Vector3().subVectors(t, camera.position).setY(0);
@@ -507,11 +541,13 @@ const slopeAt = (i, j) => { const a = Hg[j * N + Math.min(N - 1, i + 1)] - Hg[j 
 // ravines and hollows come out low); B, the shade the trees throw (the canopy, moved away from the sun)
 let shadeTex = null;
 function bakeShade(canopy, wide) {
-  const S = SUN_DIR, flat = Math.hypot(S.x, S.z), dx = S.x / flat, dz = S.z / flat, rise = S.y / flat * TEX;   // per cell toward the sun
+  DAY.bake = null; DAY.baked = SUN_DIR.clone();                         // (baked toward the light as it is now: a re-bake for the time of day in flight is stale)
+  const S = SUN_DIR.clone(); if (S.y < 0.026) { S.y = 0.026; S.normalize(); }   // (a degree and a half up at least, as sunShadeSteps: the shadows are as long as the land by then)
+  const flat = Math.hypot(S.x, S.z) || 1e-6, dx = S.x / flat, dz = S.z / flat, rise = S.y / flat * TEX;   // per cell toward the sun
   const out = new Uint8Array(N * N * 4), H = Hg;
   const hAt = (x, z) => { const i = Math.min(N - 1, Math.max(0, x | 0)), j = Math.min(N - 1, Math.max(0, z | 0)); return H[j * N + i]; };
   const dirs = Array.from({ length: 8 }, (_, a) => [Math.cos(a * Math.PI / 4), Math.sin(a * Math.PI / 4)]), reach = [1, 2, 4, 7, 12, 20, 32];
-  const tree = Math.max(2, Math.round(20 / S.y * flat / TEX));      // a ~20 m tree's shadow reaches this many cells away from the sun; was a ~9 m tree's shadow falls this many cells away from the sun
+  const tree = Math.min(60, Math.max(2, Math.round(20 / S.y * flat / TEX)));   // a ~20 m tree's shadow reaches this many cells away from the sun (at most ~190 m, as sunShadeSteps)
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const k = j * N + i, h0 = H[k] + 0.5;
     let vis = 1;
@@ -531,6 +567,34 @@ function bakeShade(canopy, wide) {
   }
   if (!shadeTex) { shadeTex = new THREE.DataTexture(out, N, N, THREE.RGBAFormat); shadeTex.magFilter = shadeTex.minFilter = THREE.LinearFilter; shadeTex.generateMipmaps = false; U.shadeMap.value = shadeTex; }
   else shadeTex.image.data.set(out);
+  shadeTex.needsUpdate = true;
+}
+// the sun's part of that shade again (R, where its light reaches; B, the trees' shade thrown away from it) when the light
+// has moved (the time of day), a few milliseconds a frame, then swapped in whole; the hollows (G) don't depend on it.
+// dir: the light's way (the sun, or the moon after dark); kept a degree and a half up at least, where the shadows are
+// already as long as the land; the trees' shade at most ~190 m long, so a setting sun doesn't stall it
+function* sunShadeSteps(dir, budget = 3) {
+  if (!shadeTex || !MAPS.canopy) return;
+  const D = dir.clone(); if (D.y < 0.026) { D.y = 0.026; D.normalize(); }
+  const flat = Math.hypot(D.x, D.z) || 1e-6, dx = D.x / flat, dz = D.z / flat, rise = D.y / flat * TEX, H = Hg, canopy = MAPS.canopy;
+  const tree = Math.min(60, Math.max(2, Math.round(20 / D.y * flat / TEX))), R = new Uint8Array(N * N), B = new Uint8Array(N * N);
+  const hAt = (x, z) => { const i = Math.min(N - 1, Math.max(0, x | 0)), j = Math.min(N - 1, Math.max(0, z | 0)); return H[j * N + i]; };
+  let t0 = performance.now();
+  for (let j = 0; j < N; j++) {
+    for (let i = 0; i < N; i++) {
+      const k = j * N + i, h0 = H[k] + 0.5; let vis = 1;
+      for (let t = 1, step = 1; t < 260; t += step, step = Math.min(8, step + (t > 16 ? 1 : 0))) {
+        const x = i + dx * t, z = j + dz * t; if (x < 0 || z < 0 || x >= N || z >= N) break;
+        const above = h0 + rise * t - hAt(x, z), pen = 1 + t * TEX * 0.04;
+        vis = Math.min(vis, Math.max(0, Math.min(1, above / pen * 0.5 + 0.5))); if (vis <= 0) break;
+      }
+      let ts = canopy[k] * 0.6;
+      for (let t = 1; t <= tree; t++) { const ti = Math.min(N - 1, Math.max(0, Math.round(i + dx * t))), tj = Math.min(N - 1, Math.max(0, Math.round(j + dz * t))); ts = Math.max(ts, canopy[tj * N + ti] * (1 - 0.35 * t / tree)); }
+      R[k] = vis * 255; B[k] = Math.min(1, ts) * 255;
+    }
+    if (performance.now() - t0 > budget) { yield; t0 = performance.now(); }
+  }
+  const d = shadeTex.image.data; for (let k = 0; k < N * N; k++) { d[k * 4] = R[k]; d[k * 4 + 2] = B[k]; }
   shadeTex.needsUpdate = true;
 }
 function buildLand() {
@@ -675,7 +739,7 @@ const U = {
   stampHue: { value: 0.35 }, stampShade: { value: 0.45 }, stampFar: { value: 30 }, stampSpread: { value: 0 }, stampPatch: { value: 0.8 }, stampPatchSize: { value: 5 }, stampClump: { value: 0.6 },
   // mixing by the land: the masks, the layers' pictures, and how they meet
   mixOn: { value: 1 }, maskA: { value: null }, maskB: { value: null },
-  waterMap: { value: waterTex }, waterOn: { value: 1 }, time: { value: 0 }, sunDirW: { value: new THREE.Vector3() }, skyCol: { value: SKY.clone() },
+  waterMap: { value: waterTex }, waterOn: { value: 1 }, time: { value: 0 }, sunDirW: { value: new THREE.Vector3() }, sunGlint: { value: new THREE.Color(1, 1, 1) }, skyCol: { value: SKY.clone() },
   wDeep: { value: new THREE.Color('#123a4a') }, wShallow: { value: new THREE.Color('#3f7f86') }, wWave: { value: 2.2 }, wSpeed: { value: 0.6 }, wSpec: { value: 0.8 }, wReflect: { value: 0.55 }, wFroth: { value: 1 }, wWaveOn: { value: 1 },
   coverR: { value: 140 }, coverAt: { value: new THREE.Vector3() }, coverMap: { value: null }, coverFar: { value: 1 }, rockFrom: { value: 0.25 },
   gullyStr: { value: 0.65 }, fanStr: { value: 0.35 }, strataStr: { value: 1.5 }, strataSize: { value: 6 }, lushTint: { value: new THREE.Color(0.86, 1.0, 0.8) }, dampTint: { value: new THREE.Color(0.78, 0.92, 0.76) }, landSize: { value: SIZE }, view: { value: 0 },
@@ -702,8 +766,8 @@ mat.onBeforeCompile = (sh) => {
     uniform float hexOn, hexSize, hexRot, hexSharp, hexBright, macroOn, macroStr, macroSize, macroHue, farOn, farFrom, grid;
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar, stampSpread, stampPatch, stampPatchSize, stampClump; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
     uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom, spotAmt, spotSize, spotReach; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 coverAt; uniform sampler2D coverMap; uniform vec3 lushTint, dampTint, slopeTint;
-    uniform sampler2D waterMap; uniform float waterOn, wFroth, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow;
-    float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gShadowFade = 0.0, gRoad = 0.0; uniform vec3 gapCol; uniform float mossAmt, edgeDark, edgeWidth, cornerRound, gapW, paveLod, pave3D, edgeBand; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathRoad; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange, edgeFrom, edgeTo, edgeJitter; uniform vec3 shadowAt;
+    uniform sampler2D waterMap; uniform float waterOn, wFroth, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow, sunGlint;
+    float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gSun = 1.0, gShadowFade = 0.0, gRoad = 0.0; uniform vec3 gapCol; uniform float mossAmt, edgeDark, edgeWidth, cornerRound, gapW, paveLod, pave3D, edgeBand; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathRoad; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange, edgeFrom, edgeTo, edgeJitter; uniform vec3 shadowAt;
     uniform vec3 avgGround, avgDry, avgLush, avgForest, avgWet, avgPath, avgSteep, avgShore; uniform float shoreStr; uniform sampler2D layShore; uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layPath; uniform sampler2D laySteep;
     varying vec3 vWN;
     varying vec3 vW;
@@ -973,7 +1037,11 @@ mat.onBeforeCompile = (sh) => {
       // inside the real shadows' square they throw the trees' shade; toward its edge the baked shade takes over, over a round,
       // ragged band (the trees and plants ease theirs over the same band, each its own start: Forest's shadowEdge)
       float baked = shadowRange > 0.0 ? smoothstep(edgeFrom, edgeTo, length(vW.xz - shadowAt.xz) / max(shadowRange, 1.0) + vn(vW.xz / 6.0) * edgeJitter) : 1.0; gShadowFade = baked;
-      gLit = mix(1.0, 0.4 + 0.6 * sd.r, hillShade) * mix(1.0, 0.3 + 0.7 * sd.g, aoShade) * (1.0 - treeShade * sd.b * mix(0.35, 1.0, baked));
+      // the hill's shadow and the trees' (past the real shadows) are sun shadows: they take the sun's light only (gSun, in the
+      // light loop below), so a valley the sun has left is lit by the sky, bluish at dusk, not a dimmer orange. The hollows,
+      // and some of the trees' shade, darken it all (the sky sees less of it there)
+      gSun = mix(1.0, sd.r, hillShade) * (1.0 - treeShade * sd.b * baked);
+      gLit = mix(1.0, 0.3 + 0.7 * sd.g, aoShade) * (1.0 - treeShade * sd.b * mix(0.35, 0.8, baked));   // (0.8: a far forest floor as dark at noon as it was tuned)
       g *= gLit;
     }
     // WATER, painted on: its colour by depth over the bed, and the surface's wave normal kept for the
@@ -1002,7 +1070,7 @@ mat.onBeforeCompile = (sh) => {
     }
     if (grid > 0.5) { vec2 f = abs(fract(uv + 0.5) - 0.5) / fwidth(uv); g = mix(g, vec3(1.0, 0.2, 0.2), 1.0 - smoothstep(0.0, 1.5, min(f.x, f.y))); }
     diffuseColor.rgb *= g;
-  `).replace('#include <lights_fragment_begin>', THREE.ShaderChunk.lights_fragment_begin.replace(
+  `).replace('#include <lights_fragment_begin>', THREE.ShaderChunk.lights_fragment_begin.replace('getDirectionalLightInfo( directionalLight, directLight );', 'getDirectionalLightInfo( directionalLight, directLight ); directLight.color *= gSun;').replace(
     // the real sun shadow fades out over the outer part of its square (the baked tree shade fades in there)
     'directLight.color *= ( directLight.visible && receiveShadow ) ? getShadow( directionalShadowMap[ i ], directionalLightShadow.shadowMapSize, directionalLightShadow.shadowBias, directionalLightShadow.shadowRadius, vDirectionalShadowCoord[ i ] ) : 1.0;',
     'directLight.color *= ( directLight.visible && receiveShadow ) ? mix( getShadow( directionalShadowMap[ i ], directionalLightShadow.shadowMapSize, directionalLightShadow.shadowBias, directionalLightShadow.shadowRadius, vDirectionalShadowCoord[ i ] ), 1.0, gShadowFade ) : 1.0;'
@@ -1011,19 +1079,19 @@ mat.onBeforeCompile = (sh) => {
       vec3 V = normalize(cameraPosition - vW), R = reflect(-V, gWaterN);
       float fres0 = 0.04 + 0.96 * pow(1.0 - max(dot(V, gWaterN), 0.0), 5.0);
       float fres = fres0 * (1.0 - gFoam);                                                 // froth doesn't mirror the sky
+      skyDiscK = gSun;                                                                   // (no sun in the mirror where the sun doesn't reach the water)
       vec3 refl = skyAt(vW, vec3(R.x, max(R.y, 0.02), R.z)) * fres * wReflect;          // the sky and its clouds, mirrored
-      float glint = pow(max(dot(R, normalize(sunDirW)), 0.0), 600.0) * wSpec * 3.0 * (1.0 - gFoam) * smoothstep(400.0, 30.0, length(cameraPosition - vW));   // fine sparkle, fading with distance
-      gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * (1.0 - fres * wReflect) + refl + vec3(glint), gWater);
+      float glint = pow(max(dot(R, normalize(sunDirW)), 0.0), 600.0) * wSpec * 3.0 * (1.0 - gFoam) * smoothstep(400.0, 30.0, length(cameraPosition - vW)) * gSun;   // fine sparkle, fading with distance (none where the sun doesn't reach)
+      gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * (1.0 - fres * wReflect) + refl + sunGlint * glint, gWater);   // (sunGlint: the sun's colour and strength against noon's)
     }
     #include <dithering_fragment>
   `);
 };
-mat.customProgramCacheKey = () => 'terrain-lab-27' + (GL2 ? 'g' : '');
+mat.customProgramCacheKey = () => 'terrain-lab-29' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
 const ground = new THREE.Mesh(geo, mat); scene.add(ground); ground.receiveShadow = SHADOW.on;
 // THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
 // dithered crossfade between), planted where the canopy map grew them instead of on tiles
-const SUN_DIR = sun.position.clone().normalize();
 const TREE_SPECIES = FOREST_SPECIES.filter(sp => sp.name !== 'bush');
 // the Tree Lab's settings, now here (Jacob's defaults, 2026-09-23)
 const FOREST = { imposterAt: 150, band: 120, ahead: 0.6, spread: 0.5, grid: 12, cell: 192, detail: 'sparse', rebake: false, lowPine: !!TS.lite };   // lowPine: the ~100-triangle pine (the potato's, to start)
@@ -1388,10 +1456,12 @@ function landShaded(m, rock = null) {
           diffuseColor.rgb *= texture2D(rockMap, p.zy).rgb * w.x + texture2D(rockMap, p.xz).rgb * w.y + texture2D(rockMap, p.xy).rgb * w.z; }`);
     }
     sh.vertexShader = 'varying vec2 vLand;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n{ vec4 lw = vec4(0.0, 0.0, 0.0, 1.0);\n#ifdef USE_INSTANCING\nlw = instanceMatrix * lw;\n#endif\nvLand = (modelMatrix * lw).xz; }');
+    // the hill's and the trees' shadow on the sun's light only (as the ground, the plants and the buildings), the hollows on it all
     sh.fragmentShader = 'uniform sampler2D shadeMap; uniform float landSize, hillShade, aoShade, treeShade; varying vec2 vLand;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
-      { vec3 sd = texture2D(shadeMap, vLand / landSize + 0.5).rgb; diffuseColor.rgb *= mix(1.0, 0.4 + 0.6 * sd.r, hillShade) * mix(1.0, 0.3 + 0.7 * sd.g, aoShade) * (1.0 - treeShade * sd.b * 0.6); }`);
+      float landSun = 1.0; { vec3 sd = texture2D(shadeMap, vLand / landSize + 0.5).rgb; landSun = mix(1.0, sd.r, hillShade) * (1.0 - treeShade * sd.b * 0.6);
+        diffuseColor.rgb *= mix(1.0, 0.3 + 0.7 * sd.g, aoShade) * (1.0 - treeShade * sd.b * 0.35); }`).replace('#include <lights_fragment_begin>', THREE.ShaderChunk.lights_fragment_begin.replace('getDirectionalLightInfo( directionalLight, directLight );', 'getDirectionalLightInfo( directionalLight, directLight ); directLight.color *= landSun;'));
   };
-  m.customProgramCacheKey = () => 'land-shaded' + (rock ? '-rock' : '');
+  m.customProgramCacheKey = () => 'land-shaded-2' + (rock ? '-rock' : '');
   return m;
 }
 // the stones' pictures: granite and diorite, alternating by shape (none on potato: plain grey there)
@@ -1501,6 +1571,21 @@ const PAVE_SINK = `
   float sunk = smoothstep(stL * 0.8, stL, distance(vec3(stM.x, transformed.y, stM.y), eyePos));
   transformed.y -= sunk * 0.3;`;
 const PAVE_VS = 'uniform vec3 eyePos; uniform float paveLod; uniform vec3 stoneGrid; uniform float stoneSpread;\n' + STONE_LOD;   // (the whole stone sinks together, at its own distance)
+// THE HILL'S SHADOW ON EVERYTHING ELSE (buildings, props, fences, rocks, the paving): the land's baked sun shade under
+// the spot (R) takes the sun's light only, as on the ground and the plants, so a town the sun has left behind the ridge
+// goes into the sky's light with the ground round it instead of glowing in a sun it can't see. Any lit material: its world
+// position from its view position (no new varyings). sunShadeK: the Hill shadows setting, 0 until the shade is baked.
+const SUNSHADE_U = { shadeMap: U.shadeMap, landSize: U.landSize, sunShadeK: { value: 0 } };
+const sunShadeFrag = (fs) => 'uniform sampler2D shadeMap; uniform float landSize, sunShadeK;\n' + fs.replace('#include <lights_fragment_begin>', `float landSunAt = 1.0;
+  if (sunShadeK > 0.0) { vec3 wpos = cameraPosition + (-vViewPosition) * mat3(viewMatrix); landSunAt = mix(1.0, texture2D(shadeMap, wpos.xz / landSize + 0.5).r, sunShadeK); }
+  ` + THREE.ShaderChunk.lights_fragment_begin.replace('getDirectionalLightInfo( directionalLight, directLight );', 'getDirectionalLightInfo( directionalLight, directLight ); directLight.color *= landSunAt;'));
+// every lit material in the scene with no shader patch of its own gets it (buildings and props load as they come: looked
+// for again now and then)
+function sunShadeAll() {
+  scene.traverse((o) => { if (!o.isMesh) return; for (const m of [].concat(o.material)) {
+    if (!m || m.userData.sunShade || !(m.isMeshStandardMaterial || m.isMeshLambertMaterial || m.isMeshPhongMaterial) || m.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile) continue;
+    m.userData.sunShade = true; m.onBeforeCompile = (sh) => { Object.assign(sh.uniforms, SUNSHADE_U); sh.fragmentShader = sunShadeFrag(sh.fragmentShader); }; m.needsUpdate = true; } });
+}
 const paveMat = new THREE.MeshStandardMaterial({ roughness: 0.88, metalness: 0 });
 paveMat.onBeforeCompile = (sh) => {
   Object.assign(sh.uniforms, PAVE_U);
@@ -1510,8 +1595,9 @@ paveMat.onBeforeCompile = (sh) => {
   sh.fragmentShader = 'varying vec2 vCell; varying float vEdge; varying vec3 vStW; uniform vec3 eyePos; uniform float bevelDark;\n' + STONE_GLSL + sh.fragmentShader
     .replace('#include <map_fragment>', `#include <map_fragment>
       diffuseColor.rgb = stoneColour(vStW.xz, stCell(vCell), vCell, smoothstep(6.0, 30.0, length(vStW - eyePos))) * (1.0 - bevelDark * (1.0 - vEdge));`);
+  Object.assign(sh.uniforms, SUNSHADE_U); sh.fragmentShader = sunShadeFrag(sh.fragmentShader);   // (the hill's shadow, as everything else)
 };
-paveMat.customProgramCacheKey = () => 'town-paving-2';
+paveMat.customProgramCacheKey = () => 'town-paving-3';
 const paveDepth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });   // their shadows sink with them
 paveDepth.onBeforeCompile = (sh) => { Object.assign(sh.uniforms, { eyePos: U.eyePos, paveLod: U.paveLod, stoneGrid: U.stoneGrid, stoneSpread: U.stoneSpread }); sh.vertexShader = 'attribute vec2 aCell;\n' + PAVE_VS + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>' + PAVE_SINK); };
 paveDepth.customProgramCacheKey = () => 'town-paving-depth-2';
@@ -1932,12 +2018,130 @@ showTier();
 const clock = new THREE.Clock(); let fps = 60, shown = 0; renderer.info.autoReset = false;   // the readout counts the scene, not the atlas viewer
 // FLYING: W A S D across, Space up, C down (src/objects/flyKeys.js), faster the higher you are
 const fly = flyKeys({ camera, controls, heightAt, speed: 10 });
+// ── THE TIME OF DAY (src/objects/daylight.js): the sun's way over the land, and everything it lights ──────────────
+// When the time changes: the light's colour, strength and way (the sun; after dark the moon, which takes over once the sun
+// is three degrees down, when both are at nothing, so nothing jumps), the sky light, the sky dome and its clouds, the haze
+// (FOG_DIR), the camera's exposure, the lawn's tints, the water's sparkle, the forests' copy of the light's way. Each
+// frame: the haze's look directions for this camera, and once the light has moved over 0.6° the land's sun shade is
+// worked out again (sunShadeSteps), a few milliseconds a frame.
+const DL = newDaylight(), SUN_NOW = new THREE.Vector3(), MOON_NOW = new THREE.Vector3(), LIGHT_NOW = new THREE.Vector3(), DAY_V2 = new THREE.Vector2(), DAY_F = new THREE.Vector3();
+const NOON_SUN = new THREE.Color(0xfff1dc).multiplyScalar(2.4), NOON_SKY = new THREE.Color(0xcfe3ff).multiplyScalar(0.9), MOON_COL = new THREE.Color(0x9fb2e0);
+const lightRatio = (out, c, k, ref) => out.setRGB(c.r * k / ref.r, c.g * k / ref.g, c.b * k / ref.b);
+// a working (linear) colour as the screen shows it after the exposure and three's ACES tone curve (r158's, with its /0.6),
+// in sRGB 0..1: what the sky dome's horizon looks like, so the haze can be given exactly that
+function shownColour(c, exposure, out) {
+  const k = exposure / 0.6, r = c.r * k, g = c.g * k, b = c.b * k;
+  const x = 0.59719 * r + 0.35458 * g + 0.04823 * b, y = 0.07600 * r + 0.90834 * g + 0.01566 * b, z = 0.02840 * r + 0.13383 * g + 0.83777 * b;
+  const fit = (v) => (v * (v + 0.0245786) - 0.000090537) / (v * (0.983729 * v + 0.4329510) + 0.238081), fx = fit(x), fy = fit(y), fz = fit(z);
+  const enc = (v) => { v = Math.min(1, Math.max(0, v)); return v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055; };
+  out.x = enc(1.60475 * fx - 0.53108 * fy - 0.07367 * fz); out.y = enc(-0.10208 * fx + 1.10813 * fy - 0.00605 * fz); out.z = enc(-0.00327 * fx - 0.07276 * fy + 1.07602 * fz);
+  return out;
+}
+const SHOWN = { away: { x: 0, y: 0, z: 0 }, toward: { x: 0, y: 0, z: 0 }, glowAt: { x: 0, y: 0, z: 0 } }, GLOW_C = new THREE.Color();
+function aimLight(dir) {
+  SUN_DIR.copy(dir); SUN_AT.copy(dir); SUN_X.set(SUN_AT.z, 0, -SUN_AT.x).normalize(); SUN_Y.crossVectors(SUN_AT, SUN_X);   // (SUN_X: up x SUN_AT)
+  lawn.uniforms.sunDir.value.copy(dir); U.sunDirW.value.copy(dir);
+  if (!SHADOW.on) sun.position.copy(dir).multiplyScalar(900);          // (with shadows the light is placed by followShadow; without, its way is just its place)
+}
+function applyDay() {
+  sunDirection(DAY.hour, DAY, SUN_NOW); const e = elevationOf(SUN_NOW); daylightAt(e, DL); moonDirection(SUN_NOW, MOON_NOW);
+  const bySun = e > -3; LIGHT_NOW.copy(bySun ? SUN_NOW : MOON_NOW);
+  sun.color.copy(bySun ? DL.sun : MOON_COL); sun.intensity = bySun ? DL.sunI : DL.moonI;
+  hemi.color.copy(DL.hemiSky); hemi.groundColor.copy(DL.hemiGround); hemi.intensity = DL.hemiI;
+  const su = sky.uniforms;
+  su.skyHorizon.value.copy(DL.horizon); su.skyToward.value.copy(DL.toward); su.skyZenith.value.copy(DL.zenith); su.cloudLit.value.copy(DL.cloud); su.cloudLitAway.value.copy(DL.cloudAway);
+  su.sunDirSky.value.copy(SUN_NOW); su.glowCol.value.copy(DL.sun).multiplyScalar(DL.glow);
+  su.sunDisc.value.copy(DL.sun).multiplyScalar(e > -1.5 ? (6 + 14 * Math.min(1, DL.sunI / 2.4)) * Math.min(1, (e + 1.5) / 2) * THREE.MathUtils.lerp(0.22, 1, THREE.MathUtils.smoothstep(e, 0, 5)) : 0);   // (bright past 1: the tone mapping rolls it off; near the horizon dimmer, so a setting sun stays orange instead of white)
+  su.starAmt.value = DL.stars; su.moonDir.value.copy(MOON_NOW); su.moonAmt.value = Math.min(1, DL.moonI / 0.4);
+  // the haze: the colours the dome shows at the horizon (away from the sun; toward it; toward it with its glow), so far land
+  // melts into the sky behind it. The fog colour is handed to three in working colour, which it turns back to the same sRGB
+  shownColour(DL.horizon, DL.exposure, SHOWN.away); shownColour(DL.toward, DL.exposure, SHOWN.toward);
+  shownColour(GLOW_C.copy(DL.sun).multiplyScalar(DL.glow * 1.35).add(DL.toward), DL.exposure, SHOWN.glowAt);
+  scene.fog.color.setRGB(SHOWN.away.x, SHOWN.away.y, SHOWN.away.z, THREE.SRGBColorSpace); scene.background.copy(scene.fog.color); U.skyCol.value.copy(DL.horizon);
+  renderer.toneMappingExposure = DL.exposure;
+  lightRatio(U.sunGlint.value, sun.color, sun.intensity, NOON_SUN);
+  lightRatio(lawn.uniforms.sunTint.value, sun.color, sun.intensity, NOON_SUN); lightRatio(lawn.uniforms.skyTint.value, hemi.color, hemi.intensity, NOON_SKY);
+  DAY.glow = Math.min(1, DL.hemiI / 0.9); DAY.elev = e; DAY.stamp++;
+  aimLight(LIGHT_NOW);
+}
+function dayFrame(dt) {
+  if (DAY.auto) { DAY.hour = (DAY.hour + dt * 24 / (DAY.dayMin * 60)) % 24; DAY.dirty = true; }
+  if (DAY.dirty) { DAY.dirty = false; applyDay(); if (DAY.show) DAY.show(); }
+  for (const f of [treeForest, coverForest]) if (f && f.ready && f.dayStamp !== DAY.stamp) { f.dayStamp = DAY.stamp; f.setSun(SUN_DIR, DAY.glow); }
+  SUNSHADE_U.sunShadeK.value = shadeTex ? U.hillShade.value : 0;
+  DAY.sweep = (DAY.sweep || 0) + 1; sunShadeAll();                       // (every frame, before the frame is drawn: a building or prop that arrives is patched before its first compile)
+  // the haze leans by look direction: the sun's way along the ground in this camera's view, and how to turn a pixel into its direction
+  camera.updateMatrixWorld(); DAY_F.set(SUN_NOW.x, 0, SUN_NOW.z); if (DAY_F.lengthSq() < 1e-8) DAY_F.set(0, 0, -1); DAY_F.normalize().transformDirection(camera.matrixWorldInverse);
+  FOG_DIR.sun.x = DAY_F.x; FOG_DIR.sun.y = DAY_F.y; FOG_DIR.sun.z = DAY_F.z;
+  const dome = sky.mesh.visible ? 1 : 0;                                 // (no dome, as on potato or with the clouds off: the background is one colour, so the haze is too)
+  FOG_DIR.col.x = SHOWN.toward.x * dome; FOG_DIR.col.y = SHOWN.toward.y * dome; FOG_DIR.col.z = SHOWN.toward.z * dome;
+  FOG_DIR.glow.x = Math.max(0, SHOWN.glowAt.x - SHOWN.toward.x) * dome; FOG_DIR.glow.y = Math.max(0, SHOWN.glowAt.y - SHOWN.toward.y) * dome; FOG_DIR.glow.z = Math.max(0, SHOWN.glowAt.z - SHOWN.toward.z) * dome;
+  DAY_F.copy(SUN_NOW).transformDirection(camera.matrixWorldInverse); FOG_DIR.sun3.x = DAY_F.x; FOG_DIR.sun3.y = DAY_F.y; FOG_DIR.sun3.z = DAY_F.z;
+  renderer.getDrawingBufferSize(DAY_V2); const th = Math.tan(camera.fov * Math.PI / 360) / camera.zoom;
+  FOG_DIR.view.x = 1 / DAY_V2.x; FOG_DIR.view.y = 1 / DAY_V2.y; FOG_DIR.view.z = th * camera.aspect; FOG_DIR.view.w = th;
+  // the land's sun shade, again when the light has moved
+  if (!DAY.bake && DAY.baked && shadeTex && DAY.baked.angleTo(SUN_DIR) > 0.6 * Math.PI / 180) { DAY.baked.copy(SUN_DIR); DAY.bake = sunShadeSteps(SUN_DIR); }
+  if (DAY.bake) { const t0 = performance.now(); while (performance.now() - t0 < 3) if (DAY.bake.next().done) { DAY.bake = null; break; } }
+  lampsFrame();
+}
+// THE STREET LAMPS come on as the sun goes: the lantern glass brightens, a soft halo round it, and a warm pool on the
+// ground under it. Faked (sprites and a ground disc, added light): no real lights, which would cost every lit surface in
+// the scene and make every shader build again when their number changes. lampOn: 0 by day .. 1 from a little after sunset
+const LAMP = { on: -1, halo: null, pool: null, things: [] }, LAMP_V = new THREE.Vector3(), LAMP_V2 = new THREE.Vector3(), LAMP_S = new THREE.Vector3();
+// SUNBEAMS (src/objects/sunbeams.js): drawn over the finished frame when the sun is on screen, strongest while it's low,
+// faint by day (shafts through the trees still show then, more softly), gone once it has set; tinted the sun's colour
+const BEAMS = { on: !!TS.checks.beamsOn, strength: 2, fx: null, opts: { threshold: 0.4, decay: 0.75 } };   // (opts: the module's own settings; the lab's sky round a low sun is dimmer than a photo's, so a lower threshold: swept 2026-10-05)
+const beamsAmount = (e) => THREE.MathUtils.smoothstep(e, -1, 1.5) * (0.3 + 0.7 * (1 - THREE.MathUtils.smoothstep(e, 8, 30)));
+function lampTexture(core) { const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'), r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  r.addColorStop(0, `rgba(255,200,130,${core})`); r.addColorStop(0.3, 'rgba(255,160,80,0.4)'); r.addColorStop(1, 'rgba(255,140,60,0)'); g.fillStyle = r; g.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
+function lampsFrame() {
+  const on = THREE.MathUtils.smoothstep(-DAY.elev, -3, 6);   // (from the sun 3° up to 6° down)
+  if (!LAMP.warm && LAMP.things.length && (LAMP.frames = (LAMP.frames || 0) + 1) > 3) { LAMP.warm = true; LAMP.on = -1; }   // (a few frames drawn, then left to the time of day)
+  if (!LAMP.halo) {
+    LAMP.halo = new THREE.SpriteMaterial({ map: lampTexture(1), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 });
+    LAMP.pool = new THREE.MeshBasicMaterial({ map: lampTexture(0.5), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  }
+  if (Math.abs(on - LAMP.on) > 1e-3 || DAY.sweep % 90 === 1) {
+    LAMP.on = on; LAMP.halo.opacity = on * 0.85; LAMP.pool.opacity = on * 0.8;
+    const none = () => {};                                               // (the glow isn't a thing: clicks and the Build tool's placing go through it)
+    if (TOWN.village) TOWN.village.group.traverse((o) => {
+      if (o.userData.kind === 'lamp' && !o.userData.lit) { o.userData.lit = true; const at = o.userData.lightAt || [0, 3.17, 0];
+        const h = new THREE.Sprite(LAMP.halo); h.position.set(at[0], at[1], at[2]); h.scale.set(1.6, 1.6, 1); h.raycast = none; o.add(h);
+        const d = new THREE.Mesh(new THREE.PlaneGeometry(9, 9, 12, 12).rotateX(-Math.PI / 2), LAMP.pool); d.position.set(at[0], 0, at[2]); d.renderOrder = 2; d.raycast = none; d.userData.pool = true; o.add(d); LAMP.things.push(h, d); }
+      // the pool lies on the ground round the lamp, not flat at its foot (laid again when the lamp has moved)
+      if (o.userData.pool && o.parent) { const lamp = o.parent; lamp.updateWorldMatrix(true, true); const wp = lamp.getWorldPosition(LAMP_V), key = `${wp.x.toFixed(2)},${wp.z.toFixed(2)},${wp.y.toFixed(2)}`;
+        if (o.userData.at !== key) { o.userData.at = key; const pos = o.geometry.attributes.position, sc = lamp.getWorldScale(LAMP_S).y || 1;
+          for (let i = 0; i < pos.count; i++) { LAMP_V2.set(pos.getX(i), 0, pos.getZ(i)); o.localToWorld(LAMP_V2); pos.setY(i, (heightAt(LAMP_V2.x, LAMP_V2.z) - wp.y + 0.07) / sc); }
+          pos.needsUpdate = true; o.geometry.computeBoundingSphere(); } }
+      if (o.isMesh && o.name === 'lamp:glow' && o.material.emissive) { if (o.material.userData.e0 === undefined) o.material.userData.e0 = o.material.emissiveIntensity; o.material.emissiveIntensity = o.material.userData.e0 * (1 + on * 2.5); } });
+    LAMP.things = LAMP.things.filter((t) => t.parent); for (const t of LAMP.things) t.visible = on > 0.001 || !LAMP.warm;   // (by day nothing is drawn: three draws a see-through thing anyway; but drawn, unseen, until their shaders are built, so dusk doesn't stall on building them)
+  }
+}
+// the panel: the time (and jumps to the moments worth seeing), letting it go by, the time of year, where the sun sets
+{ const fmtH = (h) => { const m = Math.round(h * 60) % 1440; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
+  const elevAt = (h) => elevationOf(sunDirection(h, DAY));
+  const when = (side, target) => { if (side === 'noon') return 12; const lo = side === 'rise' ? 0 : 12, hi = side === 'rise' ? 12 : 24;   // (the first time on that side of noon the sun crosses that height)
+    let prev = elevAt(lo); for (let h = lo + 0.01; h <= hi; h += 0.01) { const e = elevAt(h); if (side === 'rise' ? (prev < target && e >= target) : (prev > target && e <= target)) return h; prev = e; } return side === 'rise' ? 6 : 19; };
+  let last = 0;
+  DAY.show = () => { const now = performance.now(); if (DAY.auto && now - last < 250) return; last = now;
+    $('dayHour').value = DAY.hour; $('dayHourOut').textContent = fmtH(DAY.hour);
+    $('dayNote').textContent = DAY.elev > 0 ? `The sun is ${DAY.elev.toFixed(0)}° up.` : DAY.elev > -6 ? `The sun set ${(-DAY.elev).toFixed(0)}° ago: twilight.` : DAY.elev > -12 ? 'Blue hour going to night.' : 'Night, by the moon.'; };
+  $('dayHour').addEventListener('input', (e) => { DAY.hour = +e.target.value; DAY.dirty = true; });
+  $('dayAuto').checked = DAY.auto; $('dayAuto').addEventListener('change', (e) => { DAY.auto = e.target.checked; });
+  for (const [id, key, fmt] of [['dayLen', 'dayMin', (v) => `${v} min`], ['daySeason', 'season', (v) => `noon sun ${(90 - DAY.lat + 23.44 * v).toFixed(0)}° up`], ['dayTurn', 'turn', (v) => `${v}°`]]) {
+    const el = $(id), go = () => { DAY[key] = +el.value; $(id + 'Out').textContent = fmt(+el.value); DAY.dirty = true; }; el.value = DAY[key]; el.addEventListener('input', go); $(id + 'Out').textContent = fmt(DAY[key]); }
+  for (const [name, side, target] of [['Sunrise', 'rise', 0], ['Morning', 'rise', 20], ['Noon', 'noon', 0], ['Golden hour', 'set', 6], ['Sunset', 'set', 0.5], ['Dusk', 'set', -4], ['Night', 'set', -20]]) {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = name; b.onclick = () => { DAY.hour = when(side, target); DAY.dirty = true; }; $('dayJumps').appendChild(b); }
+  DAY.show();
+  $('beamsOn').checked = BEAMS.on; $('beamsOn').addEventListener('change', (e) => { BEAMS.on = e.target.checked; if (!BEAMS.on && BEAMS.fx) { BEAMS.fx.dispose(); BEAMS.fx = null; } });
+  { const el = $('beamStr'), go = () => { BEAMS.strength = +el.value; $('beamStrOut').textContent = Math.round(BEAMS.strength * 100) + '%'; }; el.value = BEAMS.strength; el.addEventListener('input', go); go(); } }
 renderer.setAnimationLoop(() => {
   const dt = clock.getDelta();
   if (dt > 0) fps += (1 / dt - fps) * Math.min(1, dt * 2);
   watch();
   if ((shown += dt) > 0.5) { shown = 0; const inf = renderer.info.render; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${(1000 / Math.max(1, fps)).toFixed(1)} ms · ${inf.calls} draws · ${(inf.triangles / 1e6).toFixed(2)} M triangles · ${GL2 ? 'WebGL2' : 'WebGL1'}`; }
-  renderer.info.reset(); stepRain(); controls.update(); followCover(); U.time.value += dt; sky.update(camera, dt); if (WIND.on) tickWind(dt); U.sunDirW.value.copy(SUN_DIR); followShadow();
+  renderer.info.reset(); stepRain(); controls.update(); followCover(); U.time.value += dt; sky.update(camera, dt); if (WIND.on) tickWind(dt); dayFrame(dt); followShadow();
   for (const f of [treeForest, coverForest]) if (f) {
     f.landU.landShade.value = U.shadeMap.value; f.landU.landShadeK.value.set(U.hillShade.value, U.aoShade.value, U.treeShade.value * 0.6, U.shadeMap.value ? 1 : 0);   // the land's baked shade, on the plants too
     f.update(camera, controls.target, camera.position, dt);
@@ -1945,6 +2149,8 @@ renderer.setAnimationLoop(() => {
   fly.update(dt);
   if (PLANT.tool) PLANT.tool.update();
   U.eyePos.value.copy(camera.position);                              // (the paving's 3D stones sink past PAVE.lod from here)
-  renderer.render(scene, camera); drawAtlas();
+  renderer.render(scene, camera);
+  if (BEAMS.on && DAY.elev > -1) { if (!BEAMS.fx) BEAMS.fx = new Sunbeams(renderer); BEAMS.fx.render(camera, SUN_NOW, { ...BEAMS.opts, strength: BEAMS.strength * beamsAmount(DAY.elev), color: DL.sun }); }
+  drawAtlas();
 });
-if (Q.has('probe')) Object.assign(window, { renderer, __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest], __plant: () => PLANT, drawPaths });
+if (Q.has('probe')) Object.assign(window, { renderer, __day: { set: (o) => { Object.assign(DAY, o); DAY.dirty = true; }, BEAMS, get baking() { return !!DAY.bake; }, get elev() { return DAY.elev; }, DAY, DL, FOG_DIR, sky, hemi, sun }, __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest], __plant: () => PLANT, drawPaths });

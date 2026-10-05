@@ -231,7 +231,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, THREE.UniformsLib.fog, { soften: { value: soften },
     atlas: { value: null }, atlasN: { value: null }, grid: { value: bake.grid }, hemi: { value: bake.hemi ? 1 : 0 },
     radius: { value: bake.radius }, halfW: { value: bake.halfW }, halfH: { value: bake.halfH }, centre: { value: bake.centre.clone() }, sunDir: { value: sunDir.clone().normalize() },
-    blend: { value: blend ? 1 : 0 }, blendDist: { value: 400 }, parallax: { value: 0 }, halfWc: { value: bake.halfW }, halfHc: { value: bake.halfH }, ambient: { value: 0.45 }, glowLight: { value: glow }, sheen: { value: sheen }, shadowNudge: { value: 0 }, useDepth: { value: depth ? 1 : 0 }, useShadow: { value: shadows ? 1 : 0 },
+    blend: { value: blend ? 1 : 0 }, blendDist: { value: 400 }, parallax: { value: 0 }, halfWc: { value: bake.halfW }, halfHc: { value: bake.halfH }, ambient: { value: 0.45 }, glowLight: { value: glow }, sheen: { value: sheen }, shadowNudge: { value: 0 }, lowSun: { value: 0 }, lowSunK: { value: 0.7 },   // (0.7: a wood at 190 m matched its models within 3% from the sun's side and against it, sun 3-8° up) useDepth: { value: depth ? 1 : 0 }, useShadow: { value: shadows ? 1 : 0 },
     viewDirOverride: { value: new THREE.Vector3(0, 1, 0) }, useOverride: { value: 0 },
     calmCol: { value: new THREE.Color(0.3, 0.4, 0.15) }, calmFrom: { value: 60 }, calmTo: { value: 250 }, calmAmt: { value: 0 },
     landShade: { value: null }, landShadeSize: { value: 1600 }, landShadeK: { value: new THREE.Vector4() },
@@ -248,7 +248,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
       #include <shadowmap_pars_fragment>
       #include <lights_pars_begin>
       #include <fog_pars_fragment>
-      uniform vec3 sunDir; uniform float ambient; uniform float useShadow; uniform float soften; uniform float glowLight; uniform float sheen; uniform float shadowNudge;
+      uniform vec3 sunDir; uniform float ambient; uniform float useShadow; uniform float soften; uniform float glowLight; uniform float sheen; uniform float shadowNudge; uniform float lowSun, lowSunK;
       uniform vec3 calmCol; uniform float calmFrom, calmTo, calmAmt;
       uniform sampler2D landShade; uniform float landShadeSize; uniform vec4 landShadeK;
       uniform vec3 shadowAt; uniform float shadowRange, edgeFrom, edgeTo, edgeShade, edgeJitter;
@@ -276,6 +276,13 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
         // lit the way MeshStandardMaterial's diffuse is: the sun (shadowed) and the sky/ground light,
         // over pi, so a mesh and its imposter come out the same colour
         vec3 irradiance = vec3(0.0), sheenLight = vec3(0.0);
+        // the land's baked shade where the plant stands, if given (landShadeK = hill, hollow, tree strengths, on): the hill's
+        // shadow and the trees' are SUN shadows, so they take the sun's light only (in a shadowed valley at dusk the sky still
+        // lights it, bluish); the hollows, and a little of the trees' shade, darken it all, as the sky sees less of it there
+        float landSun = 1.0, landAll = 1.0;
+        if (landShadeK.w > 0.5) { vec3 sd = texture2D(landShade, vLand / landShadeSize + 0.5).rgb;
+          landSun = mix(1.0, sd.r, landShadeK.x) * (1.0 - landShadeK.z * sd.b);
+          landAll = mix(1.0, 0.3 + 0.7 * sd.g, landShadeK.y) * (1.0 - landShadeK.z * sd.b * 0.6); }
         #if NUM_DIR_LIGHTS > 0
         {
           float shadow = 1.0;
@@ -283,8 +290,13 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
           if (useShadow > 0.5) shadow = getShadow(directionalShadowMap[0], directionalLightShadows[0].shadowMapSize, directionalLightShadows[0].shadowBias, directionalLightShadows[0].shadowRadius, vDirectionalShadowCoord[0] + vShadowToCam * (useDepth > 0.5 ? off : 0.0) + vShadowToSun * vRadius * shadowNudge);   // (shadowNudge: a fraction of the radius toward the sun. 0: measured against the models from five sides of four woods, it matches them best, lower crowns included; 0.25 left far woods 10-15% lighter)
           if (useShadow > 0.5 && shadowRange > 0.0) shadow = mix(shadow, edgeShade, smoothstep(edgeFrom, edgeTo, length(vLand - shadowAt.xz) / shadowRange + edgeHash(floor(vLand * 4.0)) * edgeJitter));   // (near the shadows' edge: eased into the even shade, as the models are: round, each tree its own start)
           #endif
+          shadow *= landSun;
           float nl = max(0.0, dot(nv, directionalLights[0].direction));
-          irradiance += directionalLights[0].color * nl * shadow;
+          // a low sun: a crown's leaves catch it on the side facing it and show their dark backs against it, which a card lit
+          // through its leaves' averaged way can't; lowSun (0 high sun .. 1 low, from the page) leans the sun's share by
+          // which side you see it from (lowSunK: how far, matched to the models)
+          float facing = dot(normalize(-vViewPos), directionalLights[0].direction);
+          irradiance += directionalLights[0].color * nl * shadow * max(0.0, 1.0 + lowSun * lowSunK * facing);
           // the sheen: three's GGX at roughness 1 (D = 1 / pi, V = 0.5 / (NL + NV)) with Schlick's F from 0.04, as a fully
           // rough MeshStandardMaterial lights its model: dark leaves get a real share of white from it, cards seen from behind most
           if (sheen > 0.0) { vec3 vd = normalize(-vViewPos), hd = normalize(directionalLights[0].direction + vd);
@@ -297,10 +309,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
         #endif
         irradiance += vec3(glowLight);                                     // (as a light map adds it to the mesh)
         vec3 albedo = mix(col.rgb / max(col.a, 0.001) * vTint, calmCol, calm);
-        // the land's baked shade where the plant stands (hill shadow, hollows, under trees), if given:
-        // landShadeK = (hill, hollow, tree strengths, on)
-        if (landShadeK.w > 0.5) { vec3 sd = texture2D(landShade, vLand / landShadeSize + 0.5).rgb;
-          albedo *= mix(1.0, 0.4 + 0.6 * sd.r, landShadeK.x) * mix(1.0, 0.3 + 0.7 * sd.g, landShadeK.y) * (1.0 - landShadeK.z * sd.b); }
+        albedo *= landAll;
         gl_FragColor = vec4(albedo * irradiance * RECIPROCAL_PI + sheenLight, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>

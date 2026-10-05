@@ -153,6 +153,19 @@
       </details>
     </details>
 
+    <details class="sec" open><summary>Time of day</summary>
+      <p class="note">The sun crosses the sky as it would at about 45° north: the light, the sky, the haze and the clouds follow it, warm and low at the ends of the day, then blue hour and a moonlit night. The hill shadows are worked out again as it moves.</p>
+      <div class="row"><label for="dayHour">Time</label><output id="dayHourOut"></output><input id="dayHour" type="range" min="0" max="24" step="0.01"></div>
+      <div class="btns" id="dayJumps"></div>
+      <label class="check" for="dayAuto"><input id="dayAuto" type="checkbox"> Let the day go by</label>
+      <div class="row"><label for="dayLen">A whole day takes</label><output id="dayLenOut"></output><input id="dayLen" type="range" min="1" max="60" step="1"></div>
+      <div class="row"><label for="daySeason">Time of year <small>how high the sun gets at noon</small></label><output id="daySeasonOut"></output><input id="daySeason" type="range" min="-1" max="1" step="0.01"></div>
+      <div class="row"><label for="dayTurn">Where it sets <small>turns the sun's whole path round</small></label><output id="dayTurnOut"></output><input id="dayTurn" type="range" min="0" max="359" step="1"></div>
+      <p class="note" id="dayNote"></p>
+      <label class="check" for="beamsOn"><input id="beamsOn" type="checkbox"> Sunbeams <small>shafts of light from a low sun through the trees and over the ridges, when you look toward it</small></label>
+      <div class="row"><label for="beamStr">Their strength</label><output id="beamStrOut"></output><input id="beamStr" type="range" min="0" max="3" step="0.05"></div>
+    </details>
+
     <details class="sec" open><summary>Light and shade</summary>
       <p class="note">Worked out once from the land's shape, so it costs almost nothing a frame on any setting: where the ridges keep the sun off, how shut-in a spot is (ravines, gullies and hollows darker), and the shade under the trees, thrown away from the sun.</p>
       <div class="row"><label for="hillShade">Hill shadows</label><output id="hillShadeOut"></output><input id="hillShade" type="range" min="0" max="1" step="0.01"></div>

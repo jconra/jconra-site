@@ -49,8 +49,10 @@ float edgeHash(vec2 c) { vec3 p = fract(vec3(c.xyx) * 0.1031); p += dot(p, p.yzx
 float edgeK(vec2 at) { if (shadowRange <= 0.0) return 0.0; return smoothstep(edgeFrom, edgeTo, length(at - shadowAt.xz) / shadowRange + edgeHash(floor(at * 4.0)) * edgeJitter); }
 `;
 // three's own light loop with the sun's shadow eased the same way (the whole tree at once: vLand is its root)
-const EDGE_LIGHTS = (() => { const c = THREE.ShaderChunk.lights_fragment_begin, re = /(getShadow\( directionalShadowMap\[ i \][^;]*?vDirectionalShadowCoord\[ i \] \)) : 1\.0;/;
-  if (!re.test(c)) { console.warn('forest: no shadow line found in lights_fragment_begin; trees keep a hard shadow edge'); return '#include <lights_fragment_begin>'; }
+// and the land's baked sun shade (landSun, see the map patch below) on the sun's light alone, shadow map or not
+const EDGE_LIGHTS = (() => { let c = THREE.ShaderChunk.lights_fragment_begin; const re = /(getShadow\( directionalShadowMap\[ i \][^;]*?vDirectionalShadowCoord\[ i \] \)) : 1\.0;/, info = 'getDirectionalLightInfo( directionalLight, directLight );';
+  if (c.includes(info)) c = c.replace(info, info + ' directLight.color *= landSun;'); else console.warn('forest: no sun line found in lights_fragment_begin; the land\'s hill shadow darkens the trees evenly');
+  if (!re.test(c)) { console.warn('forest: no shadow line found in lights_fragment_begin; trees keep a hard shadow edge'); return c; }
   return c.replace(re, 'mix($1, edgeShade, edgeK(vLand)) : 1.0;'); })();
 // ALPHA TO COVERAGE for a species' leaf cards (species option `coverage`). An alpha-clipped leaf is all or nothing per
 // pixel: hard, shimmering edges up close, and far off, where the texture's smaller copies average a leaf's edge into the
@@ -247,7 +249,7 @@ export class Forest {
       const n = cap;
       for (const [name, size] of [['iPos', 3], ['iYaw', 1], ['iScale', 1], ['iTint', 3], ['iFade', 1]]) { const a = new THREE.InstancedBufferAttribute(new Float32Array(n * size), size); a.setUsage(THREE.DynamicDrawUsage); geo.setAttribute(name, a); }
       geo.instanceCount = 0;
-      let glow = 0, sheen = 0; sp.root.traverse((o) => { if (!o.isMesh) return; for (const m of [].concat(o.material)) { if (m.lightMap) glow = Math.max(glow, m.lightMapIntensity); if (m.isMeshStandardMaterial) sheen = Math.max(sheen, 1 - m.metalness); } });   // (a tree with its own even light, as the low-poly pines have: its far versions get it too; drawn with MeshStandardMaterial: its far versions get the same faint sheen)
+      let glow = 0, sheen = 0; sp.root.traverse((o) => { if (!o.isMesh) return; for (const m of [].concat(o.material)) { if (m.lightMap) glow = Math.max(glow, m.lightMapIntensity); if (m.isMeshStandardMaterial) sheen = Math.max(sheen, (1 - m.metalness) * (sp.upNormals ? 0.25 : 1)); } });      // (a tree with its own even light, as the low-poly pines have: its far versions get it too; drawn with MeshStandardMaterial: its far versions get the same faint sheen)
       const mat = imposterMaterial(sp.bake, { sunDir: this.sunDir, blend: true, depth: !this.light, shadows: this.shadows, soften: sp.soften || 0, wind: this.wind ? (sp.sway ?? 1) : 0, glow, sheen });
       if (this.calm) for (const [k, v] of Object.entries(this.calm)) mat.uniforms[k].value = v;
       Object.assign(mat.uniforms, this.landU, this.edgeU);
@@ -270,8 +272,13 @@ export class Forest {
             Object.assign(sh.uniforms, this.landU, this.edgeU);
             sh.vertexShader = 'attribute float iFade; varying float vFade; varying vec2 vLand;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvFade = iFade; vLand = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xz;');
             sh.fragmentShader = 'uniform sampler2D landShade; uniform float landShadeSize; uniform vec4 landShadeK; varying vec2 vLand;\n' + EDGE_GLSL + sh.fragmentShader.replace('#include <lights_fragment_begin>', EDGE_LIGHTS).replace('#include <map_fragment>', `#include <map_fragment>
+              float landSun = 1.0;   // (the hill's and the trees' shadow: the sun's light only, in EDGE_LIGHTS; the hollows darken it all)
               if (landShadeK.w > 0.5) { vec3 sd = texture2D(landShade, vLand / landShadeSize + 0.5).rgb;
-                diffuseColor.rgb *= mix(1.0, 0.4 + 0.6 * sd.r, landShadeK.x) * mix(1.0, 0.3 + 0.7 * sd.g, landShadeK.y) * (1.0 - landShadeK.z * sd.b); }`);
+                landSun = mix(1.0, sd.r, landShadeK.x) * (1.0 - landShadeK.z * sd.b);
+                diffuseColor.rgb *= mix(1.0, 0.3 + 0.7 * sd.g, landShadeK.y) * (1.0 - landShadeK.z * sd.b * 0.6); }`);
+            // a plant lit like the ground (upNormals: every face as if facing up) would catch a low sun ahead of you as a glare off
+            // that made-up surface, washing it out to cream: a quarter of the sun's shine for those
+            if (sp.upNormals) sh.fragmentShader = sh.fragmentShader.replace('#include <aomap_fragment>', 'reflectedLight.directSpecular *= 0.25;\n#include <aomap_fragment>');
             if (sp.upNormals || sp.soften || sp.shape) sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('gl_FrontFacing ? 1.0 : - 1.0', '1.0')
               + (sp.soften ? `\nnormal = normalize(mix(normal, normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz), ${sp.soften.toFixed(2)}));` : ''));
             if (leafy) {
@@ -289,7 +296,7 @@ export class Forest {
               sh.fragmentShader = 'uniform vec2 coverTexels; uniform float coverMip, coverFar;\n' + sh.fragmentShader.replace('#include <alphatest_fragment>', COVER_ALPHA).replace('#include <opaque_fragment>', COVER_OUT); }
           };
           mat.alphaToCoverage = cover;
-          mat.customProgramCacheKey = () => 'forest-mesh' + (sp.upNormals ? '-up' : '') + (sp.soften ? '-s' + sp.soften : '') + (sp.shape ? '-shape' : '') + (leafy ? `-leaf${under}-${glow}` : '') + (cover ? '-cover' : ''); mat.needsUpdate = true;
+          mat.customProgramCacheKey = () => 'forest-mesh' + (sp.upNormals ? '-up2' : '') + (sp.soften ? '-s' + sp.soften : '') + (sp.shape ? '-shape' : '') + (leafy ? `-leaf${under}-${glow}` : '') + (cover ? '-cover' : ''); mat.needsUpdate = true;
           if (this.wind) { m.geometry.computeBoundingBox(); swayMaterial(mat, Math.max(0.001, m.geometry.boundingBox.max.y), sp.sway ?? 1, '-' + (sp.sway ?? 1)); }
         }
         m.userData.local = o.matrixWorld.clone(); m.userData.fade = mf;
@@ -375,6 +382,17 @@ export class Forest {
       imposter.geometry.attributes.iFade.needsUpdate = true;
       for (const m of meshes) { m.count = n; m.instanceMatrix.needsUpdate = true; m.userData.fade.needsUpdate = true; m.instanceColor.needsUpdate = true; }
     }
+  }
+  // the sun moved (the page's time of day): the imposters' own copy of its direction, and how low it is (their low-sun
+  // lean, see imposterMaterial). glowScale (0..1): how much of each
+  // species' own even light (the low-poly pines' light map) is on, so a tree that glows a little by day doesn't by night
+  setSun(dir, glowScale = 1) {
+    this.sunDir.copy(dir);
+    const e = Math.asin(Math.max(-1, Math.min(1, dir.clone().normalize().y))) * 180 / Math.PI, low = 1 - THREE.MathUtils.smoothstep(e, 8, 30);   // (how low the light is: 0 from 30° up)
+    for (const b of this.built) { const u = b.imposter.material.uniforms; u.sunDir.value.copy(dir).normalize(); u.lowSun.value = low;
+      const dm = b.imposter.material.userData.depthMaterial; if (dm && dm.uniforms.viewDirOverride) dm.uniforms.viewDirOverride.value.copy(dir).normalize();   // (the cards drawn into the shadow map face the light too)
+      if (b.glow0 === undefined) b.glow0 = u.glowLight.value; u.glowLight.value = b.glow0 * glowScale;
+      for (const m of b.meshes) for (const q of [].concat(m.material)) if (q.lightMap) { if (q.userData.li0 === undefined) q.userData.li0 = q.lightMapIntensity; q.lightMapIntensity = q.userData.li0 * glowScale; } }
   }
   // the plants of the current tiles, grouped by species, and each one's imposter data written (once per list)
   refill() {

@@ -36,6 +36,9 @@ export function makeLawn({ cap = 60000, shade = null } = {}) {
   geo.setAttribute('iPos', iPos); geo.setAttribute('iTurn', iTurn); geo.setAttribute('iVary', iVary); geo.instanceCount = 0;
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
     root: { value: new THREE.Color(0.25, 0.36, 0.1) }, tip: { value: new THREE.Color(0.45, 0.55, 0.18) }, sunDir: { value: new THREE.Vector3(-0.5, 0.7, -0.4).normalize() },
+    // the light's colour against the noon it was tuned in (white: as tuned): skyTint for the even part, sunTint for the
+    // part that faces the sun (the hill's and trees' shadows take that one only), so a time of day can light it
+    skyTint: { value: new THREE.Color(1, 1, 1) }, sunTint: { value: new THREE.Color(1, 1, 1) },
     shadeMap: { value: null }, landSize: { value: 1600 }, hillShade: { value: 0 }, aoShade: { value: 0 }, treeShade: { value: 0 } }]);
   Object.assign(uniforms, WIND.uniforms);
   if (shade) Object.assign(uniforms, shade);                          // shared objects: the land's shade, live
@@ -59,15 +62,16 @@ export function makeLawn({ cap = 60000, shade = null } = {}) {
     fragmentShader: `
       #include <common>
       #include <fog_pars_fragment>
-      uniform vec3 root, tip, sunDir; uniform sampler2D shadeMap; uniform float landSize, hillShade, aoShade, treeShade;
+      uniform vec3 root, tip, sunDir, skyTint, sunTint; uniform sampler2D shadeMap; uniform float landSize, hillShade, aoShade, treeShade;
       varying float vH; varying vec2 vVary; varying vec3 vN; varying vec2 vLand;
       void main() {
         vec3 col = mix(root, tip, smoothstep(0.1, 1.0, vH)) * (1.0 + vVary.y);
         col = mix(col, col.yxz * vec3(1.0, 1.0, 0.8), vVary.x);         // some blades a touch yellower
-        float lit = 0.75 + 0.35 * abs(dot(normalize(vN), sunDir));
+        float sunPart = 0.47 + 0.35 * abs(dot(normalize(vN), sunDir)), ao = 1.0;   // (with the 0.28 even part, the sky's share of noon's light as the ground gets it: 0.75 .. 1.1, as it was)
         if (hillShade + aoShade + treeShade > 0.0) { vec3 sd = texture2D(shadeMap, vLand / landSize + 0.5).rgb;
-          lit *= mix(1.0, 0.4 + 0.6 * sd.r, hillShade) * mix(1.0, 0.3 + 0.7 * sd.g, aoShade) * (1.0 - treeShade * sd.b * 0.6); }
-        gl_FragColor = vec4(col * lit, 1.0);
+          sunPart *= mix(1.0, sd.r, hillShade) * (1.0 - treeShade * sd.b * 0.6);
+          ao = mix(1.0, 0.3 + 0.7 * sd.g, aoShade) * (1.0 - treeShade * sd.b * 0.35); }
+        gl_FragColor = vec4(col * (skyTint * 0.28 + sunTint * sunPart) * ao, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         #include <fog_fragment>
