@@ -68,6 +68,7 @@ export class PlantTool {
     if (key === 'mode') { if (s.mode !== 'select' && s.mode !== 'place') this.select(null); this.dom.style.cursor = s.mode === 'paint' || s.mode === 'clear' || s.mode === 'place' ? 'crosshair' : ''; this.ring.visible = false; }
     if (key === 'gizmo') { this.gizmo.mode = s.gizmo; this.limits(); }
     if (key === 'procedural') { this.before(); this.planting.procedural = s.procedural; this.commit(); }
+    if (key === 'level' && this.townItem(this.sel)) { this.townBefore(); this.town.change(this.sel.slice(2), { level: s.level ? undefined : false }, true); }
     if (key === 'clearRadius' && this.sel) { const it = this.item(this.sel); if (it) { this.before(true); it.clear = s.clearRadius; this.commit(); } }
   }
   action(a) {
@@ -81,20 +82,27 @@ export class PlantTool {
       if (p) { this.replace(p, false); if (keep && (this.item(keep) || this.townItem(keep))) this.select(keep); }
     }
     else if (a === 'delete') this.removeSel();
+    else if (a === 'duplicate') this.duplicateSel();
+    else if (a === 'townReset' && this.town && this.town.reset) { this.townBefore(); this.town.reset(); this.select(null); this.bar.setInfo('The first town is back (Undo brings yours back).'); }
     else if (a === 'copy') this.copy();
     else if (a === 'paste') this.paste();
     else if (a === 'reset') this.replace({ ...emptyPlanting(), procedural: this.planting.procedural }, true);   // (the bar asks for a second press first; the land's own plants stay as they were)
   }
+  // Copy: the planting and the town together ({ v, planting, town }); Paste takes that, or a planting or a town layout alone
   async copy() {
-    const text = JSON.stringify(this.planting);
-    try { await navigator.clipboard.writeText(text); this.bar.setInfo('Copied. Paste it in chat to make it the planting everyone sees.'); }
-    catch (e) { prompt('Copy the planting:', text); }
+    const both = this.town && this.town.layout, text = JSON.stringify(both ? { v: 1, planting: this.planting, town: this.town.layout() } : this.planting);
+    try { await navigator.clipboard.writeText(text); this.bar.setInfo(`Copied${both ? ': the planting and the town' : ''}. Paste it in chat to make it what everyone sees.`); }
+    catch (e) { prompt('Copy this:', text); }
   }
   async paste() {
-    let text = ''; try { text = await navigator.clipboard.readText(); } catch (e) { text = prompt('Paste the planting here') || ''; }
+    let text = ''; try { text = await navigator.clipboard.readText(); } catch (e) { text = prompt('Paste the planting or the town here') || ''; }
     let o = null; try { o = JSON.parse(text); } catch (e) { /* not JSON */ }
-    if (!o || !Array.isArray(o.strokes)) { this.bar.setInfo("That isn't a planting."); return; }
-    this.replace(normalisePlanting(o), true); this.bar.setInfo('Pasted.');
+    const planting = o && Array.isArray(o.strokes) ? o : o && o.planting && Array.isArray(o.planting.strokes) ? o.planting : null;
+    const town = o && Array.isArray(o.items) && Array.isArray(o.roads) ? o : o && o.town && Array.isArray(o.town.items) ? o.town : null;
+    if (!planting && !(town && this.town && this.town.setLayout)) { this.bar.setInfo("That isn't a planting or a town."); return; }
+    if (town && this.town && this.town.setLayout) { this.townBefore(); this.town.setLayout(town); this.select(null); }
+    if (planting) this.replace(normalisePlanting(planting), true);
+    this.bar.setInfo(planting && town ? 'Pasted: the planting and the town.' : planting ? 'Pasted the planting.' : 'Pasted the town.');
   }
   replace(p, snapshot) {                                                 // snapshot: a change of its own (Start over, Paste), not undo / redo
     if (snapshot) this.before();
@@ -144,6 +152,13 @@ export class PlantTool {
     });
   }
   townItem(sel) { return this.town && typeof sel === 'string' && sel.startsWith('T:') ? this.town.get(sel.slice(2)) : null; }
+  // a copy of the chosen thing a little to the side (Duplicate, Ctrl+D), chosen in its place
+  duplicateSel() {
+    if (!this.sel) return;
+    if (this.townItem(this.sel)) { if (!this.town.duplicate) return; this.townBefore(); const id = this.town.duplicate(this.sel.slice(2)); if (id) this.select('T:' + id); this.bar.setInfo('Duplicated: the copy is beside it.'); return; }
+    const it = this.item(this.sel); if (!it) return;
+    this.before(); const c = { ...it, id: newId(), x: +(it.x + 1).toFixed(2), z: +(it.z + 1).toFixed(2) }; this.planting.items.push(c); this.commit(); this.select(c.id);
+  }
   removeSel() {
     if (!this.sel) return;
     if (this.townItem(this.sel)) { this.townBefore(); this.town.remove(this.sel.slice(2)); this.select(null); return; }
@@ -154,6 +169,7 @@ export class PlantTool {
   select(id) {
     this.sel = id; this.dragFrom = null;
     const t = this.townItem(id);
+    this.bar.showLevel(t && t.type === 'model' ? t.level !== false : null);   // (a building: its 'Level the ground under it' box)
     if (t) {                                                             // a building, prop or town tree: slides, lifts, turns upright, sizes evenly
       this.proxy.position.set(t.x, this.heightAt(t.x, t.z) + (t.y || 0), t.z); this.proxy.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.rot * DEG); this.proxy.scale.set(1, 1, 1);
       this.townFrom = { size: t.size }; this.gizmo.mode = this.st.gizmo; this.limits();
@@ -333,6 +349,7 @@ export class PlantTool {
       const k = e.key.toLowerCase();
       if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); this.action(e.shiftKey ? 'redo' : 'undo'); }
       else if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); this.action('redo'); }
+      else if ((e.ctrlKey || e.metaKey) && k === 'd' && this.sel) { e.preventDefault(); this.duplicateSel(); }
       else if ((k === 'delete' || k === 'backspace') && this.sel) { e.preventDefault(); this.removeSel(); }
       else if (k === 'escape') this.select(null);
       else if (!e.ctrlKey && !e.metaKey && !e.altKey && this.sel && (k === '1' || k === '2' || k === '3')) { const g = ['translate', 'rotate', 'scale'][+k - 1]; this.bar.setState({ gizmo: g }); this.gizmo.mode = g; this.limits(); }   // (setState tells nobody: the gizmo is told here)
@@ -345,7 +362,15 @@ export class PlantTool {
   }
   hold(e) { this.controls.enabled = false; try { this.dom.setPointerCapture(e.pointerId); } catch (err) { /* fine */ } e.stopPropagation(); e.preventDefault(); }
   release() { this.controls.enabled = true; }
-  endStroke() { this.before(); this.planting.strokes.push(this.stroke); this.stroke = this.painting = null; this.release(); this.showTrail(); this.commit(); }
+  endStroke() {
+    const s = this.stroke, road = this.kindOf(s.kind).road;
+    if (road && this.town && this.town.road) {                           // (a stone road, or rubbing one out: the town's roads, as wide as the brush ring)
+      this.stroke = this.painting = null; this.release(); this.showTrail(); this.townBefore();
+      this.town.road({ mat: road, w: +(s.r * 2).toFixed(2), pts: s.pts.length > 1 ? s.pts : [s.pts[0], s.pts[0]] });
+      this.bar.setInfo(road === 'erase' ? 'Stones rubbed out.' : 'Stones laid.'); return;
+    }
+    this.before(); this.planting.strokes.push(s); this.stroke = this.painting = null; this.release(); this.showTrail(); this.commit();
+  }
   // a second finger came down while the first was painting: the camera takes both (see listen)
   handOver() {
     const s = this.stroke, h = this.painting; this.stroke = this.painting = null;

@@ -1169,7 +1169,7 @@ loadSheet('/models/props/groundPlants.glb', 4, (parts, m) => { COVER.parts = par
 // wood leaves the trees); a clear stroke clears every sort.
 // ...then the footpath (25: paint a path) and its eraser (26), the town's buildings (30 on) and props (50 on), which live in
 // the town's own layout (the tool reaches them through `town`)
-const PLANT = { tool: null, LAWN_KIND: KIND_INFO.length, TREE0: KIND_INFO.length + 1, ROCK0: KIND_INFO.length + 5, PATH: KIND_INFO.length + 9, NOPATH: KIND_INFO.length + 10, FENCE: KIND_INFO.length + 11, BUILD0: 30, PROP0: 50 };
+const PLANT = { tool: null, LAWN_KIND: KIND_INFO.length, TREE0: KIND_INFO.length + 1, ROCK0: KIND_INFO.length + 5, PATH: KIND_INFO.length + 9, NOPATH: KIND_INFO.length + 10, FENCE: KIND_INFO.length + 11, STONE: KIND_INFO.length + 12, NOSTONE: KIND_INFO.length + 13, BUILD0: 30, PROP0: 50 };
 const SORT = { plant: (k) => k <= PLANT.LAWN_KIND, tree: (k) => k >= PLANT.TREE0 && k < PLANT.ROCK0, rock: (k) => k >= PLANT.ROCK0 && k < PLANT.ROCK0 + 4, path: (k) => k === PLANT.PATH || k === PLANT.NOPATH, fence: (k) => k === PLANT.FENCE };
 // the planting seen by one sort: its paint strokes and every clear (the land's own plants follow the procedural switch;
 // trees and rocks always), with its own index; made once a change
@@ -1257,7 +1257,13 @@ function makePlantTool() {
   const pathIcon = (erase) => { const c = document.createElement('canvas'); c.width = c.height = 96; const g = c.getContext('2d'); g.fillStyle = '#4f7a2a'; g.fillRect(0, 0, 96, 96);
     g.strokeStyle = '#7a5a3a'; g.lineWidth = 26; g.lineCap = 'round'; g.beginPath(); g.moveTo(14, 82); g.quadraticCurveTo(40, 30, 82, 14); g.stroke();
     if (erase) { g.strokeStyle = '#ff5a4a'; g.lineWidth = 7; g.beginPath(); g.moveTo(22, 22); g.lineTo(74, 74); g.moveTo(74, 22); g.lineTo(22, 74); g.stroke(); } return c.toDataURL(); };
-  kinds.push({ id: PLANT.PATH, name: 'footpath (the brush is its width)', group: 'Paths', icon: pathIcon(false) }, { id: PLANT.NOPATH, name: 'rub out footpaths', group: 'Paths', icon: pathIcon(true) });
+  kinds.push({ id: PLANT.PATH, name: 'footpath (the brush is its width)', group: 'Paths', icon: pathIcon(false), sliders: ['brush'] }, { id: PLANT.NOPATH, name: 'rub out footpaths', group: 'Paths', icon: pathIcon(true), sliders: ['brush'] });
+  // stone roads: the town's paving, painted as wide as the brush ring, or rubbed out (road strokes in the town's layout)
+  const stoneIcon = (erase) => { const c = document.createElement('canvas'); c.width = c.height = 96; const g = c.getContext('2d'); g.fillStyle = '#4f7a2a'; g.fillRect(0, 0, 96, 96);
+    g.fillStyle = '#5a4632'; g.beginPath(); g.moveTo(0, 30); g.lineTo(96, 30); g.lineTo(96, 66); g.lineTo(0, 66); g.fill();
+    for (let i = 0; i < 6; i++) for (let j = 0; j < 2; j++) { const x = 3 + i * 16 + (j % 2) * 8 - 4, y = 33 + j * 16; g.fillStyle = ['#9a968c', '#8a867e', '#a6a196'][(i + j) % 3]; g.beginPath(); g.moveTo(x + 2, y + 1); g.lineTo(x + 14, y); g.lineTo(x + 15, y + 13); g.lineTo(x + 1, y + 14); g.fill(); }
+    if (erase) { g.strokeStyle = '#ff5a4a'; g.lineWidth = 7; g.lineCap = 'round'; g.beginPath(); g.moveTo(22, 22); g.lineTo(74, 74); g.moveTo(74, 22); g.lineTo(22, 74); g.stroke(); } return c.toDataURL(); };
+  kinds.push({ id: PLANT.STONE, name: 'stone road (as wide as the brush ring)', group: 'Paths', icon: stoneIcon(false), road: 'cobbles', sliders: ['brush'] }, { id: PLANT.NOSTONE, name: 'rub out stones', group: 'Paths', icon: stoneIcon(true), road: 'erase', sliders: ['brush'] });
   { const c = document.createElement('canvas'); c.width = c.height = 96; const g = c.getContext('2d'); g.fillStyle = '#7a5a3c';   // a fence: posts and two rails
     for (const x of [14, 40, 66]) g.fillRect(x, 30, 9, 54); g.fillRect(10, 42, 76, 7); g.fillRect(10, 62, 76, 7);
     kinds.push({ id: PLANT.FENCE, name: 'fence (drag to draw it; Plant size: its height)', group: 'Fences', icon: c.toDataURL() }); }
@@ -1278,6 +1284,12 @@ function makePlantTool() {
     change: (id, f, done) => { const it = TOWN.village.item(id); if (!it) return; Object.assign(it, f); if (!it.y) delete it.y; TOWN.village.sync(); if (done) TOWN.editor.commit('move'); },
     remove: (id) => { TOWN.village.layout.items = TOWN.village.layout.items.filter((i) => i.id !== id); TOWN.village.sync(); TOWN.editor.commit('remove'); },
     snapshot: () => TOWN.editor.snapshot(), undo: () => TOWN.editor.undo(), redo: () => TOWN.editor.redo(),
+    road: (stroke) => { TOWN.village.layout.roads.push(stroke); TOWN.editor.redrawRoads(); composePathRoad(); paveLater(); TOWN.editor.commit('roads'); },
+    duplicate: (id) => { const it = TOWN.village.item(id); if (!it) return null; const c = { ...it, id: newTownId(), x: +(it.x + 3).toFixed(2), z: +(it.z + 3).toFixed(2) };
+      TOWN.village.layout.items.push(c); TOWN.village.sync(); TOWN.editor.commit('add'); return c.id; },
+    layout: () => TOWN.village.layout,
+    setLayout: (L) => { TOWN.village.setLayout(L); TOWN.editor.afterLayout(); },
+    reset: () => { TOWN.village.setLayout(TOWN_DEFAULT); TOWN.editor.afterLayout(); },
   };
   PLANT.tool = new PlantTool({ renderer, scene, camera, controls, dom: renderer.domElement, heightAt, groundAt, shadows: SHADOW.on, title: 'Build', town,
     // a placed plant's own scale: the brush's plants are sized in metres by the forest (its height over the model's), so the placed ones are too
@@ -1293,8 +1305,7 @@ function makePlantTool() {
         if (sf !== lastSig.fence) { lastSig.fence = sf; buildFences(); }
         if (st !== lastSig.tree) { lastSig.tree = st; placeTrees(); }
         if (sr !== lastSig.rock) { lastSig.rock = sr; placeStones(); } }, 120); },
-    opened: (on) => { document.body.classList.toggle('planting', on); if (on && TOWN.editor && TOWN.editor.on) { $('tEdit').checked = false; TOWN.editor.setOn(false); } } });   // (one tool at a time; on a phone the settings panel steps aside)
-  $('tEdit').addEventListener('change', (e) => { if (e.target.checked && PLANT.tool) PLANT.tool.setOpen(false); });
+    opened: (on) => { document.body.classList.toggle('planting', on); if (TOWN.village) { TOWN.village.showTreePicks = on; TOWN.village.sync(); } } });   // (the town's own trees pickable while the bar is open, as the old town editor did)
   lastSig.tree = sortSig('tree'); lastSig.rock = sortSig('rock'); lastSig.path = sortSig('path'); lastSig.fence = sortSig('fence'); buildFences();
   if (lastSig.path.length > 8) drawPaths(true);                       // (a saved planting with footpaths, trees or rocks in it: laid now)
   if (lastSig.tree.length > 8) placeTrees(); if (lastSig.rock.length > 8) placeStones();
@@ -1587,7 +1598,7 @@ function townRebuild() {
   clearTimeout(townTimer); const note = $('tNote'); if (note) note.textContent = 'levelling the ground and clearing the plants…';
   townTimer = setTimeout(() => { const t = performance.now(); townRebuildNow(); if (note) note.textContent = `Saved in this browser · ground redone in ${((performance.now() - t) / 1000).toFixed(1)} s`; }, 350);
 }
-TOWN.editor = new VillageEditor({ village: TOWN.village, camera, controls, dom: renderer.domElement, container: $('townPanel'), groundAt, scene,
+TOWN.editor = new VillageEditor({ village: TOWN.village, camera, controls, dom: renderer.domElement, container: document.createElement('div'), groundAt, scene,   // (its panel is never shown: the Build bar edits the town now, through it)
   roadCanvas: TOWN.canvas, roadChanged: (rect) => { composePathRoad(rect); paveLater(); }, changed: () => townRebuild(), defaultLayout: TOWN_DEFAULT });
 
 // ── views ─────────────────────────────────────────────────────────────────────

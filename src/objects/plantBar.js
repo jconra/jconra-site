@@ -4,22 +4,25 @@
 //   under small headings, scrolling sideways when they don't fit (the mouse wheel scrolls it too); the chosen one is lit.
 //   Above it, the tools: Select / Add / Clear (what a click on the ground does: Add puts one down on a click and paints
 //   with the brush on a drag); Move / Turn / Size (which handles the chosen thing shows, for Select); only the sliders
-//   that matter for the mode; Procedural plants (off: start from bare ground); Undo / Redo, Copy / Paste, Delete, Start
-//   over, Hide.
+//   that matter for the mode; Procedural plants (off: start from bare ground); Level the ground under it (with a
+//   building chosen); Undo / Redo, Copy / Paste, Duplicate, Delete, Start over, First town, Hide.
 //
-//   const bar = new PlantBar({ kinds: [{ id, name, group, densityScale }], onChange(state, key) {}, onAction(name) {}, container })
+//   const bar = new PlantBar({ kinds: [{ id, name, group, densityScale, sliders }], onChange(state, key) {}, onAction(name) {}, container })
+//     (sliders: the slider keys that kind shows while adding, e.g. ['brush'] for a path; default: the mode's)
 //     (densityScale: that kind's thickness is the slider's times this, e.g. trees 0.02; the readout shows the result)
-//   bar.state                      { open, mode, kind, gizmo, brush, density, size, clearRadius, procedural }: read it, change it with setState
+//   bar.state                      { open, mode, kind, gizmo, brush, density, size, clearRadius, procedural, level }: read it, change it with setState
 //   bar.setIcon(id, url)           a kind's picture (any image url, data: and blob: too; '' goes back to its letters)
 //   bar.setInfo(text)              a short line of news just over the plant row ('' hides it)
 //   bar.setState(partial)          changes the controls from outside; onChange is NOT called (so no loops). Sliders are
 //                                  kept to their ends; a mode, handle or kind that doesn't exist is left as it was
 //   bar.setUndo(canUndo, canRedo)  greys out Undo / Redo (both start greyed out)
+//   bar.showLevel(on)              the 'Level the ground under it' box: null hides it (nothing levelable chosen), else ticked or not
 //   bar.show(on)                   the whole thing, bar and Plants button (off while the planting tool is off)
 //   bar.el                         the bar's own element (the page can test bar.el.contains(document.activeElement))
 //   onChange(state, key): a copy of the state and the key that changed; 'open' too, when it hides or comes back.
 //     Sliders report while they move, so a brush ring can follow.
-//   onAction(name): 'undo', 'redo', 'copy', 'paste', 'delete', 'reset' (Start over wants a second press within 3 s).
+//   onAction(name): 'undo', 'redo', 'copy', 'paste', 'duplicate', 'delete', 'reset', 'townReset' (Start over and First
+//   town want a second press within 3 s).
 // Keys: a control clicked or tapped lets go of the keyboard straight away (even when the press ends off the bar), so
 // Space, Shift and WASD go on flying the camera instead of pressing that button again. Used from the keyboard (Tab), the
 // bar keeps Space, Enter and the arrow keys to itself, except that a focused slider lets Space and Enter through.
@@ -47,8 +50,10 @@ const SLIDERS = [
   ['size', 'Plant size', 'How big the plants come out, against their usual size', 0.3, 3, 0.05, (v) => `${v.toFixed(2)}×`],
   ['clearRadius', 'Clear round placed plants', 'A placed plant clears the painted plants this close round it', 0, 5, 0.1, (v) => `${+v.toFixed(1)} m`]];
 const SHOWN = { select: [], place: ['size', 'clearRadius'], paint: ['brush', 'density', 'size', 'clearRadius'], clear: ['brush'] };   // ('place' is no longer offered: Add does both)
-const ACTS = [['undo', 'Undo', 'Undo the last change'], ['redo', 'Redo', 'Put back what Undo took away'], ['copy', 'Copy', 'Copy the planting as text'],
-  ['paste', 'Paste', 'Paste planting copied before'], ['delete', 'Delete', 'Delete the chosen plant'], ['reset', 'Start over', 'Take away all the hand planting (press twice)']];
+const ACTS = [['undo', 'Undo', 'Undo the last change'], ['redo', 'Redo', 'Put back what Undo took away'], ['copy', 'Copy', 'Copy the planting and the town as text'],
+  ['paste', 'Paste', 'Paste planting or a town copied before'], ['duplicate', 'Duplicate', 'A copy of the chosen thing beside it (Ctrl+D)'], ['delete', 'Delete', 'Delete the chosen thing'],
+  ['reset', 'Start over', 'Take away all the hand planting (press twice)'], ['townReset', 'First town', 'Put the town back as it first was (press twice; Undo brings yours back)']];
+const SURE = { reset: 'Press again to start over', townReset: 'Press again to put the first town back' };   // (actions that want a second press)
 const STEPS = 1000;   // (the log slider's positions)
 const KEEP_KEYS = [' ', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'];
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -147,7 +152,8 @@ function addStyle() {
 export class PlantBar {
   constructor({ kinds = [], onChange, onAction, container = document.body, title = 'Plants' } = {}) {   // title: the round button's word
     this.kinds = kinds; this.onChange = onChange; this.onAction = onAction; this.shown = true; this.sure = null; this.title = title;
-    this.state = { open: true, mode: 'select', kind: kinds.length ? kinds[0].id : null, gizmo: 'translate', brush: 6, density: 2, size: 1, clearRadius: 1.5, procedural: true };
+    this.state = { open: true, mode: 'select', kind: kinds.length ? kinds[0].id : null, gizmo: 'translate', brush: 6, density: 2, size: 1, clearRadius: 1.5, procedural: true, level: true };
+    this.levelShown = null; this.sure = null; this.sureAct = null;
     addStyle(); this.build(container); this.render();
   }
 
@@ -169,6 +175,7 @@ export class PlantBar {
           <div class="pb-line pb-sets">
             ${SLIDERS.map(([key, w, t, lo, hi, step]) => `<label class="pb-sl" data-key="${key}" title="${esc(t)}"><span>${esc(w)}</span><output></output><input type="range" min="${step ? lo : 0}" max="${step ? hi : STEPS}" step="${step || 1}"></label>`).join('')}
             <label class="pb-check" title="Off: start from bare ground and plant everything by hand"><input type="checkbox"> Procedural plants</label>
+            <label class="pb-check pb-level" title="Flatten the ground under the chosen building (off: it sits on the land as it is)"><input type="checkbox"> Level the ground under it</label>
           </div>
         </div>
         <div class="pb-info" aria-live="polite" hidden></div>
@@ -178,7 +185,7 @@ export class PlantBar {
       <button type="button" class="pb-open" title="Show the tools">${ICON.plants}<span>${esc(this.title)}</span></button>`;
     container.appendChild(root);
     const q = (s) => root.querySelector(s), qa = (s) => [...root.querySelectorAll(s)];
-    this.b = { bar: q('.pb-bar'), open: q('.pb-open'), info: q('.pb-info'), kinds: q('.pb-kinds'), tools: q('.pb-tools'), gizmo: q('.pb-gizmo'), proc: q('.pb-check input'),
+    this.b = { bar: q('.pb-bar'), open: q('.pb-open'), info: q('.pb-info'), kinds: q('.pb-kinds'), tools: q('.pb-tools'), gizmo: q('.pb-gizmo'), proc: q('.pb-check input'), level: q('.pb-level'), levelBox: q('.pb-level input'),
       modes: qa('[data-mode]'), gizmos: qa('[data-gizmo]'), kindBtns: qa('[data-i]'), acts: Object.fromEntries(qa('[data-act]').map((b) => [b.dataset.act, b])),
       sliders: Object.fromEntries(qa('.pb-sl').map((l) => [l.dataset.key, { row: l, inp: l.querySelector('input'), out: l.querySelector('output') }])) };
     this.setUndo(false, false);
@@ -207,6 +214,7 @@ export class PlantBar {
       });
     }
     this.b.proc.addEventListener('change', () => this.set('procedural', this.b.proc.checked));
+    this.b.levelBox.addEventListener('change', () => { this.levelShown = this.b.levelBox.checked; this.state.level = this.levelShown; this.fire('level'); });
     this.b.tools.addEventListener('scroll', () => this.edges(), { passive: true });
     if (window.ResizeObserver) new ResizeObserver(() => this.edges()).observe(this.b.tools);
     // the wheel scrolls the plant row sideways (it would do nothing there otherwise); some mice count in lines, not pixels
@@ -244,19 +252,23 @@ export class PlantBar {
   set(key, v) { if (this.state[key] === v) return; this.state[key] = v; this.render(); this.fire(key); }
   fire(key) { if (this.onChange) this.onChange({ ...this.state }, key); }
   act(a) {
-    if (a === 'reset' && !this.sure) { const b = this.b.acts.reset; b.style.minWidth = b.offsetWidth + 'px'; b.classList.add('pb-sure'); b.title = 'Press again to start over';
-      b.querySelector('span').textContent = 'Sure?'; this.sure = setTimeout(() => this.unsure(), 3000); return; }
-    if (a === 'reset') this.unsure();
+    if (SURE[a] && this.sureAct !== a) { this.unsure(); const b = this.b.acts[a]; b.style.minWidth = b.offsetWidth + 'px'; b.classList.add('pb-sure'); b.title = SURE[a];
+      b.querySelector('span').textContent = 'Sure?'; this.sureAct = a; this.sure = setTimeout(() => this.unsure(), 3000); return; }
+    if (SURE[a]) this.unsure();
     if (this.onAction) this.onAction(a);
   }
-  unsure() { clearTimeout(this.sure); this.sure = null; const b = this.b.acts.reset; b.classList.remove('pb-sure'); b.querySelector('span').textContent = 'Start over'; b.title = ACTS[5][2]; b.style.minWidth = ''; }
+  unsure() { clearTimeout(this.sure); this.sure = null; const a = this.sureAct; this.sureAct = null; if (!a) return;
+    const b = this.b.acts[a], def = ACTS.find((x) => x[0] === a); b.classList.remove('pb-sure'); b.querySelector('span').textContent = def[1]; b.title = def[2]; b.style.minWidth = ''; }
+  showLevel(on) { this.levelShown = on == null ? null : !!on; if (on != null) this.state.level = !!on; this.render(); }
   render() {
-    const s = this.state, b = this.b, shown = SHOWN[s.mode] || [], handles = s.mode === 'select' || s.mode === 'place';
+    const s = this.state, b = this.b, kd = this.kinds.find((x) => x.id === s.kind), handles = s.mode === 'select' || s.mode === 'place';
+    const shown = (s.mode === 'paint' && kd && kd.sliders) || SHOWN[s.mode] || [];   // (a kind may name its own sliders: a path brush only has a size)
     b.bar.hidden = !this.shown || !s.open; b.open.hidden = !this.shown || s.open;
     b.modes.forEach((x) => x.setAttribute('aria-pressed', x.dataset.mode === s.mode));
     b.gizmos.forEach((x) => x.setAttribute('aria-pressed', x.dataset.gizmo === s.gizmo));
     b.kindBtns.forEach((x) => x.setAttribute('aria-pressed', this.kinds[+x.dataset.i].id === s.kind));
-    b.gizmo.hidden = !handles; b.acts.delete.hidden = !handles;
+    b.gizmo.hidden = !handles; b.acts.delete.hidden = !handles; b.acts.duplicate.hidden = !handles;
+    b.level.hidden = !handles || this.levelShown == null; b.levelBox.checked = !!this.levelShown;
     for (const [key, sl] of Object.entries(b.sliders)) { sl.row.hidden = !shown.includes(key); sl.inp.value = this.toSlider(key, s[key]); sl.out.textContent = this.fmt(key, s[key]); }
     b.proc.checked = !!s.procedural; this.edges();
   }
