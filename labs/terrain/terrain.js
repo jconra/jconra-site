@@ -685,7 +685,7 @@ const U = {
   ...STONE_UNIFORMS(), stoneBase: { value: new THREE.Color() }, stoneShade: { value: 0 }, stoneHue: { value: 0 }, grainAmt: { value: 0 }, grainSize: { value: 1 }, speckAmt: { value: 0 },
   gapCol: { value: new THREE.Color() }, edgeBand: { value: 0.3 }, mossAmt: { value: 0 }, edgeDark: { value: 0 }, edgeWidth: { value: 0.05 }, cornerRound: { value: 0 }, gapW: { value: 0 }, paveLod: { value: 80 }, pave3D: { value: 0 },
   eyePos: { value: new THREE.Vector3() }, bevelDark: { value: 0 },
-  shadeMap: { value: null }, shadowRange: { value: 0 }, shadowAt: { value: new THREE.Vector3() }, edgeFrom: { value: 0.55 }, edgeTo: { value: 0.97 }, edgeShade: { value: 0.55 }, hillShade: { value: 1 }, aoShade: { value: 1 }, treeShade: { value: 0.9 },
+  shadeMap: { value: null }, shadowRange: { value: 0 }, shadowAt: { value: new THREE.Vector3() }, edgeFrom: { value: 0.55 }, edgeTo: { value: 0.97 }, edgeShade: { value: 0.55 }, edgeJitter: { value: 0.12 }, plantShade: { value: 0.8 }, hillShade: { value: 1 }, aoShade: { value: 1 }, treeShade: { value: 0.9 },
   avgGround: { value: new THREE.Color(0x6b8a3a) }, avgDry: { value: new THREE.Color(0x8a8a4a) }, avgLush: { value: new THREE.Color(0x5b7a2a) }, avgForest: { value: new THREE.Color(0x4a4a2a) }, avgWet: { value: new THREE.Color(0x4a3a2a) }, avgPath: { value: new THREE.Color(0x6a5238) }, avgSteep: { value: new THREE.Color(0x7a7a7a) }, avgShore: { value: new THREE.Color(0x77706a) }, shoreStr: { value: 1 }, layShore: { value: null },
   layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layPath: { value: null }, laySteep: { value: null },
   spotAmt: { value: 0.8 }, spotSize: { value: 1.6 }, spotReach: { value: 0.7 }, mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.06 },
@@ -703,7 +703,7 @@ mat.onBeforeCompile = (sh) => {
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar, stampSpread, stampPatch, stampPatchSize, stampClump; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
     uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom, spotAmt, spotSize, spotReach; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 coverAt; uniform sampler2D coverMap; uniform vec3 lushTint, dampTint, slopeTint;
     uniform sampler2D waterMap; uniform float waterOn, wFroth, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow;
-    float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gShadowFade = 0.0, gRoad = 0.0; uniform vec3 gapCol; uniform float mossAmt, edgeDark, edgeWidth, cornerRound, gapW, paveLod, pave3D, edgeBand; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathRoad; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange, edgeFrom, edgeTo; uniform vec3 shadowAt;
+    float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gShadowFade = 0.0, gRoad = 0.0; uniform vec3 gapCol; uniform float mossAmt, edgeDark, edgeWidth, cornerRound, gapW, paveLod, pave3D, edgeBand; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathRoad; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange, edgeFrom, edgeTo, edgeJitter; uniform vec3 shadowAt;
     uniform vec3 avgGround, avgDry, avgLush, avgForest, avgWet, avgPath, avgSteep, avgShore; uniform float shoreStr; uniform sampler2D layShore; uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layPath; uniform sampler2D laySteep;
     varying vec3 vWN;
     varying vec3 vW;
@@ -970,8 +970,9 @@ mat.onBeforeCompile = (sh) => {
       }
       // LIGHT AND SHADE (baked): out of the sun behind a ridge, down in a ravine, under the trees
       vec3 sd = texture2D(shadeMap, vW.xz / landSize + 0.5).rgb;
-      vec2 inSq = abs(vW.xz - shadowAt.xz) / max(shadowRange, 1.0);                  // inside the real shadows' square, they throw the trees' shade
-      float baked = shadowRange > 0.0 ? smoothstep(edgeFrom, edgeTo, max(inSq.x, inSq.y)) : 1.0; gShadowFade = baked;   // (the trees ease theirs over the same band: Forest's shadowEdge)
+      // inside the real shadows' square they throw the trees' shade; toward its edge the baked shade takes over, over a round,
+      // ragged band (the trees and plants ease theirs over the same band, each its own start: Forest's shadowEdge)
+      float baked = shadowRange > 0.0 ? smoothstep(edgeFrom, edgeTo, length(vW.xz - shadowAt.xz) / max(shadowRange, 1.0) + vn(vW.xz / 6.0) * edgeJitter) : 1.0; gShadowFade = baked;
       gLit = mix(1.0, 0.4 + 0.6 * sd.r, hillShade) * mix(1.0, 0.3 + 0.7 * sd.g, aoShade) * (1.0 - treeShade * sd.b * mix(0.35, 1.0, baked));
       g *= gLit;
     }
@@ -1053,7 +1054,7 @@ function placeTrees() {
   const species = treeForest && !FOREST.rebake ? treeForest.species : TREE_SPECIES.map(sp => low(sp) || (shaped(sp)   // keeps the baked atlases unless the atlas settings changed
     ? { ...sp, soften: LEAF.soften, shape: { lump: LEAF.lump, mix: LEAF.mix, dark: LEAF.dark, tip: LEAF.tip, olive: LEAF.olive, branchDark: LEAF.branchDark, under: LEAF.under, glow: LEAF.glow } } : { ...sp }));
   FOREST.rebake = false;
-  treeForest = new Forest(renderer, scene, { species, shadows: SHADOW.on, detail: FOREST.detail, grid: FOREST.grid, cell: FOREST.cell, imposterAt: FOREST.imposterAt, band: FOREST.band, ahead: FOREST.ahead, spread: FOREST.spread, sunDir: SUN_DIR, heightAt, nearCap: 600, shadowEdge: { at: U.shadowAt, range: U.shadowRange, from: U.edgeFrom, to: U.edgeTo, shade: U.edgeShade },
+  treeForest = new Forest(renderer, scene, { species, shadows: SHADOW.on, detail: FOREST.detail, grid: FOREST.grid, cell: FOREST.cell, imposterAt: FOREST.imposterAt, band: FOREST.band, ahead: FOREST.ahead, spread: FOREST.spread, sunDir: SUN_DIR, heightAt, nearCap: 600, shadowEdge: { at: U.shadowAt, range: U.shadowRange, from: U.edgeFrom, to: U.edgeTo, shade: U.edgeShade, jitter: U.edgeJitter },
     fixed: [...trees.filter(([x, , z]) => keepWild('tree', x, z)).map(([x, , z, s]) => { const [sp, tint] = pickTree(x, z, species); return { x, z, sp, scale: s, tint: species[sp].tint === false ? undefined : tint }; }), ...townTrees(species), ...plantedTrees(species)] });
   treeForest.group.visible = $('treesOn').checked;
   $('landInfo').textContent = `${trees.length.toLocaleString()} trees, 4 paths`;
@@ -1486,7 +1487,8 @@ function placeCover(ready = null) {
   }
   if (coverForest) { scene.remove(coverForest.group); for (const b of coverForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
   const species = coverForest ? coverForest.species : COVER.plantSp;
-  coverForest = new Forest(renderer, scene, { species, shadows: SHADOW.on && TS.shadow.cover, fixed, heightAt, imposterAt: COVER.near, band: COVER.near * COVER.fade, ahead: 0.5, spread: FOREST.spread, sunDir: SUN_DIR, nearCap: 12000, wind: true });   // (Jacob's thickness puts ~7,000 within 60 m)
+  coverForest = new Forest(renderer, scene, { species, shadows: SHADOW.on && TS.shadow.cover, fixed, heightAt, imposterAt: COVER.near, band: COVER.near * COVER.fade, ahead: 0.5, spread: FOREST.spread, sunDir: SUN_DIR, nearCap: 12000, wind: true,
+    shadowEdge: { at: U.shadowAt, range: U.shadowRange, from: U.edgeFrom, to: U.edgeTo, shade: U.plantShade, jitter: U.edgeJitter } });   // (the plants ease their shadows at the square's edge too: their own even shade, 0.8: what three meadows' real shadows came to, 0.76-0.87)   // (Jacob's thickness puts ~7,000 within 60 m)
   calmCover(); placeLawn(); bakeCoverMap();
   $('coverInfo').textContent = `${placed.toLocaleString()} plants of 16 kinds: meshes to ${COVER.near} m, imposters beyond (atlases bake over the first seconds)` + (LAWN.count ? ` · ${LAWN.count.toLocaleString()} lawn tufts (${(LAWN.count * lawn.trisPerTuft / 1e6).toFixed(2)} M triangles) out to ${LAWN.radius} m` : '');
 }
@@ -1686,7 +1688,7 @@ for (const [id, fmt] of [['spotAmt', v => Math.round(v * 100) + '%'], ['spotSize
   const el = $(id), go = () => { U[id].value = +el.value; $(id + 'Out').textContent = fmt(+el.value); }; el.value = U[id].value; el.addEventListener('input', go); go();
 }
 // light and shade
-for (const [id, key] of [['hillShade', 'hillShade'], ['aoShade', 'aoShade'], ['treeShade', 'treeShade'], ['shoreStr', 'shoreStr'], ['edgeFrom', 'edgeFrom'], ['edgeShade', 'edgeShade']]) {
+for (const [id, key] of [['hillShade', 'hillShade'], ['aoShade', 'aoShade'], ['treeShade', 'treeShade'], ['shoreStr', 'shoreStr'], ['edgeFrom', 'edgeFrom'], ['edgeShade', 'edgeShade'], ['plantShade', 'plantShade']]) {
   const el = $(id), go = () => { U[key].value = +el.value; $(id + 'Out').textContent = Math.round(+el.value * 100) + '%'; }; el.value = U[key].value; el.addEventListener('input', go); go();
 }
 // the sky's controls

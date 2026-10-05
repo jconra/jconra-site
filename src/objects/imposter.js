@@ -235,7 +235,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
     viewDirOverride: { value: new THREE.Vector3(0, 1, 0) }, useOverride: { value: 0 },
     calmCol: { value: new THREE.Color(0.3, 0.4, 0.15) }, calmFrom: { value: 60 }, calmTo: { value: 250 }, calmAmt: { value: 0 },
     landShade: { value: null }, landShadeSize: { value: 1600 }, landShadeK: { value: new THREE.Vector4() },
-    shadowAt: { value: new THREE.Vector3() }, shadowRange: { value: 0 }, edgeFrom: { value: 0.55 }, edgeTo: { value: 0.97 }, edgeShade: { value: 0.55 },   // (the shadow edge: see Forest)
+    shadowAt: { value: new THREE.Vector3() }, shadowRange: { value: 0 }, edgeFrom: { value: 0.55 }, edgeTo: { value: 0.97 }, edgeShade: { value: 0.55 }, edgeJitter: { value: 0.12 },   // (the shadow edge: see Forest)
   }]);
   uniforms.atlas.value = bake.colour; uniforms.atlasN.value = bake.normal;
   const mat = new THREE.ShaderMaterial({
@@ -251,7 +251,8 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
       uniform vec3 sunDir; uniform float ambient; uniform float useShadow; uniform float soften; uniform float glowLight; uniform float sheen; uniform float shadowNudge;
       uniform vec3 calmCol; uniform float calmFrom, calmTo, calmAmt;
       uniform sampler2D landShade; uniform float landShadeSize; uniform vec4 landShadeK;
-      uniform vec3 shadowAt; uniform float shadowRange, edgeFrom, edgeTo, edgeShade;
+      uniform vec3 shadowAt; uniform float shadowRange, edgeFrom, edgeTo, edgeShade, edgeJitter;
+      float edgeHash(vec2 c) { vec3 p = fract(vec3(c.xyx) * 0.1031); p += dot(p, p.yzx + 33.33); return fract((p.x + p.y) * p.z); }
       ` + LOOKUP + `
       void main() {
         #include <logdepthbuf_fragment>
@@ -280,7 +281,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
           float shadow = 1.0;
           #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
           if (useShadow > 0.5) shadow = getShadow(directionalShadowMap[0], directionalLightShadows[0].shadowMapSize, directionalLightShadows[0].shadowBias, directionalLightShadows[0].shadowRadius, vDirectionalShadowCoord[0] + vShadowToCam * (useDepth > 0.5 ? off : 0.0) + vShadowToSun * vRadius * shadowNudge);   // (shadowNudge: a fraction of the radius toward the sun. 0: measured against the models from five sides of four woods, it matches them best, lower crowns included; 0.25 left far woods 10-15% lighter)
-          if (useShadow > 0.5 && shadowRange > 0.0) { vec2 q = abs(vLand - shadowAt.xz) / shadowRange; shadow = mix(shadow, edgeShade, smoothstep(edgeFrom, edgeTo, max(q.x, q.y))); }   // (near the shadows' edge: eased into the even shade, as the models are)
+          if (useShadow > 0.5 && shadowRange > 0.0) shadow = mix(shadow, edgeShade, smoothstep(edgeFrom, edgeTo, length(vLand - shadowAt.xz) / shadowRange + edgeHash(floor(vLand * 4.0)) * edgeJitter));   // (near the shadows' edge: eased into the even shade, as the models are: round, each tree its own start)
           #endif
           float nl = max(0.0, dot(nv, directionalLights[0].direction));
           irradiance += directionalLights[0].color * nl * shadow;

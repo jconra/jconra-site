@@ -158,9 +158,10 @@
       <div class="row"><label for="hillShade">Hill shadows</label><output id="hillShadeOut"></output><input id="hillShade" type="range" min="0" max="1" step="0.01"></div>
       <div class="row"><label for="aoShade">Ravines and hollows</label><output id="aoShadeOut"></output><input id="aoShade" type="range" min="0" max="1" step="0.01"></div>
       <div class="row"><label for="treeShade">Shade under trees</label><output id="treeShadeOut"></output><input id="treeShade" type="range" min="0" max="0.9" step="0.01"></div>
-      <p class="note">Real shadows only reach a square round the camera. Toward its edge they fade into the baked shade, and each tree's sun shadow fades into an even shade, so there is no line where they stop.</p>
+      <p class="note">Real shadows only reach a square round the camera. Toward its edge (a round, ragged band) they fade into the baked shade, and each tree's and plant's sun shadow fades into an even shade, so there is no line where they stop.</p>
       <div class="row"><label for="edgeFrom">Shadows start fading <small>how far out toward the square's edge</small></label><output id="edgeFromOut"></output><input id="edgeFrom" type="range" min="0.2" max="0.95" step="0.01"></div>
       <div class="row"><label for="edgeShade">Sun on trees past the shadows <small>match it to the trees inside</small></label><output id="edgeShadeOut"></output><input id="edgeShade" type="range" min="0" max="1" step="0.01"></div>
+      <div class="row"><label for="plantShade">Sun on plants past the shadows <small>the ground plants' own (gaming: they're shadowed too)</small></label><output id="plantShadeOut"></output><input id="plantShade" type="range" min="0" max="1" step="0.01"></div>
     </details>
 
     <details class="sec" open><summary>5 · Mixing by the land</summary>

@@ -43,8 +43,10 @@ function fillLeaves(root, scale, copies) {
 
 function rnd(seed) { let s = seed >>> 0 || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
 // the shadow edge (see the constructor): how far a tree at vLand has eased from its real shadow to the even shade
-export const EDGE_GLSL = `uniform vec3 shadowAt; uniform float shadowRange, edgeFrom, edgeTo, edgeShade;
-float edgeK(vec2 at) { if (shadowRange <= 0.0) return 0.0; vec2 q = abs(at - shadowAt.xz) / shadowRange; return smoothstep(edgeFrom, edgeTo, max(q.x, q.y)); }
+// (round, not square, so no straight line; each thing's own start pushed out by up to edgeJitter, so no round line either)
+export const EDGE_GLSL = `uniform vec3 shadowAt; uniform float shadowRange, edgeFrom, edgeTo, edgeShade, edgeJitter;
+float edgeHash(vec2 c) { vec3 p = fract(vec3(c.xyx) * 0.1031); p += dot(p, p.yzx + 33.33); return fract((p.x + p.y) * p.z); }
+float edgeK(vec2 at) { if (shadowRange <= 0.0) return 0.0; return smoothstep(edgeFrom, edgeTo, length(at - shadowAt.xz) / shadowRange + edgeHash(floor(at * 4.0)) * edgeJitter); }
 `;
 // three's own light loop with the sun's shadow eased the same way (the whole tree at once: vLand is its root)
 const EDGE_LIGHTS = (() => { const c = THREE.ShaderChunk.lights_fragment_begin, re = /(getShadow\( directionalShadowMap\[ i \][^;]*?vDirectionalShadowCoord\[ i \] \)) : 1\.0;/;
@@ -132,10 +134,10 @@ export class Forest {
     this.landU = { landShade: { value: null }, landShadeSize: { value: 1600 }, landShadeK: { value: new THREE.Vector4() } };
     // SHADOW EDGE: real shadows reach only a square round the camera (the page's shadow camera: centre `at`,
     // half-width `range`, as uniforms the page moves); past it every tree would light up at once. From `from` to
-    // `to` of the way out (0 centre, 1 edge) each tree's sun shadow eases into an even `shade` (0 dark .. 1 lit),
+    // `to` of the way out (0 centre, 1 edge; round, each tree's start pushed out by up to `jitter`) each tree's sun shadow eases into an even `shade` (0 dark .. 1 lit),
     // the average a shadowed wood comes to, so a wood is as dark past the edge as inside it. Range 0: off.
     const E = shadowEdge || {};
-    this.edgeU = { shadowAt: E.at || { value: new THREE.Vector3() }, shadowRange: E.range || { value: 0 }, edgeFrom: E.from || { value: 0.55 }, edgeTo: E.to || { value: 0.97 }, edgeShade: E.shade || { value: 0.55 } };   // (0.55: what five views of real-shadowed woods averaged, 0.34 to 0.74)
+    this.edgeU = { shadowAt: E.at || { value: new THREE.Vector3() }, shadowRange: E.range || { value: 0 }, edgeFrom: E.from || { value: 0.55 }, edgeTo: E.to || { value: 0.97 }, edgeShade: E.shade || { value: 0.55 }, edgeJitter: E.jitter || { value: 0.12 } };   // (0.55: what five views of real-shadowed woods averaged, 0.34 to 0.74)
     this.ready = false; this.baking = null;
     this.loaded = this.load();
   }
