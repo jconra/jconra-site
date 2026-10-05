@@ -199,27 +199,45 @@ function* erodeSteps(H, drops, chunk, trail = null) {
 // they run into the ponds and out over the spill. Pond ground is flattened to its surface and river
 // channels are carved a little; the shader paints the water on (no see-through mesh).
 let trees = [], maskA = null, pathCanvas = null; const MAPS = {};
-// THE FOOTPATHS' PICTURE (2048 px over the land, 0.8 m a pixel): R the worn core, G the trampled shoulder. The land's own
-// paths (PATHS.runs, routed with the land) and then the hand-painted ones (the planting's footpath strokes, the brush as
-// wide as the dirt) and the erased ones, in the order made. after: read back and everything that follows paths laid again
+// THE FOOTPATHS' PICTURE (2048 px over the land, 0.8 m a pixel): R the worn core, drawn here; G how near a path, worked out
+// from the finished R when it's read back (nearFromCore). The land's own paths (PATHS.runs, routed with the land) and then the
+// hand-painted ones (the planting's footpath strokes, the brush as wide as the dirt) and the erased ones, in the order made.
+// after: read back and everything that follows paths laid again
 const PATHS = { runs: [] };
 function drawPaths(after = true) {
   const P = 2048, k = P / SIZE; pathCanvas = pathCanvas || document.createElement('canvas'); pathCanvas.width = pathCanvas.height = P;
   // (read back afterwards: kept in ordinary memory, not on the graphics card, where a rebuild's blur and read-back stalled for many seconds)
   const g2 = pathCanvas.getContext('2d', { willReadFrequently: true }); g2.fillStyle = '#000'; g2.fillRect(0, 0, P, P); g2.lineCap = g2.lineJoin = 'round';
   const line = (pts) => { g2.beginPath(); pts.forEach(([x, z], q) => q ? g2.lineTo((x + SIZE / 2) * k, (z + SIZE / 2) * k) : g2.moveTo((x + SIZE / 2) * k, (z + SIZE / 2) * k)); g2.stroke(); };
-  const dirt = (lines, core) => { g2.globalCompositeOperation = 'lighter';
-    g2.filter = 'blur(3px)'; g2.strokeStyle = 'rgb(0,90,0)'; for (const [pts, w] of lines) { g2.lineWidth = w * 3.2 * k; line(pts); }
-    g2.filter = 'blur(1.2px)'; g2.strokeStyle = 'rgb(255,0,0)'; for (const [pts, w] of lines) { g2.lineWidth = w * k; line(pts); } };
+  const dirt = (lines) => { g2.globalCompositeOperation = 'lighter'; g2.filter = 'blur(1.2px)'; g2.strokeStyle = 'rgb(255,0,0)'; for (const [pts, w] of lines) { g2.lineWidth = w * k; line(pts); } };
   dirt(PATHS.runs.map((pts) => [pts, LAND.pathWidth]));
   if (PLANT.tool) for (const st of PLANT.tool.planting.strokes) {
-    if (st.kind === PLANT.PATH && st.mode !== 'clear') dirt([[st.pts.length > 1 ? st.pts : [st.pts[0], st.pts[0]], st.r * 2 * 0.55]]);   // (the core a little narrower than the ring: the shoulder fills to it)
+    if (st.kind === PLANT.PATH && st.mode !== 'clear') dirt([[st.pts.length > 1 ? st.pts : [st.pts[0], st.pts[0]], st.r * 2 * 0.55]]);   // (the dirt a little narrower than the brush's ring)
     else if (st.kind === PLANT.NOPATH) { g2.globalCompositeOperation = 'source-over'; g2.filter = 'blur(2px)'; g2.strokeStyle = '#000'; g2.lineWidth = st.r * 2 * k; line(st.pts.length > 1 ? st.pts : [st.pts[0], st.pts[0]]); }
   }
   g2.filter = 'none'; g2.globalCompositeOperation = 'source-over';
   if (!after) return;
-  MAPS.path = g2.getImageData(0, 0, P, P).data; MAPS.P = P;
+  MAPS.path = g2.getImageData(0, 0, P, P).data; MAPS.P = P; nearFromCore(MAPS.path, P);
   composePathRoad(); buildPaving(); placeStones(); COVER.cache = {};   // (the plants keep off paths: their remembered tiles go, they're laid again by the planting's change)
+}
+// HOW NEAR A PATH (the path picture's G): 255 on the dirt (R over half) falling evenly to 0 by NEAR_REACH metres out, by a
+// two-pass distance over the finished picture: overlapping runs don't add up (once they did: shared trails got a wide dense
+// fringe, single ones a thin one) and a rubbed-out stretch takes its nearness with it. The ground scatters dirt spots by it;
+// the plants thin a little toward the path. (Once a flat band ~3 path widths wide: it read as a ghost path beside each path.)
+const NEAR_REACH = 12; let NEAR_D = null;
+function nearFromCore(d, P) {
+  const D = NEAR_D && NEAR_D.length === P * P ? NEAR_D : (NEAR_D = new Float32Array(P * P)), s2 = Math.SQRT2;
+  for (let q = 0; q < P * P; q++) D[q] = d[q * 4] > 128 ? 0 : 1e9;
+  for (let j = 0; j < P; j++) for (let i = 0; i < P; i++) { const q = j * P + i; let v = D[q]; if (v === 0) continue;
+    if (i > 0) v = Math.min(v, D[q - 1] + 1);
+    if (j > 0) { v = Math.min(v, D[q - P] + 1); if (i > 0) v = Math.min(v, D[q - P - 1] + s2); if (i < P - 1) v = Math.min(v, D[q - P + 1] + s2); }
+    D[q] = v; }
+  for (let j = P - 1; j >= 0; j--) for (let i = P - 1; i >= 0; i--) { const q = j * P + i; let v = D[q]; if (v === 0) continue;
+    if (i < P - 1) v = Math.min(v, D[q + 1] + 1);
+    if (j < P - 1) { v = Math.min(v, D[q + P] + 1); if (i < P - 1) v = Math.min(v, D[q + P + 1] + s2); if (i > 0) v = Math.min(v, D[q + P - 1] + s2); }
+    D[q] = v; }
+  const R = NEAR_REACH * P / SIZE;
+  for (let q = 0; q < P * P; q++) d[q * 4 + 1] = D[q] >= R ? 0 : Math.round(255 * (1 - D[q] / R));
 }
 const WATER = { on: true, river: 8200, width: 0.6, carve: 1.3, channel: 2, pondDepth: 0.05, pondMin: 4, outlet: 19 };
 const POND = new Uint8Array(N * N), WDEPTH = new Float32Array(N * N), ACC = new Float32Array(N * N), DOWN = new Int32Array(N * N);
@@ -615,7 +633,7 @@ function buildLand() {
   else maskA.image.data.set(data);
   maskA.needsUpdate = true;
   U.maskA.value = maskA;
-  MAPS.path = pathCanvas.getContext('2d').getImageData(0, 0, P, P).data; MAPS.P = P;
+  MAPS.path = pathCanvas.getContext('2d').getImageData(0, 0, P, P).data; MAPS.P = P; nearFromCore(MAPS.path, P);
   composePathRoad(); buildPaving();
   COVER.cache = {};                                   // the land changed: the remembered tiles are stale
   placeTrees(); placeStones(); if (COVER.parts) placeCover();
@@ -670,7 +688,7 @@ const U = {
   shadeMap: { value: null }, shadowRange: { value: 0 }, shadowAt: { value: new THREE.Vector3() }, edgeFrom: { value: 0.55 }, edgeTo: { value: 0.97 }, edgeShade: { value: 0.55 }, hillShade: { value: 1 }, aoShade: { value: 1 }, treeShade: { value: 0.9 },
   avgGround: { value: new THREE.Color(0x6b8a3a) }, avgDry: { value: new THREE.Color(0x8a8a4a) }, avgLush: { value: new THREE.Color(0x5b7a2a) }, avgForest: { value: new THREE.Color(0x4a4a2a) }, avgWet: { value: new THREE.Color(0x4a3a2a) }, avgPath: { value: new THREE.Color(0x6a5238) }, avgSteep: { value: new THREE.Color(0x7a7a7a) }, avgShore: { value: new THREE.Color(0x77706a) }, shoreStr: { value: 1 }, layShore: { value: null },
   layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layPath: { value: null }, laySteep: { value: null },
-  mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.06 },
+  spotAmt: { value: 0.8 }, spotSize: { value: 1.6 }, spotReach: { value: 0.7 }, mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.06 },
 };
 for (const [k, v] of Object.entries(TS.u)) if (U[k]) U[k].value = v;
 { const t = new THREE.TextureLoader().load('/textures/stamps/atlas.png'); t.colorSpace = THREE.SRGBColorSpace; t.premultiplyAlpha = true; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); U.stampAtlas.value = t; }
@@ -683,7 +701,7 @@ mat.onBeforeCompile = (sh) => {
     uniform float tile, split; uniform vec2 res;   // (the base ground picture is the lush layer, layLush: a real GPU allows 16 pictures a shader)
     uniform float hexOn, hexSize, hexRot, hexSharp, hexBright, macroOn, macroStr, macroSize, macroHue, farOn, farFrom, grid;
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar, stampSpread, stampPatch, stampPatchSize, stampClump; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
-    uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 coverAt; uniform sampler2D coverMap; uniform vec3 lushTint, dampTint, slopeTint;
+    uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom, spotAmt, spotSize, spotReach; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 coverAt; uniform sampler2D coverMap; uniform vec3 lushTint, dampTint, slopeTint;
     uniform sampler2D waterMap; uniform float waterOn, wFroth, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow;
     float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gShadowFade = 0.0, gRoad = 0.0; uniform vec3 gapCol; uniform float mossAmt, edgeDark, edgeWidth, cornerRound, gapW, paveLod, pave3D, edgeBand; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathRoad; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange, edgeFrom, edgeTo; uniform vec3 shadowAt;
     uniform vec3 avgGround, avgDry, avgLush, avgForest, avgWet, avgPath, avgSteep, avgShore; uniform float shoreStr; uniform sampler2D layShore; uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layPath; uniform sampler2D laySteep;
@@ -823,7 +841,22 @@ mat.onBeforeCompile = (sh) => {
       float wWet = clamp(m.r * 1.5 + bn, 0.0, 1.0), wMud = clamp(m.r * 2.2 - 1.3 + bn, 0.0, 1.0), wDry = clamp(m.g * 1.3 - 0.15 - m.b - m.a * 0.6 + bn2, 0.0, 1.0);
       float wLush = clamp(m.a * 1.4 + bn, 0.0, 1.0), wForest = clamp(m.b * 1.3 + bn2 * 0.7, 0.0, 1.0);
       float dryLand = 1.0 - smoothstep(0.25, 0.45, wAt);                      // never paint path over water
-      float wPath = clamp(pth.r + bn * 0.5, 0.0, 1.0) * dryLand, wShoulder = clamp(pth.g * 1.5 + bn, 0.0, 1.0) * dryLand;
+      float wPath = clamp(pth.r + bn * 0.5, 0.0, 1.0) * dryLand;
+      // DIRT SPOTS round the paths: lumps of bare earth, thickest at the dirt's edge and thinning out, and along the way
+      // some stretches heavy, some light, some bare, so there's no band and no line beside the path (pth.g: how near a
+      // path, 1 on the dirt down to 0 twelve metres out; spotReach of that, wandering). The same in every tier.
+      float wSpot = 0.0, spotTone = 1.0;
+      if (pth.g > 0.004 && spotAmt > 0.0) {
+        float slow = vn(vW.xz / 28.0 + 3.1);                                  // (the stretches: tens of metres)
+        float reach = spotReach * (0.55 + 0.9 * slow);
+        float pNear = clamp((pth.g - 1.0 + reach) / max(reach, 0.01), 0.0, 1.0);
+        vec2 sp = mat2(0.8, -0.6, 0.6, 0.8) * vW.xz / spotSize;              // (turned, so the noise's grid never lines up with the world)
+        float sn = 0.6 * vn(sp + 41.7) + 0.28 * vn(mat2(0.6, 0.8, -0.8, 0.6) * sp * 2.3 + 5.3) + 0.12 * vn(sp * 5.1 + 9.9);   // lumps with ragged edges
+        sn = smoothstep(0.27, 0.69, sn);                                      // (spread by its real range, about 0..1: the share above a cut is then about 1 - cut)
+        float share = min(0.7, spotAmt * (0.45 * pNear * pNear * pNear + 0.25 * pNear) * mix(0.2, 1.3, slow));   // how much of the ground is dirt here: thick at the edge, a long sparse tail of lone spots
+        wSpot = smoothstep(1.0 - share - 0.08, 1.0 - share + 0.08, sn) * dryLand * (1.0 - steep * 0.8);   // (a soft edge either side of the cut, so lone spots are whole; slopes keep their own scrub)
+        spotTone = 0.9 + 0.2 * vn(vW.xz / 1.7);
+      }
       #ifdef LITE
       vec3 dryC = avgDry, lushC = avgLush, forC = avgForest, wetC = avgWet, pathC = avgPath, shoreC = avgShore;
       #else
@@ -848,7 +881,7 @@ mat.onBeforeCompile = (sh) => {
       g = over(g, lushC * lushTint, clamp(er.g * fanStr - 0.2 + bn, 0.0, 1.0) * (1.0 - m.b));   // fans of settled soil: heavier grass
       g = over(g, forC, wForest);
       g = over(g, pathC, clamp(er.r * gullyStr + bn * 0.6, 0.0, 1.0) * (1.0 - wForest * 0.6));       // gullies: worn dirt where the water ran
-      g = over(g, mix(g, pathC, 0.5), wShoulder * (1.0 - wForest * 0.5));     // trampled edge: half-worn
+      g = over(g, mix(pathC, mix(pathC, dryC, 0.4), wDry) * spotTone, wSpot * (1.0 - wForest * 0.6));   // dirt spots round the paths (paler on dry ground)
       g = over(g, pathC, wPath);
       g = over(g, shoreC, clamp(er.a * shoreStr + bn * 0.8, 0.0, 1.0) * (1.0 - smoothstep(0.3, 0.6, 1.0 - vWN.y)));   // stones round the water's edge
       vec3 scrubC = mix(lushC * slopeTint, pathC * vec3(0.95, 0.9, 0.85), smoothstep(0.62, 0.8, vn(vW.xz / 7.0)) * 0.8);   // slopes: dark green scrub, bare dirt showing in patches
@@ -1073,7 +1106,7 @@ function loadSheet(url, grid, done, cell = null, lit = () => false) {
 // water; dry), `hard` where nothing grows (paths, steep, in the water), `blocked` that and mud and the stony shore
 function coverGround(x, z) {
   const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
-  const pi = Math.min(MAPS.P - 1, Math.max(0, Math.floor((x + SIZE / 2) / SIZE * MAPS.P))), pj = Math.min(MAPS.P - 1, Math.max(0, Math.floor((z + SIZE / 2) / SIZE * MAPS.P))), path = MAPS.path[(pj * MAPS.P + pi) * 4] / 255 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 510;
+  const pi = Math.min(MAPS.P - 1, Math.max(0, Math.floor((x + SIZE / 2) / SIZE * MAPS.P))), pj = Math.min(MAPS.P - 1, Math.max(0, Math.floor((z + SIZE / 2) / SIZE * MAPS.P))), path = MAPS.path[(pj * MAPS.P + pi) * 4] / 255 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 1450;   // (near a path a little harder: fewer plants, tapering off over 12 m)
   const canopy = MAPS.canopy[k], shade = Math.min(1, Math.max(0, MAPS.wide[k] * 2.2 - canopy * 0.8)), open = 1 - Math.min(1, canopy + shade);
   const yard = TOWN.yard ? TOWN.yard[k] : 0, hard = path + MAPS.steep[k] * 1.5 + waterAt(x, z) * 4 + (TOWN.block ? TOWN.block[k] * 2 : 0) + yard, shore = MAPS.shore ? Math.min(1, MAPS.shore[k] * 2.5) : 0;   // (nothing in the town's buildings and roads; mown yards round them: lawn, no meadow)
   const blocked = hard + Math.max(0, MAPS.wet[k] - 0.6) * 2 + shore * 1.2;
@@ -1366,7 +1399,7 @@ function placeStones() {
     const pi = Math.floor((x + SIZE / 2) / SIZE * MAPS.P), pj = Math.floor((z + SIZE / 2) / SIZE * MAPS.P); if (MAPS.path[(pj * MAPS.P + pi) * 4] > 60) continue;
     const creek = MAPS.shore ? Math.min(1, MAPS.shore[k] * 2.5) : 0;             // along streams and shores the soil is washed off the stones
     const sl = slopeAt(i, j), want = 0.14 + 1.6 * creek + 0.8 * THREE.MathUtils.smoothstep(sl, 0.45, 0.9) + 0.9 * Math.max(0, scree[k] - MAPS.steep[k]) * 2;
-    const vis = Math.min(1, (1 - MAPS.canopy[k]) * 0.7 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 255 * 1.2 + creek * 0.6 + MAPS.dry[k] * 0.5);   // (how open and looked at the spot is)
+    const vis = Math.min(1, (1 - MAPS.canopy[k]) * 0.7 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 255 * 0.45 + creek * 0.6 + MAPS.dry[k] * 0.5);   // (how open and looked at the spot is)
     if (r(t, 47.1) > want * (1 - STONES.seen * (0.9 - 0.9 * vis))) continue;
     const u = r(t, 49.9), size = STONES.size * (0.22 + 1.7 * u * u * u) * (1 + 0.6 * Math.max(0, scree[k] - MAPS.steep[k])) * (1 + STONES.seen * 0.7 * (vis - 0.4));
     per[Math.floor(r(t, 51.7) * 4) % 4].push([x, heightAt(x, z) - size * 0.22, z, size, r(t, 53.3) * 6.283, r(t, 57.1)]);
@@ -1635,6 +1668,10 @@ $('copySettings').addEventListener('click', async () => {
   if (ok) $('copyNote').textContent = `Copied ${Object.keys(out).length - 1} settings. Paste them in chat.`;
   else { $('copyNote').textContent = 'Copy this:'; const ta = document.createElement('textarea'); ta.value = text; ta.rows = 4; ta.style.width = '100%'; $('copyNote').after(ta); ta.select(); }
 });
+// the dirt spots round the paths (live: the shader's)
+for (const [id, fmt] of [['spotAmt', v => Math.round(v * 100) + '%'], ['spotSize', v => v.toFixed(1) + ' m'], ['spotReach', v => Math.round(v * 100) + '%']]) {
+  const el = $(id), go = () => { U[id].value = +el.value; $(id + 'Out').textContent = fmt(+el.value); }; el.value = U[id].value; el.addEventListener('input', go); go();
+}
 // light and shade
 for (const [id, key] of [['hillShade', 'hillShade'], ['aoShade', 'aoShade'], ['treeShade', 'treeShade'], ['shoreStr', 'shoreStr'], ['edgeFrom', 'edgeFrom'], ['edgeShade', 'edgeShade']]) {
   const el = $(id), go = () => { U[key].value = +el.value; $(id + 'Out').textContent = Math.round(+el.value * 100) + '%'; }; el.value = U[key].value; el.addEventListener('input', go); go();
