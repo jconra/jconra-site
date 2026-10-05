@@ -32,7 +32,8 @@ export const STONE_UNIFORMS = () => ({
 // from its cell's middle, so the change comes a stone at a time and a stone never tilts across the line. Usable in
 // a vertex shader too (no texture reads): declare uniform vec3 stoneGrid; uniform float stoneSpread; first.
 export const STONE_LOD = `
-  float stLod(vec2 c, float lod) { return lod * (1.0 + stoneSpread * (fract(sin(dot(c, vec2(12.9898, 78.233))) * 43758.5453) - 0.5)); }
+  float stLodHash(vec2 c) { vec3 p = fract(vec3(c.xyx) * 0.1031); p += dot(p, p.yzx + 33.33); return fract((p.x + p.y) * p.z); }   // (no sin: the 3D stone works this out in the vertex stage and its flat twin in the pixel stage, and a sin of a big number came out different in the two, so a stone could sink before its flat one showed: a hole)
+  float stLod(vec2 c, float lod) { return lod * (1.0 + stoneSpread * (stLodHash(c) - 0.5)); }
   vec2 stMiddle(vec2 c) { return stoneGrid.xy + (c + 0.5) * stoneGrid.z; }
 `;
 
