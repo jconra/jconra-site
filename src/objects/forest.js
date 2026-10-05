@@ -50,6 +50,54 @@ float edgeK(vec2 at) { if (shadowRange <= 0.0) return 0.0; vec2 q = abs(at - sha
 const EDGE_LIGHTS = (() => { const c = THREE.ShaderChunk.lights_fragment_begin, re = /(getShadow\( directionalShadowMap\[ i \][^;]*?vDirectionalShadowCoord\[ i \] \)) : 1\.0;/;
   if (!re.test(c)) { console.warn('forest: no shadow line found in lights_fragment_begin; trees keep a hard shadow edge'); return '#include <lights_fragment_begin>'; }
   return c.replace(re, 'mix($1, edgeShade, edgeK(vLand)) : 1.0;'); })();
+// ALPHA TO COVERAGE for a species' leaf cards (species option `coverage`). An alpha-clipped leaf is all or nothing per
+// pixel: hard, shimmering edges up close, and far off, where the texture's smaller copies average a leaf's edge into the
+// background, its alpha falls under the cutoff and the leaf vanishes (a tree goes thin with distance). So: near, the
+// alpha is sharpened into a pixel-wide ramp round the cutoff and the GPU keeps that share of each pixel's edge samples
+// (smooth leaf edges; needs edge smoothing on); farther than coverFar levels down the smaller copies it is a plain clip
+// again, of an alpha raised coverMip a level so the leaves keep their size. (Far, partial coverage doesn't work for
+// foliage: layers with the same alpha get the same samples, so a crown never fills and goes pale with the sky through
+// it.) three.js r158 forces alpha to 1 on solid materials, so the output keeps it. (After Ben Golus, "Anti-aliased Alpha
+// Test: The Esoteric Alpha To Coverage".)
+const COVER_U = { coverFar: { value: 1.0 }, coverMip: { value: 0.08 } };   // (shared by every covered material; 0.08: a row of aspens stayed at 1.06-1.10 of a 4x-resolution reference from 40 to 300 m, where the plain clip fell to 0.30)
+const COVER_ALPHA = `#ifdef USE_ALPHATEST
+  #if defined(GL_OES_standard_derivatives) || __VERSION__ >= 300
+  { vec2 tx = vMapUv * coverTexels, dx = dFdx(tx), dy = dFdy(tx);
+    float lod = max(0.0, 0.5 * log2(max(dot(dx, dx), dot(dy, dy))));
+    float a = diffuseColor.a * (1.0 + lod * coverMip), sharp = clamp((a - alphaTest) / max(fwidth(a), 0.0001) + 0.5, 0.0, 1.0);
+    diffuseColor.a = mix(sharp, step(alphaTest, a), smoothstep(coverFar, coverFar + 1.0, lod));
+    if (diffuseColor.a < 0.004) discard; }
+  #else
+  if (diffuseColor.a < alphaTest) discard;
+  #endif
+#endif`;
+const COVER_OUT = `#ifdef USE_TRANSMISSION
+diffuseColor.a *= material.transmissionAlpha;
+#endif
+gl_FragColor = vec4(outgoingLight, diffuseColor.a);`;
+// a leaf picture's clear texels given the colour of the nearest leaf texel (alpha kept), so the texture's smaller copies,
+// which far trees are drawn with, average leaf into leaf rather than whatever colour hides under the transparency (the
+// leaves' own light edges stay: they're part of how a leaf looks up close, and far it should average them in). Uploaded as raw
+// texels: a canvas would drop the colour under alpha 0 again. Once per picture (it stays on the shared model).
+function bleedLeafMap(tex) {
+  if (tex.userData.bled || !tex.image || !tex.image.width) return tex;
+  const W = tex.image.width, H = tex.image.height, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(tex.image, 0, 0);
+  const px = g.getImageData(0, 0, W, H).data, solid = new Uint8Array(W * H); let front = [];
+  for (let q = 0; q < W * H; q++) if (px[q * 4 + 3] >= 8) { solid[q] = 1; front.push(q); }   // (every texel with any leaf in it keeps its own colour, its light edge too: only the clear ones are filled)
+  while (front.length) {   // grow the solid colour outward a texel a pass: each new texel the average of its solid neighbours
+    const next = [];
+    for (const q of front) { const x = q % W, y = (q / W) | 0;
+      for (const n of [x > 0 ? q - 1 : -1, x < W - 1 ? q + 1 : -1, y > 0 ? q - W : -1, y < H - 1 ? q + W : -1]) if (n >= 0 && !solid[n]) { solid[n] = 2; next.push(n); } }
+    for (const n of next) { const x = n % W, y = (n / W) | 0; let r = 0, gg = 0, b = 0, k = 0;
+      for (const m of [x > 0 ? n - 1 : -1, x < W - 1 ? n + 1 : -1, y > 0 ? n - W : -1, y < H - 1 ? n + W : -1]) if (m >= 0 && solid[m] === 1) { r += px[m * 4]; gg += px[m * 4 + 1]; b += px[m * 4 + 2]; k++; }
+      px[n * 4] = r / k; px[n * 4 + 1] = gg / k; px[n * 4 + 2] = b / k; }
+    for (const n of next) solid[n] = 1; front = next; }
+  const out = new THREE.DataTexture(new Uint8Array(px.buffer.slice(0)), W, H, THREE.RGBAFormat);
+  out.colorSpace = tex.colorSpace; out.wrapS = tex.wrapS; out.wrapT = tex.wrapT; out.magFilter = THREE.LinearFilter; out.minFilter = THREE.LinearMipmapLinearFilter;
+  out.generateMipmaps = true; out.anisotropy = tex.anisotropy; out.flipY = tex.flipY;
+  out.userData.bled = true; out.needsUpdate = true; return out;
+}
 const switchHash = (x, z) => { const v = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453; return v - Math.floor(v); };   // (a tree's own 0..1 from where it stands)
 
 export const FOREST_SPECIES = [
@@ -58,7 +106,7 @@ export const FOREST_SPECIES = [
   // sink (optional): stand it this share of its height down into the ground (a plant's root clump)
   // leafScale, leafCopies (optional): each leaf card made this much bigger about its middle, and this many crossed copies of each added
   { name: 'ash',   file: 'ash',   height: 20, weight: 1, soften: 0.5 },
-  { name: 'aspen', file: 'aspen', height: 17, weight: 1, soften: 0.5, leafScale: 1.6, leafCopies: 1 },   // (its model has a fifth of the ash's leaves: bigger, and a crossed copy of each)
+  { name: 'aspen', file: 'aspen', height: 17, weight: 1, soften: 0.5, leafScale: 1.6, leafCopies: 1, coverage: true },   // (its model has a fifth of the ash's leaves: bigger, and a crossed copy of each; coverage: they thinned out with distance)
   { name: 'oak',   file: 'oak',   height: 18, weight: 1.2, soften: 0.5 },
   { name: 'pine',  file: 'pine',  height: 22, weight: 1.4, soften: 0.5 },
   { name: 'bush',  file: 'bush',  height: 5,  weight: 0.5, soften: 0.5 },
@@ -104,6 +152,7 @@ export class Forest {
       const shapeKey = sp.shape ? JSON.stringify(sp.shape) : '';          // (a species handed on to a new forest is already shaped)
       if (sp.shape && root.userData.shapedWith !== shapeKey) { sp.shapeInfo = shapeFoliage(root, sp.unit, sp.shape); root.userData.shapedWith = shapeKey; }
       root.traverse(o => { if (o.isMesh && !Array.isArray(o.material)) { o.material.side = THREE.DoubleSide; if (o.material.map) o.material.map.anisotropy = 4; if (o.material.transparent) { o.material.alphaTest = 0.5; o.material.transparent = false; } } });
+      if (sp.coverage) root.traverse(o => { if (o.isMesh) for (const m of [].concat(o.material)) if (m.alphaTest > 0 && m.map) m.map = bleedLeafMap(m.map); });   // (before the meshes and the atlas copy it)
     }
     // the atlases, a row of views per frame
     const todo = this.species.slice();
@@ -214,6 +263,7 @@ export class Forest {
         // sunlight through the outer leaves when you look toward the sun
         const leafy = !!(sp.shape && o.geometry.attributes.aSky), under = sp.shape?.under ?? SHAPE_DEFAULTS.under, glow = sp.shape?.glow ?? SHAPE_DEFAULTS.glow;
         for (const mat of [].concat(m.material)) {
+          const cover = !!(sp.coverage && mat.alphaTest > 0 && mat.map && mat.map.image);   // (leaf cards drawn with alpha to coverage: see COVER_ALPHA)
           mat.onBeforeCompile = (sh) => {
             Object.assign(sh.uniforms, this.landU, this.edgeU);
             sh.vertexShader = 'attribute float iFade; varying float vFade; varying vec2 vLand;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvFade = iFade; vLand = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xz;');
@@ -233,8 +283,11 @@ export class Forest {
                   #endif`);
             }
             sh.fragmentShader = 'varying float vFade;\n' + sh.fragmentShader.replace('#include <alphatest_fragment>', '#include <alphatest_fragment>\n{ float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))); if (vFade < dither) discard; }');
+            if (cover) { sh.uniforms.coverTexels = { value: new THREE.Vector2(mat.map.image.width, mat.map.image.height) }; sh.uniforms.coverMip = COVER_U.coverMip; sh.uniforms.coverFar = COVER_U.coverFar;
+              sh.fragmentShader = 'uniform vec2 coverTexels; uniform float coverMip, coverFar;\n' + sh.fragmentShader.replace('#include <alphatest_fragment>', COVER_ALPHA).replace('#include <opaque_fragment>', COVER_OUT); }
           };
-          mat.customProgramCacheKey = () => 'forest-mesh' + (sp.upNormals ? '-up' : '') + (sp.soften ? '-s' + sp.soften : '') + (sp.shape ? '-shape' : '') + (leafy ? `-leaf${under}-${glow}` : ''); mat.needsUpdate = true;
+          mat.alphaToCoverage = cover;
+          mat.customProgramCacheKey = () => 'forest-mesh' + (sp.upNormals ? '-up' : '') + (sp.soften ? '-s' + sp.soften : '') + (sp.shape ? '-shape' : '') + (leafy ? `-leaf${under}-${glow}` : '') + (cover ? '-cover' : ''); mat.needsUpdate = true;
           if (this.wind) { m.geometry.computeBoundingBox(); swayMaterial(mat, Math.max(0.001, m.geometry.boundingBox.max.y), sp.sway ?? 1, '-' + (sp.sway ?? 1)); }
         }
         m.userData.local = o.matrixWorld.clone(); m.userData.fade = mf;
