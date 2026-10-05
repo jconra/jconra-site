@@ -13,6 +13,7 @@
 // of the screen resolves edge smoothing on both versions).
 //   const beams = new Sunbeams(renderer);                     // once
 //   renderer.render(scene, camera); beams.render(camera, SUN_DIR, { strength: 0.8, color: sunColour });   // every frame
+//   beams.warm();                                              // (optional, once: build its shaders ahead of the first draw)
 import * as THREE from 'three';
 
 const SAMPLES = 16;   // taps in each smear pass (16 x 16 = 256 along a shaft; 8 looked the same on cones against a dusk sky and saved ~7 us at 1080p: 16 is headroom for thin detail)
@@ -182,6 +183,14 @@ export class Sunbeams {
     this.quad.material = material;
     if (target) this.renderer.setRenderTarget(target);
     this.renderer.render(this.quadScene, this.quadCam);
+  }
+
+  // build the passes' shaders now (say at page load), so the first time the sun comes into view doesn't stall on it
+  warm() {   // (each against what it really draws to: three builds a shader per target kind, screen or texture)
+    const r = this.renderer, was = this.quad.material, target = r.getRenderTarget(), size = r.getDrawingBufferSize(this._at);
+    this.fit(size.x, size.y); if (r.initTexture) r.initTexture(this.frame);   // (the textures made and sized now too, not on the first draw)
+    for (const [m, t] of [[this.mBright, this.rtA], [this.mFine, this.rtB], [this.mCoarse, this.rtA], [this.mAdd, null], [this.mScreen, null]]) { this.quad.material = m; r.setRenderTarget(t); r.compile(this.quadScene, this.quadCam); }
+    r.setRenderTarget(target); this.quad.material = was;
   }
 
   dispose() {

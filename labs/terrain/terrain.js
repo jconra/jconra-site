@@ -2080,8 +2080,8 @@ function dayFrame(dt) {
   renderer.getDrawingBufferSize(DAY_V2); const th = Math.tan(camera.fov * Math.PI / 360) / camera.zoom;
   FOG_DIR.view.x = 1 / DAY_V2.x; FOG_DIR.view.y = 1 / DAY_V2.y; FOG_DIR.view.z = th * camera.aspect; FOG_DIR.view.w = th;
   // the land's sun shade, again when the light has moved
-  if (!DAY.bake && DAY.baked && shadeTex && DAY.baked.angleTo(SUN_DIR) > 0.6 * Math.PI / 180) { DAY.baked.copy(SUN_DIR); DAY.bake = sunShadeSteps(SUN_DIR); }
-  if (DAY.bake) { const t0 = performance.now(); while (performance.now() - t0 < 3) if (DAY.bake.next().done) { DAY.bake = null; break; } }
+  if (!DAY.bake && DAY.baked && shadeTex && DAY.baked.angleTo(SUN_DIR) > 0.6 * Math.PI / 180) { DAY.baked.copy(SUN_DIR); DAY.bake = sunShadeSteps(SUN_DIR, 0.4); }   // (it hands back control often; the frame's budget below decides how long it runs)
+  if (DAY.bake) { const t0 = performance.now(), budget = Math.min(3, Math.max(0.8, dt * 1000 * 0.18)); while (performance.now() - t0 < budget) if (DAY.bake.next().done) { DAY.bake = null; break; } }   // (about a sixth of the frame: 3 ms at 60 Hz, 1.2 ms at 144)
   lampsFrame();
 }
 // THE STREET LAMPS come on as the sun goes: the lantern glass brightens, a soft halo round it, and a warm pool on the
@@ -2134,7 +2134,8 @@ function lampsFrame() {
   for (const [name, side, target] of [['Sunrise', 'rise', 0], ['Morning', 'rise', 20], ['Noon', 'noon', 0], ['Golden hour', 'set', 6], ['Sunset', 'set', 0.5], ['Dusk', 'set', -4], ['Night', 'set', -20]]) {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = name; b.onclick = () => { DAY.hour = when(side, target); DAY.dirty = true; }; $('dayJumps').appendChild(b); }
   DAY.show();
-  $('beamsOn').checked = BEAMS.on; $('beamsOn').addEventListener('change', (e) => { BEAMS.on = e.target.checked; if (!BEAMS.on && BEAMS.fx) { BEAMS.fx.dispose(); BEAMS.fx = null; } });
+  const beamsReady = () => { if (BEAMS.on && !BEAMS.fx) { BEAMS.fx = new Sunbeams(renderer); BEAMS.fx.warm(); } };   // (made, and its shaders built, as soon as it's on: the first sunset doesn't stall; kept when switched off, where it costs nothing)
+  beamsReady(); $('beamsOn').checked = BEAMS.on; $('beamsOn').addEventListener('change', (e) => { BEAMS.on = e.target.checked; beamsReady(); });
   { const el = $('beamStr'), go = () => { BEAMS.strength = +el.value; $('beamStrOut').textContent = Math.round(BEAMS.strength * 100) + '%'; }; el.value = BEAMS.strength; el.addEventListener('input', go); go(); } }
 renderer.setAnimationLoop(() => {
   const dt = clock.getDelta();
@@ -2150,7 +2151,7 @@ renderer.setAnimationLoop(() => {
   if (PLANT.tool) PLANT.tool.update();
   U.eyePos.value.copy(camera.position);                              // (the paving's 3D stones sink past PAVE.lod from here)
   renderer.render(scene, camera);
-  if (BEAMS.on && DAY.elev > -1) { if (!BEAMS.fx) BEAMS.fx = new Sunbeams(renderer); BEAMS.fx.render(camera, SUN_NOW, { ...BEAMS.opts, strength: BEAMS.strength * beamsAmount(DAY.elev), color: DL.sun }); }
+  if (BEAMS.on && DAY.elev > -1 && BEAMS.fx) { BEAMS.fx.render(camera, SUN_NOW, { ...BEAMS.opts, strength: BEAMS.strength * beamsAmount(DAY.elev), color: DL.sun }); }
   drawAtlas();
 });
 if (Q.has('probe')) Object.assign(window, { renderer, __day: { set: (o) => { Object.assign(DAY, o); DAY.dirty = true; }, BEAMS, get baking() { return !!DAY.bake; }, get elev() { return DAY.elev; }, DAY, DL, FOG_DIR, sky, hemi, sun }, __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest], __plant: () => PLANT, drawPaths });
