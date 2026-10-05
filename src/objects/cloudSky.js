@@ -12,7 +12,8 @@
 // disc's colour (bright, past 1: the tone mapping rolls it off); cloudLit the clouds' colour as lit toward the sun,
 // cloudLitAway away from it; starAmt 0..1 stars
 // (above the clouds' gaps only); moonDir / moonAmt a pale moon. A shader including SKY_GLSL may set skyDiscK (0..1) before
-// calling skyAt to leave the sun's disc and glare out (water the sun can't reach mirrors the sky without it).
+// calling skyAt to leave the sun's disc and glare out (water the sun can't reach mirrors the sky without it). With LITE defined
+// (the Terrain Lab's potato ground) the haze, stars, moon and disc are left out: there the dome isn't drawn, only mirrored.
 import * as THREE from 'three';
 
 export const SKY_GLSL = `
@@ -38,15 +39,19 @@ export const SKY_GLSL = `
   vec3 skyAt(vec3 from, vec3 dir) {
     float up = pow(clamp(dir.y, 0.0, 1.0), 0.55), sd = max(dot(dir, sunDirSky), 0.0);
     vec3 col = mix(mix(skyHorizon, skyToward, skyTowardSun(dir) * (1.0 - up * 0.7)), skyZenith, up);
+    #ifndef LITE
     col += glowCol * (pow(sd, 5.0) * 0.45 + pow(sd, 48.0) * 0.9);                // the haze round the sun, wide and bright near it
     if (starAmt > 0.0 && dir.y > 0.0) { vec3 q = dir * 260.0; vec3 cell = floor(q); float h = skyH(cell.xz + cell.y * 17.13);
       float star = step(0.9965, h) * smoothstep(0.55, 0.0, length(fract(q) - 0.5)) * (0.5 + 0.5 * skyH(cell.zy + 3.7));
       col += vec3(0.9, 0.94, 1.0) * star * starAmt * smoothstep(0.0, 0.15, dir.y); }
     if (moonAmt > 0.0) { float md = dot(dir, moonDir); col += vec3(0.82, 0.86, 0.95) * moonAmt * (smoothstep(0.99985, 0.99992, md) * 3.0 + pow(max(md, 0.0), 64.0) * 0.12); }
+    #endif
     vec2 c = skyCloud(from, dir);
     vec3 cl = mix(cloudLitAway, cloudLit, skyTowardSun(dir)) * c.y * 1.15 + glowCol * pow(sd, 4.0) * 0.55;   // clouds: lit by the sun's colour (cloudLit toward it, cloudLitAway away), gold near it
     col = mix(col, cl, c.x);
-    col += sunDisc * (smoothstep(0.99993, 0.99997, sd) + pow(sd, 900.0) * 0.05 + pow(sd, 120.0) * 0.012) * (1.0 - c.x * 0.85) * skyDiscK;   // the disc and its glare (a few degrees round it, brighter than any sky: what sunbeams come from), dimmed by cloud
+    #ifndef LITE
+    col += sunDisc * (smoothstep(0.99993, 0.99997, sd) + pow(sd, 900.0) * 0.05 + pow(sd, 120.0) * 0.012) * (1.0 - c.x * 0.85) * skyDiscK;
+    #endif   // the disc and its glare (a few degrees round it, brighter than any sky: what sunbeams come from), dimmed by cloud
     return col;
   }
 `;
