@@ -1104,7 +1104,9 @@ function loadSheet(url, grid, done, cell = null, lit = () => false) {
 // what the ground at a spot is like, for the plants and the lawn (see growPlants in src/objects/growth.js): how much
 // each habitat likes it (grass: open, part shade; shrub: the forest's edge; long: open, dry rises; shade; wet: along
 // water; dry), `hard` where nothing grows (paths, steep, in the water), `blocked` that and mud and the stony shore
+const OFF_LAND = { hard: 9, yard: 0, blocked: 9, shade: 0, wet: 0, dry: 0, grass: 0, shrub: 0, long: 0 };   // (past the land's edge: nothing grows; the maps clamp to the edge, so plants used to carry on into the air)
 function coverGround(x, z) {
+  if (Math.abs(x) > SIZE / 2 - 0.5 || Math.abs(z) > SIZE / 2 - 0.5) return OFF_LAND;
   const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
   const pi = Math.min(MAPS.P - 1, Math.max(0, Math.floor((x + SIZE / 2) / SIZE * MAPS.P))), pj = Math.min(MAPS.P - 1, Math.max(0, Math.floor((z + SIZE / 2) / SIZE * MAPS.P))), path = MAPS.path[(pj * MAPS.P + pi) * 4] / 255 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 1450;   // (near a path a little harder: fewer plants, tapering off over 12 m)
   const canopy = MAPS.canopy[k], shade = Math.min(1, Math.max(0, MAPS.wide[k] * 2.2 - canopy * 0.8)), open = 1 - Math.min(1, canopy + shade);
