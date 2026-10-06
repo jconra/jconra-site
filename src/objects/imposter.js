@@ -31,7 +31,7 @@ export function octDecode(u, v, hemi) {
 // cells, each `cell` pixels. Returns { colour, normal, radius, centre, grid, hemi }. Done in one go;
 // bakeImposterSteps below does the same a row of views at a time, for baking across frames.
 export function bakeImposter(renderer, object, opts) { const it = bakeImposterSteps(renderer, object, opts); for (;;) { const s = it.next(); if (s.done) return s.value; } }   // (for..of drops a generator's return value)
-export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, hemi = true, upNormals = false } = {}) {   // upNormals: foliage lit like the ground, both sides of a card
+export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, hemi = true, upNormals = false, floor = null } = {}) {   // upNormals: foliage lit like the ground, both sides of a card
   object.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(object), centre = box.getCenter(new THREE.Vector3()), ext = box.getSize(new THREE.Vector3());
   const radius = ext.length() / 2;
@@ -49,22 +49,33 @@ export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, he
   scene.add(holder);
   const parent = object.parent; holder.add(object);
   const cam = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.01, radius * 4);
+  // floor (optional): nothing under this height (the object's own frame) goes into the views: the part of a plant that
+  // stands under the ground (its root clump). A model's is hidden by the ground; a card turned to a camera looking down
+  // would hold it up above the ground, the plant uprooted
+  const clip = floor == null ? null : [new THREE.Plane(new THREE.Vector3(0, 1, 0), -(floor - centre.y))], oldLocal = renderer.localClippingEnabled;
   // colour pass: the material's own map, unlit; normal pass: the normal in the tree's frame
   const materials = new Map();
   object.traverse(o => { if (o.isMesh) materials.set(o, o.material); });
   const colourMat = (m) => { const c = new THREE.MeshBasicMaterial({ map: m.map || null, color: m.color, alphaTest: m.alphaTest || (m.transparent ? 0.5 : 0), side: THREE.DoubleSide, vertexColors: !!m.vertexColors });   // (the colour times the map, as the model draws it: the oak's leaves are greyed, the aspen's yellowed; vertex colours: shaped foliage's inside darkness)
-  if (m.map) c.map.colorSpace = m.map.colorSpace; return c; };
+  if (m.map) c.map.colorSpace = m.map.colorSpace; if (clip) c.clippingPlanes = clip; return c; };
   // the normal in the tree's frame, and in alpha the depth: 0 at the near face of the tree's sphere,
   // 0.5 at its centre plane (where the quad is drawn), 1 at the far face
   const normalMat = (m) => new THREE.ShaderMaterial({
     defines: { UP_NORMALS: upNormals ? 'true' : 'false' },
     uniforms: { map: { value: m.map || null }, useMap: { value: m.map ? 1 : 0 }, alphaTest: { value: m.alphaTest || (m.transparent ? 0.5 : 0) }, radius: { value: radius } },
-    vertexShader: `varying vec3 vN; varying vec2 vUv; varying float vZ; void main(){ vN = normalize(mat3(modelMatrix) * normal); vUv = uv; vec4 mv = modelViewMatrix * vec4(position, 1.0); vZ = -mv.z; gl_Position = projectionMatrix * mv; }`,
-    fragmentShader: `uniform sampler2D map; uniform float useMap; uniform float alphaTest; uniform float radius; varying vec3 vN; varying vec2 vUv; varying float vZ;
-      void main(){ if (useMap > 0.5 && texture2D(map, vUv).a < alphaTest) discard; vec3 n = normalize(gl_FrontFacing || UP_NORMALS ? vN : -vN); gl_FragColor = vec4(n * 0.5 + 0.5, clamp((vZ - radius) / (2.0 * radius), 0.0, 1.0)); }`,
+    clipping: !!clip, clippingPlanes: clip,
+    vertexShader: `#include <clipping_planes_pars_vertex>
+      varying vec3 vN; varying vec2 vUv; varying float vZ; void main(){ vN = normalize(mat3(modelMatrix) * normal); vUv = uv; vec4 mvPosition = modelViewMatrix * vec4(position, 1.0); vZ = -mvPosition.z; gl_Position = projectionMatrix * mvPosition;
+      #include <clipping_planes_vertex>
+      }`,
+    fragmentShader: `#include <clipping_planes_pars_fragment>
+      uniform sampler2D map; uniform float useMap; uniform float alphaTest; uniform float radius; varying vec3 vN; varying vec2 vUv; varying float vZ;
+      void main(){
+      #include <clipping_planes_fragment>
+      if (useMap > 0.5 && texture2D(map, vUv).a < alphaTest) discard; vec3 n = normalize(gl_FrontFacing || UP_NORMALS ? vN : -vN); gl_FragColor = vec4(n * 0.5 + 0.5, clamp((vZ - radius) / (2.0 * radius), 0.0, 1.0)); }`,
     side: THREE.DoubleSide });
   const oldTarget = renderer.getRenderTarget(), oldClear = renderer.getClearColor(new THREE.Color()), oldAlpha = renderer.getClearAlpha();
-  let done = false;
+  let done = false; if (clip) renderer.localClippingEnabled = true;
   try {                                   // (a bake abandoned between rows, by .return(): the tree and renderer put back, the half-made atlases freed)
   for (const [rt, mkMat] of [[colourRT, colourMat], [normalRT, normalMat]]) {
     for (const [o, m] of materials) o.material = Array.isArray(m) ? m.map(mkMat) : mkMat(m);     // a mesh with a material per face keeps them
@@ -89,6 +100,7 @@ export function* bakeImposterSteps(renderer, object, { grid = 12, cell = 128, he
   }
   done = true;
   } finally {
+    renderer.localClippingEnabled = oldLocal;
     if (!done) { for (const [o, m] of materials) o.material = m; renderer.setRenderTarget(oldTarget); renderer.setClearColor(oldClear, oldAlpha); holder.remove(object); if (parent) parent.add(object); colourRT.dispose(); normalRT.dispose(); }
   }
   for (const [o, m] of materials) o.material = m;

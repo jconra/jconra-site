@@ -1931,10 +1931,12 @@ for (const [id, key, fmt] of [['coverCount', 'count', v => v.toLocaleString()], 
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { COVER[key] = +el.value; placeCover(); });
 }
-{ // how far into the ground the plants' root clumps go: at once, no re-bake (each kind its own share, all scaled by this)
+{ // how far into the ground the plants' root clumps go: the meshes at once (each kind its own share, all scaled by this);
+  // the far pictures (imposters) are baked with what's under the ground left out, so they're baked again when it's let go
   const el = $('coverSink'), show = () => { $('coverSinkOut').textContent = (+el.value).toFixed(2) + '×'; };
   el.value = COVER.sink; show();
   el.addEventListener('input', () => { show(); COVER.sink = +el.value; if (coverForest) coverForest.setSinks((sp, i) => KIND_INFO[i].sink * COVER.sink); if (PLANT.tool) PLANT.tool.syncItems(); });
+  el.addEventListener('change', () => { if (!coverForest) return; for (const sp of coverForest.species) { if (sp.bake && sp.bake.targets) sp.bake.targets.forEach((t) => t.dispose()); sp.bake = null; } coverForest.imposterAt = -1; placeCover(); });   // (a new forest, its pictures baked afresh)
 }
 // ── the land's shape: terraces and erosion (these rebuild the land, the maps, trees and plants) ──
 // WATCH IT RAIN: the land without erosion, then drops a chunk a frame with their trails drawn and the

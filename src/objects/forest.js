@@ -162,7 +162,7 @@ export class Forest {
     const todo = this.species.slice();
     const self = this;
     const steps = (function* () { for (const sp of todo) { if (sp.bake) continue;   // brought already baked
- const it = bakeImposterSteps(self.renderer, sp.root, { grid: self.light ? Math.min(8, sp.grid || self.grid) : (sp.grid || self.grid), cell: sp.cell || self.cell, hemi: true, upNormals: !!(sp.upNormals || sp.soften || sp.shape) }); try { for (;;) { const s = it.next(); if (s.done) { sp.bake = s.value; break; } yield; } } finally { if (!sp.bake) it.return(); } } })();   // (abandoned: the half-done bake cleans up)
+ const it = bakeImposterSteps(self.renderer, sp.root, { grid: self.light ? Math.min(8, sp.grid || self.grid) : (sp.grid || self.grid), cell: sp.cell || self.cell, hemi: true, upNormals: !!(sp.upNormals || sp.soften || sp.shape), floor: sp.sink ? sp.baseY : null }); try { for (;;) { const s = it.next(); if (s.done) { sp.bake = s.value; break; } yield; } } finally { if (!sp.bake) it.return(); } } })();   // (abandoned: the half-done bake cleans up)
     this.baking = steps;
   }
   get progress() { return this.species.filter(s => s.bake).length / this.species.length; }
