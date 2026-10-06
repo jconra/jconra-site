@@ -15,7 +15,9 @@
 //                     128 in the road but too small: gap), G B the point's nudge, A its weight (a page may lower R and re-upload)
 //     field.stones    [{ i, j, x, z, poly: [[x, z], ...] }] each stone's outline, the gap already taken off
 //     field.uniforms  for STONE_GLSL (share the object: a new field updates them in place)
-//   stoneGeometry(field, shapeFor(stone) -> shape | null) -> { geometry, tris, count }
+//   stoneFieldSteps(opts, budget) / useField(laid, uniforms): the same in steps (a generator: yield* it, a few ms at a
+//     time), then put in place when the caller is ready, so the painted stones change with its 3D ones
+//   stoneGeometry(field, shapeFor(stone) -> shape | null) -> { geometry, tris, count }; stoneGeometrySteps the same in steps
 //     shape: { top, per, round, bevel, height, dome, soft, uneven } (see buildStone)
 import * as THREE from 'three';
 
@@ -37,8 +39,11 @@ export const STONE_LOD = `
   vec2 stMiddle(vec2 c) { return stoneGrid.xy + (c + 0.5) * stoneGrid.z; }
 `;
 
-export function stoneField({ size = 0.45, jitter = 0.8, variety = 0.25, gap = 0.03, seed = 1, x0 = -40, z0 = -40, width = 80, inside = () => true }, uniforms = STONE_UNIFORMS()) {
-  const S = size, N = Math.ceil(width / S), rnd = rng(seed * 7919 + 13);
+export function stoneField(opts, uniforms = STONE_UNIFORMS()) { const it = stoneFieldSteps(opts); let n; while (!(n = it.next()).done); return useField(n.value, uniforms); }
+// the same a little at a time (hands back control every `budget` ms, between rows), for a page to spread over frames; the
+// uniforms are left for useField, so the caller puts the new stones in place when the rest of its work is ready too
+export function* stoneFieldSteps({ size = 0.45, jitter = 0.8, variety = 0.25, gap = 0.03, seed = 1, x0 = -40, z0 = -40, width = 80, inside = () => true }, budget = 4) {
+  const S = size, N = Math.ceil(width / S), rnd = rng(seed * 7919 + 13); let t0 = performance.now();
   const data = new Uint8Array(N * N * 4);
   for (let k = 0; k < N * N; k++) { data[k * 4 + 1] = Math.floor(rnd() * 256); data[k * 4 + 2] = Math.floor(rnd() * 256); data[k * 4 + 3] = Math.floor(rnd() * 256); }
   // each point exactly as the shader reads it back (bytes / 255)
@@ -46,7 +51,7 @@ export function stoneField({ size = 0.45, jitter = 0.8, variety = 0.25, gap = 0.
   const pz = (i, j) => z0 + (j + 0.5 + (data[(j * N + i) * 4 + 2] / 255 - 0.5) * jitter) * S;
   const pw = (i, j) => data[(j * N + i) * 4 + 3] / 255 * variety * S * S;
   const stones = [];
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+  for (let j = 0; j < N; j++) { if (performance.now() - t0 > budget) { yield; t0 = performance.now(); } for (let i = 0; i < N; i++) {
     const ax = px(i, j), az = pz(i, j);
     if (!inside(ax, az)) continue;
     // the ground this point owns: start from a square round it, cut by each neighbour's dividing line
@@ -65,12 +70,16 @@ export function stoneField({ size = 0.45, jitter = 0.8, variety = 0.25, gap = 0.
     if (poly.length < 3 || area(poly) < 0.04 * S * S) { data[(j * N + i) * 4] = 128; continue; }   // (in the road, too small for a stone: gap)
     data[(j * N + i) * 4] = 255;
     stones.push({ i, j, x: ax, z: az, poly });
-  }
-  const tex = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);
+  } }
+  return { N, size: S, jitter, variety, x0, z0, stones, data };
+}
+// a laid field (stoneFieldSteps) put in place: its picture made and handed to the uniforms
+export function useField(f, uniforms) {
+  const tex = new THREE.DataTexture(f.data, f.N, f.N, THREE.RGBAFormat);
   tex.magFilter = tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false; tex.flipY = false; tex.needsUpdate = true;
   if (uniforms.stoneCells.value) uniforms.stoneCells.value.dispose();
-  uniforms.stoneCells.value = tex; uniforms.stoneGrid.value.set(x0, z0, S); uniforms.stoneShape.value.set(N, jitter, variety);
-  return { N, size: S, texture: tex, stones, uniforms, data };
+  uniforms.stoneCells.value = tex; uniforms.stoneGrid.value.set(f.x0, f.z0, f.size); uniforms.stoneShape.value.set(f.N, f.jitter, f.variety);
+  return { N: f.N, size: f.size, texture: tex, stones: f.stones, uniforms, data: f.data };
 }
 
 // keep the part of a convex polygon where f >= 0 (one cut of Sutherland-Hodgman)
@@ -166,11 +175,14 @@ export const stoneTris = (shape, corners) => {                         // triang
   return (shape.dome > 0 ? top : top - 2) + top * (per + 1);
 };
 
-export function stoneGeometry(field, shapeFor) {
+export function stoneGeometry(field, shapeFor) { const it = stoneGeometrySteps(field, shapeFor); let n; while (!(n = it.next()).done); return n.value; }
+// the same a little at a time (hands back control every `budget` ms), for a page to spread over frames
+export function* stoneGeometrySteps(field, shapeFor, budget = 4) {
   const P = [], Nn = [], C = [], E = [];
-  let tris = 0, count = 0;
+  let tris = 0, count = 0, t0 = performance.now();
   const v = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3();
   for (const s of field.stones) {
+    if (performance.now() - t0 > budget) { yield; t0 = performance.now(); }
     const shape = shapeFor(s);
     if (!shape) continue;
     const d = field.data, o = (s.j * field.N + s.i) * 4, r1 = ((d[o + 1] * 17 + d[o + 2] * 5) % 256) / 255, r2 = ((d[o + 2] * 13 + d[o + 3] * 7) % 256) / 255;

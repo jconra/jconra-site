@@ -21,6 +21,10 @@
 //       turns and sizes them
 //     defaults() (optional): -> Promise of the default fresh from the server, { town, planting, base (its fingerprint) },
 //       or null; Load default puts it in place and forgets what this browser keeps, Export lists the changes from it
+//     wild(cx, cy) (optional): the page's own generated thing under the pointer that can be picked up (a rock), as
+//       { kind, x, y, z, rx, ry, rz, s, distance } or null: Select turns it into a placed one (see pickUpWild)
+//     a kind may carry mix: [kinds]: its brush paints them mixed (the page sorts out which where), and a click puts down
+//       one of them, picked at random
 //   tool.update() each frame; tool.planting, tool.index; tool.active (the bar open)
 import * as THREE from 'three';
 import { Gizmo } from './gizmo.js';
@@ -212,6 +216,17 @@ export class PlantTool {
     this.before(); for (const o of same) { o.sx = it.sx; o.sy = it.sy; o.sz = it.sz; } this.commit();
     this.bar.setInfo(`${same.length} more made this size: every ${name(it.kind)} alike now (Undo puts them back).`);
   }
+  // a generated rock picked up: a placed one where it lay (same shape, size and turn, clearing nothing round it), and the
+  // generated one there left out from now on: a clear of its own kind (rocks only) 5 cm round its very middle, so its
+  // neighbours stay. One step for Undo
+  pickUpWild(w) {
+    this.before();
+    this.planting.strokes.push({ id: newId(), mode: 'clear', kind: w.kind, r: 0.05, density: 2, size: 1, seed: newSeed(), pts: [[w.x, w.z]] });
+    const it = { id: newId(), kind: w.kind, x: w.x, y: w.y, z: w.z, rx: w.rx, ry: w.ry, rz: w.rz, sx: w.s, sy: w.s, sz: w.s, clear: 0 };
+    this.planting.items.push(it); this.commit();
+    this.bar.setInfo('Picked up: move, turn or size it now (Delete takes it away).');
+    return it.id;
+  }
   removeSel() {
     if (!this.sel) return;
     if (this.townItem(this.sel)) { this.townBefore(); this.town.remove(this.sel.slice(2)); this.select(null); return; }
@@ -317,7 +332,7 @@ export class PlantTool {
     return hit.face.normal.clone().transformDirection(m);
   }
   place(cx, cy) {
-    const p = this.surfaceAt(cx, cy), k = this.st.kind, kd = this.kindOf(k);
+    const p = this.surfaceAt(cx, cy), k0 = this.st.kind, mix = this.kindOf(k0).mix, k = mix ? mix[Math.floor(Math.random() * mix.length)] : k0, kd = this.kindOf(k);   // (a mixed brush's click: one of its kinds)
     if (kd.town) { const g = this.groundAt(cx, cy); if (!g) return; this.townBefore(); this.town.add(kd.town, +g.x.toFixed(2), +g.z.toFixed(2)); this.bar.setInfo(`Added: ${kd.name}. Select it to move, lift, turn or size it.`); return; }
     if (k != null && !this.parts[k] && !kd.height) { this.bar.setInfo('That one can only be painted (choose Paint).'); return; }
     if (!p || k == null) return;
@@ -363,7 +378,12 @@ export class PlantTool {
       } else if (m === 'place') this.down = { x: e.clientX, y: e.clientY, id: e.pointerId, place: true };
       else if (m === 'select') {
         let id = this.pick(e.clientX, e.clientY, e.pointerType !== 'mouse');
-        if (!id && this.town) { const t = this.town.pick(e.clientX, e.clientY); if (t) id = 'T:' + t; }   // (a building, prop or town tree)
+        if (!id) {                                                         // a building, prop or town tree; or a generated rock, if nearer
+          const t = this.town ? (this.town.pickHit ? this.town.pickHit(e.clientX, e.clientY) : { id: this.town.pick(e.clientX, e.clientY), distance: Infinity }) : null;
+          const w = this.wild ? this.wild(e.clientX, e.clientY) : null;
+          if (w && (!t || !t.id || w.distance < t.distance)) { this.down = { x: e.clientX, y: e.clientY, id: e.pointerId, wild: w }; return; }   // (picked up on a click that doesn't move: a drag from a rock still turns the camera)
+          if (t && t.id) id = 'T:' + t.id;
+        }
         if (id) { this.select(id); e.stopPropagation(); e.preventDefault(); }
         else this.down = { x: e.clientX, y: e.clientY, id: e.pointerId };    // a click on nothing (not a drag) lets go of the selection
       }
@@ -384,13 +404,14 @@ export class PlantTool {
       if (this.stroke && e.pointerId === this.painting.id) {
         // Add: a click that didn't wander puts one down (a kind that can stand alone: a plant, tree or rock); a drag paints
         const h = this.painting, k = this.stroke.kind, still = this.stroke.pts.length === 1 && Math.hypot(e.clientX - h.sx, e.clientY - h.sy) < (h.touch ? 10 : 5);
-        if (still && this.stroke.mode === 'paint' && (this.parts[k] || this.kindOf(k).height)) { this.stroke = this.painting = null; this.release(); this.showTrail(); this.place(h.sx, h.sy); }
+        if (still && this.stroke.mode === 'paint' && (this.parts[k] || this.kindOf(k).height || this.kindOf(k).mix)) { this.stroke = this.painting = null; this.release(); this.showTrail(); this.place(h.sx, h.sy); }
         else this.endStroke();
       }
       else if (this.down && e.pointerId === this.down.id) {
         const d = this.down, still = Math.hypot(e.clientX - d.x, e.clientY - d.y) < (e.pointerType === 'mouse' ? 5 : 10);
         this.down = null;
         if (d.place) { if (still && !d.multi && e.type === 'pointerup' && this.active) this.place(d.x, d.y); }
+        else if (d.wild) { if (still && !d.multi && e.type === 'pointerup' && this.active) this.select(this.pickUpWild(d.wild)); }
         else if (still && !d.multi && !this.gizmo.dragging) this.select(null);
       }
       if (e.pointerType !== 'mouse' && !this.stroke) this.ring.visible = false;   // (a finger lifted: there's no brush under it now)

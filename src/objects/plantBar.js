@@ -43,7 +43,7 @@ const ICON = {
   plants: SVG('<path d="M12 20v-9"/><path d="M12 14c-4 0-6.5-2.3-6.5-6.5 4.2 0 6.5 2.3 6.5 6.5z"/><path d="M12 12c0-4 2.3-6.5 6.5-6.5 0 4.2-2.3 6.5-6.5 6.5z"/><path d="M8 20h8"/>'),
 };
 const MODES = [['select', 'Select', 'Pick a placed thing, then move, turn or size it'],
-  ['paint', 'Add', 'Click for one, drag to paint a patch with the brush (buildings and props: a click puts one down)'], ['clear', 'Clear', 'Drag over the ground to take away the chosen kind there: plants (with a plant, tree or rock chosen), footpaths, stones or fences']];
+  ['paint', 'Add', 'Click for one, drag to paint a patch with the brush (buildings and props: a click puts one down)'], ['clear', 'Clear', 'Drag over the ground to take away the chosen kind there: plants (with a plant or tree chosen), rocks, footpaths, stones or fences']];
 const GIZMOS = [['translate', 'Move', 'Move it (drag an arrow)'], ['rotate', 'Turn', 'Turn it round'], ['scale', 'Size', 'Make it bigger or smaller']];
 // key, words, what it does, lowest, highest, step (0: a log slider, so the small numbers get as much room as the big), how it reads
 const SLIDERS = [

@@ -14,7 +14,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Forest, FOREST_SPECIES } from '../../src/objects/forest.js';
 import { SHAPE_DEFAULTS } from '../../src/objects/foliage.js';
 import { makeLowPine } from '../../src/objects/lowTrees/cards.js';
-import { stoneField, stoneGeometry, STONE_UNIFORMS, STONE_GLSL, STONE_LOD } from '../../src/objects/stones.js';
+import { stoneFieldSteps, stoneGeometrySteps, useField, STONE_UNIFORMS, STONE_GLSL, STONE_LOD } from '../../src/objects/stones.js';
 import { PlantTool } from '../../src/objects/plantTool.js';
 import { paintedPlants, keepProcedural, PlantIndex, inStroke, loadPlanting, savePlanting } from '../../src/objects/planting.js';
 import { flyKeys } from '../../src/objects/flyKeys.js';
@@ -736,7 +736,7 @@ const U = {
   shadeMap: { value: null }, shadowRange: { value: 0 }, shadowAt: { value: new THREE.Vector3() }, edgeFrom: { value: 0.55 }, edgeTo: { value: 0.97 }, edgeShade: { value: 0.55 }, edgeJitter: { value: 0.12 }, plantShade: { value: 0.8 }, hillShade: { value: 1 }, aoShade: { value: 1 }, treeShade: { value: 0.9 },
   avgGround: { value: new THREE.Color(0x6b8a3a) }, avgDry: { value: new THREE.Color(0x8a8a4a) }, avgLush: { value: new THREE.Color(0x5b7a2a) }, avgForest: { value: new THREE.Color(0x4a4a2a) }, avgWet: { value: new THREE.Color(0x4a3a2a) }, avgPath: { value: new THREE.Color(0x6a5238) }, avgSteep: { value: new THREE.Color(0x7a7a7a) }, avgShore: { value: new THREE.Color(0x77706a) }, shoreStr: { value: 1 }, layShore: { value: null },
   layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layPath: { value: null }, laySteep: { value: null },
-  spotAmt: { value: 1.6 }, spotSize: { value: 1.6 }, spotReach: { value: 0.3 }, mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.06 },
+  spotAmt: { value: 1.6 }, spotSize: { value: 0.8 }, spotSize2: { value: 8 }, spotReach: { value: 0.3 }, mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.06 },
 };
 for (const [k, v] of Object.entries(TS.u)) if (U[k]) U[k].value = v;
 { const t = new THREE.TextureLoader().load('/textures/stamps/atlas.png'); t.colorSpace = THREE.SRGBColorSpace; t.premultiplyAlpha = true; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); U.stampAtlas.value = t; }
@@ -749,7 +749,7 @@ mat.onBeforeCompile = (sh) => {
     uniform float tile, split; uniform vec2 res;   // (the base ground picture is the lush layer, layLush: a real GPU allows 16 pictures a shader)
     uniform float hexOn, hexSize, hexRot, hexSharp, hexBright, macroOn, macroStr, macroSize, macroHue, farOn, farFrom, grid;
     uniform float stampOn, stampCell, stampDensity, stampSize, stampHue, stampShade, stampFar, stampSpread, stampPatch, stampPatchSize, stampClump; uniform float stampCum[8]; uniform float stampBase[8]; uniform sampler2D stampAtlas;
-    uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom, spotAmt, spotSize, spotReach; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 coverAt; uniform sampler2D coverMap; uniform vec3 lushTint, dampTint, slopeTint;
+    uniform float mixOn, landSize, view, mixSharp, mixHeight, mixBreak, mixBreakSize, steepFrom, spotAmt, spotSize, spotSize2, spotReach; uniform sampler2D maskA; uniform sampler2D maskB; uniform float gullyStr, fanStr, strataStr, strataSize, coverR, coverFar, rockFrom; uniform vec3 coverAt; uniform sampler2D coverMap; uniform vec3 lushTint, dampTint, slopeTint;
     uniform sampler2D waterMap; uniform float waterOn, wFroth, time, wWave, wSpeed, wSpec, wReflect, wWaveOn; uniform vec3 sunDirW, skyCol, wDeep, wShallow, sunGlint;
     float gWater = 0.0, gFoam = 0.0, gLit = 1.0, gSun = 1.0, gShadowFade = 0.0, gRoad = 0.0; uniform vec3 gapCol; uniform float mossAmt, edgeDark, edgeWidth, cornerRound, gapW, paveLod, pave3D, edgeBand; vec3 gWaterN = vec3(0.0, 1.0, 0.0); uniform sampler2D pathRoad; uniform sampler2D shadeMap; uniform float hillShade, aoShade, treeShade, shadowRange, edgeFrom, edgeTo, edgeJitter; uniform vec3 shadowAt;
     uniform vec3 avgGround, avgDry, avgLush, avgForest, avgWet, avgPath, avgSteep, avgShore; uniform float shoreStr; uniform sampler2D layShore; uniform sampler2D layDry; uniform sampler2D layLush; uniform sampler2D layForest; uniform sampler2D layPath; uniform sampler2D laySteep;
@@ -901,6 +901,11 @@ mat.onBeforeCompile = (sh) => {
         vec2 sp = mat2(0.8, -0.6, 0.6, 0.8) * vW.xz / spotSize;              // (turned, so the noise's grid never lines up with the world)
         float sn = 0.6 * vn(sp + 41.7) + 0.28 * vn(mat2(0.6, 0.8, -0.8, 0.6) * sp * 2.3 + 5.3) + 0.12 * vn(sp * 5.1 + 9.9);   // lumps with ragged edges
         sn = smoothstep(0.27, 0.69, sn);                                      // (spread by its real range, about 0..1: the share above a cut is then about 1 - cut)
+        if (spotSize2 > 0.0) {                                                // a second size: big patches among the small spots (either makes dirt)
+          vec2 sq = mat2(0.6, 0.8, -0.8, 0.6) * vW.xz / spotSize2;
+          float sn2 = 0.6 * vn(sq + 17.3) + 0.28 * vn(mat2(0.8, -0.6, 0.6, 0.8) * sq * 2.3 + 2.9) + 0.12 * vn(sq * 5.1 + 3.7);
+          sn = max(sn, smoothstep(0.27, 0.69, sn2));
+        }
         float share = min(0.7, spotAmt * (0.45 * pNear * pNear * pNear + 0.25 * pNear) * mix(0.2, 1.3, slow));   // how much of the ground is dirt here: thick at the edge, a long sparse tail of lone spots
         wSpot = smoothstep(1.0 - share - 0.08, 1.0 - share + 0.08, sn) * dryLand * (1.0 - steep * 0.8);   // (a soft edge either side of the cut, so lone spots are whole; slopes keep their own scrub)
         spotTone = 0.9 + 0.2 * vn(vW.xz / 1.7);
@@ -1235,15 +1240,15 @@ loadSheet('/models/props/groundPlants.glb', 4, (parts, m) => { COVER.parts = par
 // wood leaves the trees); a clear stroke clears every sort.
 // ...then the footpath (25: paint a path) and its eraser (26), the town's buildings (30 on) and props (50 on), which live in
 // the town's own layout (the tool reaches them through `town`)
-const PLANT = { tool: null, LAWN_KIND: KIND_INFO.length, TREE0: KIND_INFO.length + 1, ROCK0: KIND_INFO.length + 5, PATH: KIND_INFO.length + 9, NOPATH: KIND_INFO.length + 10, FENCE: KIND_INFO.length + 11, STONE: KIND_INFO.length + 12, NOSTONE: KIND_INFO.length + 13, BUILD0: 30, PROP0: 50 };
-const SORT = { plant: (k) => k <= PLANT.LAWN_KIND, tree: (k) => k >= PLANT.TREE0 && k < PLANT.ROCK0, rock: (k) => k >= PLANT.ROCK0 && k < PLANT.ROCK0 + 4, path: (k) => k === PLANT.PATH || k === PLANT.NOPATH, fence: (k) => k === PLANT.FENCE };
+const PLANT = { tool: null, LAWN_KIND: KIND_INFO.length, TREE0: KIND_INFO.length + 1, ROCK0: KIND_INFO.length + 5, PATH: KIND_INFO.length + 9, NOPATH: KIND_INFO.length + 10, FENCE: KIND_INFO.length + 11, STONE: KIND_INFO.length + 12, NOSTONE: KIND_INFO.length + 13, BUILD0: 30, PROP0: 50, ROCKS: 99 };   // (ROCKS: the four rocks mixed, a brush; past the props)
+const SORT = { plant: (k) => k <= PLANT.LAWN_KIND, tree: (k) => k >= PLANT.TREE0 && k < PLANT.ROCK0, rock: (k) => (k >= PLANT.ROCK0 && k < PLANT.ROCK0 + 4) || k === PLANT.ROCKS, path: (k) => k === PLANT.PATH || k === PLANT.NOPATH, fence: (k) => k === PLANT.FENCE };
 // the planting seen by one sort: its paint strokes and every clear (the land's own plants follow the procedural switch;
 // trees and rocks always), with its own index; made once a change
 const sortParts = new WeakMap();
 function plantingFor(sort) {
   const t = PLANT.tool, P = t.planting; let m = sortParts.get(t.index); if (!m) sortParts.set(t.index, m = {});
   if (!m[sort]) {   // (a placed plant's clear circle keeps the meadow back, not the trees: trees and rocks heed only their own sort's)
-    const pl = { ...P, procedural: sort === 'plant' ? P.procedural : true, strokes: P.strokes.filter((st) => (st.mode === 'clear' && st.kind !== PLANT.FENCE) || SORT[sort](st.kind)), items: sort === 'plant' ? P.items : P.items.filter((i) => SORT[sort](i.kind)) };   // (Clear with a fence chosen takes down fences only)
+    const pl = { ...P, procedural: sort === 'plant' ? P.procedural : true, strokes: P.strokes.filter((st) => (st.mode === 'clear' && st.kind !== PLANT.FENCE && (sort === 'rock' || !SORT.rock(st.kind))) || SORT[sort](st.kind)), items: sort === 'plant' ? P.items : P.items.filter((i) => SORT[sort](i.kind)) };   // (Clear with a fence chosen takes down fences only; with a rock chosen, rocks only)
     m[sort] = { planting: pl, index: new PlantIndex(pl) };
   }
   return m[sort];
@@ -1252,7 +1257,7 @@ const keepWild = (sort, x, z) => { if (!PLANT.tool) return true; const v = plant
 // a painted plant stays out of the water (the wet-ground kinds may stand in it), off the paved roads (where the road
 // picture lays stones) and out of the buildings, as the land's own plants do; a placed plant goes wherever it is put
 function paintable(p) {
-  if (waterAt(p.x, p.z) > 0.05 && !(KIND_INFO[p.sp] && (KIND_INFO[p.sp].hab === 'wet' || KIND_INFO[p.sp].hab === 'waterside'))) return false;
+  if (waterAt(p.x, p.z) > 0.05 && !SORT.rock(p.sp) && !(KIND_INFO[p.sp] && (KIND_INFO[p.sp].hab === 'wet' || KIND_INFO[p.sp].hab === 'waterside'))) return false;   // (rocks may stand in the water)
   const P = 2048, i = Math.floor((p.x / SIZE + 0.5) * P), j = Math.floor((p.z / SIZE + 0.5) * P);
   if (i >= 0 && j >= 0 && i < P && j < P && Math.max(PATHROAD[(j * P + i) * 4 + 2], PATHROAD[(j * P + i) * 4 + 3]) > 128) return false;
   if (TOWN.block && TOWN.road) { const k = Math.min(N - 1, Math.max(0, Math.floor((p.z + SIZE / 2) / TEX))) * N + Math.min(N - 1, Math.max(0, Math.floor((p.x + SIZE / 2) / TEX))); if (TOWN.block[k] - TOWN.road[k] > 0.5) return false; }
@@ -1265,7 +1270,7 @@ const plantingParts = new WeakMap();
 function paintedOnly(t, lawn) {   // (lawn: false the plants, true the lawn, or 'trees' / 'rocks')
   let v = plantingParts.get(t.index);
   if (!v) {
-    const P = t.planting, part = (want) => ({ ...P, strokes: P.strokes.filter((s) => !(s.mode === 'clear' && s.kind === PLANT.FENCE)).map((s) => s.mode !== 'clear' && !want(s.kind) ? { ...s, density: 0 } : s) });
+    const P = t.planting, part = (want) => ({ ...P, strokes: P.strokes.filter((s) => !(s.mode === 'clear' && (s.kind === PLANT.FENCE || (SORT.rock(s.kind) && !want(s.kind))))).map((s) => s.mode !== 'clear' && !want(s.kind) ? { ...s, density: 0 } : s) });
     v = { plants: part((k) => k < PLANT.LAWN_KIND), lawn: part((k) => k === PLANT.LAWN_KIND), trees: part(SORT.tree), rocks: part(SORT.rock) }; plantingParts.set(t.index, v);
   }
   return typeof lawn === 'string' ? v[lawn] : lawn ? v.lawn : v.plants;
@@ -1305,7 +1310,8 @@ function plantedTrees(species) {
   return out;
 }
 // what of the planting the trees and the stones were last laid from, so a change to plants alone doesn't lay them again
-const sortSig = (sort) => { const t = PLANT.tool; return t ? JSON.stringify([t.planting.strokes.filter((s) => s.mode === 'clear' || SORT[sort](s.kind)), t.planting.items.filter((i) => SORT[sort](i.kind))]) : ''; };
+const CLEARS = { path: () => false, fence: (k) => k === PLANT.FENCE, tree: (k) => k !== PLANT.FENCE && !SORT.rock(k), rock: (k) => k !== PLANT.FENCE };   // (the clears that take away each sort: a rock's clear redoes no paths, trees or fences)
+const sortSig = (sort) => { const t = PLANT.tool; return t ? JSON.stringify([t.planting.strokes.filter((s) => (s.mode === 'clear' && CLEARS[sort](s.kind)) || SORT[sort](s.kind)), t.planting.items.filter((i) => SORT[sort](i.kind))]) : ''; };
 const lastSig = { tree: '', rock: '', path: '', fence: '' };
 function makePlantTool() {
   if (PLANT.tool) return;
@@ -1318,6 +1324,7 @@ function makePlantTool() {
   // trees (drawn by the forest: they stand upright and size evenly; painted fifty times thinner) and rocks (the stones' shapes)
   TREE_SPECIES.forEach((sp, i) => kinds.push({ id: PLANT.TREE0 + i, name: sp.name, group: 'Trees', height: sp.height, upright: true, densityScale: 0.02 }));
   const shapes = STONES.shapes || (STONES.shapes = stoneShapes());
+  kinds.push({ id: PLANT.ROCKS, name: 'rocks (the four mixed)', group: 'Rocks', densityScale: 0.1, mix: [0, 1, 2, 3].map((i) => PLANT.ROCK0 + i) });   // (a click puts down one of the four)
   ['round boulder', 'flat slab', 'tall rock', 'broken rock'].forEach((n, i) => kinds.push({ id: PLANT.ROCK0 + i, name: n, group: 'Rocks', densityScale: 0.1 }));
   // footpaths: painted the brush's width of dirt, or rubbed out (the land's own paths too)
   const pathIcon = (erase) => { const c = document.createElement('canvas'); c.width = c.height = 96; const g = c.getContext('2d'); g.fillStyle = '#4f7a2a'; g.fillRect(0, 0, 96, 96);
@@ -1345,6 +1352,7 @@ function makePlantTool() {
   // the town's layout, for the tool: the town editor keeps its history, saves it and lays the ground again (TOWN.editor)
   const town = {
     pick: (cx, cy) => TOWN.editor.pickAt(cx, cy),
+    pickHit: (cx, cy) => TOWN.editor.pickAt(cx, cy, true),
     get: (id) => TOWN.village.item(id),
     add: (key, x, z) => { const [type, kind] = key.split(':'), it = { id: newTownId(), type, kind, x, z, rot: Math.round(TOWN.editor.camYaw() / 15) * 15, size: type === 'model' ? TOWN_ASSETS[kind].size : 1 };
       TOWN.village.layout.items.push(it); TOWN.village.sync(); TOWN.editor.commit('add'); return it.id; },
@@ -1370,7 +1378,7 @@ function makePlantTool() {
   // ahead of its own strokes as they were drawn under them, so its paths don't vanish
   { const kept = loadPlanting(), isLand = (st) => /^landpath\d+$/.test(String(st.id)), baked = PLANTING_FIRST && Array.isArray(PLANTING_FIRST.strokes) ? PLANTING_FIRST.strokes.filter(isLand) : [];
     if (kept && baked.length && !kept.strokes.some(isLand)) { kept.strokes.unshift(...baked); savePlanting(kept); } }
-  PLANT.tool = new PlantTool({ renderer, scene, camera, controls, dom: renderer.domElement, heightAt, groundAt, shadows: SHADOW.on, title: 'Build', town, initial: PLANTING_FIRST, defaults,
+  PLANT.tool = new PlantTool({ renderer, scene, camera, controls, dom: renderer.domElement, heightAt, groundAt, shadows: SHADOW.on, title: 'Build', town, initial: PLANTING_FIRST, defaults, wild: pickWildRock,
     // a placed plant's own scale: the brush's plants are sized in metres by the forest (its height over the model's), so the placed ones are too
     unitOf: (k) => { const g = COVER.parts[k]; if (k >= PLANT.LAWN_KIND || !g) return 1; if (!g.boundingBox) g.computeBoundingBox(); return KIND_INFO[k].height / Math.max(1e-4, g.boundingBox.max.y - g.boundingBox.min.y); },
     surfaces: () => TOWN.village ? [TOWN.village.group] : [], parts, materials: mats, kinds,
@@ -1391,6 +1399,8 @@ function makePlantTool() {
   treeIcons();
   // the buildings' and props' icons, from the models (loaded as the town loads them) and the props as made
   Object.keys(TOWN_ASSETS).forEach((key, i) => loadModel(key, QUAL.tier !== 'gaming').then((m) => PLANT.tool.iconFrom(PLANT.BUILD0 + i, m.scene.clone())).catch(() => {}));
+  { const g = new THREE.Group(); [[0, 0, 0, 1], [1.1, 0, 0.3, 0.75], [0.4, 0, 1.0, 0.85], [-0.6, 0, 0.8, 0.6]].forEach(([x, y, z, sc], i) => { const m = new THREE.Mesh(parts[PLANT.ROCK0 + i], mats[PLANT.ROCK0 + i]); m.position.set(x, y, z); m.scale.setScalar(sc); m.rotation.y = i * 1.3; g.add(m); });
+    PLANT.tool.iconFrom(PLANT.ROCKS, g); }   // (the mixed rocks' icon: the four of them together)
   PROP_KINDS.forEach((P, i) => { try { PLANT.tool.iconFrom(PLANT.PROP0 + i, makeProp(P.kind)); } catch (e) { /* no icon then */ } });
 }
 // FENCES (the Build bar's fence, drawn with a drag): rustic posts about every 2.2 m along the line, two rails between each
@@ -1435,9 +1445,10 @@ function calmCover() {
   coverForest.setCalm({ calmCol: col, calmFrom: CALM.from, calmTo: CALM.to, calmAmt: CALM.amount });
 }
 const CALM = { from: 80, to: 600, amount: 0.63 };   // gentle: far plants keep most of their own colour and shading
-// STONES: simple rocks (a lumpy, flattened ball in four shapes, drawn faceted) scattered by the land:
-// thick on steep and rocky ground and in the scree at the foot of the cliffs, a few out in the
-// meadows, many along the streams and shores (in the creeks too), none out in the lakes or on the paths. Mostly small, the odd boulder. 20 faces each (80 on gaming).
+// STONES: simple rocks (a lumpy, flattened ball in four shapes, drawn faceted) gathered where rocks gather: in the
+// streams' beds and along the streams and shores, heaped in the scree at the foot of the steep ground, in outcrops up
+// the slopes (clumps tens of metres apart, not a sprinkle), and only the odd lone one out on the flat; none out in the
+// lakes or on the paths. Mostly small, the odd boulder. 20 faces each (80 on gaming).
 const STONES = { on: true, count: TS.stones, size: 1, seen: 0.8, meshes: [], shapes: null };   // seen: kept to where they'll be seen (out from under the trees; by paths, creeks, clearings, rises), and bigger there
 function stoneShapes() {
   const out = [];
@@ -1477,6 +1488,18 @@ function landShaded(m, rock = null) {
 // the stones' pictures: granite and diorite, alternating by shape (none on potato: plain grey there)
 const ROCK_TEX = TS.lite ? null : ['diorite', 'granite'].map(n => { const t = new THREE.TextureLoader().load(`/textures/rock/${n}.jpg`); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; });
 function placeStones() { const g = placeStonesSteps(); while (!g.next().done); }
+// the generated rock under the pointer, for picking it up (the Build bar's Select): its shape, where it lies (y from the
+// ground), its turn (degrees, YXZ as placed things are turned) and size, and how far off it is
+function pickWildRock(cx, cy) {
+  if (!STONES.meshes.length) return null;
+  const R = renderer.domElement.getBoundingClientRect(), ray = new THREE.Raycaster();
+  ray.setFromCamera(new THREE.Vector2((cx - R.left) / R.width * 2 - 1, -((cy - R.top) / R.height) * 2 + 1), camera);
+  const hit = ray.intersectObjects(STONES.meshes, false).find((h) => h.instanceId != null); if (!hit) return null;
+  const g = groundAt(cx, cy); if (g) { g.y = heightAt(g.x, g.z); if (hit.distance > camera.position.distanceTo(g) + 0.3) return null; }   // (behind the land, or its buried part: not one you can see; groundAt leaves y at 0)
+  const M = new THREE.Matrix4(), at = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3(); hit.object.getMatrixAt(hit.instanceId, M); M.decompose(at, q, sc);
+  const e = new THREE.Euler().setFromQuaternion(q, 'YXZ'), D = 180 / Math.PI;
+  return { kind: PLANT.ROCK0 + hit.object.userData.v, x: +at.x.toFixed(2), y: +(at.y - heightAt(at.x, at.z)).toFixed(2), z: +at.z.toFixed(2), rx: +(e.x * D).toFixed(1), ry: +(e.y * D).toFixed(1), rz: +(e.z * D).toFixed(1), s: +sc.x.toFixed(3), distance: hit.distance };
+}
 // in steps for the town's light rebuild (landSteps): worked out a slice at a time, the old stones standing until the new
 // ones are ready. The scree (the steep ground spread out) kept until the steepness itself changes
 function* placeStonesSteps() {
@@ -1487,7 +1510,23 @@ function* placeStonesSteps() {
   if (STONES.screeOf !== MAPS.steep) { STONES.scree = blur(MAPS.steep, 3); STONES.screeOf = MAPS.steep; yield; }
   const scree = STONES.scree, per = [[], [], [], []];
   let placed = 0;
-  for (let t = 1; placed < STONES.count && t < STONES.count * 30; t++) {
+  // THE STREAMS' BEDS first, cell by cell along every stream (random spots seldom land in one, they're so narrow):
+  // a few stones each, mostly small and washed round, some boulders; a path's crossing kept clear
+  let beds = 0; for (let k = 0; k < N * N; k++) if (!POND[k] && WDEPTH[k] > 0) beds++;
+  const thin = Math.min(1, STONES.count * 0.25 / Math.max(1, beds * 1.6));   // (a quarter of the stones at most, thinned evenly along every stream: potato's few don't all go to the first streams found)
+  for (let k = 0; k < N * N && placed < STONES.count * 0.25; k++) {
+    if ((k & 16383) === 0) yield;
+    if (POND[k] || !(WDEPTH[k] > 0) || (TOWN.block && TOWN.block[k] > 0.1)) continue;   // (none in the town, as below)
+    const ci = k % N, cj = (k / N) | 0, n = Math.floor(r(ci * 7.13 + 3.1, cj * 5.71 + 9.7) * 3.2 * thin + r(ci * 2.9, cj * 4.3 + 0.7));   // 0..3 a cell, fewer when thinned
+    for (let m = 0; m < n; m++) {
+      const x = (ci + r(ci + m * 0.37, cj + 11.3)) * TEX - SIZE / 2, z = (cj + r(ci + 17.9, cj + m * 0.41)) * TEX - SIZE / 2;
+      if (!keepWild('rock', x, z)) continue;
+      const pi = Math.floor((x + SIZE / 2) / SIZE * MAPS.P), pj = Math.floor((z + SIZE / 2) / SIZE * MAPS.P); if (MAPS.path[(pj * MAPS.P + pi) * 4] > 60) continue;
+      const u = r(ci * 3.3 + m, cj * 2.9 + 1.7), size = STONES.size * (0.18 + 1.1 * u * u * u);
+      per[Math.floor(r(ci + m * 5.1, cj * 0.7) * 4) % 4].push([x, heightAt(x, z) - size * 0.3, z, size, r(ci * 1.9 + m, cj) * 6.283, r(ci, cj * 1.3 + m)]); placed++;
+    }
+  }
+  for (let t = 1; placed < STONES.count && t < STONES.count * 60; t++) {
     if ((t & 4095) === 0) yield;
     const x = (r(t, 41.3) - 0.5) * SIZE * 0.98, z = (r(t, 43.7) - 0.5) * SIZE * 0.98;
     const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
@@ -1496,7 +1535,10 @@ function* placeStonesSteps() {
     if (!keepWild('rock', x, z)) continue;                                     // (cleared, or painted with rocks by hand)
     const pi = Math.floor((x + SIZE / 2) / SIZE * MAPS.P), pj = Math.floor((z + SIZE / 2) / SIZE * MAPS.P); if (MAPS.path[(pj * MAPS.P + pi) * 4] > 60) continue;
     const creek = MAPS.shore ? Math.min(1, MAPS.shore[k] * 2.5) : 0;             // along streams and shores the soil is washed off the stones
-    const sl = slopeAt(i, j), want = 0.14 + 1.6 * creek + 0.8 * THREE.MathUtils.smoothstep(sl, 0.45, 0.9) + 0.9 * Math.max(0, scree[k] - MAPS.steep[k]) * 2;
+    const inStream = !POND[k] && WDEPTH[k] > 0 ? 1 : 0;                       // a stream's bed
+    const clump = THREE.MathUtils.smoothstep(vnoise(x / 34 + 13.7, z / 34 - 4.1) * 0.65 + vnoise(x / 11 + 2.3, z / 11 + 8.8) * 0.35, 0.5, 0.78);   // outcrops: where rocks gather on a slope
+    const sl = slopeAt(i, j), steepish = THREE.MathUtils.smoothstep(sl, 0.45, 0.9), foot = Math.max(0, scree[k] - MAPS.steep[k]) * 2;   // (foot: the scree below the steep ground)
+    const want = 0.008 + 1.6 * creek + 2.5 * inStream + steepish * (0.1 + 1.4 * clump) + foot * (1 + 0.8 * clump);
     const vis = Math.min(1, (1 - MAPS.canopy[k]) * 0.7 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 255 * 0.45 + creek * 0.6 + MAPS.dry[k] * 0.5);   // (how open and looked at the spot is)
     if (r(t, 47.1) > want * (1 - STONES.seen * (0.9 - 0.9 * vis))) continue;
     const u = r(t, 49.9), size = STONES.size * (0.22 + 1.7 * u * u * u) * (1 + 0.6 * Math.max(0, scree[k] - MAPS.steep[k])) * (1 + STONES.seen * 0.7 * (vis - 0.4));
@@ -1506,7 +1548,7 @@ function* placeStonesSteps() {
   let painted = 0;
   if (PLANT.tool) for (const p of paintedPlants(paintedOnly(PLANT.tool, 'rocks'), null, { sizeOf: () => STONES.size * 1.2 })) {   // the planting's painted rocks
     if (!SORT.rock(p.sp) || !paintable(p)) continue;
-    per[(p.sp - PLANT.ROCK0) % 4].push([p.x, heightAt(p.x, p.z) - p.scale * 0.22, p.z, p.scale, p.yaw, r(p.x, p.z)]); painted++;
+    per[p.sp === PLANT.ROCKS ? Math.floor(r(p.x * 1.7 + 5.3, p.z * 2.3 - 1.1) * 4) % 4 : (p.sp - PLANT.ROCK0) % 4].push([p.x, heightAt(p.x, p.z) - p.scale * 0.22, p.z, p.scale, p.yaw, r(p.x, p.z)]); painted++;
   }
   yield;
   const base = new THREE.Color(0x8d8a84), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), c = new THREE.Color(), fresh = [];
@@ -1518,7 +1560,7 @@ function* placeStonesSteps() {
       if (ROCK_TEX) mesh.setColorAt(n, c.setScalar(0.8 + 0.35 * tone));   // the picture carries the colour; just lighter and darker stones
       else mesh.setColorAt(n, c.copy(base).multiplyScalar(0.72 + 0.4 * tone).lerp(new THREE.Color(0x9a8f78), (tone * 7.3) % 1 * 0.35));   // greys, some warmer
     });
-    mesh.frustumCulled = false; mesh.castShadow = mesh.receiveShadow = SHADOW.on; fresh.push(mesh);
+    mesh.frustumCulled = false; mesh.castShadow = mesh.receiveShadow = SHADOW.on; mesh.userData.v = v; fresh.push(mesh);
   });
   drop(); for (const m of fresh) scene.add(m); STONES.meshes = fresh;
   if ($('stoneInfo')) $('stoneInfo').textContent = `${placed.toLocaleString()} stones` + (painted ? ` and ${painted.toLocaleString()} painted by hand` : '');
@@ -1623,31 +1665,35 @@ function applyPave() {
   U.paveLod.value = PAVE.lod; U.bevelDark.value = PAVE.bevelDark; U.edgeBand.value = PAVE.edgeBand;
 }
 applyPave();
-function buildPaving() {
+function buildPaving() { PAVE.job = null; const g = buildPavingSteps(); while (!g.next().done); }   // all at once (any steps in flight dropped)
+// in steps for a road painted or rubbed out (paveLater: a slice a frame, PAVE.job), the old stones standing until the new
+// ones are ready, then the painted and the 3D swapped in together
+function* buildPavingSteps() {
   const t0 = performance.now(), cv = TOWN.canvas, P = cv.width;
-  if (paveMesh) { scene.remove(paveMesh); paveMesh.geometry.dispose(); paveMesh = null; }
-  if (!P) return;
+  const drop = () => { if (paveMesh) { scene.remove(paveMesh); paveMesh.geometry.dispose(); paveMesh = null; } };
+  if (!P) { drop(); return; }
   const d = cv.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, P, P).data, k = SIZE / P;
   const paved = (o) => d[o + 3] / 255 * Math.max(d[o], d[o + 1]) / 255;   // either brush: stones
   let x0 = P, y0 = P, x1 = -1, y1 = -1;
-  for (let y = 0; y < P; y++) for (let x = 0; x < P; x++) if (paved((y * P + x) * 4) > 0.1) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-  if (x1 < 0) { U.pave3D.value = 0; return; }
+  for (let y = 0; y < P; y++) { for (let x = 0; x < P; x++) if (paved((y * P + x) * 4) > 0.1) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } if ((y & 255) === 255) yield; }
+  if (x1 < 0) { drop(); U.pave3D.value = 0; return; }
   // no stones in the water or under a bridge (the road painted through: the creek and its banks show under the arch,
   // the paving stops at the bridge's ends, tucked a little under them)
   const spans = (TOWN.village ? TOWN.village.layout : TOWN.layout).items.filter((it) => it.type === 'model' && it.kind === 'bridge')
     .map((it) => { const f = footprintOf(it), a = it.rot * Math.PI / 180; return { x: it.x, z: it.z, c: Math.cos(a), s: Math.sin(a), hw: f.w / 2 + 0.4, hd: f.d / 2 * 0.9 }; });
   const underBridge = (x, z) => spans.some((b) => { const dx = x - b.x, dz = z - b.z; return Math.abs(b.c * dx - b.s * dz) < b.hw && Math.abs(b.s * dx + b.c * dz) < b.hd; });
   const inside = (x, z) => { const px = Math.floor((x + SIZE / 2) / k), py = Math.floor((z + SIZE / 2) / k); return px >= 0 && py >= 0 && px < P && py < P && paved((py * P + px) * 4) > 0.5 && waterAt(x, z) < 0.1 && !underBridge(x, z); }, inside_ = inside;
-  const field = stoneField({ size: PAVE.size, jitter: PAVE.jitter, variety: PAVE.variety, gap: PAVE.gap, seed: PAVE.seed,
-    x0: x0 * k - SIZE / 2 - 3, z0: y0 * k - SIZE / 2 - 3, width: Math.max(x1 - x0, y1 - y0) * k + 6, inside }, U);
-  const shape = PAVE.builds[PAVE.build];
-  U.pave3D.value = TS.paving3D && shape && !shape.painted ? 1 : 0;
+  const field = yield* stoneFieldSteps({ size: PAVE.size, jitter: PAVE.jitter, variety: PAVE.variety, gap: PAVE.gap, seed: PAVE.seed,
+    x0: x0 * k - SIZE / 2 - 3, z0: y0 * k - SIZE / 2 - 3, width: Math.max(x1 - x0, y1 - y0) * k + 6, inside });
+  const shape = PAVE.builds[PAVE.build], in3D = TS.paving3D && shape && !shape.painted ? 1 : 0;
   // where a footpath leaves the paving the stones go down into its dirt: the stones near the paving's edge (by how much of
   // the ground round each, 1.2 and 2.4 m out, is paved) with the path picture out past that edge (a path drawn only off the
   // paving, so along the sides there is none). Kept in the stone's pixel too (R under 1), so its painted copy matches
   const top = shape && !shape.painted ? shape.height + (shape.dome || 0) + 0.01 : 0.1, PP = MAPS.P || 0, sinkOf = new Map();
   const pathAt = (x, z) => { if (!PP) return 0; const i = Math.floor((x + SIZE / 2) / SIZE * PP), j = Math.floor((z + SIZE / 2) / SIZE * PP); return i < 0 || j < 0 || i >= PP || j >= PP ? 0 : MAPS.path[(j * PP + i) * 4] / 255; };
+  let seen = 0;
   for (const st of field.stones) {
+    if ((++seen & 511) === 0) yield;
     let inside = 0, n = 0, path = 0;
     for (let a = 0; a < 8; a++) { const c = Math.cos(a * Math.PI / 4), s2 = Math.sin(a * Math.PI / 4);
       for (const r of [1.2, 2.4]) { n++; if (inside_(st.x + c * r, st.z + s2 * r)) inside++; }
@@ -1655,20 +1701,19 @@ function buildPaving() {
     const sinkF = Math.min(1, (1 - THREE.MathUtils.smoothstep(inside / n, 0.6, 0.97)) * Math.min(1, path * 1.5) * PAVE.edgeSink);
     if (sinkF > 0.02) { sinkOf.set(st.j * field.N + st.i, top * sinkF * 0.9); field.data[(st.j * field.N + st.i) * 4] = 255 - Math.round(sinkF * 100); }   // (0.9: a sunk stone's tip still shows)
   }
-  field.texture.needsUpdate = true;
-  let tris = 0;
-  if (U.pave3D.value) {
-    const g = stoneGeometry(field, () => shape), pos = g.geometry.attributes.position, edge = g.geometry.attributes.aEdge, cell = g.geometry.attributes.aCell;
+  let tris = 0, mesh = null;
+  if (in3D) {
+    const g = yield* stoneGeometrySteps(field, () => shape), pos = g.geometry.attributes.position, edge = g.geometry.attributes.aEdge, cell = g.geometry.attributes.aCell;
     // stood on the land; the footing taken a little further down, so no stone shows daylight under it on a bump
-    for (let i = 0; i < pos.count; i++) pos.setY(i, pos.getY(i) + heightAt(pos.getX(i), pos.getZ(i)) - (edge.getX(i) < 0.5 ? 0.04 : 0) - (sinkOf.get(cell.getY(i) * field.N + cell.getX(i)) || 0));
+    for (let i = 0; i < pos.count; i++) { pos.setY(i, pos.getY(i) + heightAt(pos.getX(i), pos.getZ(i)) - (edge.getX(i) < 0.5 ? 0.04 : 0) - (sinkOf.get(cell.getY(i) * field.N + cell.getX(i)) || 0)); if ((i & 32767) === 32767) yield; }
     g.geometry.computeBoundingSphere(); tris = g.tris;
-    paveMesh = new THREE.Mesh(g.geometry, paveMat); paveMesh.castShadow = paveMesh.receiveShadow = SHADOW.on; paveMesh.customDepthMaterial = paveDepth; paveMesh.frustumCulled = false;
-    scene.add(paveMesh);
+    mesh = new THREE.Mesh(g.geometry, paveMat); mesh.castShadow = mesh.receiveShadow = SHADOW.on; mesh.customDepthMaterial = paveDepth; mesh.frustumCulled = false;
   }
+  useField(field, U); U.pave3D.value = in3D; drop(); if (mesh) { paveMesh = mesh; scene.add(mesh); }   // (the painted and the 3D stones change in the same frame)
   const note = $('paveNote');
   if (note) note.textContent = `${field.stones.length.toLocaleString()} stones${tris ? `, ${(tris / 1000).toFixed(0)}k triangles in 3D (sunk into the ground past ${PAVE.lod} m)` : ', painted'} · laid in ${(performance.now() - t0).toFixed(0)} ms`;
 }
-const paveLater = () => { clearTimeout(paveTimer); paveTimer = setTimeout(buildPaving, 400); };
+const paveLater = () => { clearTimeout(paveTimer); paveTimer = setTimeout(() => { PAVE.job = buildPavingSteps(); }, 400); };   // (a road edit: laid again a slice a frame, from the frame loop)
 for (const [b, sp] of Object.entries(PAVE.builds)) $('paveBuild').add(new Option(`${b} · ${sp.name}${sp.painted ? '' : ' (3D near you)'}`, b));
 $('paveBuild').value = PAVE.build; $('paveBuild').addEventListener('change', (e) => { PAVE.build = e.target.value; buildPaving(); });
 $('pavePaste').addEventListener('click', async () => {   // the Stone Lab's Copy settings: the look, the stones, and every build
@@ -1801,7 +1846,7 @@ $('copySettings').addEventListener('click', async () => {
   else { $('copyNote').textContent = 'Copy this:'; const ta = document.createElement('textarea'); ta.value = text; ta.rows = 4; ta.style.width = '100%'; $('copyNote').after(ta); ta.select(); }
 });
 // the dirt spots round the paths (live: the shader's)
-for (const [id, fmt] of [['spotAmt', v => Math.round(v * 100) + '%'], ['spotSize', v => v.toFixed(1) + ' m'], ['spotReach', v => Math.round(v * 100) + '%']]) {
+for (const [id, fmt] of [['spotAmt', v => Math.round(v * 100) + '%'], ['spotSize', v => v.toFixed(1) + ' m'], ['spotSize2', v => v > 0 ? v.toFixed(1) + ' m' : 'none'], ['spotReach', v => Math.round(v * 100) + '%']]) {
   const el = $(id), go = () => { U[id].value = +el.value; $(id + 'Out').textContent = fmt(+el.value); }; el.value = U[id].value; el.addEventListener('input', go); go();
 }
 // light and shade
@@ -2172,6 +2217,7 @@ renderer.setAnimationLoop(() => {
   const dt = clock.getDelta();
   if (dt > 0) fps += (1 / dt - fps) * Math.min(1, dt * 2);
   if (TOWN.job) { const t0 = performance.now(), budget = Math.min(6, Math.max(2, dt * 1000 * 0.25)); while (performance.now() - t0 < budget) if (TOWN.job.next().done) { TOWN.job = null; break; } }   // (a light town rebuild, a slice a frame: townRebuildNow)
+  if (PAVE.job) { const t0 = performance.now(), budget = Math.min(6, Math.max(2, dt * 1000 * 0.25)); while (performance.now() - t0 < budget) if (PAVE.job.next().done) { PAVE.job = null; break; } }   // (the paving laid again after a road edit: paveLater)
   watch();
   if ((shown += dt) > 0.5) { shown = 0; const inf = renderer.info.render; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${(1000 / Math.max(1, fps)).toFixed(1)} ms · ${inf.calls} draws · ${(inf.triangles / 1e6).toFixed(2)} M triangles · ${GL2 ? 'WebGL2' : 'WebGL1'}`; }
   renderer.info.reset(); stepRain(); controls.update(); followCover(); U.time.value += dt; sky.update(camera, dt); if (WIND.on) tickWind(dt); dayFrame(dt); followShadow();
