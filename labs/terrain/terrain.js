@@ -16,12 +16,12 @@ import { SHAPE_DEFAULTS } from '../../src/objects/foliage.js';
 import { makeLowPine } from '../../src/objects/lowTrees/cards.js';
 import { stoneField, stoneGeometry, STONE_UNIFORMS, STONE_GLSL, STONE_LOD } from '../../src/objects/stones.js';
 import { PlantTool } from '../../src/objects/plantTool.js';
-import { paintedPlants, keepProcedural, PlantIndex, inStroke } from '../../src/objects/planting.js';
+import { paintedPlants, keepProcedural, PlantIndex, inStroke, loadPlanting, savePlanting } from '../../src/objects/planting.js';
 import { flyKeys } from '../../src/objects/flyKeys.js';
 import { chooseTier, saveTier, watchFrames, TIERS } from '../../src/quality.js';
 import { makeCloudSky, SKY_GLSL } from '../../src/objects/cloudSky.js';
 import { WIND, tickWind, swayMaterial } from '../../src/objects/wind.js';
-import { Village, levelPads, blockGrid, paintRoads, footprintOf, loadModel, TOWN_ASSETS, TOWN_TREES, newId as newTownId, normalise as normaliseTown } from '../../src/objects/village.js';
+import { Village, levelPads, blockGrid, paintRoads, footprintOf, loadModel, levels, TOWN_ASSETS, TOWN_TREES, newId as newTownId, normalise as normaliseTown } from '../../src/objects/village.js';
 import { PROP_KINDS, makeProp } from '../../src/objects/townProps.js';
 import { VillageEditor, savedLayout as savedTown, forgetLayout as forgetTown } from '../../src/objects/villageEditor.js';
 import { textHash } from '../../src/objects/changes.js';
@@ -55,10 +55,9 @@ const FOG_DIR = { view: { x: 0, y: 0, z: 1, w: 1 }, sun: { x: 0, y: 0, z: -1 }, 
 // season -1 midwinter .. 1 midsummer (0.64: a noon sun 60° up); dayMin: minutes a whole day takes when it goes by itself
 const DAY = { hour: 9 + 40 / 60, auto: false, dayMin: 12, season: 0.64, turn: 192, lat: 45, bake: null, baked: null, dirty: true, stamp: 0, glow: 1, elev: 48 };
 // THE TOWN's layout: the one saved in this browser, else the first town (models/town/layout.json); likewise the Build
-// bar's hand planting, the one saved in this browser, else models/town/planting.json. And the land's own paths as
-// routed once and kept (models/town/paths.json, see PATHS)
+// bar's hand planting, the one saved in this browser, else models/town/planting.json
 const getJSON = (url) => fetch(url).then(r => r.ok ? r.json() : null).catch(() => null);
-const [TOWN_FIRST, PLANTING_FIRST, PATHS_KEPT] = await Promise.all(['layout', 'planting', 'paths'].map((f) => getJSON(`/models/town/${f}.json`)));
+const [TOWN_FIRST, PLANTING_FIRST] = await Promise.all(['layout', 'planting'].map((f) => getJSON(`/models/town/${f}.json`)));
 const TOWN_DEFAULT = normaliseTown(TOWN_FIRST);
 const PATHROAD = new Uint8Array(2048 * 2048 * 4);              // the paths-and-roads picture's pixels (see composePathRoad)
 const TOWN = { layout: normaliseTown(savedTown() || TOWN_DEFAULT), Hpre: null, block: null, road: null, canvas: document.createElement('canvas'), village: null };
@@ -174,7 +173,7 @@ function baseHeight(x, z) {
 }
 // (the land's shape as Jacob set it, 2026-10-01)
 const SHAPE = { terraceOn: true, step: 30, riser: 0.03, terraceAmount: 0.22, terraceFrom: 1, terraceSpread: 0.35, erodeOn: true, erodeSmooth: 3, drops: 110000, erodeStrength: 0.28, ravines: 35, ravineStrength: 4, ravineScale: 4, ravineRound: 0.8, crags: 28, cragSize: 120, cragSharp: 0.5 };
-const LAND = { wetDepth: 6.6, dryHeight: 6.0, forest: 0.7, shadeReach: 4, pathWidth: 3.6, treeline: 280, hillForest: 0.43, shore: 2, edgeTrees: 0.5, giants: 0.4, giantSize: 2.5 };   // (the forests' giants: Jacob's, 2026-10-04)   // (the land maps' settings; up here because the crags read the treeline)
+const LAND = { wetDepth: 6.6, dryHeight: 6.0, forest: 0.7, shadeReach: 4, treeline: 280, hillForest: 0.43, shore: 2, edgeTrees: 0.5, giants: 0.4, giantSize: 2.5 };   // (the forests' giants: Jacob's, 2026-10-04)   // (the land maps' settings; up here because the crags read the treeline)
 const Hg = new Float32Array(N * N), FLOW = new Float32Array(N * N), SETTLE = new Float32Array(N * N);
 const cellX = (i) => (i + 0.5) * TEX - SIZE / 2;
 // TERRACES: the height is stepped - a flat top, then a short steep riser - the way rock bands break a
@@ -239,22 +238,17 @@ function* erodeSteps(H, drops, chunk, trail = null) {
 // channels are carved a little; the shader paints the water on (no see-through mesh).
 let trees = [], maskA = null, pathCanvas = null; const MAPS = {};
 // THE FOOTPATHS' PICTURE (2048 px over the land, 0.8 m a pixel): R the worn core, drawn here; G how near a path, worked out
-// from the finished R when it's read back (nearFromCore). The land's own paths (PATHS.runs, routed with the land) and then the
-// hand-painted ones (the planting's footpath strokes, the brush as wide as the dirt) and the erased ones, in the order made.
+// from the finished R when it's read back (nearFromCore). Every path is the planting's: footpath strokes (the brush as
+// wide as the dirt) and rubbed-out ones, in the order made. The land's long paths were once routed over it (cheapest
+// ways round the steep, the wet and the town) and moved whenever the town did; they are now ordinary footpath strokes
+// in the default planting (ids landpath1..), so nothing moves them but a brush.
 // after: read back and everything that follows paths laid again
-// THE LAND'S OWN PATHS STAY PUT: routed once and kept (`kept`, from models/town/paths.json), so a sign or a lamp put down
-// beside one, or a building moved, doesn't send it round a new way and spoil what was lined up along it. Used while the
-// land is the shape they were routed on (its heights at 49 spots, `marks`, all within half a metre), else routed afresh.
-// `routes`: the routes as drawn (before the stretches along the paving are left out), for keeping
-const PATHS = { runs: [], routes: [], kept: PATHS_KEPT };
-const landMarks = () => { const H = TOWN.Hpre || Hg, out = []; for (let b = 1; b < 8; b++) for (let a = 1; a < 8; a++) out.push(+H[Math.floor(N * b / 8) * N + Math.floor(N * a / 8)].toFixed(2)); return out; };
 function drawPaths(after = true) {
   const P = 2048, k = P / SIZE; pathCanvas = pathCanvas || document.createElement('canvas'); pathCanvas.width = pathCanvas.height = P;
   // (read back afterwards: kept in ordinary memory, not on the graphics card, where a rebuild's blur and read-back stalled for many seconds)
   const g2 = pathCanvas.getContext('2d', { willReadFrequently: true }); g2.fillStyle = '#000'; g2.fillRect(0, 0, P, P); g2.lineCap = g2.lineJoin = 'round';
   const line = (pts) => { g2.beginPath(); pts.forEach(([x, z], q) => q ? g2.lineTo((x + SIZE / 2) * k, (z + SIZE / 2) * k) : g2.moveTo((x + SIZE / 2) * k, (z + SIZE / 2) * k)); g2.stroke(); };
   const dirt = (lines) => { g2.globalCompositeOperation = 'lighter'; g2.filter = 'blur(1.2px)'; g2.strokeStyle = 'rgb(255,0,0)'; for (const [pts, w] of lines) { g2.lineWidth = w * k; line(pts); } };
-  dirt(PATHS.runs.map((pts) => [pts, LAND.pathWidth]));
   if (PLANT.tool) for (const st of PLANT.tool.planting.strokes) {
     if (st.kind === PLANT.PATH && st.mode !== 'clear') dirt([[st.pts.length > 1 ? st.pts : [st.pts[0], st.pts[0]], st.r * 2 * 0.55]]);   // (the dirt a little narrower than the brush's ring)
     else if (st.kind === PLANT.NOPATH) { g2.globalCompositeOperation = 'source-over'; g2.filter = 'blur(2px)'; g2.strokeStyle = '#000'; g2.lineWidth = st.r * 2 * k; line(st.pts.length > 1 ? st.pts : [st.pts[0], st.pts[0]]); }
@@ -607,18 +601,26 @@ function* sunShadeSteps(dir, budget = 3) {
   const d = shadeTex.image.data; for (let k = 0; k < N * N; k++) { d[k * 4] = R[k]; d[k * 4 + 2] = B[k]; }
   shadeTex.needsUpdate = true;
 }
-function buildLand() {
-  paintRoads(TOWN.canvas, TOWN.village ? TOWN.village.layout : TOWN.layout, SIZE);
-  ({ block: TOWN.block, road: TOWN.road, yard: TOWN.yard, bridge: TOWN.bridge } = blockGrid(TOWN.village ? TOWN.village.layout : TOWN.layout, TOWN.canvas, N, SIZE, TEX));
-  Hb = blur(Hg, 12);
+// light (a town thing moved, added, taken away or resized; see townRebuildNow): only what stands on the town's cleared
+// ground is redone (trees, stones, plants, the trees' shade a little each frame), not the paths, paving or roads, nor
+// the wet, dry and steep ground unless `pads` (the ground's shape changed under something that levels it). landSteps
+// hands back control between its parts (and every row of tree spots), so a light rebuild runs a slice a frame (TOWN.job)
+function buildLand(o) { TOWN.job = null; const g = landSteps(o); while (!g.next().done); }   // all at once (any slices in flight dropped)
+function* landSteps({ light = false, pads = true } = {}) {
+  const layout = TOWN.village ? TOWN.village.layout : TOWN.layout;
+  if (!light) paintRoads(TOWN.canvas, layout, SIZE);
+  ({ block: TOWN.block, road: TOWN.road, yard: TOWN.yard, bridge: TOWN.bridge } = blockGrid(layout, TOWN.canvas, N, SIZE, TEX));
+  yield;
+  const same = light && !pads && MAPS.wet;                              // (the ground's shape as it was: its wet, dry and steep too)
+  if (!same) Hb = blur(Hg, 12);
   // wet and dry: how far below or above its surroundings each spot is
-  const wet = new Float32Array(N * N), dry = new Float32Array(N * N), steep = new Float32Array(N * N);
-  for (let k = 0; k < N * N; k++) { const d = Hb[k] - Hg[k]; wet[k] = Math.min(1, Math.max(0, d / LAND.wetDepth)); dry[k] = Math.min(1, Math.max(0, -d / LAND.dryHeight)); }
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) steep[j * N + i] = THREE.MathUtils.smoothstep(slopeAt(i, j), 0.36, 0.7);   // bare from about 20 deg, fully by 35
+  const wet = same ? MAPS.wet : new Float32Array(N * N), dry = same ? MAPS.dry : new Float32Array(N * N), steep = same ? MAPS.steep : new Float32Array(N * N);
+  if (!same) { for (let k = 0; k < N * N; k++) { const d = Hb[k] - Hg[k]; wet[k] = Math.min(1, Math.max(0, d / LAND.wetDepth)); dry[k] = Math.min(1, Math.max(0, -d / LAND.dryHeight)); }
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) steep[j * N + i] = THREE.MathUtils.smoothstep(slopeAt(i, j), 0.36, 0.7); }   // bare from about 20 deg, fully by 35
   // trees: clumps from slow noise, thinned on wet and steep ground; one candidate every 6 m
   trees = []; const tree = new Float32Array(N * N);
   const clump = (x, z) => { let n = 0, a = 1, f = 1 / 230; for (let o = 0; o < 3; o++) { n += (vnoise(x * f + 40, z * f + 17) - 0.5) * a; a *= 0.5; f *= 2.2; } return n + 0.5; };
-  for (let z = -SIZE / 2 + 3; z < SIZE / 2; z += 6) for (let x = -SIZE / 2 + 3; x < SIZE / 2; x += 6) {
+  for (let z = -SIZE / 2 + 3; z < SIZE / 2; z += 6) { yield; for (let x = -SIZE / 2 + 3; x < SIZE / 2; x += 6) {
     const jx = x + (hash(x, z) - 0.5) * 5, jz = z + (hash(z, x) - 0.5) * 5;
     const i = Math.min(N - 1, Math.max(0, Math.floor((jx + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((jz + SIZE / 2) / TEX))), k = j * N + i;
     // on the hills: groves up the slopes (more of them on a slope than on the flat), none past ~40 deg,
@@ -628,7 +630,7 @@ function buildLand() {
       * (1 - THREE.MathUtils.smoothstep(sl, 0.75, 1.0)) * (1 - THREE.MathUtils.smoothstep(Hg[k], LAND.treeline - 40, LAND.treeline)) * (1 - TOWN.block[k]);   // (none in the town's buildings and roads)
     // (potato keeps under half of them: treeShare)
     if (waterAt(jx, jz) < 0.05 && hash(jx * 1.3, jz * 0.7) < F * 0.85 * (TS.treeShare || 1)) { trees.push([jx, heightAt(jx, jz), jz, 0.8 + hash(jx, jz * 2) * 0.5]); tree[k] = 1; }
-  }
+  } }
   // SIZE BY HOW DEEP IN ITS FOREST A TREE STANDS (the share of the ground round it, ~25 m, holding trees, against the
   // deepest forest's): smaller along the edge (edgeTrees), and now and then a giant (giants: the share, giantSize: how
   // big) in the deep middle, where the medium trees round it hide its sides
@@ -644,13 +646,15 @@ function buildLand() {
   const canopy = blur(tree, 1), wide = blur(tree, LAND.shadeReach);
   for (let k = 0; k < N * N; k++) canopy[k] = Math.min(1, canopy[k] * 3.2);
   MAPS.wet = wet; MAPS.dry = dry; MAPS.canopy = canopy; MAPS.wide = wide; MAPS.steep = steep;
+  yield;
   // where the water ran (gullies) and where it laid soil down (fans), from the erosion, softened
-  const fl = new Float32Array(N * N), se = new Float32Array(N * N);
-  for (let q = 0; q < N * N; q++) { fl[q] = Math.min(1, Math.max(0, (Math.log(1 + FLOW[q]) - 2.2) / 2.5)); se[q] = Math.min(1, SETTLE[q] * 4); }
-  const gully = blur(fl, 1), fan = blur(se, 2), dataB = new Uint8Array(N * N * 4);
-  // the shore: a band of stones round every pond and stream (and under the shallows), `shore` cells wide
-  const wetCells = new Float32Array(N * N); for (let q = 0; q < N * N; q++) wetCells[q] = WDEPTH[q] > 0 ? 1 : 0;
-  const shore = LAND.shore > 0 ? blur(wetCells, LAND.shore) : wetCells.fill(0); MAPS.shore = shore;
+  if (!light || !MAPS.gully) { const fl = new Float32Array(N * N), se = new Float32Array(N * N);
+    for (let q = 0; q < N * N; q++) { fl[q] = Math.min(1, Math.max(0, (Math.log(1 + FLOW[q]) - 2.2) / 2.5)); se[q] = Math.min(1, SETTLE[q] * 4); }
+    MAPS.gully = blur(fl, 1); MAPS.fan = blur(se, 2);
+    // the shore: a band of stones round every pond and stream (and under the shallows), `shore` cells wide
+    const wetCells = new Float32Array(N * N); for (let q = 0; q < N * N; q++) wetCells[q] = WDEPTH[q] > 0 ? 1 : 0;
+    MAPS.shore = LAND.shore > 0 ? blur(wetCells, LAND.shore) : wetCells.fill(0); }
+  const gully = MAPS.gully, fan = MAPS.fan, shore = MAPS.shore, dataB = new Uint8Array(N * N * 4);
   for (let q = 0; q < N * N; q++) {
     const sh = Math.min(1, Math.max(0, wide[q] * 2.2 - canopy[q] * 0.8)), open = 1 - Math.min(1, canopy[q] + sh);
     const cover = WDEPTH[q] > 0 ? 0 : Math.min(1, (0.55 * open + 1.0 * sh + 0.3 * canopy[q]) * (1 - steep[q]) * (1 - Math.max(0, wet[q] - 0.6) * 2));   // where plants would grow
@@ -658,50 +662,9 @@ function buildLand() {
   }
   if (!U.maskB.value) { const t = new THREE.DataTexture(dataB, N, N, THREE.RGBAFormat); t.magFilter = t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; U.maskB.value = t; } else U.maskB.value.image.data.set(dataB);
   U.maskB.value.needsUpdate = true;
-  bakeShade(canopy, wide);
-  // paths: cheapest routes over the grid, where steep, wet and thick forest cost more
-  const cost = new Float32Array(N * N); for (let k = 0; k < N * N; k++) cost[k] = (1 + 60 * steep[k] + 8 * wet[k] + 2 * canopy[k] + (POND[k] ? 5000 : WDEPTH[k] > 0 ? 40 * (1 - TOWN.bridge[k]) : 0)) * (1 - 0.65 * TOWN.road[k]) + 80 * Math.max(0, TOWN.block[k] - TOWN.road[k]);   // round the lakes; over a river only where it must; along the town's roads, round its buildings
-  const baseCost = Float32Array.from(cost), trail = new Float32Array(N * N);       // trail: how much cheaper a cell is for being on (or beside) a path already routed
-  const route = (ax, az, bx, bz) => {
-    const S = N / 2, cell = (x, z) => [Math.round((x + SIZE / 2) / TEX), Math.round((z + SIZE / 2) / TEX)];
-    // each end moved to the nearest dry cell
-    const dry = ([i, j]) => { for (let r = 0; r < 80; r++) for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) { if (Math.max(Math.abs(di), Math.abs(dj)) !== r) continue; const ii = Math.min(N - 1, Math.max(0, i + di)), jj = Math.min(N - 1, Math.max(0, j + dj)); if (!WDEPTH[jj * N + ii]) return [ii, jj]; } return [i, j]; };
-    const [si, sj] = dry(cell(ax, az)), [ti, tj] = dry(cell(bx, bz)), g = new Float32Array(N * N).fill(Infinity), from = new Int32Array(N * N).fill(-1), heap = [];
-    const push = (k, f) => { heap.push([f, k]); let c = heap.length - 1; while (c > 0) { const p = (c - 1) >> 1; if (heap[p][0] <= heap[c][0]) break; [heap[p], heap[c]] = [heap[c], heap[p]]; c = p; } };
-    const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let c = 0; for (;;) { const l = 2 * c + 1, r = l + 1; let m = c; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === c) break; [heap[m], heap[c]] = [heap[c], heap[m]]; c = m; } } return top; };
-    const start = sj * N + si, goal = tj * N + ti; g[start] = 0; push(start, 0);
-    const shut = new Uint8Array(N * N);                 // cells already explored: each once (the cheap trail cells make the guess toward
-                                                        // the goal overshoot, and without this cells were explored again and again)
-    while (heap.length) { const [, k] = pop(); if (k === goal) break; if (shut[k]) continue; shut[k] = 1; const i = k % N, j = (k / N) | 0;
-      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { if (!di && !dj) continue; const ni = i + di, nj = j + dj; if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue;
-        const n = nj * N + ni, step = (di && dj ? 1.414 : 1) * (cost[k] + cost[n]) / 2 + Math.abs(Hg[n] - Hg[k]) * 3, ng = g[k] + step;
-        if (ng < g[n]) { g[n] = ng; from[n] = k; push(n, ng + Math.hypot(ni - ti, nj - tj) * 0.9); } } }
-    const pts = []; for (let k = goal; k >= 0; k = from[k]) pts.push([(k % N) * TEX - SIZE / 2, ((k / N) | 0) * TEX - SIZE / 2]);
-    // TRAILS ATTRACT: walking an existing trail is easier than breaking new ground, so the routes after this
-    // one join it where they're going the same way and fork off where they part, instead of running beside it
-    // a few metres off (two routes found the same cheap valley separately)
-    for (let k = goal; k >= 0; k = from[k]) { const i = k % N, j = (k / N) | 0;
-      for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= N || jj >= N) continue;
-        const f = di || dj ? (Math.max(Math.abs(di), Math.abs(dj)) === 1 ? 0.6 : 0.85) : 0.35; const q = jj * N + ii; if (!trail[q] || f < trail[q]) trail[q] = f; } }
-    for (let q = 0; q < N * N; q++) if (trail[q]) { cost[q] = baseCost[q] * trail[q]; }
-    // smoothed, so it wanders instead of stepping along the grid
-    for (let it = 0; it < 6; it++) for (let q = 1; q < pts.length - 1; q++) pts[q] = [(pts[q - 1][0] + 2 * pts[q][0] + pts[q + 1][0]) / 4, (pts[q - 1][1] + 2 * pts[q][1] + pts[q + 1][1]) / 4];
-    return pts;
-  };
-  const K = PATHS.kept, marks = landMarks(), kept = K && Array.isArray(K.paths) && Array.isArray(K.marks) && K.marks.length === marks.length && marks.every((h, q) => Math.abs(h - K.marks[q]) < 0.5);
-  const paths = kept ? K.paths : [route(-760, -520, 740, 380), route(-560, 760, 520, -760), route(40, -790, -60, 790), route(-790, 120, 30, 20)];
-  PATHS.routes = paths; PATHS.marks = marks; PATHS.wasKept = kept;
-  const P = 2048, k = P / SIZE;
-  // a path's stretches along the town's paving aren't drawn: the route keeps to a road (its cheapest way) but the land's
-  // cells are ~3 m, so drawn there it stuck out one side of the stones as a strip of dirt; drawn only off the paving, a
-  // path shows where it leaves a road, its end reaching just under the stones
-  const rc = TOWN.canvas.width === P ? TOWN.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, P, P).data : null;
-  const onPaving = ([x, z]) => { const bi = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), bj = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))); if (TOWN.bridge && TOWN.bridge[bj * N + bi] > 0.5) return true;   // (over a bridge: the deck carries it, no dirt in the creek under the arch)
-    if (!rc) return false; const i = Math.floor((x + SIZE / 2) * k), j = Math.floor((z + SIZE / 2) * k); if (i < 0 || j < 0 || i >= P || j >= P) return false; const o = (j * P + i) * 4; return rc[o + 3] / 255 * Math.max(rc[o], rc[o + 1]) / 255 > 0.5; };
-  const runs = []; for (const pts of paths) { let run = []; pts.forEach((pt, q) => { const on = onPaving(pt);
-    if (!on) { if (!run.length && q > 0) run.push(pts[q - 1]); run.push(pt); } else if (run.length) { run.push(pt); runs.push(run); run = []; } });
-    if (run.length > 1) runs.push(run); }
-  PATHS.runs = runs; drawPaths(false);
+  yield;
+  if (!(same && shadeTex)) bakeShade(canopy, wide);                    // (else only the trees' shade can have changed: worked out again a little each frame, at the end)
+  if (!light) drawPaths(false);                                       // (light: a town change doesn't touch the footpaths)
   // pack: R wet, G dry, B canopy, A part shade (and steep into the part-shade texture's spare... kept in the shader from the normal)
   const data = new Uint8Array(N * N * 4);
   for (let q = 0; q < N * N; q++) { data[q * 4] = wet[q] * 255; data[q * 4 + 1] = dry[q] * 255; data[q * 4 + 2] = canopy[q] * 255; data[q * 4 + 3] = Math.min(1, Math.max(0, wide[q] * 2.2 - canopy[q] * 0.8)) * 255; }
@@ -709,10 +672,14 @@ function buildLand() {
   else maskA.image.data.set(data);
   maskA.needsUpdate = true;
   U.maskA.value = maskA;
-  MAPS.path = pathCanvas.getContext('2d').getImageData(0, 0, P, P).data; MAPS.P = P; nearFromCore(MAPS.path, P);
-  composePathRoad(); buildPaving();
+  if (!light) { const P = 2048; MAPS.path = pathCanvas.getContext('2d').getImageData(0, 0, P, P).data; MAPS.P = P; nearFromCore(MAPS.path, P);
+    composePathRoad(); buildPaving(); }
+  yield;
   COVER.cache = {};                                   // the land changed: the remembered tiles are stale
-  placeTrees(); placeStones(); if (COVER.parts) placeCover();
+  placeTrees(); yield; yield* placeStonesSteps(); yield;
+  if (COVER.parts) { if (light && COVER.at && coverForest && coverForest.ready) COVER.job = moveCover(COVER.at.clone()); else placeCover(); }   // (light: laid again a few ms a frame, the old plants up meanwhile)
+  if (same && shadeTex) { DAY.baked = SUN_DIR.clone(); DAY.bake = sunShadeSteps(SUN_DIR, 0.4); }   // (after the slices above, not alongside them)
+  TOWN.sig = townSigs(layout);
   if (TOWN.village) { TOWN.village.sync(); if (TOWN.editor) TOWN.editor.markSel(); }   // the town stands on the land as it now is
   if (PLANT.tool) { PLANT.tool.syncItems(); PLANT.tool.group.visible = true; if (PLANT.tool.sel) PLANT.tool.select(PLANT.tool.sel); buildFences(); }   // and the placed plants and fences
 }
@@ -764,7 +731,7 @@ const U = {
   shadeMap: { value: null }, shadowRange: { value: 0 }, shadowAt: { value: new THREE.Vector3() }, edgeFrom: { value: 0.55 }, edgeTo: { value: 0.97 }, edgeShade: { value: 0.55 }, edgeJitter: { value: 0.12 }, plantShade: { value: 0.8 }, hillShade: { value: 1 }, aoShade: { value: 1 }, treeShade: { value: 0.9 },
   avgGround: { value: new THREE.Color(0x6b8a3a) }, avgDry: { value: new THREE.Color(0x8a8a4a) }, avgLush: { value: new THREE.Color(0x5b7a2a) }, avgForest: { value: new THREE.Color(0x4a4a2a) }, avgWet: { value: new THREE.Color(0x4a3a2a) }, avgPath: { value: new THREE.Color(0x6a5238) }, avgSteep: { value: new THREE.Color(0x7a7a7a) }, avgShore: { value: new THREE.Color(0x77706a) }, shoreStr: { value: 1 }, layShore: { value: null },
   layDry: { value: null }, layLush: { value: null }, layForest: { value: null }, layPath: { value: null }, laySteep: { value: null },
-  spotAmt: { value: 0.8 }, spotSize: { value: 1.6 }, spotReach: { value: 0.7 }, mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.06 },
+  spotAmt: { value: 1.6 }, spotSize: { value: 1.6 }, spotReach: { value: 0.3 }, mixSharp: { value: 6 }, mixHeight: { value: 1.2 }, mixBreak: { value: 0.35 }, mixBreakSize: { value: 4 }, steepFrom: { value: 0.06 },
 };
 for (const [k, v] of Object.entries(TS.u)) if (U[k]) U[k].value = v;
 { const t = new THREE.TextureLoader().load('/textures/stamps/atlas.png'); t.colorSpace = THREE.SRGBColorSpace; t.premultiplyAlpha = true; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); U.stampAtlas.value = t; }
@@ -1115,10 +1082,18 @@ let treeForest = null;
 // WHICH TREE WHERE: src/objects/growth.js (shared with the Growth Lab); here it is handed the land's
 // height, slope, wet and dry at each tree
 const FAMILY = { ...FAMILY_DEFAULTS };
+// (remembered by spot until the ground, the species or the family settings change: a town move lays the trees again
+// with the same picks, and working them out was most of what that cost)
+const PICKS = { key: '', at: new Map() };
+function freshPicks(species) {                                        // (once a laying of the trees, before any pickTree)
+  const key = species.map(s => s.name).join() + JSON.stringify(FAMILY);
+  if (PICKS.wet !== MAPS.wet || PICKS.key !== key) { PICKS.wet = MAPS.wet; PICKS.key = key; PICKS.at.clear(); }
+}
 function pickTree(x, z, species) {
+  const spot = x + ',' + z, had = PICKS.at.get(spot); if (had) return [had[0], had[1].clone()];
   const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
   const { sp, hsl } = pickTreeKind(x, z, species.map(s => s.name), { height: Hg[k], slope: slopeAt(i, j), wet: MAPS.wet[k], dry: MAPS.dry[k] }, FAMILY);
-  return [sp, new THREE.Color().setHSL(...hsl)];
+  const out = [sp, new THREE.Color().setHSL(...hsl)]; PICKS.at.set(spot, [sp, out[1].clone()]); return out;
 }
 // the town's trees, for the forest to draw (so they get its imposters, wind and shade): the species named, its usual tint
 function townTrees(species) {
@@ -1133,11 +1108,11 @@ function placeTrees() {
   const low = (sp) => FOREST.lowPine && sp.name === 'pine' ? { name: 'pine', root: makeLowPine(), height: sp.height, weight: sp.weight, tint: false } : null;
   const species = treeForest && !FOREST.rebake ? treeForest.species : TREE_SPECIES.map(sp => low(sp) || (shaped(sp)   // keeps the baked atlases unless the atlas settings changed
     ? { ...sp, soften: LEAF.soften, shape: { lump: LEAF.lump, mix: LEAF.mix, dark: LEAF.dark, tip: LEAF.tip, olive: LEAF.olive, branchDark: LEAF.branchDark, under: LEAF.under, glow: LEAF.glow } } : { ...sp }));
-  FOREST.rebake = false;
+  FOREST.rebake = false; freshPicks(species);
   treeForest = new Forest(renderer, scene, { species, shadows: SHADOW.on, detail: FOREST.detail, grid: FOREST.grid, cell: FOREST.cell, imposterAt: FOREST.imposterAt, band: FOREST.band, ahead: FOREST.ahead, spread: FOREST.spread, sunDir: SUN_DIR, heightAt, nearCap: 600, shadowEdge: { at: U.shadowAt, range: U.shadowRange, from: U.edgeFrom, to: U.edgeTo, shade: U.edgeShade, jitter: U.edgeJitter },
     fixed: [...trees.filter(([x, , z]) => keepWild('tree', x, z)).map(([x, , z, s]) => { const [sp, tint] = pickTree(x, z, species); return { x, z, sp, scale: s, tint: species[sp].tint === false ? undefined : tint }; }), ...townTrees(species), ...plantedTrees(species)] });
   treeForest.group.visible = $('treesOn').checked;
-  $('landInfo').textContent = `${trees.length.toLocaleString()} trees, 4 paths`;
+  $('landInfo').textContent = `${trees.length.toLocaleString()} trees`;
 }
 // ── GROUND COVER: Jacob's Tripo sheet of 16 plants, split into its plants and scattered by the maps ──
 // The model stands the plants in a 4 x 4 wall (x across, y up); each triangle goes to the plant whose
@@ -1380,6 +1355,10 @@ function makePlantTool() {
   const defaults = async () => { try {
     const [a, b] = await Promise.all(['layout', 'planting'].map((f) => fetch(`/models/town/${f}.json`, { cache: 'no-cache' }).then((r) => (r.ok ? r.text() : Promise.reject(new Error(r.status))))));
     return { town: normaliseTown(JSON.parse(a)), planting: JSON.parse(b), base: textHash(a + '\n' + b) }; } catch (e) { return null; } };
+  // a planting kept in this browser from before the land's paths were baked into footpath strokes (landpath1..) gets them,
+  // ahead of its own strokes as they were drawn under them, so its paths don't vanish
+  { const kept = loadPlanting(), isLand = (st) => /^landpath\d+$/.test(String(st.id)), baked = PLANTING_FIRST && Array.isArray(PLANTING_FIRST.strokes) ? PLANTING_FIRST.strokes.filter(isLand) : [];
+    if (kept && baked.length && !kept.strokes.some(isLand)) { kept.strokes.unshift(...baked); savePlanting(kept); } }
   PLANT.tool = new PlantTool({ renderer, scene, camera, controls, dom: renderer.domElement, heightAt, groundAt, shadows: SHADOW.on, title: 'Build', town, initial: PLANTING_FIRST, defaults,
     // a placed plant's own scale: the brush's plants are sized in metres by the forest (its height over the model's), so the placed ones are too
     unitOf: (k) => { const g = COVER.parts[k]; if (k >= PLANT.LAWN_KIND || !g) return 1; if (!g.boundingBox) g.computeBoundingBox(); return KIND_INFO[k].height / Math.max(1e-4, g.boundingBox.max.y - g.boundingBox.min.y); },
@@ -1486,15 +1465,19 @@ function landShaded(m, rock = null) {
 }
 // the stones' pictures: granite and diorite, alternating by shape (none on potato: plain grey there)
 const ROCK_TEX = TS.lite ? null : ['diorite', 'granite'].map(n => { const t = new THREE.TextureLoader().load(`/textures/rock/${n}.jpg`); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; });
-function placeStones() {
-  for (const m of STONES.meshes) { scene.remove(m); m.dispose(); }
-  STONES.meshes = [];
-  if (!STONES.on || !MAPS.steep) return;
+function placeStones() { const g = placeStonesSteps(); while (!g.next().done); }
+// in steps for the town's light rebuild (landSteps): worked out a slice at a time, the old stones standing until the new
+// ones are ready. The scree (the steep ground spread out) kept until the steepness itself changes
+function* placeStonesSteps() {
+  const drop = () => { for (const m of STONES.meshes) { scene.remove(m); m.dispose(); } STONES.meshes = []; };
+  if (!STONES.on || !MAPS.steep) { drop(); return; }
   STONES.shapes = STONES.shapes || stoneShapes();
   const r = (a, b) => { const x = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return x - Math.floor(x); };
-  const scree = blur(MAPS.steep, 3), per = [[], [], [], []];
+  if (STONES.screeOf !== MAPS.steep) { STONES.scree = blur(MAPS.steep, 3); STONES.screeOf = MAPS.steep; yield; }
+  const scree = STONES.scree, per = [[], [], [], []];
   let placed = 0;
   for (let t = 1; placed < STONES.count && t < STONES.count * 30; t++) {
+    if ((t & 4095) === 0) yield;
     const x = (r(t, 41.3) - 0.5) * SIZE * 0.98, z = (r(t, 43.7) - 0.5) * SIZE * 0.98;
     const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
     if (POND[k]) continue;                                                    // none out in the lakes; streams are fine (stones in a creek)
@@ -1514,7 +1497,8 @@ function placeStones() {
     if (!SORT.rock(p.sp) || !paintable(p)) continue;
     per[(p.sp - PLANT.ROCK0) % 4].push([p.x, heightAt(p.x, p.z) - p.scale * 0.22, p.z, p.scale, p.yaw, r(p.x, p.z)]); painted++;
   }
-  const base = new THREE.Color(0x8d8a84), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), c = new THREE.Color();
+  yield;
+  const base = new THREE.Color(0x8d8a84), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), c = new THREE.Color(), fresh = [];
   per.forEach((list, v) => {
     if (!list.length) return;
     const mesh = new THREE.InstancedMesh(STONES.shapes[v], landShaded(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, flatShading: true }), ROCK_TEX ? ROCK_TEX[v % 2] : null), list.length);
@@ -1523,8 +1507,9 @@ function placeStones() {
       if (ROCK_TEX) mesh.setColorAt(n, c.setScalar(0.8 + 0.35 * tone));   // the picture carries the colour; just lighter and darker stones
       else mesh.setColorAt(n, c.copy(base).multiplyScalar(0.72 + 0.4 * tone).lerp(new THREE.Color(0x9a8f78), (tone * 7.3) % 1 * 0.35));   // greys, some warmer
     });
-    mesh.frustumCulled = false; mesh.castShadow = mesh.receiveShadow = SHADOW.on; scene.add(mesh); STONES.meshes.push(mesh);
+    mesh.frustumCulled = false; mesh.castShadow = mesh.receiveShadow = SHADOW.on; fresh.push(mesh);
   });
+  drop(); for (const m of fresh) scene.add(m); STONES.meshes = fresh;
   if ($('stoneInfo')) $('stoneInfo').textContent = `${placed.toLocaleString()} stones` + (painted ? ` and ${painted.toLocaleString()} painted by hand` : '');
 }
 const GROW = { ...GROW_DEFAULTS }, PLANT_KINDS = defaultKinds();
@@ -1699,9 +1684,24 @@ function groundAt(cx, cy) {
   }
   return null;
 }
-// after an edit (and a short pause): the pads laid again, the mesh reshaped, the land's maps, paths, trees, plants and stones redone
+// after an edit (and a short pause): only what the change touched redone, a light rebuild (landSteps), so moving something
+// no longer stalls for seconds while the whole land is worked out again. The roads' own picture and paving are redone by
+// the editor as they're painted (roadChanged); what the land depends on has a fingerprint (TOWN.sig, from the last build):
+// the bridges (no paving under one: the paving laid again) and the things that level the ground (the pads laid again,
+// the mesh reshaped and the shade baked at once). Anything else runs a slice a frame
 let townTimer = 0;
-function townRebuildNow() { if (RAIN.gen) return; levelPads(Hg, TOWN.Hpre, TOWN.village.layout, N, SIZE, TEX); fastMesh(); buildLand(); }   // (while it rains the land isn't finished: the rain's end lays the pads)
+function townSigs(L) {                                                 // (a function: the first buildLand, at load, comes before this line)
+  return { bridges: JSON.stringify(L.items.filter((i) => i.type === 'model' && i.kind === 'bridge').map((i) => [i.x, i.z, i.rot, i.size])),
+    pads: JSON.stringify(L.items.filter(levels).map((i) => [i.id, i.x, i.z, i.rot, i.size, i.y || 0])) };
+}
+function townRebuildNow() {
+  if (RAIN.gen) return;                                                 // (while it rains the land isn't finished: the rain's end lays the pads)
+  const L = TOWN.village.layout, now = townSigs(L), was = TOWN.sig;
+  if (!was) { levelPads(Hg, TOWN.Hpre, L, N, SIZE, TEX); fastMesh(); buildLand(); return; }   // (nothing built to compare with yet)
+  if (now.bridges !== was.bridges) paveLater();
+  if (now.pads !== was.pads) { levelPads(Hg, TOWN.Hpre, L, N, SIZE, TEX); fastMesh(); buildLand({ light: true, pads: true }); }
+  else TOWN.job = landSteps({ light: true, pads: false });              // (a slice a frame, from the frame loop)
+}
 function townRebuild() {
   clearTimeout(townTimer); const note = $('tNote'); if (note) note.textContent = 'levelling the ground and clearing the plants…';
   townTimer = setTimeout(() => { const t = performance.now(); townRebuildNow(); if (note) note.textContent = `Saved in this browser · ground redone in ${((performance.now() - t) / 1000).toFixed(1)} s`; }, 350);
@@ -1770,7 +1770,7 @@ function composePathRoad(rect = null) {
   U.pathRoad.value.needsUpdate = true;
 }
 for (const [id, def] of Object.entries(LAYERS)) { const el = $(id); for (const n of TEXTURES) el.add(new Option(n, n)); el.value = def; const go = () => { U[id].value = tex(el.value); setAverages(); }; el.addEventListener('change', go); go(); }
-for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'], ['landEdgeTrees', 'edgeTrees', v => Math.round(v * 100) + '% smaller'], ['landGiants', 'giants', v => Math.round(v * 100) + '%'], ['landGiantSize', 'giantSize', v => v.toFixed(1) + '×'], ['landDry', 'dryHeight', v => v.toFixed(1) + ' m'], ['landForest', 'forest', v => Math.round(v * 100) + '%'], ['landShade', 'shadeReach', v => Math.round(v * TEX) + ' m'], ['landPath', 'pathWidth', v => v.toFixed(1) + ' m'], ['landTreeline', 'treeline', v => v + ' m'], ['landShore', 'shore', v => Math.round(v * TEX) + ' m'], ['landHill', 'hillForest', v => Math.round(v * 100) + '%']]) {
+for (const [id, key, fmt] of [['landWet', 'wetDepth', v => v.toFixed(1) + ' m'], ['landEdgeTrees', 'edgeTrees', v => Math.round(v * 100) + '% smaller'], ['landGiants', 'giants', v => Math.round(v * 100) + '%'], ['landGiantSize', 'giantSize', v => v.toFixed(1) + '×'], ['landDry', 'dryHeight', v => v.toFixed(1) + ' m'], ['landForest', 'forest', v => Math.round(v * 100) + '%'], ['landShade', 'shadeReach', v => Math.round(v * TEX) + ' m'], ['landTreeline', 'treeline', v => v + ' m'], ['landShore', 'shore', v => Math.round(v * TEX) + ' m'], ['landHill', 'hillForest', v => Math.round(v * 100) + '%']]) {
   const el = $(id); el.value = LAND[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); });
   el.addEventListener('change', () => { LAND[key] = +el.value; buildLand(); });
@@ -2160,6 +2160,7 @@ function lampsFrame() {
 renderer.setAnimationLoop(() => {
   const dt = clock.getDelta();
   if (dt > 0) fps += (1 / dt - fps) * Math.min(1, dt * 2);
+  if (TOWN.job) { const t0 = performance.now(), budget = Math.min(6, Math.max(2, dt * 1000 * 0.25)); while (performance.now() - t0 < budget) if (TOWN.job.next().done) { TOWN.job = null; break; } }   // (a light town rebuild, a slice a frame: townRebuildNow)
   watch();
   if ((shown += dt) > 0.5) { shown = 0; const inf = renderer.info.render; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${(1000 / Math.max(1, fps)).toFixed(1)} ms · ${inf.calls} draws · ${(inf.triangles / 1e6).toFixed(2)} M triangles · ${GL2 ? 'WebGL2' : 'WebGL1'}`; }
   renderer.info.reset(); stepRain(); controls.update(); followCover(); U.time.value += dt; sky.update(camera, dt); if (WIND.on) tickWind(dt); dayFrame(dt); followShadow();
@@ -2174,4 +2175,4 @@ renderer.setAnimationLoop(() => {
   if (BEAMS.on && DAY.elev > -1 && BEAMS.fx) { BEAMS.fx.render(camera, SUN_NOW, { ...BEAMS.opts, strength: BEAMS.strength * beamsAmount(DAY.elev), color: DL.sun }); }
   drawAtlas();
 });
-if (Q.has('probe')) Object.assign(window, { renderer, __day: { set: (o) => { Object.assign(DAY, o); DAY.dirty = true; }, BEAMS, get baking() { return !!DAY.bake; }, get elev() { return DAY.elev; }, DAY, DL, FOG_DIR, sky, hemi, sun }, __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest], __plant: () => PLANT, drawPaths, __paths: PATHS });
+if (Q.has('probe')) Object.assign(window, { renderer, __day: { set: (o) => { Object.assign(DAY, o); DAY.dirty = true; }, BEAMS, get baking() { return !!DAY.bake; }, get elev() { return DAY.elev; }, DAY, DL, FOG_DIR, sky, hemi, sun }, __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest], __plant: () => PLANT, drawPaths });

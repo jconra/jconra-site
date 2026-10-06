@@ -133,9 +133,20 @@ export class VillageEditor {
   select(id) { this.sel = id; this.markSel(); this.showSel(); }
 
   // ── the pointer ────────────────────────────────────────────────────────────────────────────────────────────────
+  // what's under the pointer: the pick boxes say what the ray passes near; a building counts only where the ray touches
+  // its real shape, so a planter or a lamp on the town hall's steps is picked, not the hall whose box holds them. Props
+  // and town trees go by their snug boxes (a lamp's thin post would be hard to hit), as does a building still loading
   pickAt(cx, cy) {
     const r = this.dom.getBoundingClientRect(), ray = new THREE.Raycaster(), p = new THREE.Vector2((cx - r.left) / r.width * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
-    ray.setFromCamera(p, this.camera); const hit = ray.intersectObjects(this.village.pickables(), false)[0]; return hit ? hit.object.userData.id : null;
+    ray.setFromCamera(p, this.camera);
+    let best = null, near = Infinity;
+    for (const hit of ray.intersectObjects(this.village.pickables(), false)) {
+      if (hit.distance >= near) break;                              // (box hits come nearest first: nothing further can win)
+      const id = hit.object.userData.id, o = this.village.objs.get(id), it = this.village.item(id);
+      const d = it && it.type === 'model' && o && o.inner ? ((ray.intersectObject(o.inner, true)[0] || {}).distance ?? Infinity) : hit.distance;
+      if (d < near) { near = d; best = id; }
+    }
+    return best;
   }
   bindPointer() {
     // capturing, so it runs before the camera's own controls and can hold them still while dragging
