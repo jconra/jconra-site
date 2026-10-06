@@ -10,6 +10,7 @@
 // pick their own view.
 import * as THREE from 'three';
 import { WIND, WIND_GLSL } from './wind.js';
+import { LAMP_GLSL } from './lampLight.js';
 
 // direction (unit, in the tree's frame, y up) -> square [0,1]^2
 export function octEncode(d, hemi) {
@@ -239,7 +240,7 @@ const LOOKUP = `
 // `soften` (0..1) bends the foliage's normals toward straight up, the usual trick for leaves (cards
 // facing every way, half of them 'away' from the sun, read as black otherwise)
 // wind (0..1): sway in the shared breeze (src/objects/wind.js), 0 still
-export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3), blend = true, depth = true, shadows = true, soften = 0, wind = 0, glow = 0, sheen = 0 } = {}) {   // sheen (0..1): the faint white sunlight a MeshStandardMaterial adds even fully rough; 1 for a model drawn with one   // glow: the tree's own even light (its material's light map), so far matches near
+export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3), blend = true, depth = true, shadows = true, soften = 0, wind = 0, glow = 0, sheen = 0, lamps = null } = {}) {   // lamps: lampLight.js's uniforms, shared (street lamps lighting the plant where it stands)   // sheen (0..1): the faint white sunlight a MeshStandardMaterial adds even fully rough; 1 for a model drawn with one   // glow: the tree's own even light (its material's light map), so far matches near
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, THREE.UniformsLib.fog, { soften: { value: soften },
     atlas: { value: null }, atlasN: { value: null }, grid: { value: bake.grid }, hemi: { value: bake.hemi ? 1 : 0 },
     radius: { value: bake.radius }, halfW: { value: bake.halfW }, halfH: { value: bake.halfH }, centre: { value: bake.centre.clone() }, sunDir: { value: sunDir.clone().normalize() },
@@ -329,6 +330,11 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
       }`,
   });
   if (wind > 0) { mat.defines = { ...(mat.defines || {}), WIND: '' }; Object.assign(mat.uniforms, WIND.uniforms, { windSway: { value: wind } }); }
+  if (lamps) {                                                         // (the card's own spot, lit evenly all round: a far plant has no one side to the lamp)
+    mat.vertexShader = 'varying vec3 vWorldP;\n' + mat.vertexShader.replace('vQuad = uv;', 'vWorldP = world; vQuad = uv;');
+    mat.fragmentShader = 'varying vec3 vWorldP;\n' + LAMP_GLSL + mat.fragmentShader.replace('irradiance += vec3(glowLight);', 'irradiance += vec3(glowLight) + lampLight(vWorldP, vec3(0.0));');
+    Object.assign(mat.uniforms, lamps);
+  }
   // the shadow pass: the same quad, turned to the light, its depth from the atlas, packed the way
   // three's shadow maps expect
   mat.userData.depthMaterial = new THREE.ShaderMaterial({

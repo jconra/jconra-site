@@ -6,6 +6,7 @@
 //   spots: [{ x, y, z, turn, size }];  shade (optional): { shadeMap, landSize, hillShade, aoShade, treeShade }
 //   uniforms, to darken the blades with the land's baked shade like everything else on it
 import * as THREE from 'three';
+import { LAMP_GLSL } from './lampLight.js';
 import { WIND, WIND_GLSL } from './wind.js';
 
 function tuftGeometry({ blades = 7, height = 0.32, width = 0.022, segs = 3, spread = 0.12 }) {
@@ -29,7 +30,7 @@ function tuftGeometry({ blades = 7, height = 0.32, width = 0.022, segs = 3, spre
   return g;
 }
 
-export function makeLawn({ cap = 60000, shade = null } = {}) {
+export function makeLawn({ cap = 60000, shade = null, lamps = null } = {}) {   // lamps: lampLight.js's uniforms, shared
   const geo = tuftGeometry({});
   const iPos = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3), iTurn = new THREE.InstancedBufferAttribute(new Float32Array(cap * 2), 2), iVary = new THREE.InstancedBufferAttribute(new Float32Array(cap * 2), 2);
   for (const a of [iPos, iTurn, iVary]) a.setUsage(THREE.DynamicDrawUsage);
@@ -77,6 +78,12 @@ export function makeLawn({ cap = 60000, shade = null } = {}) {
         #include <fog_fragment>
       }`,
   });
+  if (lamps) {                                                         // street lamps lighting the tufts round them (lit evenly all round)
+    mat.vertexShader = 'varying vec3 vWorldL;\n' + mat.vertexShader.replace('vH = aH; vVary = iVary;', 'vWorldL = world; vH = aH; vVary = iVary;');
+    mat.fragmentShader = 'varying vec3 vWorldL;\n' + LAMP_GLSL + mat.fragmentShader.replace('gl_FragColor = vec4(col * (skyTint * 0.28 + sunTint * sunPart) * ao, 1.0);',
+      'gl_FragColor = vec4(col * ((skyTint * 0.28 + sunTint * sunPart) * ao + lampLight(vWorldL, vec3(0.0)) * 0.318), 1.0);');
+    Object.assign(mat.uniforms, lamps);
+  }
   const mesh = new THREE.Mesh(geo, mat); mesh.frustumCulled = false;
   function set(spots) {
     const n = Math.min(cap, spots.length);

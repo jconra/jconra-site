@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { bakeImposterSteps, imposterMaterial } from './imposter.js';
+import { lampStandard } from './lampLight.js';
 import { swayMaterial } from './wind.js';
 import { shapeFoliage, SHAPE_DEFAULTS } from './foliage.js';
 
@@ -124,9 +125,9 @@ export class Forest {
   // yaw, tint (optional THREE.Color) } to plant instead of the endless tiles; `heightAt(x, z)` stands them on uneven ground.
   constructor(renderer, scene, { base = '/models/trees/', tile = 420, tiles = 7, perTile = 90, imposterAt = 140, band = 40, ahead = 0.75,
                                  grid = 12, cell = 192, light = false, detail = 'coarse', clear = null, sunDir = new THREE.Vector3(0.5, 1, 0.3), shadows = false,
-                                 species = null, fixed = null, heightAt = null, nearCap = 400, wind = false, spread = 0, shadowEdge = null } = {}) {
+                                 species = null, fixed = null, heightAt = null, nearCap = 400, wind = false, spread = 0, shadowEdge = null, lamps = null } = {}) {
     this.wind = wind;                   // sway in the shared breeze (src/objects/wind.js); a species' `sway` (0..1, default 1) says how much
-    Object.assign(this, { renderer, scene, base, tile, tiles, perTile, imposterAt: light ? 0 : imposterAt, band, ahead, spread, grid: light ? 8 : grid, cell, detail, clear, sunDir, shadows: shadows && !light, light, fixed, heightAt, nearCap });
+    Object.assign(this, { renderer, scene, base, tile, tiles, perTile, imposterAt: light ? 0 : imposterAt, band, ahead, spread, grid: light ? 8 : grid, cell, detail, clear, sunDir, shadows: shadows && !light, light, fixed, heightAt, nearCap , lamps });
     this.group = new THREE.Group(); scene.add(this.group);
     this.species = (species || FOREST_SPECIES).map(s => ({ ...s }));
     this.tilesLaid = new Map();          // "tx,tz" -> [{ pos, yaw, scale, tint, sp }]
@@ -250,7 +251,7 @@ export class Forest {
       for (const [name, size] of [['iPos', 3], ['iYaw', 1], ['iScale', 1], ['iTint', 3], ['iFade', 1]]) { const a = new THREE.InstancedBufferAttribute(new Float32Array(n * size), size); a.setUsage(THREE.DynamicDrawUsage); geo.setAttribute(name, a); }
       geo.instanceCount = 0;
       let glow = 0, sheen = 0; sp.root.traverse((o) => { if (!o.isMesh) return; for (const m of [].concat(o.material)) { if (m.lightMap) glow = Math.max(glow, m.lightMapIntensity); if (m.isMeshStandardMaterial) sheen = Math.max(sheen, (1 - m.metalness) * (sp.upNormals ? 0.25 : 1)); } });      // (a tree with its own even light, as the low-poly pines have: its far versions get it too; drawn with MeshStandardMaterial: its far versions get the same faint sheen)
-      const mat = imposterMaterial(sp.bake, { sunDir: this.sunDir, blend: true, depth: !this.light, shadows: this.shadows, soften: sp.soften || 0, wind: this.wind ? (sp.sway ?? 1) : 0, glow, sheen });
+      const mat = imposterMaterial(sp.bake, { sunDir: this.sunDir, blend: true, depth: !this.light, shadows: this.shadows, soften: sp.soften || 0, wind: this.wind ? (sp.sway ?? 1) : 0, glow, sheen, lamps: this.lamps });
       if (this.calm) for (const [k, v] of Object.entries(this.calm)) mat.uniforms[k].value = v;
       Object.assign(mat.uniforms, this.landU, this.edgeU);
       mat.uniforms.blendDist.value = 300;
@@ -294,9 +295,10 @@ export class Forest {
             sh.fragmentShader = 'varying float vFade;\n' + sh.fragmentShader.replace('#include <alphatest_fragment>', '#include <alphatest_fragment>\n{ float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))); if (vFade < dither) discard; }');
             if (cover) { sh.uniforms.coverTexels = { value: new THREE.Vector2(mat.map.image.width, mat.map.image.height) }; sh.uniforms.coverMip = COVER_U.coverMip; sh.uniforms.coverFar = COVER_U.coverFar;
               sh.fragmentShader = 'uniform vec2 coverTexels; uniform float coverMip, coverFar;\n' + sh.fragmentShader.replace('#include <alphatest_fragment>', COVER_ALPHA).replace('#include <opaque_fragment>', COVER_OUT); }
+            if (this.lamps) { Object.assign(sh.uniforms, this.lamps); sh.fragmentShader = lampStandard(sh.fragmentShader); }   // (street lamps: lampLight.js)
           };
           mat.alphaToCoverage = cover;
-          mat.customProgramCacheKey = () => 'forest-mesh' + (sp.upNormals ? '-up2' : '') + (sp.soften ? '-s' + sp.soften : '') + (sp.shape ? '-shape' : '') + (leafy ? `-leaf${under}-${glow}` : '') + (cover ? '-cover' : ''); mat.needsUpdate = true;
+          mat.customProgramCacheKey = () => 'forest-mesh' + (sp.upNormals ? '-up2' : '') + (sp.soften ? '-s' + sp.soften : '') + (sp.shape ? '-shape' : '') + (leafy ? `-leaf${under}-${glow}` : '') + (cover ? '-cover' : '') + (this.lamps ? '-lamps' : ''); mat.needsUpdate = true;
           if (this.wind) { m.geometry.computeBoundingBox(); swayMaterial(mat, Math.max(0.001, m.geometry.boundingBox.max.y), sp.sway ?? 1, '-' + (sp.sway ?? 1)); }
         }
         m.userData.local = o.matrixWorld.clone(); m.userData.fade = mf;

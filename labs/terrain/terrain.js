@@ -25,6 +25,7 @@ import { Village, levelPads, blockGrid, paintRoads, footprintOf, loadModel, leve
 import { PROP_KINDS, makeProp } from '../../src/objects/townProps.js';
 import { VillageEditor, savedLayout as savedTown, forgetLayout as forgetTown } from '../../src/objects/villageEditor.js';
 import { textHash } from '../../src/objects/changes.js';
+import { makeLampUniforms, buildLampMap, lampStandard } from '../../src/objects/lampLight.js';
 import { sunDirection, moonDirection, elevationOf, daylightAt, newDaylight } from '../../src/objects/daylight.js';
 import { Sunbeams } from '../../src/objects/sunbeams.js';
 
@@ -60,6 +61,9 @@ const getJSON = (url) => fetch(url).then(r => r.ok ? r.json() : null).catch(() =
 const [TOWN_FIRST, PLANTING_FIRST] = await Promise.all(['layout', 'planting'].map((f) => getJSON(`/models/town/${f}.json`)));
 const TOWN_DEFAULT = normaliseTown(TOWN_FIRST);
 const PATHROAD = new Uint8Array(2048 * 2048 * 4);              // the paths-and-roads picture's pixels (see composePathRoad)
+// THE STREET LAMPS' LIGHT (src/objects/lampLight.js): every lamp's light in one picture of the ground round them, read by
+// the buildings, props, rocks, plants and the lawn where each pixel stands; built in lampsFrame (again when a lamp moves)
+const LAMPU = makeLampUniforms();
 const TOWN = { layout: normaliseTown(savedTown() || TOWN_DEFAULT), Hpre: null, block: null, road: null, canvas: document.createElement('canvas'), village: null };
 // THE TOWN'S PAVING (src/objects/stones.js, tuned in the Stone Lab): irregular stones, one per scattered point, so
 // nothing repeats and a road's edge is a ragged row of whole stones. Painted in the ground's shader everywhere, and
@@ -1119,7 +1123,7 @@ function placeTrees() {
   const species = treeForest && !FOREST.rebake ? treeForest.species : TREE_SPECIES.map(sp => low(sp) || (shaped(sp)   // keeps the baked atlases unless the atlas settings changed
     ? { ...sp, soften: LEAF.soften, shape: { lump: LEAF.lump, mix: LEAF.mix, dark: LEAF.dark, tip: LEAF.tip, olive: LEAF.olive, branchDark: LEAF.branchDark, under: LEAF.under, glow: LEAF.glow } } : { ...sp }));
   FOREST.rebake = false; freshPicks(species);
-  treeForest = new Forest(renderer, scene, { species, shadows: SHADOW.on, detail: FOREST.detail, grid: FOREST.grid, cell: FOREST.cell, imposterAt: FOREST.imposterAt, band: FOREST.band, ahead: FOREST.ahead, spread: FOREST.spread, sunDir: SUN_DIR, heightAt, nearCap: 600, shadowEdge: { at: U.shadowAt, range: U.shadowRange, from: U.edgeFrom, to: U.edgeTo, shade: U.edgeShade, jitter: U.edgeJitter },
+  treeForest = new Forest(renderer, scene, { species, lamps: LAMPU, shadows: SHADOW.on, detail: FOREST.detail, grid: FOREST.grid, cell: FOREST.cell, imposterAt: FOREST.imposterAt, band: FOREST.band, ahead: FOREST.ahead, spread: FOREST.spread, sunDir: SUN_DIR, heightAt, nearCap: 600, shadowEdge: { at: U.shadowAt, range: U.shadowRange, from: U.edgeFrom, to: U.edgeTo, shade: U.edgeShade, jitter: U.edgeJitter },
     fixed: [...trees.filter(([x, , z]) => keepWild('tree', x, z)).map(([x, , z, s]) => { const [sp, tint] = pickTree(x, z, species); return { x, z, sp, scale: s, tint: species[sp].tint === false ? undefined : tint }; }), ...townTrees(species), ...plantedTrees(species)] });
   treeForest.group.visible = $('treesOn').checked;
   $('landInfo').textContent = `${trees.length.toLocaleString()} trees`;
@@ -1190,7 +1194,7 @@ function coverGround(x, z) {
 // THE LAWN: short grass tufts on the bare ground near you (src/objects/lawn.js, placed by lawnSpots), the
 // grass's own colour, darkened by the land's shade; laid with the plants
 const LAWN = { ...TS.lawn, count: 0 };
-const lawn = makeLawn({ cap: 90000, shade: { shadeMap: U.shadeMap, landSize: U.landSize, hillShade: U.hillShade, aoShade: U.aoShade, treeShade: U.treeShade } });
+const lawn = makeLawn({ cap: 90000, shade: { shadeMap: U.shadeMap, landSize: U.landSize, hillShade: U.hillShade, aoShade: U.aoShade, treeShade: U.treeShade }, lamps: LAMPU });
 scene.add(lawn.mesh);
 // THE COVER MAP (512 x 512 over the land, a pixel 3 m): what grows at each spot as one colour and a thickness,
 // for the ground shader to paint past where the plants end: the winning patch kind's colour (each kind's
@@ -1345,7 +1349,7 @@ function makePlantTool() {
   Object.entries(TOWN_ASSETS).forEach(([key, A], i) => kinds.push({ id: PLANT.BUILD0 + i, name: A.name || key, group: 'Buildings', town: 'model:' + key }));
   PROP_KINDS.forEach((P, i) => kinds.push({ id: PLANT.PROP0 + i, name: P.name || P.kind, group: 'Props', town: 'prop:' + P.kind }));
   // the placed plants' look: the land's plant material, swaying in the same breeze (each kind its own height)
-  const materials = COVER.parts.map((g, k) => { g.computeBoundingBox(); const m = COVER.material.clone(); m.onBeforeCompile = COVER.material.onBeforeCompile; m.customProgramCacheKey = COVER.material.customProgramCacheKey; return swayMaterial(m, Math.max(0.05, g.boundingBox.max.y), KIND_INFO[k].lit ? 0.45 : 1, '-placed'); });
+  const materials = COVER.parts.map((g, k) => { g.computeBoundingBox(); const m = COVER.material.clone(), own = COVER.material.onBeforeCompile; m.onBeforeCompile = (sh, r) => { own(sh, r); Object.assign(sh.uniforms, LAMPU); sh.fragmentShader = lampStandard(sh.fragmentShader); }; m.customProgramCacheKey = () => COVER.material.customProgramCacheKey() + '-lamps'; return swayMaterial(m, Math.max(0.05, g.boundingBox.max.y), KIND_INFO[k].lit ? 0.45 : 1, '-placed'); });
   const parts = [...COVER.parts], mats = [...materials];
   shapes.forEach((g, i) => { parts[PLANT.ROCK0 + i] = g; mats[PLANT.ROCK0 + i] = landShaded(new THREE.MeshStandardMaterial({ color: ROCK_TEX ? 0xffffff : 0x8d8a84, roughness: 0.92, flatShading: true }), ROCK_TEX ? ROCK_TEX[i % 2] : null); });
   let relay = 0;
@@ -1468,7 +1472,8 @@ function stoneShapes() {
 // wraps a lumpy stone without stretching and stays put on it
 function landShaded(m, rock = null) {
   m.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, { shadeMap: U.shadeMap, landSize: U.landSize, hillShade: U.hillShade, aoShade: U.aoShade, treeShade: U.treeShade });
+    Object.assign(sh.uniforms, { shadeMap: U.shadeMap, landSize: U.landSize, hillShade: U.hillShade, aoShade: U.aoShade, treeShade: U.treeShade }, LAMPU);
+    sh.fragmentShader = lampStandard(sh.fragmentShader);                // (the street lamps' light)
     if (rock) {
       sh.uniforms.rockMap = { value: rock };
       sh.vertexShader = 'varying vec3 vRockP; varying vec3 vRockN;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvRockP = position; vRockN = normal;');
@@ -1615,7 +1620,7 @@ function placeCover(ready = null) {
   }
   if (coverForest) { scene.remove(coverForest.group); for (const b of coverForest.built) { b.imposter.geometry.dispose(); b.meshes.forEach(m => m.dispose()); } }
   const species = coverForest ? coverForest.species : COVER.plantSp;
-  coverForest = new Forest(renderer, scene, { species, shadows: SHADOW.on && TS.shadow.cover, fixed, heightAt, imposterAt: COVER.near, band: COVER.near * COVER.fade, ahead: 0.5, spread: FOREST.spread, sunDir: SUN_DIR, nearCap: 12000, wind: true,
+  coverForest = new Forest(renderer, scene, { species, lamps: LAMPU, shadows: SHADOW.on && TS.shadow.cover, fixed, heightAt, imposterAt: COVER.near, band: COVER.near * COVER.fade, ahead: 0.5, spread: FOREST.spread, sunDir: SUN_DIR, nearCap: 12000, wind: true,
     shadowEdge: { at: U.shadowAt, range: U.shadowRange, from: U.edgeFrom, to: U.edgeTo, shade: U.plantShade, jitter: U.edgeJitter } });   // (the plants ease their shadows at the square's edge too: their own even shade, 0.8: what three meadows' real shadows came to, 0.76-0.87)   // (Jacob's thickness puts ~7,000 within 60 m)
   calmCover(); placeLawn(); bakeCoverMap();
   $('coverInfo').textContent = `${placed.toLocaleString()} plants of 16 kinds: meshes to ${COVER.near} m, imposters beyond (atlases bake over the first seconds)` + (LAWN.count ? ` · ${LAWN.count.toLocaleString()} lawn tufts (${(LAWN.count * lawn.trisPerTuft / 1e6).toFixed(2)} M triangles) out to ${LAWN.radius} m` : '');
@@ -1633,10 +1638,10 @@ const PAVE_VS = 'uniform vec3 eyePos; uniform float paveLod; uniform vec3 stoneG
 // the spot (R) takes the sun's light only, as on the ground and the plants, so a town the sun has left behind the ridge
 // goes into the sky's light with the ground round it instead of glowing in a sun it can't see. Any lit material: its world
 // position from its view position (no new varyings). sunShadeK: the Hill shadows setting, 0 until the shade is baked.
-const SUNSHADE_U = { shadeMap: U.shadeMap, landSize: U.landSize, sunShadeK: { value: 0 } };
-const sunShadeFrag = (fs) => 'uniform sampler2D shadeMap; uniform float landSize, sunShadeK;\n' + fs.replace('#include <lights_fragment_begin>', `float landSunAt = 1.0;
+const SUNSHADE_U = { shadeMap: U.shadeMap, landSize: U.landSize, sunShadeK: { value: 0 }, ...LAMPU };   // (and the street lamps' light: lampStandard)
+const sunShadeFrag = (fs) => lampStandard('uniform sampler2D shadeMap; uniform float landSize, sunShadeK;\n' + fs.replace('#include <lights_fragment_begin>', `float landSunAt = 1.0;
   if (sunShadeK > 0.0) { vec3 wpos = cameraPosition + (-vViewPosition) * mat3(viewMatrix); landSunAt = mix(1.0, texture2D(shadeMap, wpos.xz / landSize + 0.5).r, sunShadeK); }
-  ` + THREE.ShaderChunk.lights_fragment_begin.replace('getDirectionalLightInfo( directionalLight, directLight );', 'getDirectionalLightInfo( directionalLight, directLight ); directLight.color *= landSunAt;'));
+  ` + THREE.ShaderChunk.lights_fragment_begin.replace('getDirectionalLightInfo( directionalLight, directLight );', 'getDirectionalLightInfo( directionalLight, directLight ); directLight.color *= landSunAt;')));
 // every lit material in the scene with no shader patch of its own gets it (buildings and props load as they come: looked
 // for again now and then)
 function sunShadeAll() {
@@ -2175,17 +2180,28 @@ function lampTexture(core) { const c = document.createElement('canvas'); c.width
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
 function lampsFrame() {
   const on = THREE.MathUtils.smoothstep(-DAY.elev, -3, 6);   // (from the sun 3° up to 6° down)
+  // their light on what stands round them (LAMPU): the picture painted again when a lamp has been put down, moved, sized
+  // or taken away (looked at every tenth frame). A lamp's light hangs 3.17 of its size up (townProps.js lightAt) and
+  // reaches as far as its pool on the ground, 4.5 of its size
+  if (TOWN.village && ((LAMP.tick = (LAMP.tick || 0) + 1) % 10 === 1)) {
+    const lamps = TOWN.village.layout.items.filter((i) => i.type === 'prop' && i.kind === 'lamp').map((i) => ({ x: i.x, z: i.z, y: heightAt(i.x, i.z) + (i.y || 0) + 3.17 * i.size, reach: 4.5 * i.size, strength: 1 }));
+    const sig = lamps.map((l) => `${l.x},${l.z},${l.y.toFixed(2)},${l.reach}`).join('|');   // (the light's own height in it: the land reshaped or levelled under a lamp moves its light too)
+    if (sig !== LAMP.mapSig) { LAMP.mapSig = sig; buildLampMap(LAMPU, lamps); }
+  }
+  LAMPU.lampOn.value = on;
   if (!LAMP.warm && LAMP.things.length && (LAMP.frames = (LAMP.frames || 0) + 1) > 3) { LAMP.warm = true; LAMP.on = -1; }   // (a few frames drawn, then left to the time of day)
   if (!LAMP.halo) {
     LAMP.halo = new THREE.SpriteMaterial({ map: lampTexture(1), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 });
+    LAMP.glow = new THREE.SpriteMaterial({ map: lampTexture(0.3), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 });   // (the soft wide glow round the head)
     LAMP.pool = new THREE.MeshBasicMaterial({ map: lampTexture(0.5), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   }
   if (Math.abs(on - LAMP.on) > 1e-3 || DAY.sweep % 90 === 1) {
-    LAMP.on = on; LAMP.halo.opacity = on * 0.85; LAMP.pool.opacity = on * 0.8;
+    LAMP.on = on; LAMP.halo.opacity = on * 0.85; LAMP.glow.opacity = on * 0.4; LAMP.pool.opacity = on * 0.8;
     const none = () => {};                                               // (the glow isn't a thing: clicks and the Build tool's placing go through it)
     if (TOWN.village) TOWN.village.group.traverse((o) => {
       if (o.userData.kind === 'lamp' && !o.userData.lit) { o.userData.lit = true; const at = o.userData.lightAt || [0, 3.17, 0];
         const h = new THREE.Sprite(LAMP.halo); h.position.set(at[0], at[1], at[2]); h.scale.set(1.6, 1.6, 1); h.raycast = none; o.add(h);
+        const gl = new THREE.Sprite(LAMP.glow); gl.position.set(at[0], at[1], at[2]); gl.scale.set(5, 5, 1); gl.raycast = none; o.add(gl); LAMP.things.push(gl);
         const d = new THREE.Mesh(new THREE.PlaneGeometry(9, 9, 12, 12).rotateX(-Math.PI / 2), LAMP.pool); d.position.set(at[0], 0, at[2]); d.renderOrder = 2; d.raycast = none; d.userData.pool = true; o.add(d); LAMP.things.push(h, d); }
       // the pool lies on the ground round the lamp, not flat at its foot (laid again when the lamp has moved)
       if (o.userData.pool && o.parent) { const lamp = o.parent; lamp.updateWorldMatrix(true, true); const wp = lamp.getWorldPosition(LAMP_V), key = `${wp.x.toFixed(2)},${wp.z.toFixed(2)},${wp.y.toFixed(2)}`;
@@ -2234,4 +2250,4 @@ renderer.setAnimationLoop(() => {
   if (BEAMS.on && DAY.elev > -1 && BEAMS.fx) { BEAMS.fx.render(camera, SUN_NOW, { ...BEAMS.opts, strength: BEAMS.strength * beamsAmount(DAY.elev), color: DL.sun }); }
   drawAtlas();
 });
-if (Q.has('probe')) Object.assign(window, { renderer, __day: { set: (o) => { Object.assign(DAY, o); DAY.dirty = true; }, BEAMS, get baking() { return !!DAY.bake; }, get elev() { return DAY.elev; }, DAY, DL, FOG_DIR, sky, hemi, sun }, __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest], __plant: () => PLANT, drawPaths });
+if (Q.has('probe')) Object.assign(window, { renderer, __day: { set: (o) => { Object.assign(DAY, o); DAY.dirty = true; }, BEAMS, get baking() { return !!DAY.bake; }, get elev() { return DAY.elev; }, DAY, DL, FOG_DIR, sky, hemi, sun }, __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest], __plant: () => PLANT, drawPaths, __lamps: LAMPU });
