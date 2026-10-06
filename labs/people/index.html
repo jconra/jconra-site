@@ -1,0 +1,89 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>People Lab — jconra</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #a9c8e4; font-family: system-ui, sans-serif; }
+  canvas { position: fixed; inset: 0; display: block; }
+  #panel { position: fixed; top: 10px; left: 10px; width: 260px; max-height: calc(100vh - 20px); overflow-y: auto;
+    background: rgba(16,22,28,0.86); color: #dbe6ee; border: 1px solid #2b3a47; border-radius: 10px; padding: 12px 14px; font-size: 12px; }
+  #panel h1 { font-size: 13px; margin: 0 0 8px; letter-spacing: .5px; color: #8fd0ff; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin: 8px 0; }
+  .seg button.on { background: #2a6c9a; border-color: #4a9fe0; color: #fff; }
+  button { background: #22303c; color: #cfe3f2; border: 1px solid #37505f; border-radius: 6px; padding: 6px 8px; cursor: pointer; font-size: 11px; }
+  button:hover { background: #2c3e4d; }
+  .hint { color: #8aa0b0; font-size: 11px; line-height: 1.45; margin-top: 8px; }
+  label { display: flex; gap: 6px; align-items: center; margin: 6px 0; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.158.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<div id="panel">
+  <h1>PEOPLE LAB</h1>
+  <div>The townsfolk, each in colours of their own. Top row as made, bottom row dressed.</div>
+  <div class="seg" id="clips"></div>
+  <button id="again" style="width:100%">New colours</button>
+  <label><input type="checkbox" id="kids"> Children (bottom row)</label>
+  <div class="hint">Characters: Quaternius, Ultimate Modular Characters (CC0). The rare ones (king, witch, knight, astronaut, sci-fi) keep their own clothes.</div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { loadPeople, randomLook, Person } from '../../src/objects/people.js';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.shadowMap.enabled = true; document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0xa9c8e4);
+const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 500); camera.position.set(0, 3.2, 26);
+const controls = new OrbitControls(camera, renderer.domElement); controls.target.set(0, 1, 0); controls.update();
+scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x6b5a44, 0.9));
+const sun = new THREE.DirectionalLight(0xfff1dc, 2.4); sun.position.set(-8, 14, 10); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -20, right: 20, top: 8, bottom: -8 }); sun.shadow.camera.updateProjectionMatrix(); scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 40), new THREE.MeshStandardMaterial({ color: 0x6f7d4e, roughness: 1 })); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+
+const lib = await loadPeople();
+let seed = 7; const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+const asMade = (k) => ({ skin: new THREE.Color().fromArray(k.skin || [0.62, 0.42, 0.24]), hair: new THREE.Color().fromArray(k.hair || [0.07, 0.03, 0.01]),   // (the astronaut shows neither)
+   turn: [0, 0, 0, 0], sat: [1, 1, 1, 1], light: [1, 1, 1, 1] });
+let people = [];
+function build() {
+  for (const p of people) { scene.remove(p.root); p.dispose(); }
+  people = [];
+  const n = lib.kinds.length, gap = 2.1;
+  lib.kinds.forEach((k, i) => {
+    for (const row of [0, 1]) {
+      const p = new Person(lib, k, { look: row ? randomLook(rand, k) : asMade(k), shadows: true, kid: row === 1 && document.getElementById('kids').checked });
+      p.root.position.set((i - (n - 1) / 2) * gap, 0, row ? 3 : 0); scene.add(p.root); people.push(p);
+    }
+  });
+  play(window.clip || 'Idle');
+}
+function play(name) { window.clip = name; for (const p of people) p.play(name, { fade: 0.2 }); for (const b of document.querySelectorAll('#clips button')) b.classList.toggle('on', b.textContent === name); }
+for (const c of ['Idle', 'Idle_Neutral', 'Walk', 'Run', 'Wave', 'Interact']) { const b = document.createElement('button'); b.textContent = c; b.onclick = () => play(c); document.getElementById('clips').appendChild(b); }
+document.getElementById('again').onclick = () => { seed = (seed * 7 + 13) % 2147483647; build(); };
+document.getElementById('kids').onchange = build;
+build();
+
+// how fast a clip walks (m/s at its own speed): the planted foot's speed backward, and which way the body faces
+window.measure = (body, name) => {
+  const k = lib.kinds.find((q) => q.body === body), p = new Person(lib, k); scene.add(p.root); p.play(name, { fade: 0 });
+  const foot = p.mesh.skeleton.bones.find((b) => b.name === 'FootL'), dur = p.actions[name].getClip().duration, N = 200, v = new THREE.Vector3(), s = [];
+  for (let i = 0; i <= N; i++) { p.mixer.setTime(dur * i / N); p.root.updateMatrixWorld(true); foot.getWorldPosition(v); s.push(v.clone()); }
+  const minY = Math.min(...s.map((q) => q.y)), dz = [];
+  for (let i = 1; i <= N; i++) if (s[i].y < minY + 0.02 && s[i - 1].y < minY + 0.02) dz.push((s[i].z - s[i - 1].z) / (dur / N));
+  dz.sort((a, b) => a - b); scene.remove(p.root);
+  return { name, body, duration: dur, plantedSpeed: dz.length ? +dz[dz.length >> 1].toFixed(3) : null, planted: dz.length, footZ: [+Math.min(...s.map((q) => q.z)).toFixed(3), +Math.max(...s.map((q) => q.z)).toFixed(3)] };
+};
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => { const dt = clock.getDelta(); for (const p of people) p.update(dt); controls.update(); renderer.render(scene, camera); });
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+Object.assign(window, { scene, camera, controls, lib, people, play, build, THREE, ready: true });
+</script>
+</body>
+</html>

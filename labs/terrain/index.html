@@ -64,6 +64,10 @@
       <div class="row"><label for="paveBuild">Paving<small>irregular stones that never repeat (tuned in the Stone Lab): painted everywhere, and this build in 3D near you</small></label><select id="paveBuild"></select></div>
       <div class="btns"><button type="button" id="pavePaste">Paste Stone Lab settings</button></div>
       <p class="note" id="paveNote"></p>
+      <label class="check" for="folkOn"><input id="folkOn" type="checkbox"> Townsfolk <small>people going about the town: from place to place (doors, stalls, benches, the fountain, gardens, bridges, spots along the roads), stopping to talk with whoever is there, going indoors now and then, and home at night</small></label>
+      <div class="row"><label for="folkCount">How many</label><output id="folkCountOut"></output><input id="folkCount" type="range" min="0" max="40" step="1"></div>
+      <div class="row"><label for="folkSize">How big <small>against a real grown-up (1.85 m); the town's props are made bigger than life</small></label><output id="folkSizeOut"></output><input id="folkSize" type="range" min="1" max="2.5" step="0.05"></div>
+      <p class="note" id="folkNote"></p>
     </details>
     <label class="check" for="splitOn"><input id="splitOn" type="checkbox"> Split screen</label>
     <div class="btns" id="views"></div>

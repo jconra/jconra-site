@@ -28,6 +28,8 @@ import { textHash } from '../../src/objects/changes.js';
 import { makeLampUniforms, buildLampMap, lampStandard } from '../../src/objects/lampLight.js';
 import { sunDirection, moonDirection, elevationOf, daylightAt, newDaylight } from '../../src/objects/daylight.js';
 import { Sunbeams } from '../../src/objects/sunbeams.js';
+import { loadPeople } from '../../src/objects/people.js';
+import { Townsfolk, walkGridSteps } from '../../src/objects/townsfolk.js';
 
 // DIRECTIONAL HAZE (for the time of day): three's fog is one colour; here every material's fog leans toward the sky's own
 // colour the way that pixel looks: warm toward a low sun, cool away from it, by the same amount as the sky dome
@@ -85,6 +87,7 @@ const Q = new URLSearchParams(location.search);
 // `lawn`: the short lawn grass on the bare ground, out to `radius` m, `density` tufts a square metre (off on potato)
 // `shadow`: real sun shadows (a shadow map) from trees, stones and, on gaming, the plants, over
 // `range` m round where you look; past it (and on potato) the baked shade does the job.
+// `people`: how many townsfolk walk about the town (src/objects/townsfolk.js)
 // `checks.beamsOn`: sunbeams from a low sun (src/objects/sunbeams.js), drawn over the finished frame (off on potato:
 // a full-screen copy and add a frame; the checkbox can still turn them on)
 // Potato is aimed at a machine with no graphics card (a thin client: every pixel drawn by the
@@ -93,11 +96,11 @@ const Q = new URLSearchParams(location.search);
 // flat colours (each picture's average) instead of read from the pictures, one noise read where
 // there were four.
 const TIER_SET = {
-  potato: { ratio: 0.5, lite: true, paving3D: false, coverFarX: 1.8, lawn: { radius: 0, density: 0 }, stones: 1500, treeShare: 0.45, shadow: null, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 2900, near: 0, radius: 90 },
+  potato: { ratio: 0.5, lite: true, paving3D: false, people: 6, coverFarX: 1.8, lawn: { radius: 0, density: 0 }, stones: 1500, treeShare: 0.45, shadow: null, forest: { imposterAt: 0, band: 0, grid: 8, cell: 192, detail: 'sparse' }, cover: { count: 2900, near: 0, radius: 90 },
             u: { wWaveOn: 0, stampFar: 12 }, checks: { stampOn: false, hexOn: false, farOn: false, wWaveOn: false, cloudsOn: false, beamsOn: false } },
-  normal: { ratio: 1.5, paving3D: true, coverFarX: 3.1, lawn: { radius: 40, density: 1 }, stones: 14000, shadow: { range: 80, size: 1024, cover: false }, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 7000, near: 70, radius: 140 },
+  normal: { ratio: 1.5, paving3D: true, people: 14, coverFarX: 3.1, lawn: { radius: 40, density: 1 }, stones: 14000, shadow: { range: 80, size: 1024, cover: false }, forest: { imposterAt: 150, band: 120, grid: 12, cell: 192, detail: 'sparse' }, cover: { count: 7000, near: 70, radius: 140 },
             u: { wWaveOn: 1, stampFar: 30 }, checks: { stampOn: true, hexOn: true, farOn: false, wWaveOn: true, cloudsOn: true, beamsOn: true } },
-  gaming: { ratio: 2, paving3D: true, coverFarX: 3.1, lawn: { radius: 60, density: 1 }, stones: 26000, shadow: { range: 150, size: 2048, cover: true }, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 30000, near: 100, radius: 290 },
+  gaming: { ratio: 2, paving3D: true, people: 22, coverFarX: 3.1, lawn: { radius: 60, density: 1 }, stones: 26000, shadow: { range: 150, size: 2048, cover: true }, forest: { imposterAt: 260, band: 140, grid: 14, cell: 192, detail: 'coarse' }, cover: { count: 30000, near: 100, radius: 290 },
             u: { wWaveOn: 1, stampFar: 73 }, checks: { stampOn: true, hexOn: true, farOn: true, wWaveOn: true, cloudsOn: true, beamsOn: true } },
 };
 // the tier is picked on a throwaway context first, so the real one can be made without smoothing
@@ -689,6 +692,7 @@ function* landSteps({ light = false, pads = true } = {}) {
   if (COVER.parts) { if (light && COVER.at && coverForest && coverForest.ready) COVER.job = moveCover(COVER.at.clone()); else placeCover(); }   // (light: laid again a few ms a frame, the old plants up meanwhile)
   if (same && shadeTex) { DAY.baked = SUN_DIR.clone(); DAY.bake = sunShadeSteps(SUN_DIR, 0.4); }   // (after the slices above, not alongside them)
   TOWN.sig = townSigs(layout);
+  MAPS.gen = (MAPS.gen || 0) + 1;                                       // (the land made again: the townsfolk's walking grid follows)
   if (TOWN.village) { TOWN.village.sync(); if (TOWN.editor) TOWN.editor.markSel(); }   // the town stands on the land as it now is
   if (PLANT.tool) { PLANT.tool.syncItems(); PLANT.tool.group.visible = true; if (PLANT.tool.sel) PLANT.tool.select(PLANT.tool.sel); buildFences(); }   // and the placed plants and fences
 }
@@ -1424,6 +1428,7 @@ function buildFences() {
     const kept = at.map(([x, z]) => strokes.some((c, ci) => ci > si && c.mode === 'clear' && c.kind === PLANT.FENCE && inStroke(c, x, z)) ? null : [x, heightAt(x, z), z]);   // (taken down by Clear with a fence chosen)
     kept.forEach((p, i) => { if (!p) return; posts.push([p, h]); if (kept[i + 1]) rails.push([p, kept[i + 1], h]); });
   });
+  FENCE.rails = rails;                                                   // (the townsfolk's walking grid keeps them out)
   if (!posts.length) return;
   FENCE.mat = FENCE.mat || landShaded(new THREE.MeshStandardMaterial({ color: 0x7a5a3c, roughness: 0.92 }), null);
   const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), c = new THREE.Color(), dir = new THREE.Vector3();
@@ -1770,6 +1775,134 @@ function townRebuild() {
 TOWN.editor = new VillageEditor({ village: TOWN.village, camera, controls, dom: renderer.domElement, container: document.createElement('div'), groundAt, scene,   // (its panel is never shown: the Build bar edits the town now, through it)
   roadCanvas: TOWN.canvas, roadChanged: (rect) => { composePathRoad(rect); paveLater(); }, changed: () => townRebuild(), defaultLayout: TOWN_DEFAULT });
 
+// THE TOWNSFOLK (src/objects/townsfolk.js, their bodies people.js): people going about the town on a walking grid made from
+// the land and the town: what the ground is (walkGround: road, footpath, grass, water, the slope), what stands on it (the
+// buildings, props, fences, town trees, placed trees and rocks: walkWalls), the bridges' decks, and the places to go
+// (walkPlaces: doors, stalls, benches, the fountain, the playground, gardens, bridges, signposts, and spots along the roads
+// and paths to wander to). Made again a slice a frame a little after the town or the planting changes. Lit as everything
+// else (the hill's shadow, the lamps: FOLK_SHADE); how many by the tier. size: how big they are against a real grown-up (the
+// town's props are sized up from life, benches 1.7 times, lamps 2: so the people too, as the benches, Jacob 2026-10-06)
+const FOLK = { on: TS.people > 0, count: TS.people, size: 1.7, lib: null, town: null, grid: null, job: null, sig: '', due: 0, tick: 0, decks: new Map(), deckList: [], deckWait: new Map(), deckBusy: false };
+const FOLK_SHADE = (sh) => { Object.assign(sh.uniforms, SUNSHADE_U); sh.fragmentShader = sunShadeFrag(sh.fragmentShader); };
+const atLocal = (it, lx, lz) => { const a = it.rot * Math.PI / 180, c = Math.cos(a), s = Math.sin(a); return [it.x + c * lx + s * lz, it.z - s * lx + c * lz]; };   // (a thing's own x, z to the world's, as the village turns it)
+const faceLocal = (it, lx, lz) => { const a = it.rot * Math.PI / 180, c = Math.cos(a), s = Math.sin(a); return Math.atan2(c * lx + s * lz, -s * lx + c * lz); };
+// a step's cost (tenths): road 10, footpath 11, grass 18-26 (less near a path), steeper costs more; 0 in the water or up a slope
+function walkGround(x, z) {
+  const P = 2048, i = Math.floor((x + SIZE / 2) / SIZE * P), j = Math.floor((z + SIZE / 2) / SIZE * P);
+  if (i < 0 || j < 0 || i >= P || j >= P || waterAt(x, z) > 0.15) return 0;
+  const o = (j * P + i) * 4, road = Math.max(PATHROAD[o + 2], PATHROAD[o + 3]) / 255, path = PATHROAD[o] / 255, near = PATHROAD[o + 1] / 255;
+  const sl = slopeAt(Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))));
+  if (sl > 0.8) return 0;                                              // (steeper than ~39°: nobody walks up that)
+  return (road > 0.5 ? 10 : path > 0.45 ? 11 : 26 - 8 * near) * (1 + 2 * sl);
+}
+function walkWalls(L, x0, z0, x1, z1) {
+  const walls = [], rad = (it) => it.rot * Math.PI / 180;
+  for (const it of L.items) {
+    const { w, d } = footprintOf(it);
+    if (it.type === 'model') { if (it.kind === 'bridge') continue; const k = it.kind === 'playground' ? 0.85 : 1; walls.push({ rect: { x: it.x, z: it.z, w: w * k + 0.3, d: d * k + 0.3, rot: rad(it) } }); }
+    else if (it.type === 'prop') {
+      if (it.kind === 'lamp' || it.kind === 'signpost') walls.push({ disc: { x: it.x, z: it.z, r: 0.3 } });
+      else if (it.kind === 'flowerBed') walls.push({ disc: { x: it.x, z: it.z, r: w / 2 } });
+      else walls.push({ rect: { x: it.x, z: it.z, w: w + 0.3, d: d + 0.3, rot: rad(it) } });   // (padded: a thin one at a slant could cover no cell's centre)
+    } else walls.push({ disc: { x: it.x, z: it.z, r: 0.6 * it.size } });   // (a town tree's trunk)
+  }
+  for (const [p, q] of FENCE.rails || []) walls.push({ line: [p[0], p[2], q[0], q[2]], w: 0.3 });
+  if (PLANT.tool) for (const it of PLANT.tool.planting.items) {
+    if (SORT.tree(it.kind)) walls.push({ disc: { x: it.x, z: it.z, r: 0.6 } });
+    else if (SORT.rock(it.kind)) walls.push({ disc: { x: it.x, z: it.z, r: 0.45 * Math.max(it.sx || 1, it.sz || 1) } });
+  }
+  for (const t of trees) if (t[0] > x0 && t[0] < x1 && t[2] > z0 && t[2] < z1 && keepWild('tree', t[0], t[2])) walls.push({ disc: { x: t[0], z: t[2], r: 0.5 * t[3] } });   // (the trees as drawn: placeTrees)
+  if (PLANT.tool) for (const q of paintedPlants(paintedOnly(PLANT.tool, 'trees'), null, { sizeOf: () => 1 })) if (SORT.tree(q.sp) && q.x > x0 && q.x < x1 && q.z > z0 && q.z < z1 && paintable(q)) walls.push({ disc: { x: q.x, z: q.z, r: 0.5 * q.scale } });
+  return walls;
+}
+// the bridges' decks: open whatever is under them, a little past each end onto the banks
+const walkDecks = (L) => L.items.filter((i) => i.type === 'model' && i.kind === 'bridge').map((it) => { const { w, d } = footprintOf(it); return { x: it.x, z: it.z, w: w * 0.55, d: d + 1.5, rot: it.rot * Math.PI / 180 }; });
+// the places to go, each with the way to face there; every prop's front is its +z
+function walkPlaces(L) {
+  const S = FOLK.size, out = [], add = (it, lx, lz, fx, fz, kind, cap = 1) => { const [x, z] = atLocal(it, lx, lz); out.push({ x, z, face: faceLocal(it, fx, fz), kind, cap }); };
+  for (const it of L.items) {
+    const { w, d } = footprintOf(it);
+    if (it.type === 'model') {
+      if (it.kind === 'bridge') { add(it, 0.7, 0, 1, 0, 'bridge'); add(it, -0.7, 0, -1, 0, 'bridge'); continue; }   // (half way over, looking out over the water)
+      if (it.kind === 'fountain' || it.kind === 'playground') { const n = it.kind === 'fountain' ? 6 : 8, r = Math.max(w, d) / 2 + (it.kind === 'fountain' ? 0.9 : 0.4) * S;
+        for (let q = 0; q < n; q++) { const a = q / n * Math.PI * 2, lx = Math.sin(a) * r, lz = Math.cos(a) * r; add(it, lx, lz, -lx, -lz, it.kind === 'fountain' ? 'fountain' : 'play'); } continue; }
+      add(it, 0, d / 2 + 0.8 * S, 0, -1, 'door', 4);                    // (in at the front; the gaps a person stands off a thing: their size)
+    } else if (it.type === 'prop') {
+      if (it.kind === 'bench') { add(it, -w / 4, d / 2 + 0.35 * S, 0, 1, 'bench'); add(it, w / 4, d / 2 + 0.35 * S, 0, 1, 'bench'); }
+      else if (it.kind === 'stall') { add(it, -w / 4, d / 2 + 0.6 * S, 0, -1, 'stall'); add(it, w / 4, d / 2 + 0.6 * S, 0, -1, 'stall'); add(it, 0, -d / 2 - 0.5 * S, 0, 1, 'vendor'); }
+      else if (it.kind === 'easel') add(it, 0, d / 2 + 0.5 * S, 0, -1, 'easel');
+      else if (it.kind === 'picnicTable') { add(it, w / 2 + 0.4 * S, 0, -1, 0, 'picnic'); add(it, -w / 2 - 0.4 * S, 0, 1, 0, 'picnic'); }
+      else if (it.kind === 'planter') add(it, 0, d / 2 + 0.45 * S, 0, -1, 'garden');
+      else if (it.kind === 'flowerBed') { add(it, 0, d / 2 + 0.35 * S, 0, -1, 'garden'); add(it, 0, -d / 2 - 0.35 * S, 0, 1, 'garden'); }
+      else if (it.kind === 'signpost') add(it, 0.7 * S, 0.7 * S, -1, -1, 'sign');
+    }
+  }
+  // spots to wander to along the roads (every 28 m) and the footpaths (every 40 m; those out past the town are dropped
+  // by the grid), facing along the way
+  const along = (pts, every) => { let left = every / 2;
+    for (let i = 1; i < pts.length; i++) { const [ax, az] = pts[i - 1], [bx, bz] = pts[i], Lg = Math.hypot(bx - ax, bz - az); if (Lg < 1e-6) continue; let d = left;
+      while (d <= Lg) { out.push({ x: ax + (bx - ax) * d / Lg, z: az + (bz - az) * d / Lg, face: Math.atan2(bx - ax, bz - az), kind: 'spot', cap: 3 }); d += every; } left = d - Lg; } };
+  for (const r of L.roads) if (r.mat !== 'erase' && r.pts.length > 1) along(r.pts, 28);
+  if (PLANT.tool) for (const st of PLANT.tool.planting.strokes) if (st.kind === PLANT.PATH && st.mode !== 'clear' && st.pts.length > 1) along(st.pts, 40);
+  return out;
+}
+// the walking grid: over the town's things and 30 m round, on the paths-and-roads picture's own pixels (0.78 m)
+function folkGridSteps() {
+  const L = TOWN.village.layout, cell = SIZE / 2048, m = 30; let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  if (!L.items.length) return null;                                     // (no town: nowhere to walk)
+  for (const it of L.items) { x0 = Math.min(x0, it.x); x1 = Math.max(x1, it.x); z0 = Math.min(z0, it.z); z1 = Math.max(z1, it.z); }
+  const snap = (v) => Math.floor((v + SIZE / 2) / cell) * cell - SIZE / 2;
+  x0 = snap(Math.max(-SIZE / 2, x0 - m)); z0 = snap(Math.max(-SIZE / 2, z0 - m)); x1 = Math.min(SIZE / 2, x1 + m); z1 = Math.min(SIZE / 2, z1 + m);
+  return walkGridSteps({ x0, z0, cell, W: Math.ceil((x1 - x0) / cell), H: Math.ceil((z1 - z0) / cell), ground: walkGround, walls: walkWalls(L, x0, z0, x1, z1), decks: walkDecks(L), places: walkPlaces(L) });
+}
+// a bridge's deck: its height along the span (its own z), cast down onto the model once it has loaded (again if it moves)
+function deckOf(it) {
+  const o = TOWN.village.objs.get(it.id); if (!o || !o.inner) return null;
+  const key = `${it.x},${it.z},${it.rot},${it.size},${it.y || 0},${o.group.position.y.toFixed(3)}`; let D = FOLK.decks.get(it.id);   // (its height in it: the land reshaped under it)
+  if (D && D.key === key) return D;
+  if (FOLK.deckWait.get(it.id) !== key || FOLK.deckBusy) { FOLK.deckWait.set(it.id, key); return null; }   // (cast once it has stood still a tick, one bridge a tick: 41 rays at the whole model cost ~10 ms)
+  FOLK.deckBusy = true;
+  const { w, d } = footprintOf(it), a = it.rot * Math.PI / 180, n = 40, ys = new Float32Array(n + 1), ray = new THREE.Raycaster(), v = new THREE.Vector3(), down = new THREE.Vector3(0, -1, 0);
+  o.group.updateMatrixWorld(true);
+  for (let q = 0; q <= n; q++) { const [x, z] = atLocal(it, 0, (q / n - 0.5) * d); ray.set(v.set(x, heightAt(x, z) + 30, z), down); const hit = ray.intersectObject(o.inner, true)[0]; ys[q] = hit ? hit.point.y : NaN; }
+  D = { key, x: it.x, z: it.z, c: Math.cos(a), s: Math.sin(a), hw: w * 0.3, hd: d / 2, ys }; FOLK.decks.set(it.id, D); return D;
+}
+// where to stand: the land, a bridge's deck, the 3D paving's stones near the camera
+function folkFloor(x, z) {
+  let y = heightAt(x, z), deck = false;
+  for (const D of FOLK.deckList) { const dx = x - D.x, dz = z - D.z, lx = D.c * dx - D.s * dz, lz = D.s * dx + D.c * dz;
+    if (Math.abs(lx) > D.hw + 0.6 || Math.abs(lz) > D.hd) continue;
+    const t = (lz / D.hd * 0.5 + 0.5) * (D.ys.length - 1), q = Math.min(D.ys.length - 2, Math.floor(t)), f = t - q, h = D.ys[q] * (1 - f) + D.ys[q + 1] * f;
+    if (h === h && h > y) { y = h; deck = true; } }                      // (h === h: not NaN, the ray found the deck there)
+  if (U.pave3D.value && !deck) { const sh = PAVE.builds[PAVE.build], lift = Math.min(0.1, (sh.height || 0) + (sh.dome || 0)), P = 2048, i = Math.floor((x + SIZE / 2) / SIZE * P), j = Math.floor((z + SIZE / 2) / SIZE * P), o = (j * P + i) * 4;
+    if (i >= 0 && j >= 0 && i < P && j < P && Math.max(PATHROAD[o + 2], PATHROAD[o + 3]) > 128) y += lift * (1 - THREE.MathUtils.smoothstep(Math.hypot(x - camera.position.x, z - camera.position.z), PAVE.lod * 0.75, PAVE.lod)); }
+  return y;
+}
+if (FOLK.on) loadPeople().then((lib) => { FOLK.lib = lib; }).catch((e) => console.warn('townsfolk: not loaded', e));
+function folkFrame(dt) {
+  if (!FOLK.lib || !TOWN.village || !PLANT.tool) return;               // (the Build bar's planting first: its paths and fences are in the grid)
+  // now and then: what the grid is made from, looked at for a change (the grid made again 2.5 s after the last one), and the bridges' decks
+  if ((FOLK.tick = (FOLK.tick + 1) % 60) === 1) {
+    const P = PLANT.tool ? PLANT.tool.planting : null, L = TOWN.village.layout;
+    const sig = JSON.stringify([FOLK.size, MAPS.gen, L.items, L.roads.length, P ? [P.strokes.length, P.strokes.length && P.strokes[P.strokes.length - 1].id, P.items.filter((i) => SORT.tree(i.kind) || SORT.rock(i.kind)).map((i) => [i.x, i.z, i.sx, i.sz])] : 0, (FENCE.rails || []).length]);
+    if (sig !== FOLK.sig) { FOLK.sig = sig; FOLK.due = performance.now() + (FOLK.grid ? 2500 : 0); }
+    FOLK.deckBusy = false; FOLK.deckList = L.items.filter((i) => i.type === 'model' && i.kind === 'bridge').map(deckOf).filter(Boolean);
+  }
+  if (!FOLK.job && FOLK.due && performance.now() > FOLK.due && !TOWN.job) { FOLK.due = 0; FOLK.job = folkGridSteps(); FOLK.t0 = performance.now();
+    if (!FOLK.job) { FOLK.grid = null; if (FOLK.town) FOLK.town.group.visible = false; } }   // (an empty town: nobody about until there's one again)
+  if (FOLK.job) { const t0 = performance.now(); let r; while (performance.now() - t0 < 2.5) if ((r = FOLK.job.next()).done) break;
+    if (r && r.done) { FOLK.job = null; FOLK.grid = r.value; FOLK.built = performance.now() - FOLK.t0;
+      if (!FOLK.town) FOLK.town = new Townsfolk({ scene, lib: FOLK.lib, shade: FOLK_SHADE, shadows: SHADOW.on, floorAt: folkFloor, count: FOLK.count, size: FOLK.size });
+      FOLK.town.setGrid(FOLK.grid); FOLK.town.group.visible = FOLK.on;
+      const note = $('folkNote'); if (note) note.textContent = `${FOLK.grid.places.length} places to go${FOLK.grid.dropped ? ` (${FOLK.grid.dropped} out of reach or past the town: left out)` : ''}.`; } }
+  if (FOLK.town && FOLK.on && FOLK.grid) FOLK.town.update(dt, camera, THREE.MathUtils.smoothstep(-DAY.elev, -2, 8));   // (night: from the sun 2° up to 8° down)
+}
+{ const on = $('folkOn'), n = $('folkCount');
+  if (on) { on.checked = FOLK.on; on.addEventListener('change', () => { FOLK.on = on.checked; if (FOLK.on && !FOLK.lib) loadPeople().then((lib) => { FOLK.lib = lib; }); if (FOLK.town) FOLK.town.group.visible = FOLK.on && !!FOLK.grid; }); }
+  if (n) { const go = () => { FOLK.count = +n.value; $('folkCountOut').textContent = n.value; if (FOLK.town) FOLK.town.setCount(FOLK.count); }; n.value = FOLK.count; n.addEventListener('input', go); $('folkCountOut').textContent = n.value; }
+  const sz = $('folkSize'), show = () => { $('folkSizeOut').textContent = `${FOLK.size.toFixed(2)}× (a grown-up ${(1.85 * FOLK.size).toFixed(1)} m)`; };
+  if (sz) { sz.value = FOLK.size; show(); sz.addEventListener('input', () => { FOLK.size = +sz.value; show(); if (FOLK.town) FOLK.town.setSize(FOLK.size); }); } }   // (the places' gaps follow at the grid's next making: the size is in its signature)
+
 // ── views ─────────────────────────────────────────────────────────────────────
 const VIEWS = {
   'Standing': () => { const y = heightAt(0, 40) + 1.7; camera.position.set(0, y, 40); controls.target.set(0, heightAt(0, -60) + 1.2, -60); },
@@ -2093,6 +2226,7 @@ function applyTier(tier) {
   for (const [id, k] of [['fImp', 'imposterAt'], ['fBand', 'band'], ['fGrid', 'grid'], ['fCell', 'cell'], ['fDetail', 'detail']]) set(id, T.forest[k]);
   for (const [id, k] of [['coverNear', 'near'], ['coverRadius', 'radius'], ['coverCount', 'count']]) set(id, T.cover[k]);
   set('stampFar', T.u.stampFar);
+  set('folkCount', T.people);
 }
 function showTier() { $('qTier').value = QUAL.source === 'detected' ? 'auto' : QUAL.tier; $('qWhy').textContent = `${QUAL.tier} (${QUAL.source === 'detected' ? 'picked automatically: ' + QUAL.why : QUAL.why})`; }
 $('qTier').addEventListener('change', e => { const v = e.target.value; if (v === 'auto') { saveTier(null); location.reload(); return; } saveTier(v); QUAL.tier = v; QUAL.source = 'saved'; QUAL.why = 'your choice'; applyTier(v); showTier(); });
@@ -2166,6 +2300,7 @@ function dayFrame(dt) {
   if (!DAY.bake && DAY.baked && shadeTex && DAY.baked.angleTo(SUN_DIR) > 0.6 * Math.PI / 180) { DAY.baked.copy(SUN_DIR); DAY.bake = sunShadeSteps(SUN_DIR, 0.4); }   // (it hands back control often; the frame's budget below decides how long it runs)
   if (DAY.bake) { const t0 = performance.now(), budget = Math.min(3, Math.max(0.8, dt * 1000 * 0.18)); while (performance.now() - t0 < budget) if (DAY.bake.next().done) { DAY.bake = null; break; } }   // (about a sixth of the frame: 3 ms at 60 Hz, 1.2 ms at 144)
   lampsFrame();
+  folkFrame(dt);
 }
 // THE STREET LAMPS come on as the sun goes: the lantern glass brightens, a soft halo round it, and a warm pool on the
 // ground under it. Faked (sprites and a ground disc, added light): no real lights, which would cost every lit surface in
@@ -2250,4 +2385,4 @@ renderer.setAnimationLoop(() => {
   if (BEAMS.on && DAY.elev > -1 && BEAMS.fx) { BEAMS.fx.render(camera, SUN_NOW, { ...BEAMS.opts, strength: BEAMS.strength * beamsAmount(DAY.elev), color: DL.sun }); }
   drawAtlas();
 });
-if (Q.has('probe')) Object.assign(window, { renderer, __day: { set: (o) => { Object.assign(DAY, o); DAY.dirty = true; }, BEAMS, get baking() { return !!DAY.bake; }, get elev() { return DAY.elev; }, DAY, DL, FOG_DIR, sky, hemi, sun }, __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest], __plant: () => PLANT, drawPaths, __lamps: LAMPU });
+if (Q.has('probe')) Object.assign(window, { renderer, __day: { set: (o) => { Object.assign(DAY, o); DAY.dirty = true; }, BEAMS, get baking() { return !!DAY.bake; }, get elev() { return DAY.elev; }, DAY, DL, FOG_DIR, sky, hemi, sun }, __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest], __plant: () => PLANT, drawPaths, __lamps: LAMPU, __folk: FOLK });
