@@ -2168,7 +2168,7 @@ function dayFrame(dt) {
 const LAMP = { on: -1, halo: null, pool: null, things: [] }, LAMP_V = new THREE.Vector3(), LAMP_V2 = new THREE.Vector3(), LAMP_S = new THREE.Vector3();
 // SUNBEAMS (src/objects/sunbeams.js): drawn over the finished frame when the sun is on screen, strongest while it's low,
 // faint by day (shafts through the trees still show then, more softly), gone once it has set; tinted the sun's colour
-const BEAMS = { on: !!TS.checks.beamsOn, strength: 2, fx: null, opts: { threshold: 0.4, decay: 0.75 } };   // (opts: the module's own settings; the lab's sky round a low sun is dimmer than a photo's, so a lower threshold: swept 2026-10-05)
+const BEAMS = { on: !!TS.checks.beamsOn, strength: 3, fx: null, opts: { threshold: 0.4, decay: 0.75 } };   // (opts: the module's own settings; the lab's sky round a low sun is dimmer than a photo's, so a lower threshold: swept 2026-10-05)
 const beamsAmount = (e) => THREE.MathUtils.smoothstep(e, -1, 1.5) * (0.3 + 0.7 * (1 - THREE.MathUtils.smoothstep(e, 8, 30)));
 function lampTexture(core) { const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'), r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
   r.addColorStop(0, `rgba(255,200,130,${core})`); r.addColorStop(0.3, 'rgba(255,160,80,0.4)'); r.addColorStop(1, 'rgba(255,140,60,0)'); g.fillStyle = r; g.fillRect(0, 0, 128, 128);
