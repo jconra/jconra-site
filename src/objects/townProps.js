@@ -12,6 +12,8 @@
 // Local frame: real metres, standing on y = 0, centred on x = z = 0, its front facing +z.
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { makeValehexGlobe } from './valehexGlobe.js';
+import { makeStateMap } from './stateMap.js';
 
 // footprint is [width along x, depth along z] in metres. The signpost's is its post and the stones
 // round it: it turns about the post, and its arrows reach out 0.8 m above head height.
@@ -24,6 +26,9 @@ export const PROP_KINDS = [
   { kind: 'stall', name: 'Market stall', footprint: [2.7, 1.3] },
   { kind: 'signpost', name: 'Signpost', footprint: [0.5, 0.5] },
   { kind: 'flowerBed', name: 'Flower bed', footprint: [2.45, 2.45] },
+  { kind: 'valehexGlobe', name: 'Valehex globe', footprint: [1.2, 1.2] },   // (its own module: shaders of its own, and it turns)
+  { kind: 'stateMap', name: 'Montana (its outline)', footprint: [4, 2.3] },
+  { kind: 'dock', name: 'Wooden dock', footprint: [1.7, 6.2] },   // (its own module: the state's shape, unseen; its border is planted in flowers)
 ];
 
 // ── palette ─────────────────────────────────────────────────────────────────
@@ -495,11 +500,23 @@ function flowerBed(k) {
     k.add('matte', place(new THREE.IcosahedronGeometry(r, 1), [x, y, z], [k.r(), k.r(), 0], [1, 0.9, 1]), k.tone(i ? C.leaf : C.leafDark, 0.05), { shade: false }));
 }
 
-const BUILDERS = { bench, easel, lamp, planter, picnicTable, stall, signpost, flowerBed };
+// Wooden dock: plank boards across two stringers, running out along +z over the water on posts that go down into it, a
+// mooring post at the far end with a coil of rope. Its deck stands 0.45 m up; the posts reach 1.4 m below the ground
+function dock(k) {
+  const L = 6, W = 1.6, Y = 0.45;
+  for (let z = 0.1; z < L; z += 0.21) k.add('matte', place(chamferBox(W, 0.05, 0.18, 0.012), [0, Y, z - L / 2]), k.tone(C.wood, 0.12));   // (the boards)
+  for (const x of [-0.62, 0.62]) k.add('matte', place(chamferBox(0.12, 0.14, L, 0.015), [x, Y - 0.095, 0]), k.tone(C.woodDark));          // (the stringers)
+  for (let z = 0.2; z <= L; z += 1.45) for (const x of [-0.78, 0.78]) k.add('matte', place(new THREE.CylinderGeometry(0.08, 0.09, 2.0, 7).translate(0, -0.4, 0), [x, 0, z - L / 2]), k.tone(C.woodDark, 0.1));
+  k.add('matte', place(new THREE.CylinderGeometry(0.11, 0.12, 1.1, 8).translate(0, 0.55, 0), [0.55, Y, L / 2 - 0.25]), k.tone(C.woodDark));   // (the mooring post)
+  k.add('matte', place(new THREE.TorusGeometry(0.16, 0.035, 5, 12).rotateX(Math.PI / 2), [0.55, Y + 0.06, L / 2 - 0.6]), C.canvas);            // (a coil of rope)
+}
+const BUILDERS = { bench, easel, lamp, planter, picnicTable, stall, signpost, flowerBed, dock };
 const CACHE = new Map();
 
 // A new Group for the prop: meshes sharing the cached geometry and materials.
 export function makeProp(kind) {
+  if (kind === 'valehexGlobe') return makeValehexGlobe();
+  if (kind === 'stateMap') return makeStateMap();
   const make = BUILDERS[kind];
   if (!make) throw new Error(`townProps: no prop called "${kind}"`);
   const M = materials();

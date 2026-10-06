@@ -1,0 +1,385 @@
+{
+ "v": 1,
+ "landmarks": [
+  {
+   "id": "rmrf",
+   "label": "RMRF",
+   "at": [
+    "hanger",
+    "lurcher"
+   ],
+   "color": "#59d8ff",
+   "link": "https://rmrfbase.com",
+   "slides": [
+    {
+     "img": "/textures/projects/shots/rmrf.jpg",
+     "title": "Capture the flag on an island",
+     "project": "RMRF",
+     "text": "RMRF is a capture-the-flag game for the browser, built with three.js (a library for drawing 3D in a web page). Each of two teams has a walled main base, with its flag inside a keep, and a smaller forward base with an elevator. You start in an underground garage, pick a vehicle and ride the elevator up to the surface. The only way to win is to steal the enemy flag and carry it home. Wiping out the other team's vehicles doesn't end the match.\n\nThe look is a homage to the old game Return Fire: bright beaches, straight roads and tiny soldiers walking around the bases. The islands are generated from a seed number, so every match gets new ground. You can play the computer, watch two AI teams fight, or try the campaign maps. On a phone, one thumb steers and the other fires. Claude (Anthropic's AI) has been my coding partner on it.\n\nMade with: JavaScript and three.js 0.160 (kept on that version so it still runs on WebGL 1), Web Audio for sound, deployed to AWS Amplify.",
+     "link": "https://rmrfbase.com",
+     "dates": "June 2026",
+     "madeWith": "Built with Claude"
+    },
+    {
+     "img": "/textures/projects/shots/rmrf-vehicles.jpg",
+     "title": "Four vehicles, four jobs",
+     "project": "RMRF",
+     "text": "The Lurcher is a six-legged walker with twin guns. It isn't fast, but it's tough and hard-hitting, and it can step in any direction without turning first.\n\nThe Firebrat is a hovering scout: quick off the mark and the most fragile. It fires a laser, can cross water, drops land mines and sensor pods, and it's the only vehicle that can steal the flag.\n\nThe Valkyrie flies on two ducted rotors, so walls, water and trees don't stop it. It's slow to get going, then outruns everything. Click a target and it locks on and fires homing missiles.\n\nThe Jotun is a slow tracked tank with a railgun that hits hard from long range and can break open the enemy's keep, the building that holds the flag.\n\nOn paper they form a loop, like rock-paper-scissors: the Lurcher's firepower beats the Firebrat, the Valkyrie outmaneuvers the Lurcher, the Jotun's range beats the Valkyrie, and the quick Firebrat beats the slow Jotun.\n\nMade with: three.js models built in code, tuned in the Vehicle Designer.",
+     "link": "https://rmrfbase.com",
+     "dates": "June 2026 – September 2026",
+     "madeWith": "Built with Claude"
+    },
+    {
+     "img": "/textures/projects/shots/rmrf-island.jpg",
+     "title": "A commander that plans its own missions",
+     "project": "RMRF",
+     "text": "Each AI team has a commander with a personality: Turtle, Warrior, Hunter or Rogue. The Turtle leans toward defending, the Warrior toward attacking, the Rogue toward sneaking in the back way, and the Hunter can set traps: a Firebrat mines a lane, then a Lurcher fires a few shots to lure the enemy across the mines.\n\nWhich mission to run comes from a system I call MissionScore. The commander scores every mission (scout, siege, capture, defend and more) from what it knows: which towers still stand, what vehicles it has left, whether a flag is exposed. The top score runs. Personality is part of that score: it counts four times over at the start and eases back to a small nudge by about four minutes. A failed mission takes a penalty that fades, because the worst thing a commander can do is repeat a failing plan. A route only counts as clear if the team has actually had eyes on it.\n\nMade with: JavaScript (js/AIStrategies.js, js/AI.js), A* route-finding.",
+     "link": "https://rmrfbase.com",
+     "dates": "June 2026 – September 2026",
+     "madeWith": "Built with Claude"
+    },
+    {
+     "img": "/textures/projects/shots/rmrf-ranks.jpg",
+     "title": "Towers, scrap and submarines",
+     "project": "RMRF",
+     "text": "Each base has walls and corner gun towers. When a tower is damaged, a jeep drives a repair crew out to fix it. The jeep is easy to kill, shooting it cancels the repair, and the AI knows that too.\n\nWrecked vehicles leave scrap. Scrap builds new vehicles in the garage (2 for a Firebrat, 5 for a Jotun), and in the Scrap Shop it pays for walls and gun towers that a crew builds where you choose. Fuel and ammo run low, and neutral depots refill them or hand out shields.\n\nLand mines hit either team. Stray too far out over deep water and a submarine surfaces and fires homing missiles. Kills earn bronze, silver and gold stars that make a vehicle stronger. Every sound is synthesized in the browser, with no recordings, and placed in 3D, so you can hear an enemy before you see it, and so can the AI.\n\nMade with: JavaScript, three.js, Web Audio (synthesized engine and gun sounds placed in 3D).",
+     "link": "https://rmrfbase.com",
+     "dates": "June 2026 – September 2026",
+     "madeWith": "Built with Claude"
+    },
+    {
+     "img": "/textures/projects/shots/sound-lab.jpg",
+     "title": "The tools around the game",
+     "project": "RMRF",
+     "text": "Around the game I built a set of tools, so I can work on one piece at a time.\n\nThe Vehicle Designer (rmrfbase.com/vehicle-designer) puts each of the four vehicles on its own stage, where I tune the models and hear their engines and guns.\n\nThe Sound Lab is a modular synthesizer in the browser: you wire sound sources and filters together with virtual cables. Those patches are the actual engine and gun sounds in the game. The picture is the Jotun's railgun: a rising charge, a crack and a deep boom.\n\nThe Map Designer builds campaign maps with the game's own island generator and models, so the editor shows a map the way the game draws it. The Asset Designer is where I tune the buildings and props that go on those maps.\n\nThere are also small labs that each isolate one problem, like the Standoff Playground for working out where a vehicle should park to shell an enemy base.\n\nMade with: JavaScript and three.js; Web Audio for the Sound Lab.",
+     "link": "https://rmrfbase.com",
+     "dates": "June 2026 – September 2026",
+     "madeWith": "Built with Claude"
+    },
+    {
+     "img": "/textures/projects/shots/rmrf.jpg",
+     "title": "Watching and measuring the AI",
+     "project": "RMRF",
+     "text": "The hard part is getting the AI to play well, so I made ways to watch and measure it.\n\nThe AI Lab is a live console that runs beside a match and shows what both commanders are thinking: every mission's score with the math behind it, and what each unit is doing. In the game, a menu turns on overlays like sight cones and engine-noise rings.\n\nA test rig runs the game with no screen and plays whole tournaments of AI-versus-AI matches faster than real time. The matches are repeatable, so I can compare before and after a change match by match. In one stretch of fixes in early July, the share of test matches ending in a capture went from 13% to 97.5%. Some of the best fixes came from watching matches on my phone and spotting what the numbers missed. Claude wrote up the big changes in a 25-post devblog.\n\nMade with: AI Lab pages in rmrf/ai-lab; headless Playwright test rig (~/pw/tourney.cjs).",
+     "link": "https://rmrfbase.com",
+     "dates": "June 2026 – September 2026",
+     "madeWith": "Built with Claude"
+    }
+   ]
+  },
+  {
+   "id": "math",
+   "label": "Math games",
+   "at": [
+    "school"
+   ],
+   "color": "#7cf0b0",
+   "slides": [
+    {
+     "img": "/textures/projects/shots/math-south-park.jpg",
+     "title": "South Park Math",
+     "project": "South Park Math",
+     "text": "I made these math games so people who want to practice math can have fun doing it. South Park Math starts with you picking one of five South Park kids. A UFO shows up, and the aliens are about to mark Earth for destruction when one decides to test you first. Five numbers appear in the snow, and they ask times-table questions, 2 through 9, one at a time. Walk onto an answer with the WASD keys, or click it, and the beam comes down: the right number gets lifted into the UFO, and a wrong one gets your kid abducted, so you pick another. A bonus counts down while you think.\n\nThere are no picture files: the kids, trees, mountains and UFO are SVG drawings (shapes written out as lines and curves in the code), and the South Park-ish tune and footsteps come from the browser's built-in sound synthesizer.\n\nMade with: Plain JavaScript; the characters and scenery are SVG drawn in code; music and footsteps use Web Audio (the browser's sound synthesizer).",
+     "link": "https://math-games.jconra.com/south-park/",
+     "dates": "January 2026, reworked April 2026"
+    },
+    {
+     "img": "/textures/projects/shots/math-dino.jpg",
+     "title": "Dino Math",
+     "project": "Dino Math",
+     "text": "Dino Math is about multiples. Each round picks a number from 2 to 9 and scatters twenty gold coins around an island: all ten of its multiples (up to ten times the number) mixed with ten numbers that don't belong. You run around as a T-Rex and eat the right ones. Eat a wrong coin and you lose one of three hearts while the dinosaur staggers; lose all three and that number starts over. Clear all eight and you're a Math Champion.\n\nMove with WASD or click or tap where to go, and drag to swing the camera around. Trees get knocked flat when the T-Rex runs through them. The island's shape, its ground textures, trees, grass and water are all made in code, and it draws with three.js's WebGPU renderer (the newer way a browser talks to the graphics card).\n\nMade with: three.js r175 (loaded through the page's import map) with its WebGPU renderer and TSL (three.js's shader language); a loaded T-Rex model, using its idle, run and bite animations; the island, ground textures, trees, grass and water are generated in code.",
+     "link": "https://math-games.jconra.com/dino-math/",
+     "dates": "April to June 2026"
+    },
+    {
+     "img": "/textures/projects/shots/math-lander.jpg",
+     "title": "Lunar Lander Math",
+     "project": "Lunar Lander Math",
+     "text": "Lunar Lander Math covers all four operations. You choose addition, subtraction, multiplication, division or a mix, and a question like 15 / 5 appears at the top. Five craters below have numbered landing pads, and the wrong answers are all within five of the right one, so you have to work it out.\n\nFly with the space bar for lift and WASD to drift sideways, or hold the mouse or a finger down to fire the engines: the farther from the middle you press, the more the lander leans and the more of its push goes sideways. A side meter turns from green to red as you drop faster. A correct landing is worth up to 100 points, less the longer you take, and a hard one costs 20. A wrong answer sends you back to the top. The moon, its craters and the lander are all built in code.\n\nMade with: three.js r128 (WebGL); the moon is built from ridged noise (a way of making random mountain ridges) with about 30 craters, five of which hold the answer pads; the lander is built from basic shapes with a painted canvas texture.",
+     "link": "https://math-games.jconra.com/lunar-lander/",
+     "dates": "April 2026"
+    },
+    {
+     "img": "/textures/projects/shots/math-snowboard.jpg",
+     "title": "Snowboarding Math",
+     "project": "Snowboarding Math",
+     "text": "Snowboarding Math turns the question around: instead of working out an answer, you decide whether one is right. Whole equations like 6 x 4 = 24 come up the hill toward you, and about half are wrong. The wrong ones still use a real multiple of one of the numbers, so they look believable.\n\nSteer with the mouse or your finger. The farther you steer to the side, the faster you go, and hard turns throw up snow. Ride through a true equation for 50 points; hit a false one and you lose 50 and wipe out for three seconds. Letting a false one go by also earns 50, and missing a true one costs 50. Trees knock you over too. It is one small file of plain JavaScript drawing on a flat canvas, and the rider is made of thick rounded lines that turn to face where you're going.\n\nMade with: Plain JavaScript and a 2D canvas, about 300 lines in one file.",
+     "link": "https://math-games.jconra.com/snow-board/",
+     "dates": "April 2026"
+    },
+    {
+     "img": "/textures/projects/shots/math-murder.jpg",
+     "title": "Math Murder",
+     "project": "Math Murder",
+     "text": "Math Murder is a first-person times-table game in a walled garden at night, lit only by your flashlight. Seven robots wander around, each with a number on its face, and the top corner asks something like \"What is 10 x 9?\". The other numbers are multiples of those same two numbers, so every robot looks possible.\n\nShoot the right robot and it sinks into the ground and a new group walks in; the faster you are, the bigger the bonus. Shoot a wrong one and its face turns red with a frown, it comes after you, and your score drops by a tenth. Wait too long and even the right one may come for you. Move with WASD, turn with Q and E, and aim and shoot with the mouse; on a touch screen there are arrow buttons along the bottom and a tap above them shoots.\n\nMade with: three.js r153 (WebGL); loaded robot, rifle and plant models; numbers and the brick wall pattern are drawn on canvases in code; the gunshot is made with Web Audio.",
+     "link": "https://math-games.jconra.com/math-murder/",
+     "dates": "January 2026"
+    }
+   ]
+  },
+  {
+   "id": "labs",
+   "label": "Labs and tools",
+   "at": [
+    "easel"
+   ],
+   "color": "#ffcf6a",
+   "slides": [
+    {
+     "img": "/textures/projects/shots/sound-lab.jpg",
+     "title": "Sound Lab",
+     "project": "Sound Lab",
+     "text": "A synthesizer in the browser made of parts you wire together with cables, the way a modular synth works. There are eleven kinds of part: oscillators (the tones), noise, filters, volume, distortion, echo, reverb, envelopes that shape a sound over time, and a few helpers. Each one floats as a panel in a 3D scene.\n\nRMRF's engines, guns, elevator and mine blasts are all patches made here, with no recordings: the game builds each sound live, and places the engines in 3D so you can hear an enemy coming. The picture is the Jotun's railgun: a rising charge, then a crack and a deep boom about 0.9 seconds later.\n\nLater I added custom waves, built from sixteen harmonics I drag up and down, and a song editor where sections A, B, C and D are chained into a song, saved in the format I plan to use for RMRF's music.",
+     "link": "https://sound-lab.jconra.com",
+     "dates": "June 2026 – September 2026",
+     "madeWith": "Built with Claude"
+    },
+    {
+     "img": "/textures/projects/shots/asset-designer.jpg",
+     "title": "Asset Designer",
+     "project": "Asset Designer",
+     "text": "This is where the buildings and props for RMRF's maps are made: the flag HQ, barracks, towers, fuel drums, the ammo depot in the picture, about two dozen in all. Each one is put together from simple shapes (boxes, spheres, cylinders, cones). I move, size and turn them with arrows like Blender's, pull faces out, cut them into smaller faces, and paint them with textures made by code, including camouflage that takes the team's colour.\n\nEvery part also says how it breaks: at what share of health it falls off, and whether it tumbles away or squashes flat, with a slider to preview the damage. Parts can be grouped and given a job, like a gun that turns, so the game knows what moves. It loads the game's own code from rmrfbase.com, so the two never drift apart.",
+     "link": "https://asset-designer.rmrfbase.com",
+     "dates": "June 2026 – July 2026",
+     "madeWith": "Built with Claude"
+    },
+    {
+     "img": "/textures/projects/shots/home-designer.jpg",
+     "title": "Home Designer",
+     "project": "Home Designer",
+     "text": "I draw a house floor by floor on a plan seen from above: the outline first, then inside walls, windows, doors, stairs, holes in a floor for open space, and roof pieces (gable, hip, shed or flat). The 3D model under the plan rebuilds as I go, and a Walk button lets me walk through the rooms at eye height. Each wall face can be painted with a colour and a pattern made by code, like wood siding or a metal roof.\n\nI built it for the Montana project, to model a real two-story house with a steep metal roof, two dormers and a bay window. Montana's terrain scene builds the house with the same code, from the design file made here. It works on a phone too: plus and minus buttons instead of typing, and errors shown on screen.",
+     "link": "https://building-designer.jconra.com/",
+     "dates": "August 2026 – September 2026",
+     "madeWith": "Built with Claude"
+    },
+    {
+     "img": "/textures/projects/shots/model-lab.jpg",
+     "title": "Model Lab",
+     "project": "Model Lab",
+     "text": "Every 3D model on this site in one viewer: 89 of them in ten sections. They run from my own Blender model of myself and the earlier ones Tripo (an AI model maker) generated, to the station kit from the intro film, the trees, the bugs, and the models from Shipwrecked and my 2019 site.\n\nI can orbit each one, play its animations, slow them down or scrub through them, show its skeleton or wireframe, and pick out a single part to see its size and triangle count. Models on the same human-shaped skeleton can borrow a shared set of moves: idle, climb, sit, wave. The older models were saved in a format three.js dropped years ago, so the lab has its own loader that still reads them, walk cycles included. It replaced five separate viewers. In the picture: the warrior bug from Boxing.",
+     "link": "/labs/models/",
+     "dates": "September 2026",
+     "madeWith": "Built with Claude"
+    },
+    {
+     "img": "/textures/projects/shots/noise.jpg",
+     "title": "Noise Gallery",
+     "project": "Noise Gallery",
+     "text": "Many of my textures are built from noise: random-looking patterns made by a formula instead of drawn. This page shows twelve of them side by side, all moving: erosion, curl, stone, wool, two kinds of Gabor (wavy streaks), scratch, crater, Worley (cells), simplex, paper and clouds. They churn in place because the point each one is read from drifts a little every frame. Sliders set the speed, the churn and the scale.\n\nTapping a tile fills the screen with it, repeated two by two, so any seam where the texture repeats shows up. A Tileable switch makes the grid-based ones wrap so the seam disappears. I made it alongside a Texture Lab and a bump-versus-normal page, while building materials made by code for the Asset Designer.",
+     "link": "/labs/noise/",
+     "dates": "June 2026",
+     "madeWith": "Built with Claude"
+    },
+    {
+     "img": "/textures/projects/shots/fire.jpg",
+     "title": "Fire Lab",
+     "project": "Fire Lab",
+     "text": "This is where I tune the fire that burns on wrecks in RMRF. Light a wreck and it burns with a main flame and two smaller spot fires, then goes out by burning down, sinking or shrinking. Sliders in five groups (shape, timing, how it lights, debris, smoke) change it live, and one button prints the settings to paste into the game.\n\nThe flame is a real 3D volume, not a flat picture: yomotsu's fire, the same one I used for the campfire in Shipwrecked. Out of the box every copy was the identical flame, so each fire now gets its own timing, turn and size. The camera looks down at the game's angle, because a ring-shaped flaw only showed from above. The game keeps twelve fires ready for reuse. The fire that fills the screen when you die was built here too.",
+     "link": "/labs/fire/",
+     "dates": "August 2026 – September 2026",
+     "madeWith": "Built with Claude"
+    },
+    {
+     "img": "/textures/projects/shots/shield.jpg",
+     "title": "Shield Lab",
+     "project": "Shield Lab",
+     "text": "The force-field bubble from RMRF: a sphere of glowing hexagons with a bright rim, cells that flash, and rings that spread from wherever it gets hit. As the shield drains it shifts from the team's colour toward red.\n\nHere I can pick the colour, switch how it blends with what is behind it, tap the bubble to hit it at that spot or let it get hit on its own, and copy the values out. The game's shields use the numbers I tuned here. It started from cortiz2894's flow-shield effect, cut down to stay cheap: no dissolve, four hits at a time, and only a few shields on screen at once.\n\nThe same look became the fence around this town: flat panels of hexagons between posts, with the same rim glow and flashing cells.",
+     "link": "/labs/shield/",
+     "dates": "July 2026",
+     "madeWith": "Built with Claude"
+    },
+    {
+     "img": "/textures/projects/shots/grass.jpg",
+     "title": "Grass Lab",
+     "project": "Grass Lab",
+     "text": "I built this to work out how RMRF's grass should look and what it costs. Thousands of tufts sway in a wind that rolls across the field, and every setting is a slider: how many tufts, blades per tuft, height, width, lean, the colour at the root and at the tip, and the wind's strength and speed.\n\nA blade can be a cone (12 triangles), a single flat spike (1), a flat blade (2), a card that turns to face you (2), or a curved blade that bends over at the tip. A counter shows the frame rate and triangles.\n\nTwo things I learned here: a single triangle reads as grass when there are enough of them, and grass looks better unlit, with a root a little lighter than the dirt, than lit, where every blade speckles.",
+     "link": "/labs/grass/",
+     "dates": "July 2026 – September 2026",
+     "madeWith": "Built with Claude"
+    },
+    {
+     "img": "/textures/projects/shots/town-square.jpg",
+     "title": "Terrain Lab",
+     "project": "Terrain Lab",
+     "text": "It started as a test of how games hide that a ground texture repeats: a split screen, with the plain texture on one side and the tricks on the other, like cutting the ground into small hexagons that each shift and turn the picture.\n\nThen it took in my Tree Lab, the forest in this picture: 10,000 trees, the near ones real models and the far ones flat cards showing the tree from many angles captured ahead of time, blending the three nearest. Here 448 are models and 9,552 are cards, at 58 frames a second.\n\nSince then it has become the place this town is built: a valley carved by simulated rain, rivers and ponds, a sun that crosses the sky into dusk and a moonlit night, sixteen ground plants growing where the ground suits them, stone roads, street lamps, my buildings, and townsfolk walking between them.",
+     "link": "/labs/terrain/",
+     "dates": "September 2026 – October 2026",
+     "madeWith": "Built with Claude"
+    }
+   ]
+  },
+  {
+   "id": "portfolio",
+   "label": "jconra.com (this site)",
+   "at": [
+    "townHall"
+   ],
+   "color": "#59d8ff",
+   "link": "https://jconra.com",
+   "slides": [
+    {
+     "img": "/textures/projects/shots/old-site.jpg",
+     "title": "A résumé you fly through",
+     "project": "jconra.com",
+     "text": "This site is my résumé, built as a place you travel through instead of a page you read. It opens on a short film, about a minute long, that ends with a dive through the clouds down to a town. Each of my bigger projects has a landmark here, and clicking one raises a hologram like this one, with pictures and notes.\n\nThe picture is the site this one replaced: jacobconrads.com as it was in 2019, a spinning 3D cube of projects. It still works, on the projects page with about fifty other things I've made. The new site is plain JavaScript and three.js with no build step, and it turns its detail up or down to suit the machine, from a gaming PC to a phone. I've built it since September 2026 with Claude, Anthropic's AI, as my coding partner.\n\nMade with: Plain JavaScript and three.js 0.158 (loaded from unpkg, no build step).",
+     "link": "https://jconra.com",
+     "dates": "September 2026 to now",
+     "madeWith": "Built with Claude"
+    },
+    {
+     "img": "/textures/projects/shots/film-cabin.jpg",
+     "title": "The film: cabin to clouds",
+     "project": "jconra.com",
+     "text": "It starts on a computer screen: a terminal types who I am while loading bars fill for the cabin, my 3D model, its movements and the station. The camera pulls back, and I'm at a desk in a cabin on a space station. I wave, stand and walk off; the camera goes out the window and round the station to a hangar, where I climb into a fighter and fly out toward Earth.",
+     "link": "https://jconra.com",
+     "dates": "September 2026"
+    },
+    {
+     "img": "/textures/projects/shots/film-map.jpg",
+     "title": "The map: where I have lived",
+     "project": "jconra.com",
+     "text": "Over the map, the five states I've lived in light up with a line each: born and raised in Colorado, Air Force avionics in New Mexico, Red Team and a computer science degree in Maryland, teaching cyber warfare at Keesler in Mississippi, and seven years as an AWS systems engineer in Washington. Then the fighter dives through the clouds. Scrolling or swiping moves the whole film forward or back.\n\nMade with: three.js; my 3D model (model 4) is a Tripo-rigged body with a head I reworked in Blender; the stand-up, ladder/climb and sit-down clips are from Mixamo, the sitting and walking are Tripo's own clips, and the wave is Mixamo's reworked in code; the station assembled in my Station Builder.",
+     "link": "https://jconra.com",
+     "dates": "September 2026"
+    },
+    {
+     "img": "/textures/projects/shots/town-valley.jpg",
+     "title": "The land under the town",
+     "project": "jconra.com: Terrain Lab",
+     "text": "The town sits in a valley made in my Terrain Lab, which began as a page for testing ground textures and grew into the land the town stands on. The land is a grid about 1.6 km across. Noise (smooth random numbers) raises mountains on both sides of a winding valley, steep ground gets terraces and crags, and then over a hundred thousand simulated raindrops run downhill, each picking up soil as it speeds up and dropping it where it slows. In the lab you can watch it rain.\n\nWater comes from the land the same way: hollows fill into ponds, rivers form where enough water gathers, and lake outlets wear into gorges with froth at the falls. The ground's look is worked out from the land too: dirt on slopes, rock on cliffs, stones by the creeks, and a trick called hex-tiling hides where the ground pictures repeat.\n\nMade with: three.js; erosion after Hans Beyer's raindrop method, hex-tiling after Mikkelsen's 2022 paper (both credited in terrain.js).",
+     "link": "https://jconra.com/labs/terrain/",
+     "dates": "September to October 2026"
+    },
+    {
+     "img": "/textures/projects/shots/town-night.jpg",
+     "title": "Forest, light and townsfolk",
+     "project": "jconra.com: the town",
+     "text": "Near you the trees are real models; farther out they are imposters. Each tree is photographed from dozens of angles into one picture sheet when the page loads, and far away it becomes a flat card showing the angle closest to yours, so thousands of trees cost little. I place the town's buildings, paths and fences by hand with a Build bar, and paint in extra plants and rocks; the buildings are models I generated with Tripo, an AI tool that makes 3D models.\n\nThe sun follows its path across the sky, so the time of day sets the light: a warm dusk with sunbeams through the treetops, then stars, a moon, and street lamps that light the paving and walls around them. Townsfolk walk between doors, market stalls, benches and the fountain, keep to the right, stop to chat or wave, and mostly go indoors at night.\n\nMade with: three.js; trees from ez-tree (an open-source tree generator); buildings and ground plants from Tripo; townsfolk from Quaternius's free (CC0) modular character pack.",
+     "link": "https://jconra.com/labs/terrain/",
+     "dates": "September to October 2026"
+    },
+    {
+     "img": "/textures/projects/shots/model-lab.jpg",
+     "title": "Things built along the way",
+     "project": "jconra.com: labs",
+     "text": "Many pieces got their own lab page first. The Quarters Lab edits the film's keyframes while it plays, and a Station Builder put the station together from parts. The Model Lab (pictured) shows every model on the site in one viewer, and a Rig Lab poses a model and measures what each bone moves.\n\nFor the town there is a Stone Lab for paving that never repeats (painted stones far off, real 3D stones up close), a Foliage Lab that lights each leaf by how much sky it can see, low-poly pines of about a hundred triangles, and street-lamp light worked out from one top-down picture of every lamp. Smaller touches: afterburners with shock diamonds that open with thrust, Colorado's flag on the map drawn to the rules in state law, and a 404 page where a husky tilts its head in 3D.\n\nMade with: three.js; Blender; the 404 husky is a Tripo model lightened in Blender.",
+     "link": "https://jconra.com/labs/",
+     "dates": "September to October 2026",
+     "madeWith": "Built with Claude"
+    }
+   ]
+  },
+  {
+   "id": "valehex",
+   "label": "Valehex",
+   "at": [
+    "valehexGlobe"
+   ],
+   "color": "#5ec8ff",
+   "link": "https://valehex.com",
+   "slides": [
+    {
+     "img": "/textures/projects/shots/valehex.jpg",
+     "title": "A planet made of hexagons",
+     "project": "Valehex",
+     "text": "Valehex is a strategy game I'm building that is played on a whole planet instead of a flat map, so the world has no edge.\n\nThe first piece is the Worldmaker. Type in a seed (a short code like \"vale-4x333q\") and it grows the same world every time, or ask it for a new one. The globe is covered in hex tiles plus twelve pentagons, because a ball can't be covered with hexagons alone (a soccer ball has the same twelve). Tiles are coloured by biome (coast, grassland, forest, desert, tundra and ice), with mountains rising between them. There are rivers, moving water, trees, rocks and clouds, and sliders for the land, ocean, rivers, light and stars. Click a tile to see what's on it.\n\nMade with: three.js 0.160 in the browser (stated on valehex.com/design).",
+     "link": "https://valehex.com/worldmaker/",
+     "dates": "September 2026"
+    },
+    {
+     "img": "/textures/projects/shots/town-globe.jpg",
+     "title": "The globe in this town",
+     "project": "Valehex",
+     "text": "The globe beside the observatory is a small model of Valehex made for this town: hexagon tiles and twelve pentagons over a ball, coloured from a made-up map of land and sea, with the land standing up from the water, little trees in the forests and snow on the peaks. It turns slowly on a tilted axis and glows a little of itself, so it shows at night too.",
+     "link": "https://valehex.com",
+     "madeWith": "Built with Claude"
+    },
+    {
+     "img": "/textures/projects/shots/valehex.jpg",
+     "title": "Playing with friends",
+     "project": "Valehex",
+     "text": "valehex.com is now a first playable slice. One person creates a private lobby and sends each friend a one-use invitation link. Everyone votes on the rules: how long a turn can take (no limit, 5 minutes, an hour or a day) and how many rounds the match lasts (50, 100 or 250).\n\nTwo to eight people can play, each for themselves or in up to four teams that share what they have seen. Players take turns one at a time. Workers build barracks, settlers found settlements, and infantry fight. Settlements earn materials and production every turn. You win by wiping out every other side, or by having the best score when the rounds run out: 10 points per city, 3 per barracks, 1 per unit. Parts of the globe your side hasn't explored stay dark.\n\nMade with: three.js 0.160 in the browser.",
+     "link": "https://valehex.com",
+     "dates": "September 2026"
+    },
+    {
+     "img": "/textures/projects/shots/valehex.jpg",
+     "title": "Where it's headed",
+     "project": "Valehex",
+     "text": "The design page lays out where the game is going. It starts from the Civilization pattern: explore, found cities, choose what each city builds, then grow and defend. The longer plan adds humans, insect-like species and other original aliens, computer players to fill empty seats, and matches that can be quick or run for months.\n\nFog of war has to really hide things: the server should send each player only what they are allowed to see. For the online side, the plan is a small AWS cloud setup that runs only when someone takes an action, so a months-long match can wait in a database with no game server running the whole time. It uses three.js 0.160, which still works on older computers. It's a learning project for friends, not a business, and it's the next thing I want to put real time into.\n\nMade with: three.js 0.160; the AWS backend on the design page is a proposal.",
+     "link": "https://valehex.com/design/",
+     "dates": "September 2026"
+    }
+   ]
+  },
+  {
+   "id": "montana",
+   "label": "Montana",
+   "at": [
+    "stateMap"
+   ],
+   "color": "#ffb35c",
+   "link": "https://montana.jconra.com",
+   "slides": [
+    {
+     "img": "/textures/projects/shots/montana.jpg",
+     "title": "Real ground, measured from the air",
+     "project": "Montana",
+     "text": "This is a piece of Paradise Valley, Montana, rebuilt in 3D from real measurements. The ground comes from USGS LiDAR: laser scans taken from an aircraft that record the height of the ground and everything standing on it.\n\nThe main area is a 1.5 km square with a height every 2 m. A sharper patch about 500 m across, at roughly 1 m, sits in the middle, and an aerial photo is laid over the top. Around it is a 60 km square of simpler terrain from a regional height map, so the real mountains stand on the horizon, from about 1,440 m up to 3,290 m. You can switch on elevation colours or stretch the heights to read the slopes. I built the first viewer and its data tools with Claude (Anthropic's AI) as a coding partner.\n\nMade with: three.js r158 (kept for WebGL1), USGS LiDAR height data, an aerial photo, a 60 km regional height map.",
+     "link": "https://montana.jconra.com",
+     "dates": "August 2026 - September 2026"
+    },
+    {
+     "img": "/textures/projects/shots/montana.jpg",
+     "title": "Every tree where it really stands",
+     "project": "Montana",
+     "text": "The forest isn't scattered at random. A Python script reads the LiDAR scan, works out where the ground is, and marks each high point in the treetops more than 2.5 m tall as a tree. It found about 25,800 trees, and each one is placed and sized by its measured height. Trees that land on the buildings get dropped, because the scan read some roofs as treetops, and the whole set is moved 3 m north to line up with the photo.\n\nClose to the camera the trees are detailed pines made with ez-tree, an open-source tree generator. Farther away they fade into flat pictures of the tree that always turn to face you, which are much cheaper to draw. Aspen groves grow at two spots I marked, and bushier pines line the driveway. A set of labs on the site compares tree models, bushes and ways of drawing distant trees.\n\nMade with: Python (laspy, numpy) for tree extraction, ez-tree for the pine and aspen models, three.js r158.",
+     "link": "https://montana.jconra.com/labs/",
+     "dates": "August 2026 - September 2026"
+    },
+    {
+     "img": "/textures/projects/shots/home-designer.jpg",
+     "title": "The house, the driveway and a real photo",
+     "project": "Montana",
+     "text": "The house was drawn floor by floor in my Home Designer (shown here) and placed on the land, converted from feet to metres, with a flat pad cut into the hillside so it sits into the slope instead of floating above it. You can add a garage with an apartment, a main house or a cabin, drag and turn them, and copy the layout out as text.\n\nThere's a RAV4 you can drive up the driveway with the arrow keys or the on-screen buttons, and a route tool that plays an intro drive along waypoints. Photo match lets you load a real photo, fade it over the 3D view and change the lens angle until the two line up. Still to come is a sage bush I modelled in Blender, so the ground looks the way it really does there.\n\nMade with: Home Designer (building-designer repo) for the house plan, three.js r158.",
+     "link": "https://montana.jconra.com",
+     "dates": "August 2026 - October 2026"
+    }
+   ]
+  },
+  {
+   "id": "shipwrecked",
+   "label": "Shipwrecked",
+   "at": [
+    "raft",
+    "dock"
+   ],
+   "color": "#7fd8c4",
+   "link": "https://shipwrecked.jconra.com/",
+   "slides": [
+    {
+     "img": "/textures/projects/shots/shipwrecked.jpg",
+     "title": "Stranded on an island",
+     "project": "Shipwrecked",
+     "dates": "Before 2019 (on my old site)",
+     "text": "Shipwrecked is a survival game that starts you washed up on an island. The island is grown from a seed number, so every seed gives you new ground to explore: beaches, palms and pines, bushes, rocks and the sea all round.\n\nYou have to keep yourself alive. Hunger drops as you go (faster when you run), and when it runs out your health goes with it. A wound keeps bleeding until you bandage it. Crabs pinch, boars charge, and if you wade out too far a shark starts circling you.\n\nYou move with the arrow keys or W A S D, and hold Shift to run."
+    },
+    {
+     "img": "/textures/projects/shots/shipwrecked.jpg",
+     "title": "Build your way off",
+     "project": "Shipwrecked",
+     "dates": "Before 2019 (on my old site)",
+     "text": "Everything comes from what the island gives you. Pick up sticks and stones, pull rope out of the bushes, eat coconuts, and once you have an axe, chop trees into boards.\n\nEach thing you build opens the next: a lean-to first, then an axe and a campfire to cook on, a twig hut, a spear, a cottage, a bow, clothes from leather, and bandages. Shelters are where you sleep through the night.\n\nThe last thing you can build is the raft: ten boards and five rope, then put it in the water. Climb aboard and you have beaten the game. That raft is the one tied up at this dock."
+    },
+    {
+     "img": "/textures/projects/demoPage.jpg",
+     "title": "The demo page",
+     "project": "Shipwrecked Demo Page",
+     "link": "https://shipwrecked.jconra.com/demos/",
+     "dates": "Before 2019 (on my old site)",
+     "text": "A companion page breaks the game down into its parts and shows off its 3D models on their own. Click the grid to make a model walk to that spot, and drag to turn the view round it.\n\nThe game itself is plain JavaScript on an early version of three.js, the same library this town is built with."
+    }
+   ]
+  }
+ ]
+}

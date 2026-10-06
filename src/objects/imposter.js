@@ -244,7 +244,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, THREE.UniformsLib.fog, { soften: { value: soften },
     atlas: { value: null }, atlasN: { value: null }, grid: { value: bake.grid }, hemi: { value: bake.hemi ? 1 : 0 },
     radius: { value: bake.radius }, halfW: { value: bake.halfW }, halfH: { value: bake.halfH }, centre: { value: bake.centre.clone() }, sunDir: { value: sunDir.clone().normalize() },
-    blend: { value: blend ? 1 : 0 }, blendDist: { value: 400 }, parallax: { value: 0 }, halfWc: { value: bake.halfW }, halfHc: { value: bake.halfH }, ambient: { value: 0.45 }, glowLight: { value: glow }, sheen: { value: sheen }, shadowNudge: { value: 0 }, lowSun: { value: 0 }, lowSunK: { value: 0.7 },   // (0.7: a wood at 190 m matched its models within 3% from the sun's side and against it, sun 3-8° up) useDepth: { value: depth ? 1 : 0 }, useShadow: { value: shadows ? 1 : 0 },
+    blend: { value: blend ? 1 : 0 }, blendDist: { value: 400 }, parallax: { value: 0 }, halfWc: { value: bake.halfW }, halfHc: { value: bake.halfH }, ambient: { value: 0.45 }, glowLight: { value: glow }, sheen: { value: sheen }, shadowNudge: { value: 0 }, lowSun: { value: 0 }, lowSunK: { value: 0.7 }, useDepth: { value: depth ? 1 : 0 }, useShadow: { value: shadows ? 1 : 0 },   // (lowSunK 0.7: a wood at 190 m matched its models within 3% from the sun's side and against it, sun 3-8° up)
     viewDirOverride: { value: new THREE.Vector3(0, 1, 0) }, useOverride: { value: 0 },
     calmCol: { value: new THREE.Color(0.3, 0.4, 0.15) }, calmFrom: { value: 60 }, calmTo: { value: 250 }, calmAmt: { value: 0 },
     landShade: { value: null }, landShadeSize: { value: 1600 }, landShadeK: { value: new THREE.Vector4() },
@@ -275,7 +275,7 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
         vec4 col; vec4 nrm; lookup(col, nrm);
         if (col.a < 0.45) discard;
         #ifdef GL_EXT_frag_depth
-        if (useDepth > 0.5) gl_FragDepthEXT = surfaceDepth(nrm / max(col.a, 0.001));
+        gl_FragDepthEXT = useDepth > 0.5 ? surfaceDepth(nrm / max(col.a, 0.001)) : gl_FragCoord.z;   // (written on every path: left unwritten on one, a WebGL1 card's depth is anything)
         #endif
         nrm /= max(col.a, 0.001); vec3 n = normalize(nrm.rgb * 2.0 - 1.0);   // read through the colour's coverage: filtered against the empty background otherwise
         float c = cos(vYaw), s = sin(vYaw);
@@ -355,7 +355,8 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
         if (col.a < 0.45) discard;
         float z = gl_FragCoord.z;
         #ifdef GL_EXT_frag_depth
-        if (useDepth > 0.5) { z = surfaceDepth(nrm / max(col.a, 0.001)); gl_FragDepthEXT = z; }
+        if (useDepth > 0.5) z = surfaceDepth(nrm / max(col.a, 0.001));
+        gl_FragDepthEXT = z;
         #endif
         gl_FragColor = packDepthToRGBA(z);
       }`,

@@ -30,6 +30,9 @@ import { sunDirection, moonDirection, elevationOf, daylightAt, newDaylight } fro
 import { Sunbeams } from '../../src/objects/sunbeams.js';
 import { loadPeople } from '../../src/objects/people.js';
 import { Townsfolk, walkGridSteps } from '../../src/objects/townsfolk.js';
+import { Showcase } from '../../src/objects/showcase.js';
+import { tickGlobes } from '../../src/objects/valehexGlobe.js';
+import { stateOutline } from '../../src/objects/stateMap.js';
 
 // DIRECTIONAL HAZE (for the time of day): three's fog is one colour; here every material's fog leans toward the sky's own
 // colour the way that pixel looks: warm toward a low sun, cool away from it, by the same amount as the sky dome
@@ -1410,6 +1413,8 @@ function makePlantTool() {
   { const g = new THREE.Group(); [[0, 0, 0, 1], [1.1, 0, 0.3, 0.75], [0.4, 0, 1.0, 0.85], [-0.6, 0, 0.8, 0.6]].forEach(([x, y, z, sc], i) => { const m = new THREE.Mesh(parts[PLANT.ROCK0 + i], mats[PLANT.ROCK0 + i]); m.position.set(x, y, z); m.scale.setScalar(sc); m.rotation.y = i * 1.3; g.add(m); });
     PLANT.tool.iconFrom(PLANT.ROCKS, g); }   // (the mixed rocks' icon: the four of them together)
   PROP_KINDS.forEach((P, i) => { try { PLANT.tool.iconFrom(PLANT.PROP0 + i, makeProp(P.kind)); } catch (e) { /* no icon then */ } });
+  { const i = PROP_KINDS.findIndex((P) => P.kind === 'stateMap');   // (the outline prop is unseen: its icon is its outline, drawn)
+    if (i >= 0) stateOutline('MT').then((pts) => { if (!pts) return; const S = 96, cv = document.createElement('canvas'); cv.width = cv.height = S; const g = cv.getContext('2d'); g.strokeStyle = '#e8443a'; g.lineWidth = 4; g.lineJoin = 'round'; g.beginPath(); pts.forEach(([x, z], j) => g[j ? 'lineTo' : 'moveTo'](S / 2 + x * 21, S / 2 + z * 21)); g.stroke(); PLANT.tool.bar.setIcon(PLANT.PROP0 + i, cv.toDataURL()); }); }
 }
 // FENCES (the Build bar's fence, drawn with a drag): rustic posts about every 2.2 m along the line, two rails between each
 // pair, standing on the land (rails slope with it); a later Clear stroke takes posts out, and the rails to them. Two draws
@@ -1801,6 +1806,7 @@ function walkWalls(L, x0, z0, x1, z1) {
     const { w, d } = footprintOf(it);
     if (it.type === 'model') { if (it.kind === 'bridge') continue; const k = it.kind === 'playground' ? 0.85 : 1; walls.push({ rect: { x: it.x, z: it.z, w: w * k + 0.3, d: d * k + 0.3, rot: rad(it) } }); }
     else if (it.type === 'prop') {
+      if (it.kind === 'stateMap' || it.kind === 'dock') continue;      // (a garden: walked through, round its flowers; a dock: walked on, a deck)
       if (it.kind === 'lamp' || it.kind === 'signpost') walls.push({ disc: { x: it.x, z: it.z, r: 0.3 } });
       else if (it.kind === 'flowerBed') walls.push({ disc: { x: it.x, z: it.z, r: w / 2 } });
       else walls.push({ rect: { x: it.x, z: it.z, w: w + 0.3, d: d + 0.3, rot: rad(it) } });   // (padded: a thin one at a slant could cover no cell's centre)
@@ -1816,7 +1822,8 @@ function walkWalls(L, x0, z0, x1, z1) {
   return walls;
 }
 // the bridges' decks: open whatever is under them, a little past each end onto the banks
-const walkDecks = (L) => L.items.filter((i) => i.type === 'model' && i.kind === 'bridge').map((it) => { const { w, d } = footprintOf(it); return { x: it.x, z: it.z, w: w * 0.55, d: d + 1.5, rot: it.rot * Math.PI / 180 }; });
+const isDeck = (i) => (i.type === 'model' && i.kind === 'bridge') || (i.type === 'prop' && i.kind === 'dock');   // (the bridges, and the docks out over the water)
+const walkDecks = (L) => L.items.filter(isDeck).map((it) => { const { w, d } = footprintOf(it), dock = it.kind === 'dock'; return { x: it.x, z: it.z, w: w * (dock ? 0.75 : 0.55), d: d + (dock ? 0.4 : 1.5), rot: it.rot * Math.PI / 180 }; });
 // the places to go, each with the way to face there; every prop's front is its +z
 function walkPlaces(L) {
   const S = FOLK.size, out = [], add = (it, lx, lz, fx, fz, kind, cap = 1) => { const [x, z] = atLocal(it, lx, lz); out.push({ x, z, face: faceLocal(it, fx, fz), kind, cap }); };
@@ -1826,6 +1833,7 @@ function walkPlaces(L) {
       if (it.kind === 'bridge') { add(it, 0.7, 0, 1, 0, 'bridge'); add(it, -0.7, 0, -1, 0, 'bridge'); continue; }   // (half way over, looking out over the water)
       if (it.kind === 'fountain' || it.kind === 'playground') { const n = it.kind === 'fountain' ? 6 : 8, r = Math.max(w, d) / 2 + (it.kind === 'fountain' ? 0.9 : 0.4) * S;
         for (let q = 0; q < n; q++) { const a = q / n * Math.PI * 2, lx = Math.sin(a) * r, lz = Math.cos(a) * r; add(it, lx, lz, -lx, -lz, it.kind === 'fountain' ? 'fountain' : 'play'); } continue; }
+      if ((TOWN_ASSETS[it.kind] || {}).door === false) { for (let q = 0; q < 4; q++) { const a = (q + 0.5) / 4 * Math.PI * 2, r = Math.max(w, d) / 2 + 0.9 * S; add(it, Math.sin(a) * r, Math.cos(a) * r, -Math.sin(a), -Math.cos(a), 'fountain'); } continue; }   // (not a building: looked at, not gone into)
       add(it, 0, d / 2 + 0.8 * S, 0, -1, 'door', 4);                    // (in at the front; the gaps a person stands off a thing: their size)
     } else if (it.type === 'prop') {
       if (it.kind === 'bench') { add(it, -w / 4, d / 2 + 0.35 * S, 0, 1, 'bench'); add(it, w / 4, d / 2 + 0.35 * S, 0, 1, 'bench'); }
@@ -1835,6 +1843,8 @@ function walkPlaces(L) {
       else if (it.kind === 'planter') add(it, 0, d / 2 + 0.45 * S, 0, -1, 'garden');
       else if (it.kind === 'flowerBed') { add(it, 0, d / 2 + 0.35 * S, 0, -1, 'garden'); add(it, 0, -d / 2 - 0.35 * S, 0, 1, 'garden'); }
       else if (it.kind === 'signpost') add(it, 0.7 * S, 0.7 * S, -1, -1, 'sign');
+      else if (it.kind === 'dock') add(it, 0, d / 2 - 0.6 * S, 0, 1, 'bridge');   // (out at its end, looking over the water)
+      else if (it.kind === 'valehexGlobe' || it.kind === 'stateMap') for (let q = 0; q < 4; q++) { const a = (q + 0.5) / 4 * Math.PI * 2, r = w / 2 + 0.9 * S; add(it, Math.sin(a) * r, Math.cos(a) * r, -Math.sin(a), -Math.cos(a), 'fountain'); }   // (round it, looking up at it)
     }
   }
   // spots to wander to along the roads (every 28 m) and the footpaths (every 40 m; those out past the town are dropped
@@ -1864,7 +1874,8 @@ function deckOf(it) {
   FOLK.deckBusy = true;
   const { w, d } = footprintOf(it), a = it.rot * Math.PI / 180, n = 40, ys = new Float32Array(n + 1), ray = new THREE.Raycaster(), v = new THREE.Vector3(), down = new THREE.Vector3(0, -1, 0);
   o.group.updateMatrixWorld(true);
-  for (let q = 0; q <= n; q++) { const [x, z] = atLocal(it, 0, (q / n - 0.5) * d); ray.set(v.set(x, heightAt(x, z) + 30, z), down); const hit = ray.intersectObject(o.inner, true)[0]; ys[q] = hit ? hit.point.y : NaN; }
+  if (it.kind === 'dock') ys.fill(o.group.position.y + 0.475 * it.size);   // (a dock's deck is flat, its boards' tops 0.475 up: rays fell between them)
+  else for (let q = 0; q <= n; q++) { const [x, z] = atLocal(it, 0, (q / n - 0.5) * d); ray.set(v.set(x, heightAt(x, z) + 30, z), down); const hit = ray.intersectObject(o.inner, true)[0]; ys[q] = hit ? hit.point.y : NaN; }
   D = { key, x: it.x, z: it.z, c: Math.cos(a), s: Math.sin(a), hw: w * 0.3, hd: d / 2, ys }; FOLK.decks.set(it.id, D); return D;
 }
 // where to stand: the land, a bridge's deck, the 3D paving's stones near the camera
@@ -1886,7 +1897,7 @@ function folkFrame(dt) {
     const P = PLANT.tool ? PLANT.tool.planting : null, L = TOWN.village.layout;
     const sig = JSON.stringify([FOLK.size, MAPS.gen, L.items, L.roads.length, P ? [P.strokes.length, P.strokes.length && P.strokes[P.strokes.length - 1].id, P.items.filter((i) => SORT.tree(i.kind) || SORT.rock(i.kind)).map((i) => [i.x, i.z, i.sx, i.sz])] : 0, (FENCE.rails || []).length]);
     if (sig !== FOLK.sig) { FOLK.sig = sig; FOLK.due = performance.now() + (FOLK.grid ? 2500 : 0); }
-    FOLK.deckBusy = false; FOLK.deckList = L.items.filter((i) => i.type === 'model' && i.kind === 'bridge').map(deckOf).filter(Boolean);
+    FOLK.deckBusy = false; FOLK.deckList = L.items.filter(isDeck).map(deckOf).filter(Boolean);
   }
   if (!FOLK.job && FOLK.due && performance.now() > FOLK.due && !TOWN.job) { FOLK.due = 0; FOLK.job = folkGridSteps(); FOLK.t0 = performance.now();
     if (!FOLK.job) { FOLK.grid = null; if (FOLK.town) FOLK.town.group.visible = false; } }   // (an empty town: nobody about until there's one again)
@@ -1896,6 +1907,41 @@ function folkFrame(dt) {
       FOLK.town.setGrid(FOLK.grid); FOLK.town.group.visible = FOLK.on;
       const note = $('folkNote'); if (note) note.textContent = `${FOLK.grid.places.length} places to go${FOLK.grid.dropped ? ` (${FOLK.grid.dropped} out of reach or past the town: left out)` : ''}.`; } }
   if (FOLK.town && FOLK.on && FOLK.grid) FOLK.town.update(dt, camera, THREE.MathUtils.smoothstep(-DAY.elev, -2, 8));   // (night: from the sun 2° up to 8° down)
+}
+// THE SHOWCASE (src/objects/showcase.js): the landmarks standing for Jacob's projects (models/town/showcase.json: which kinds
+// of building or prop stand for which project, and its slides). Over one the pointer becomes a hand and its name shows; a
+// click raises its hologram. Asleep while the Build bar is open (editing, not visiting)
+const SHOW = { sc: null, byKind: {}, byItem: {} };
+getJSON('/models/town/showcase.json').then((data) => {
+  if (!data) return;
+  for (const l of data.landmarks) { for (const k of l.at || []) SHOW.byKind[k] = l.id; for (const id of l.ids || []) SHOW.byItem[id] = l.id; }   // (ids: one particular building or prop, by its id)
+  SHOW.sc = new Showcase({ scene, camera, controls, dom: renderer.domElement, data, targets: showTargets, enabled: () => !document.body.classList.contains('planting'), blocked: showBlocked, scale: TS.lite ? 0.75 : 1 });
+});
+// something nearer than a landmark along the pointer's ray: another thing of the town's (its own mesh, not its unseen pick
+// box) or the land itself (the heights marched)
+const SHOW_RAY = new THREE.Raycaster();
+function showBlocked(ray, dist) {
+  if (TOWN.village) { SHOW_RAY.set(ray.origin, ray.direction); SHOW_RAY.far = dist - 0.05;
+    for (const h of SHOW_RAY.intersectObject(TOWN.village.group, true)) { const m = h.object.material; if (h.object.visible && !(m && m.visible === false) && !h.object.userData.id) return true; } }
+  for (let s = 2; s < dist - 1; s += Math.max(1, s * 0.02)) { const x = ray.origin.x + ray.direction.x * s, z = ray.origin.z + ray.direction.z * s; if (ray.origin.y + ray.direction.y * s < heightAt(x, z)) return true; }
+  return false;
+}
+// the things standing for a landmark, each with its box in the world (worked out again when it has moved); Montana's
+// unseen outline laid onto the ground, so the pointer finds it where the flowers are
+function showTargets() {
+  const out = [], V = TOWN.village; if (!V) return out;
+  for (const it of V.layout.items) {
+    const id = SHOW.byItem[it.id] || SHOW.byKind[it.kind], o = id && V.objs.get(it.id); if (!o || !o.inner) continue;
+    const flat = it.kind === 'stateMap' ? o.inner.children.find((c) => c.geometry && c.geometry.type === 'ShapeGeometry') : null;
+    const key = `${it.x},${it.z},${it.rot},${it.size},${o.group.position.y},${flat ? flat.geometry.uuid : ''}`;
+    if (o.showKey !== key) { o.showKey = key; o.group.updateMatrixWorld(true);
+      if (flat) { const pos = flat.geometry.attributes.position, v = new THREE.Vector3(), inv = new THREE.Matrix4().copy(flat.matrixWorld).invert();   // (each point to the ground under it, 15 cm up)
+        for (let i = 0; i < pos.count; i++) { v.fromBufferAttribute(pos, i).applyMatrix4(flat.matrixWorld); v.y = heightAt(v.x, v.z) + 0.15; v.applyMatrix4(inv); pos.setY(i, v.y); }
+        pos.needsUpdate = true; flat.geometry.computeBoundingSphere(); flat.geometry.computeBoundingBox(); }
+      o.showBox = new THREE.Box3().setFromObject(o.inner); }
+    out.push({ id, obj: o.inner, box: o.showBox, item: it });
+  }
+  return out;
 }
 { const on = $('folkOn'), n = $('folkCount');
   if (on) { on.checked = FOLK.on; on.addEventListener('change', () => { FOLK.on = on.checked; if (FOLK.on && !FOLK.lib) loadPeople().then((lib) => { FOLK.lib = lib; }); if (FOLK.town) FOLK.town.group.visible = FOLK.on && !!FOLK.grid; }); }
@@ -2373,7 +2419,7 @@ renderer.setAnimationLoop(() => {
   if (PAVE.job) { const t0 = performance.now(), budget = Math.min(6, Math.max(2, dt * 1000 * 0.25)); while (performance.now() - t0 < budget) if (PAVE.job.next().done) { PAVE.job = null; break; } }   // (the paving laid again after a road edit: paveLater)
   watch();
   if ((shown += dt) > 0.5) { shown = 0; const inf = renderer.info.render; $('hud').innerHTML = `<b>${Math.round(fps)} fps</b> · ${(1000 / Math.max(1, fps)).toFixed(1)} ms · ${inf.calls} draws · ${(inf.triangles / 1e6).toFixed(2)} M triangles · ${GL2 ? 'WebGL2' : 'WebGL1'}`; }
-  renderer.info.reset(); stepRain(); controls.update(); followCover(); U.time.value += dt; sky.update(camera, dt); if (WIND.on) tickWind(dt); dayFrame(dt); followShadow();
+  renderer.info.reset(); stepRain(); if (SHOW.sc) { SHOW.sc.update(dt); document.body.classList.toggle('showing', SHOW.sc.isOpen); } tickGlobes(dt); controls.update(); followCover(); U.time.value += dt; sky.update(camera, dt); if (WIND.on) tickWind(dt); dayFrame(dt); followShadow();
   for (const f of [treeForest, coverForest]) if (f) {
     f.landU.landShade.value = U.shadeMap.value; f.landU.landShadeK.value.set(U.hillShade.value, U.aoShade.value, U.treeShade.value * 0.6, U.shadeMap.value ? 1 : 0);   // the land's baked shade, on the plants too
     f.update(camera, controls.target, camera.position, dt);
@@ -2385,4 +2431,4 @@ renderer.setAnimationLoop(() => {
   if (BEAMS.on && DAY.elev > -1 && BEAMS.fx) { BEAMS.fx.render(camera, SUN_NOW, { ...BEAMS.opts, strength: BEAMS.strength * beamsAmount(DAY.elev), color: DL.sun }); }
   drawAtlas();
 });
-if (Q.has('probe')) Object.assign(window, { renderer, __day: { set: (o) => { Object.assign(DAY, o); DAY.dirty = true; }, BEAMS, get baking() { return !!DAY.bake; }, get elev() { return DAY.elev; }, DAY, DL, FOG_DIR, sky, hemi, sun }, __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest], __plant: () => PLANT, drawPaths, __lamps: LAMPU, __folk: FOLK });
+if (Q.has('probe')) Object.assign(window, { renderer, __day: { set: (o) => { Object.assign(DAY, o); DAY.dirty = true; }, BEAMS, get baking() { return !!DAY.bake; }, get elev() { return DAY.elev; }, DAY, DL, FOG_DIR, sky, hemi, sun }, __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest], __plant: () => PLANT, drawPaths, __lamps: LAMPU, __folk: FOLK, __show: SHOW });

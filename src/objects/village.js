@@ -7,6 +7,7 @@
 // for the ground pads (levelPads), the cells to keep clear of plants and trees (blockGrid) and the road picture.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeProp, PROP_KINDS } from './townProps.js';
 
 // THE BUILDINGS: file (models/town/<file>.glb, 2K pictures; models/town/lo/ 1K), box: the model's bounding box in its own
@@ -29,6 +30,8 @@ export const TOWN_ASSETS = {
   solarpunkCottage: { name: 'Solarpunk cottage', box: [0.73, 0.74, 1.0], front: '+Z', size: 9.5, category: 'home' },
   solarpunkHouse: { name: 'Solarpunk house', box: [1.0, 0.89, 0.81], front: '+Z', size: 11, category: 'home' },
   bridge: { name: 'Stone footbridge', box: [1.0, 0.37, 0.53], front: '+X', size: 12, category: 'infrastructure', level: false },   // spans along its front-back line once turned
+  lurcher: { name: 'Lurcher (RMRF)', box: [2.965, 1.744, 3.281], front: '-Z', size: 9, category: 'landmark', level: false, door: false },   // RMRF's walker, exported from its vehicle designer (cyan, standing at rest)
+  raft: { name: 'Raft (Shipwrecked)', box: [10.062, 11.431, 15.501], front: '+Z', size: 7, category: 'landmark', level: false, door: false },   // Shipwrecked's escape raft, from that game's own model
 };
 // town trees (drawn by the Terrain Lab's forest, so they get its imposters, wind and shade): kind -> base height (m)
 export const TOWN_TREES = { oak: 'Oak', ash: 'Ash', aspen: 'Aspen', pine: 'Pine' };
@@ -125,6 +128,7 @@ export function drawStroke(g, r, SIZE, P = 2048, from = 0) {
 export function blockGrid(layout, roadCanvas, N, SIZE, TEX, pad = 2, yardM = 14) {
   const B = new Float32Array(N * N), road = new Float32Array(N * N), yard = new Float32Array(N * N), bridge = new Float32Array(N * N);
   for (const it of layout.items) {
+    if (it.type === 'prop' && it.kind === 'stateMap') continue;        // (a state's outline: a garden, its border planted; nothing to keep clear)
     if (it.type === 'model' && it.kind === 'bridge') {                  // a bridge is a way across, not in the way: its deck counts as road
       const { w, d } = footprintOf(it), a = it.rot * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), R = Math.hypot(w, d) / 2 + TEX;
       for (let j = Math.max(0, Math.floor((it.z - R + SIZE / 2) / TEX)); j <= Math.min(N - 1, Math.ceil((it.z + R + SIZE / 2) / TEX)); j++)
@@ -165,6 +169,17 @@ export function loadModel(kind, lo) {   // -> { scene (the model as loaded, shar
   const key = kind + (lo ? '-lo' : '');
   return modelCache[key] || (modelCache[key] = new Promise((ok, bad) => loader.load(`/models/town/${lo ? 'lo/' : ''}${kind}.glb`, g => {
     const o = g.scene; o.updateMatrixWorld(true);
+    // a model in many parts (the Lurcher's 69) as one mesh a material: a draw each, not a part each (parts whose attributes
+    // differ are kept as they are)
+    const meshes = []; o.traverse((m) => { if (m.isMesh && !m.isSkinnedMesh) meshes.push(m); });
+    if (meshes.length > 4) {
+      const by = new Map(); for (const m of meshes) { const k = m.material.uuid + '|' + Object.keys(m.geometry.attributes).sort().join(',') + (m.geometry.index ? '|i' : ''); if (!by.has(k)) by.set(k, []); by.get(k).push(m); }
+      for (const list of by.values()) { if (list.length < 2) continue;
+        const geo = mergeGeometries(list.map((m) => m.geometry.clone().applyMatrix4(m.matrixWorld))); if (!geo) continue;
+        const one = new THREE.Mesh(geo, list[0].material); one.name = list[0].name; o.add(one);
+        for (const m of list) m.parent.remove(m); }
+      o.updateMatrixWorld(true);
+    }
     o.traverse(m => { if (m.isMesh) { m.castShadow = m.receiveShadow = true; for (const mt of [].concat(m.material)) { mt.side = THREE.DoubleSide; if (mt.map) mt.map.anisotropy = 4; } } });   // (both sides: a gable or wall made as one face shows from behind too)
     const bb = new THREE.Box3().setFromObject(o), c = bb.getCenter(new THREE.Vector3());
     ok({ scene: o, centre: c, minY: bb.min.y, box: bb.getSize(new THREE.Vector3()) });
