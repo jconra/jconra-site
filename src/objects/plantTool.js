@@ -1,7 +1,9 @@
 // PLANT TOOL: hand planting in the Terrain Lab. A bar along the bottom (plantBar.js) picks a plant and a tool:
 //   Add        click to stand one plant on the ground, or on whatever the mouse is over (a roof, a wall top); drag a brush
 //              to scatter the chosen plant (thickness: plants a square metre), kept as the stroke, not the plants
-//   Clear      drag to keep every plant out of the ground brushed (the land's own and painted ones)
+//   Clear      drag over the ground to take away the chosen kind of thing there: a kind may name its own rubbing out
+//              (kinds' clearAs: the stroke kept as that kind instead, a footpath's rubbing out footpaths; clearRoad: a
+//              road's, rubbing out the town's stones); any other clears the plants (the land's own and painted ones)
 //   Select     click a placed plant; the gizmo (gizmo.js) moves, turns and sizes it along each axis
 // The planting (planting.js) is kept in this browser and copied out as text. The page grows the painted plants with
 // its own (paintedPlants, keepProcedural), so they get its imposters, wind and shade; the placed ones are drawn here,
@@ -120,7 +122,7 @@ export class PlantTool {
     const base = (k) => String((this.kindOf(k).name) || 'plant').replace(/\s*\(.*\)\s*$/, '').trim(), cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
     const names = {
       town: (it) => (this.town && this.town.nameOf ? this.town.nameOf(it) : it.kind),
-      stroke: (s) => { if (s.mode === 'clear') return 'Cleared strip'; const kd = this.kindOf(s.kind); return kd.group === 'Fences' ? 'Fence line' : kd.group === 'Paths' ? cap(base(s.kind)) : `${cap(base(s.kind))} (painted)`; },
+      stroke: (s) => { const kd = this.kindOf(s.kind); if (s.mode === 'clear') return kd.group === 'Fences' ? 'Fence taken down' : 'Cleared strip'; return kd.group === 'Fences' ? 'Fence line' : kd.group === 'Paths' ? cap(base(s.kind)) : `${cap(base(s.kind))} (painted)`; },
       item: (it) => `Placed ${base(it.kind).toLowerCase()}`,
     };
     const r = listChanges({ town: d.town, planting: normalisePlanting(d.planting || emptyPlanting()) }, { town: this.town && this.town.layout ? this.town.layout() : null, planting: this.planting }, names);
@@ -413,19 +415,21 @@ export class PlantTool {
   }
   hold(e) { this.controls.enabled = false; try { this.dom.setPointerCapture(e.pointerId); } catch (err) { /* fine */ } e.stopPropagation(); e.preventDefault(); }
   release() { this.controls.enabled = true; }
-  endStroke() {
-    const s = this.stroke, road = this.kindOf(s.kind).road;
-    if (road && this.town && this.town.road) {                           // (a stone road, or rubbing one out: the town's roads, as wide as the brush ring)
-      this.stroke = this.painting = null; this.release(); this.showTrail(); this.townBefore();
-      this.town.road({ mat: road, w: +(s.r * 2).toFixed(2), pts: s.pts.length > 1 ? s.pts : [s.pts[0], s.pts[0]] });
+  endStroke() { const s = this.stroke; this.stroke = this.painting = null; this.release(); this.showTrail(); this.finish(s); }
+  // a finished brush stroke kept: a stone road (or Clear with one chosen: its stones rubbed out, clearRoad) goes to the
+  // town's roads, as wide as the brush ring; Clear with a kind that has its own rubbing out (clearAs) is kept as that
+  finish(s) {
+    const kd = this.kindOf(s.kind), clear = s.mode === 'clear', road = clear ? kd.clearRoad : kd.road;
+    if (road && this.town && this.town.road) {
+      this.townBefore(); this.town.road({ mat: road, w: +(s.r * 2).toFixed(2), pts: s.pts.length > 1 ? s.pts : [s.pts[0], s.pts[0]] });
       this.bar.setInfo(road === 'erase' ? 'Stones rubbed out.' : 'Stones laid.'); return;
     }
-    this.before(); this.planting.strokes.push(s); this.stroke = this.painting = null; this.release(); this.showTrail(); this.commit();
+    this.before(); this.planting.strokes.push(clear && kd.clearAs != null ? { ...s, mode: 'paint', kind: kd.clearAs } : s); this.commit();
   }
   // a second finger came down while the first was painting: the camera takes both (see listen)
   handOver() {
     const s = this.stroke, h = this.painting; this.stroke = this.painting = null;
-    if (s.pts.length > 1 && performance.now() - h.t0 > 300) { this.before(); this.planting.strokes.push(s); this.commit(); }
+    if (s.pts.length > 1 && performance.now() - h.t0 > 300) this.finish(s);
     this.showTrail(); this.ring.visible = false; this.release();
     // the camera never heard of the first finger (the brush kept it): it is told now, at the finger's last spot; the
     // second finger's own press then goes on to it as usual

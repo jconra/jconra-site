@@ -43,7 +43,7 @@ const ICON = {
   plants: SVG('<path d="M12 20v-9"/><path d="M12 14c-4 0-6.5-2.3-6.5-6.5 4.2 0 6.5 2.3 6.5 6.5z"/><path d="M12 12c0-4 2.3-6.5 6.5-6.5 0 4.2-2.3 6.5-6.5 6.5z"/><path d="M8 20h8"/>'),
 };
 const MODES = [['select', 'Select', 'Pick a placed thing, then move, turn or size it'],
-  ['paint', 'Add', 'Click for one, drag to paint a patch with the brush (buildings and props: a click puts one down)'], ['clear', 'Clear', 'Drag over the ground to rub plants out']];
+  ['paint', 'Add', 'Click for one, drag to paint a patch with the brush (buildings and props: a click puts one down)'], ['clear', 'Clear', 'Drag over the ground to take away the chosen kind there: plants (with a plant, tree or rock chosen), footpaths, stones or fences']];
 const GIZMOS = [['translate', 'Move', 'Move it (drag an arrow)'], ['rotate', 'Turn', 'Turn it round'], ['scale', 'Size', 'Make it bigger or smaller']];
 // key, words, what it does, lowest, highest, step (0: a log slider, so the small numbers get as much room as the big), how it reads
 const SLIDERS = [
@@ -174,7 +174,7 @@ export class PlantBar {
   // ── building it ────────────────────────────────────────────────────────────────────────────────────────────────
   build(container) {
     const groups = [];
-    this.kinds.forEach((k, i) => { const name = k.group || ''; let g = groups.find((x) => x.name === name); if (!g) groups.push(g = { name, items: [] }); g.items.push([k, i]); });
+    this.kinds.forEach((k, i) => { if (k.hidden) return; const name = k.group || ''; let g = groups.find((x) => x.name === name); if (!g) groups.push(g = { name, items: [] }); g.items.push([k, i]); });   // (hidden: a kind kept only to name its strokes, no button)
     const btn = (attr, icon, word, tip, cls = '') => `<button type="button" class="pb-b${cls}" ${attr} title="${esc(tip)}">${icon || ''}<span>${esc(word)}</span></button>`;
     const root = document.createElement('div'); root.className = 'pb-root'; this.el = root;
     root.innerHTML = `

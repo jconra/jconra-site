@@ -1243,7 +1243,7 @@ const sortParts = new WeakMap();
 function plantingFor(sort) {
   const t = PLANT.tool, P = t.planting; let m = sortParts.get(t.index); if (!m) sortParts.set(t.index, m = {});
   if (!m[sort]) {   // (a placed plant's clear circle keeps the meadow back, not the trees: trees and rocks heed only their own sort's)
-    const pl = { ...P, procedural: sort === 'plant' ? P.procedural : true, strokes: P.strokes.filter((st) => st.mode === 'clear' || SORT[sort](st.kind)), items: sort === 'plant' ? P.items : P.items.filter((i) => SORT[sort](i.kind)) };
+    const pl = { ...P, procedural: sort === 'plant' ? P.procedural : true, strokes: P.strokes.filter((st) => (st.mode === 'clear' && st.kind !== PLANT.FENCE) || SORT[sort](st.kind)), items: sort === 'plant' ? P.items : P.items.filter((i) => SORT[sort](i.kind)) };   // (Clear with a fence chosen takes down fences only)
     m[sort] = { planting: pl, index: new PlantIndex(pl) };
   }
   return m[sort];
@@ -1265,7 +1265,7 @@ const plantingParts = new WeakMap();
 function paintedOnly(t, lawn) {   // (lawn: false the plants, true the lawn, or 'trees' / 'rocks')
   let v = plantingParts.get(t.index);
   if (!v) {
-    const P = t.planting, part = (want) => ({ ...P, strokes: P.strokes.map((s) => s.mode !== 'clear' && !want(s.kind) ? { ...s, density: 0 } : s) });
+    const P = t.planting, part = (want) => ({ ...P, strokes: P.strokes.filter((s) => !(s.mode === 'clear' && s.kind === PLANT.FENCE)).map((s) => s.mode !== 'clear' && !want(s.kind) ? { ...s, density: 0 } : s) });
     v = { plants: part((k) => k < PLANT.LAWN_KIND), lawn: part((k) => k === PLANT.LAWN_KIND), trees: part(SORT.tree), rocks: part(SORT.rock) }; plantingParts.set(t.index, v);
   }
   return typeof lawn === 'string' ? v[lawn] : lawn ? v.lawn : v.plants;
@@ -1309,7 +1309,7 @@ const sortSig = (sort) => { const t = PLANT.tool; return t ? JSON.stringify([t.p
 const lastSig = { tree: '', rock: '', path: '', fence: '' };
 function makePlantTool() {
   if (PLANT.tool) return;
-  const groups = { long: 'Tall meadow', grass: 'Meadow', shade: 'Shade', dry: 'Dry ground', wet: 'Wet ground', shrub: 'Shrubs' };   // (by where each grows: a dandelion is no grass)
+  const groups = { long: 'Tall meadow', grass: 'Meadow', shade: 'Shade', dry: 'Dry ground', wet: 'Wet ground', waterside: 'Wet ground', shrub: 'Shrubs' };   // (by where each grows: a dandelion is no grass)
   const kinds = KIND_INFO.map((K, k) => ({ id: k, name: K.name, group: groups[K.hab] || 'Plants' }));
   // the lawn's tuft, drawn: a few curved green blades
   const cv = document.createElement('canvas'); cv.width = cv.height = 96; const g2 = cv.getContext('2d'); g2.lineCap = 'round';
@@ -1323,13 +1323,14 @@ function makePlantTool() {
   const pathIcon = (erase) => { const c = document.createElement('canvas'); c.width = c.height = 96; const g = c.getContext('2d'); g.fillStyle = '#4f7a2a'; g.fillRect(0, 0, 96, 96);
     g.strokeStyle = '#7a5a3a'; g.lineWidth = 26; g.lineCap = 'round'; g.beginPath(); g.moveTo(14, 82); g.quadraticCurveTo(40, 30, 82, 14); g.stroke();
     if (erase) { g.strokeStyle = '#ff5a4a'; g.lineWidth = 7; g.beginPath(); g.moveTo(22, 22); g.lineTo(74, 74); g.moveTo(74, 22); g.lineTo(22, 74); g.stroke(); } return c.toDataURL(); };
-  kinds.push({ id: PLANT.PATH, name: 'footpath (the brush is its width)', group: 'Paths', icon: pathIcon(false), sliders: ['brush'] }, { id: PLANT.NOPATH, name: 'rub out footpaths', group: 'Paths', icon: pathIcon(true), sliders: ['brush'] });
+  // (Clear with a footpath or a stone road chosen rubs them out: clearAs, clearRoad; the rubbing-out kinds stay, hidden, to name the strokes made so)
+  kinds.push({ id: PLANT.PATH, name: 'footpath (the brush is its width)', group: 'Paths', icon: pathIcon(false), sliders: ['brush'], clearAs: PLANT.NOPATH }, { id: PLANT.NOPATH, name: 'footpath rubbed out', group: 'Paths', icon: pathIcon(true), sliders: ['brush'], hidden: true });
   // stone roads: the town's paving, painted as wide as the brush ring, or rubbed out (road strokes in the town's layout)
   const stoneIcon = (erase) => { const c = document.createElement('canvas'); c.width = c.height = 96; const g = c.getContext('2d'); g.fillStyle = '#4f7a2a'; g.fillRect(0, 0, 96, 96);
     g.fillStyle = '#5a4632'; g.beginPath(); g.moveTo(0, 30); g.lineTo(96, 30); g.lineTo(96, 66); g.lineTo(0, 66); g.fill();
     for (let i = 0; i < 6; i++) for (let j = 0; j < 2; j++) { const x = 3 + i * 16 + (j % 2) * 8 - 4, y = 33 + j * 16; g.fillStyle = ['#9a968c', '#8a867e', '#a6a196'][(i + j) % 3]; g.beginPath(); g.moveTo(x + 2, y + 1); g.lineTo(x + 14, y); g.lineTo(x + 15, y + 13); g.lineTo(x + 1, y + 14); g.fill(); }
     if (erase) { g.strokeStyle = '#ff5a4a'; g.lineWidth = 7; g.lineCap = 'round'; g.beginPath(); g.moveTo(22, 22); g.lineTo(74, 74); g.moveTo(74, 22); g.lineTo(22, 74); g.stroke(); } return c.toDataURL(); };
-  kinds.push({ id: PLANT.STONE, name: 'stone road (as wide as the brush ring)', group: 'Paths', icon: stoneIcon(false), road: 'cobbles', sliders: ['brush'] }, { id: PLANT.NOSTONE, name: 'rub out stones', group: 'Paths', icon: stoneIcon(true), road: 'erase', sliders: ['brush'] });
+  kinds.push({ id: PLANT.STONE, name: 'stone road (as wide as the brush ring)', group: 'Paths', icon: stoneIcon(false), road: 'cobbles', clearRoad: 'erase', sliders: ['brush'] }, { id: PLANT.NOSTONE, name: 'stones rubbed out', group: 'Paths', icon: stoneIcon(true), road: 'erase', sliders: ['brush'], hidden: true });
   { const c = document.createElement('canvas'); c.width = c.height = 96; const g = c.getContext('2d'); g.fillStyle = '#7a5a3c';   // a fence: posts and two rails
     for (const x of [14, 40, 66]) g.fillRect(x, 30, 9, 54); g.fillRect(10, 42, 76, 7); g.fillRect(10, 62, 76, 7);
     kinds.push({ id: PLANT.FENCE, name: 'fence (drag to draw it; Plant size: its height)', group: 'Fences', icon: c.toDataURL() }); }
@@ -1406,7 +1407,7 @@ function buildFences() {
     for (let i = 1; i < st.pts.length; i++) { const [ax, az] = st.pts[i - 1], [bx, bz] = st.pts[i], L = Math.hypot(bx - ax, bz - az); let d = left;
       while (d <= L) { at.push([ax + (bx - ax) * d / L, az + (bz - az) * d / L]); d += GAP; } left = d - L; }
     const end = st.pts[st.pts.length - 1], last = at[at.length - 1]; if (Math.hypot(end[0] - last[0], end[1] - last[1]) > GAP * 0.35) at.push(end);
-    const kept = at.map(([x, z]) => strokes.some((c, ci) => ci > si && c.mode === 'clear' && inStroke(c, x, z)) ? null : [x, heightAt(x, z), z]);
+    const kept = at.map(([x, z]) => strokes.some((c, ci) => ci > si && c.mode === 'clear' && c.kind === PLANT.FENCE && inStroke(c, x, z)) ? null : [x, heightAt(x, z), z]);   // (taken down by Clear with a fence chosen)
     kept.forEach((p, i) => { if (!p) return; posts.push([p, h]); if (kept[i + 1]) rails.push([p, kept[i + 1], h]); });
   });
   if (!posts.length) return;
