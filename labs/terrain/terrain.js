@@ -54,9 +54,10 @@ const FOG_DIR = { view: { x: 0, y: 0, z: 1, w: 1 }, sun: { x: 0, y: 0, z: -1 }, 
 // season -1 midwinter .. 1 midsummer (0.64: a noon sun 60° up); dayMin: minutes a whole day takes when it goes by itself
 const DAY = { hour: 9 + 40 / 60, auto: false, dayMin: 12, season: 0.64, turn: 192, lat: 45, bake: null, baked: null, dirty: true, stamp: 0, glow: 1, elev: 48 };
 // THE TOWN's layout: the one saved in this browser, else the first town (models/town/layout.json); likewise the Build
-// bar's hand planting, the one saved in this browser, else models/town/planting.json
+// bar's hand planting, the one saved in this browser, else models/town/planting.json. And the land's own paths as
+// routed once and kept (models/town/paths.json, see PATHS)
 const getJSON = (url) => fetch(url).then(r => r.ok ? r.json() : null).catch(() => null);
-const [TOWN_FIRST, PLANTING_FIRST] = await Promise.all([getJSON('/models/town/layout.json'), getJSON('/models/town/planting.json')]);
+const [TOWN_FIRST, PLANTING_FIRST, PATHS_KEPT] = await Promise.all(['layout', 'planting', 'paths'].map((f) => getJSON(`/models/town/${f}.json`)));
 const TOWN_DEFAULT = normaliseTown(TOWN_FIRST);
 const PATHROAD = new Uint8Array(2048 * 2048 * 4);              // the paths-and-roads picture's pixels (see composePathRoad)
 const TOWN = { layout: normaliseTown(savedTown() || TOWN_DEFAULT), Hpre: null, block: null, road: null, canvas: document.createElement('canvas'), village: null };
@@ -240,7 +241,12 @@ let trees = [], maskA = null, pathCanvas = null; const MAPS = {};
 // from the finished R when it's read back (nearFromCore). The land's own paths (PATHS.runs, routed with the land) and then the
 // hand-painted ones (the planting's footpath strokes, the brush as wide as the dirt) and the erased ones, in the order made.
 // after: read back and everything that follows paths laid again
-const PATHS = { runs: [] };
+// THE LAND'S OWN PATHS STAY PUT: routed once and kept (`kept`, from models/town/paths.json), so a sign or a lamp put down
+// beside one, or a building moved, doesn't send it round a new way and spoil what was lined up along it. Used while the
+// land is the shape they were routed on (its heights at 49 spots, `marks`, all within half a metre), else routed afresh.
+// `routes`: the routes as drawn (before the stretches along the paving are left out), for keeping
+const PATHS = { runs: [], routes: [], kept: PATHS_KEPT };
+const landMarks = () => { const H = TOWN.Hpre || Hg, out = []; for (let b = 1; b < 8; b++) for (let a = 1; a < 8; a++) out.push(+H[Math.floor(N * b / 8) * N + Math.floor(N * a / 8)].toFixed(2)); return out; };
 function drawPaths(after = true) {
   const P = 2048, k = P / SIZE; pathCanvas = pathCanvas || document.createElement('canvas'); pathCanvas.width = pathCanvas.height = P;
   // (read back afterwards: kept in ordinary memory, not on the graphics card, where a rebuild's blur and read-back stalled for many seconds)
@@ -681,7 +687,9 @@ function buildLand() {
     for (let it = 0; it < 6; it++) for (let q = 1; q < pts.length - 1; q++) pts[q] = [(pts[q - 1][0] + 2 * pts[q][0] + pts[q + 1][0]) / 4, (pts[q - 1][1] + 2 * pts[q][1] + pts[q + 1][1]) / 4];
     return pts;
   };
-  const paths = [route(-760, -520, 740, 380), route(-560, 760, 520, -760), route(40, -790, -60, 790), route(-790, 120, 30, 20)];
+  const K = PATHS.kept, marks = landMarks(), kept = K && Array.isArray(K.paths) && Array.isArray(K.marks) && K.marks.length === marks.length && marks.every((h, q) => Math.abs(h - K.marks[q]) < 0.5);
+  const paths = kept ? K.paths : [route(-760, -520, 740, 380), route(-560, 760, 520, -760), route(40, -790, -60, 790), route(-790, 120, 30, 20)];
+  PATHS.routes = paths; PATHS.marks = marks; PATHS.wasKept = kept;
   const P = 2048, k = P / SIZE;
   // a path's stretches along the town's paving aren't drawn: the route keeps to a road (its cheapest way) but the land's
   // cells are ~3 m, so drawn there it stuck out one side of the stones as a strip of dirt; drawn only off the paving, a
@@ -1359,6 +1367,9 @@ function makePlantTool() {
     road: (stroke) => { TOWN.village.layout.roads.push(stroke); TOWN.editor.redrawRoads(); composePathRoad(); paveLater(); TOWN.editor.commit('roads'); },
     duplicate: (id) => { const it = TOWN.village.item(id); if (!it) return null; const c = { ...it, id: newTownId(), x: +(it.x + 3).toFixed(2), z: +(it.z + 3).toFixed(2) };
       TOWN.village.layout.items.push(c); TOWN.village.sync(); TOWN.editor.commit('add'); return c.id; },
+    sizeAll: (id) => { const it = TOWN.village.item(id); if (!it) return 0; let n = 0;   // (every other one of its kind made its size)
+      for (const o of TOWN.village.layout.items) if (o.type === it.type && o.kind === it.kind && o !== it && o.size !== it.size) { o.size = it.size; n++; }
+      if (n) { TOWN.village.sync(); TOWN.editor.commit('move'); } return n; },
     layout: () => TOWN.village.layout,
     setLayout: (L) => { TOWN.village.setLayout(L); TOWN.editor.afterLayout(); },
     reset: () => { TOWN.village.setLayout(TOWN_DEFAULT); TOWN.editor.afterLayout(); },
@@ -2157,4 +2168,4 @@ renderer.setAnimationLoop(() => {
   if (BEAMS.on && DAY.elev > -1 && BEAMS.fx) { BEAMS.fx.render(camera, SUN_NOW, { ...BEAMS.opts, strength: BEAMS.strength * beamsAmount(DAY.elev), color: DL.sun }); }
   drawAtlas();
 });
-if (Q.has('probe')) Object.assign(window, { renderer, __day: { set: (o) => { Object.assign(DAY, o); DAY.dirty = true; }, BEAMS, get baking() { return !!DAY.bake; }, get elev() { return DAY.elev; }, DAY, DL, FOG_DIR, sky, hemi, sun }, __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest], __plant: () => PLANT, drawPaths });
+if (Q.has('probe')) Object.assign(window, { renderer, __day: { set: (o) => { Object.assign(DAY, o); DAY.dirty = true; }, BEAMS, get baking() { return !!DAY.bake; }, get elev() { return DAY.elev; }, DAY, DL, FOG_DIR, sky, hemi, sun }, __rebuildNow: () => townRebuildNow(), __town: TOWN, renderer_dom: () => renderer.domElement, __Hg: Hg, __POND: POND, __WDEPTH: WDEPTH, __slopeAt: slopeAt, __followShadow: followShadow, __pathCanvas: () => pathCanvas, __placeLawn: placeLawn, __followCover: followCover, __cg: coverGround, __K: PLANT_KINDS, __G: GROW, groundShader: () => mat.userData.fs, WATER, POND, OUTLETS, reshape, THREE, scene, camera, controls, U, VIEWS, heightAt, LAND, buildLand, getTrees: () => trees, COVER, placeCover, getForests: () => [treeForest, coverForest], __plant: () => PLANT, drawPaths, __paths: PATHS });

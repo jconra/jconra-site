@@ -21,7 +21,7 @@
 //   bar.el                         the bar's own element (the page can test bar.el.contains(document.activeElement))
 //   onChange(state, key): a copy of the state and the key that changed; 'open' too, when it hides or comes back.
 //     Sliders report while they move, so a brush ring can follow.
-//   onAction(name): 'undo', 'redo', 'copy', 'paste', 'duplicate', 'delete', 'reset', 'townReset' (Start over and First
+//   onAction(name): 'undo', 'redo', 'copy', 'paste', 'duplicate', 'sizeAll', 'delete', 'reset', 'townReset' (Start over and First
 //   town want a second press within 3 s).
 // Keys: a control clicked or tapped lets go of the keyboard straight away (even when the press ends off the bar), so
 // Space, Shift and WASD go on flying the camera instead of pressing that button again. Used from the keyboard (Tab), the
@@ -51,7 +51,8 @@ const SLIDERS = [
   ['clearRadius', 'Clear round placed plants', 'A placed plant clears the painted plants this close round it', 0, 5, 0.1, (v) => `${+v.toFixed(1)} m`]];
 const SHOWN = { select: [], place: ['size', 'clearRadius'], paint: ['brush', 'density', 'size', 'clearRadius'], clear: ['brush'] };   // ('place' is no longer offered: Add does both)
 const ACTS = [['undo', 'Undo', 'Undo the last change'], ['redo', 'Redo', 'Put back what Undo took away'], ['copy', 'Copy', 'Copy the planting and the town as text'],
-  ['paste', 'Paste', 'Paste planting or a town copied before'], ['duplicate', 'Duplicate', 'A copy of the chosen thing beside it (Ctrl+D)'], ['delete', 'Delete', 'Delete the chosen thing'],
+  ['paste', 'Paste', 'Paste planting or a town copied before'], ['duplicate', 'Duplicate', 'A copy of the chosen thing beside it (Ctrl+D)'],
+  ['sizeAll', 'All this size', 'Make every one of the chosen kind this size (every street lamp, say)'], ['delete', 'Delete', 'Delete the chosen thing'],
   ['reset', 'Start over', 'Take away all the hand planting (press twice)'], ['townReset', 'First town', 'Put the town back as it first was (press twice; Undo brings yours back)']];
 const SURE = { reset: 'Press again to start over', townReset: 'Press again to put the first town back' };   // (actions that want a second press)
 const STEPS = 1000;   // (the log slider's positions)
@@ -267,7 +268,7 @@ export class PlantBar {
     b.modes.forEach((x) => x.setAttribute('aria-pressed', x.dataset.mode === s.mode));
     b.gizmos.forEach((x) => x.setAttribute('aria-pressed', x.dataset.gizmo === s.gizmo));
     b.kindBtns.forEach((x) => x.setAttribute('aria-pressed', this.kinds[+x.dataset.i].id === s.kind));
-    b.gizmo.hidden = !handles; b.acts.delete.hidden = !handles; b.acts.duplicate.hidden = !handles;
+    b.gizmo.hidden = !handles; b.acts.delete.hidden = !handles; b.acts.duplicate.hidden = !handles; b.acts.sizeAll.hidden = !handles;
     b.level.hidden = !handles || this.levelShown == null; b.levelBox.checked = !!this.levelShown;
     for (const [key, sl] of Object.entries(b.sliders)) { sl.row.hidden = !shown.includes(key); sl.inp.value = this.toSlider(key, s[key]); sl.out.textContent = this.fmt(key, s[key]); }
     b.proc.checked = !!s.procedural; this.edges();

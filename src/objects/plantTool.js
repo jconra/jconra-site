@@ -14,7 +14,8 @@
 //     changed(planting, index): the planting changed (the page lays its plants again); opened(on): the bar opened or hid
 //     title: the bar's button ('Build'); town (optional): the page's town things (buildings, props, town trees, kept in its
 //       own layout), for kinds carrying `town: 'model:kind'`: { pick(cx, cy) -> id, get(id), add(key, x, z), change(id,
-//       fields, done), remove(id), snapshot(), undo(), redo() }; the gizmo slides, lifts, turns and sizes them
+//       fields, done), remove(id), snapshot(), undo(), redo(), sizeAll(id) -> how many changed }; the gizmo slides,
+//       lifts, turns and sizes them
 //   tool.update() each frame; tool.planting, tool.index; tool.active (the bar open)
 import * as THREE from 'three';
 import { Gizmo } from './gizmo.js';
@@ -83,6 +84,7 @@ export class PlantTool {
     }
     else if (a === 'delete') this.removeSel();
     else if (a === 'duplicate') this.duplicateSel();
+    else if (a === 'sizeAll') this.sizeAllSel();
     else if (a === 'townReset' && this.town && this.town.reset) { this.townBefore(); this.town.reset(); this.select(null); this.bar.setInfo('The first town is back (Undo brings yours back).'); }
     else if (a === 'copy') this.copy();
     else if (a === 'paste') this.paste();
@@ -158,6 +160,21 @@ export class PlantTool {
     if (this.townItem(this.sel)) { if (!this.town.duplicate) return; this.townBefore(); const id = this.town.duplicate(this.sel.slice(2)); if (id) this.select('T:' + id); this.bar.setInfo('Duplicated: the copy is beside it.'); return; }
     const it = this.item(this.sel); if (!it) return;
     this.before(); const c = { ...it, id: newId(), x: +(it.x + 1).toFixed(2), z: +(it.z + 1).toFixed(2) }; this.planting.items.push(c); this.commit(); this.select(c.id);
+  }
+  // every other one of the chosen thing's kind made its size (All this size): one step for Undo
+  sizeAllSel() {
+    if (!this.sel) return;
+    const t = this.townItem(this.sel), name = (k) => (this.kindOf(k).name || 'one').toLowerCase();
+    if (t) { if (!this.town.sizeAll || !this.town.layout) return;
+      const n = this.town.layout().items.filter((o) => o.type === t.type && o.kind === t.kind && o.id !== t.id && o.size !== t.size).length;
+      const what = (this.kinds.find((k) => k.town === t.type + ':' + t.kind) || {}).name || t.kind;
+      if (!n) { this.bar.setInfo(`Every ${what.toLowerCase()} is already this size.`); return; }
+      this.townBefore(); this.town.sizeAll(this.sel.slice(2)); this.bar.setInfo(`${n} more made this size: every ${what.toLowerCase()} alike now (Undo puts them back).`); return; }
+    const it = this.item(this.sel); if (!it) return;
+    const same = this.planting.items.filter((o) => o.kind === it.kind && o !== it && (o.sx !== it.sx || o.sy !== it.sy || o.sz !== it.sz));
+    if (!same.length) { this.bar.setInfo(`Every ${name(it.kind)} is already this size.`); return; }
+    this.before(); for (const o of same) { o.sx = it.sx; o.sy = it.sy; o.sz = it.sz; } this.commit();
+    this.bar.setInfo(`${same.length} more made this size: every ${name(it.kind)} alike now (Undo puts them back).`);
   }
   removeSel() {
     if (!this.sel) return;
