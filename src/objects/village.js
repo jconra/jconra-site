@@ -81,7 +81,32 @@ export function paintRoads(canvas, layout, SIZE, P = 2048) {
   const g = canvas.getContext('2d', { willReadFrequently: true }), k = P / SIZE;
   g.clearRect(0, 0, P, P); g.lineCap = g.lineJoin = 'round';
   for (const r of layout.roads) drawStroke(g, r, SIZE, P);
+  sealSeams(canvas, layout.roads, SIZE);
   return canvas;
+}
+// SEAMS: where two strokes' soft (anti-aliased) edges cross inside the paving, as the plaza's rim crossing a road's edge,
+// a pixel can be left partly covered by each and wholly by neither: a pinhole that reads as unpaved, a stone missing
+// there in the 3D paving and the painted. A partly covered pixel with paving on 6 or more of its 8 sides takes its
+// strongest neighbour's colour (a real edge has fewer, and a rubbed-out patch is bare all round). Only over the roads'
+// own box. Returns how many were sealed
+export function sealSeams(canvas, roads, SIZE) {
+  const P = canvas.width, k = P / SIZE; if (!roads || !roads.length) return 0;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const r of roads) for (const [x, z] of r.pts) { const h = (r.w || 0) / 2 + 2; x0 = Math.min(x0, x - h); x1 = Math.max(x1, x + h); y0 = Math.min(y0, z - h); y1 = Math.max(y1, z + h); }
+  const i0 = Math.max(1, Math.floor((x0 + SIZE / 2) * k)), i1 = Math.min(P - 2, Math.ceil((x1 + SIZE / 2) * k)), j0 = Math.max(1, Math.floor((y0 + SIZE / 2) * k)), j1 = Math.min(P - 2, Math.ceil((y1 + SIZE / 2) * k));
+  if (i1 <= i0 || j1 <= j0) return 0;
+  const g = canvas.getContext('2d', { willReadFrequently: true }), W = i1 - i0 + 3, H = j1 - j0 + 3, img = g.getImageData(i0 - 1, j0 - 1, W, H), d = img.data;
+  const paved = (o) => d[o + 3] * Math.max(d[o], d[o + 1]) > 32512;   // (alpha x the stronger of cobbles and flagstones over one half, as the paving reads it)
+  const fix = [];
+  for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+    const o = (y * W + x) * 4; if (!d[o + 3] || paved(o)) continue;
+    let n = 0, best = -1, bv = 0;
+    for (const q of [o - 4, o + 4, o - W * 4, o + W * 4, o - W * 4 - 4, o - W * 4 + 4, o + W * 4 - 4, o + W * 4 + 4]) if (paved(q)) { n++; const v = d[q + 3] * Math.max(d[q], d[q + 1]); if (v > bv) { bv = v; best = q; } }
+    if (n >= 6) fix.push(o, best);
+  }
+  for (let f = 0; f < fix.length; f += 2) { const o = fix[f], q = fix[f + 1]; d[o] = d[q]; d[o + 1] = d[q + 1]; d[o + 2] = d[q + 2]; d[o + 3] = d[q + 3]; }
+  if (fix.length) g.putImageData(img, i0 - 1, j0 - 1);
+  return fix.length / 2;
 }
 export function drawStroke(g, r, SIZE, P = 2048, from = 0) {
   const k = P / SIZE;

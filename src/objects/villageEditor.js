@@ -6,7 +6,7 @@
 //   level the ground under it or not, duplicate (Ctrl+D), delete (Delete). Undo / redo (Ctrl+Z / Ctrl+Y).
 // Every change is saved in this browser at once; Copy layout gives it as text (for Claude, or another browser).
 import * as THREE from 'three';
-import { TOWN_ASSETS, TOWN_TREES, footprintOf, drawStroke, newId, levels } from './village.js';
+import { TOWN_ASSETS, TOWN_TREES, footprintOf, drawStroke, sealSeams, newId, levels } from './village.js';
 import { PROP_KINDS } from './townProps.js';
 
 const KEY = 'jconra.town';
@@ -104,7 +104,7 @@ export class VillageEditor {
   dirty(pts, w) { const P = this.roadCanvas.width, k = P / this.village.size, r = (w / 2 + 2) * k; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
     for (const [x, z] of pts) { const px = (x + this.village.size / 2) * k, py = (z + this.village.size / 2) * k; x0 = Math.min(x0, px - r); y0 = Math.min(y0, py - r); x1 = Math.max(x1, px + r); y1 = Math.max(y1, py + r); }
     return [x0, y0, x1, y1]; }
-  redrawRoads() { const g = this.roadCanvas.getContext('2d'), P = this.roadCanvas.width; g.clearRect(0, 0, P, P); g.lineCap = g.lineJoin = 'round'; for (const r of this.village.layout.roads) drawStroke(g, r, this.village.size, P); this.roadChanged(); }
+  redrawRoads() { const g = this.roadCanvas.getContext('2d'), P = this.roadCanvas.width; g.clearRect(0, 0, P, P); g.lineCap = g.lineJoin = 'round'; for (const r of this.village.layout.roads) drawStroke(g, r, this.village.size, P); sealSeams(this.roadCanvas, this.village.layout.roads, this.village.size); this.roadChanged(); }
   add(at) {
     const [type, kind] = this.addKind.split(':'); this.snapshot();
     const it = { id: newId(), type, kind, x: at.x, z: at.z, rot: Math.round(this.camYaw() / 15) * 15, size: type === 'model' ? TOWN_ASSETS[kind].size : type === 'tree' ? 0.6 : 1 };
