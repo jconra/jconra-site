@@ -21,9 +21,10 @@ import { flyKeys } from '../../src/objects/flyKeys.js';
 import { chooseTier, saveTier, watchFrames, TIERS } from '../../src/quality.js';
 import { makeCloudSky, SKY_GLSL } from '../../src/objects/cloudSky.js';
 import { WIND, tickWind, swayMaterial } from '../../src/objects/wind.js';
-import { Village, levelPads, blockGrid, paintRoads, footprintOf, loadModel, TOWN_ASSETS, newId as newTownId, normalise as normaliseTown } from '../../src/objects/village.js';
+import { Village, levelPads, blockGrid, paintRoads, footprintOf, loadModel, TOWN_ASSETS, TOWN_TREES, newId as newTownId, normalise as normaliseTown } from '../../src/objects/village.js';
 import { PROP_KINDS, makeProp } from '../../src/objects/townProps.js';
-import { VillageEditor, savedLayout as savedTown } from '../../src/objects/villageEditor.js';
+import { VillageEditor, savedLayout as savedTown, forgetLayout as forgetTown } from '../../src/objects/villageEditor.js';
+import { textHash } from '../../src/objects/changes.js';
 import { sunDirection, moonDirection, elevationOf, daylightAt, newDaylight } from '../../src/objects/daylight.js';
 import { Sunbeams } from '../../src/objects/sunbeams.js';
 
@@ -1372,9 +1373,14 @@ function makePlantTool() {
       if (n) { TOWN.village.sync(); TOWN.editor.commit('move'); } return n; },
     layout: () => TOWN.village.layout,
     setLayout: (L) => { TOWN.village.setLayout(L); TOWN.editor.afterLayout(); },
-    reset: () => { TOWN.village.setLayout(TOWN_DEFAULT); TOWN.editor.afterLayout(); },
+    nameOf: (it) => it.type === 'model' ? (TOWN_ASSETS[it.kind] || {}).name || it.kind : it.type === 'prop' ? (PROP_KINDS.find((P) => P.kind === it.kind) || {}).name || it.kind : `${TOWN_TREES[it.kind] || it.kind} (town tree)`,
+    forget: () => forgetTown(),
   };
-  PLANT.tool = new PlantTool({ renderer, scene, camera, controls, dom: renderer.domElement, heightAt, groundAt, shadows: SHADOW.on, title: 'Build', town, initial: PLANTING_FIRST,
+  // the default, fresh from the server (not the copy fetched at load: it may have changed since), for Load default and Export
+  const defaults = async () => { try {
+    const [a, b] = await Promise.all(['layout', 'planting'].map((f) => fetch(`/models/town/${f}.json`, { cache: 'no-cache' }).then((r) => (r.ok ? r.text() : Promise.reject(new Error(r.status))))));
+    return { town: normaliseTown(JSON.parse(a)), planting: JSON.parse(b), base: textHash(a + '\n' + b) }; } catch (e) { return null; } };
+  PLANT.tool = new PlantTool({ renderer, scene, camera, controls, dom: renderer.domElement, heightAt, groundAt, shadows: SHADOW.on, title: 'Build', town, initial: PLANTING_FIRST, defaults,
     // a placed plant's own scale: the brush's plants are sized in metres by the forest (its height over the model's), so the placed ones are too
     unitOf: (k) => { const g = COVER.parts[k]; if (k >= PLANT.LAWN_KIND || !g) return 1; if (!g.boundingBox) g.computeBoundingBox(); return KIND_INFO[k].height / Math.max(1e-4, g.boundingBox.max.y - g.boundingBox.min.y); },
     surfaces: () => TOWN.village ? [TOWN.village.group] : [], parts, materials: mats, kinds,

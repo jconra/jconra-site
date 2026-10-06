@@ -11,6 +11,7 @@ import { PROP_KINDS } from './townProps.js';
 
 const KEY = 'jconra.town';
 export function savedLayout() { try { const t = localStorage.getItem(KEY); return t ? JSON.parse(t) : null; } catch (e) { return null; } }
+export function forgetLayout() { try { localStorage.removeItem(KEY); } catch (e) { /* no storage */ } }   // (the default is used until the next change)
 
 export class VillageEditor {
   // village: a Village; groundAt(clientX, clientY) -> THREE.Vector3 | null (the land under the pointer);
@@ -58,7 +59,7 @@ export class VillageEditor {
     $('tRot').addEventListener('input', e => this.edit(it => { it.rot = +e.target.value; }, 'turn', true));
     $('tSize').addEventListener('input', e => this.edit(it => { it.size = +e.target.value; }, 'size', true));
     for (const id of ['tRot', 'tSize']) $(id).addEventListener('change', () => this.commit('edit'));
-    $('tLevel').addEventListener('change', e => this.edit(it => { if (e.target.checked) delete it.level; else it.level = false; }, 'level'));
+    $('tLevel').addEventListener('change', e => this.edit(it => { if (e.target.checked) it.level = true; else delete it.level; }, 'level'));
     $('tDup').addEventListener('click', () => this.duplicate()); $('tDel').addEventListener('click', () => this.remove());
     $('tUndo').addEventListener('click', () => this.undo()); $('tRedo').addEventListener('click', () => this.redo());
     $('tCopy').addEventListener('click', async () => { const t = JSON.stringify(this.village.layout); try { await navigator.clipboard.writeText(t); $('tNote').textContent = `Copied (${this.village.layout.items.length} things, ${this.village.layout.roads.length} road strokes).`; } catch (e) { $('tNote').textContent = t; } });

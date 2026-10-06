@@ -21,8 +21,10 @@
 //   bar.el                         the bar's own element (the page can test bar.el.contains(document.activeElement))
 //   onChange(state, key): a copy of the state and the key that changed; 'open' too, when it hides or comes back.
 //     Sliders report while they move, so a brush ring can follow.
-//   onAction(name): 'undo', 'redo', 'copy', 'paste', 'duplicate', 'sizeAll', 'delete', 'reset', 'townReset' (Start over and First
-//   town want a second press within 3 s).
+//   onAction(name): 'undo', 'redo', 'export', 'paste', 'duplicate', 'sizeAll', 'delete', 'loadDefault' (Load default wants a
+//   second press within 3 s).
+//   bar.showText(title, shown, copyText, note)   a box over the page with `shown` to read, a Copy button (copyText: what it
+//                                  copies, `shown` when left out) and Close; Escape or a click outside closes it too
 // Keys: a control clicked or tapped lets go of the keyboard straight away (even when the press ends off the bar), so
 // Space, Shift and WASD go on flying the camera instead of pressing that button again. Used from the keyboard (Tab), the
 // bar keeps Space, Enter and the arrow keys to itself, except that a focused slider lets Space and Enter through.
@@ -50,11 +52,11 @@ const SLIDERS = [
   ['size', 'Plant size', 'How big the plants come out, against their usual size', 0.3, 3, 0.05, (v) => `${v.toFixed(2)}×`],
   ['clearRadius', 'Clear round placed plants', 'A placed plant clears the painted plants this close round it', 0, 5, 0.1, (v) => `${+v.toFixed(1)} m`]];
 const SHOWN = { select: [], place: ['size', 'clearRadius'], paint: ['brush', 'density', 'size', 'clearRadius'], clear: ['brush'] };   // ('place' is no longer offered: Add does both)
-const ACTS = [['undo', 'Undo', 'Undo the last change'], ['redo', 'Redo', 'Put back what Undo took away'], ['copy', 'Copy', 'Copy the planting and the town as text'],
+const ACTS = [['undo', 'Undo', 'Undo the last change'], ['redo', 'Redo', 'Put back what Undo took away'], ['export', 'Export', 'List what you changed from the default, to give to Claude'],
   ['paste', 'Paste', 'Paste planting or a town copied before'], ['duplicate', 'Duplicate', 'A copy of the chosen thing beside it (Ctrl+D)'],
   ['sizeAll', 'All this size', 'Make every one of the chosen kind this size (every street lamp, say)'], ['delete', 'Delete', 'Delete the chosen thing'],
-  ['reset', 'Start over', 'Take away all the hand planting (press twice)'], ['townReset', 'First town', 'Put the town back as it first was (press twice; Undo brings yours back)']];
-const SURE = { reset: 'Press again to start over', townReset: 'Press again to put the first town back' };   // (actions that want a second press)
+  ['loadDefault', 'Load default', 'Throw away what this browser keeps and load the default town and planting (press twice; Undo brings yours back)']];
+const SURE = { loadDefault: 'Press again: what this browser keeps is thrown away and the default loaded' };   // (actions that want a second press)
 const STEPS = 1000;   // (the log slider's positions)
 const KEEP_KEYS = [' ', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'];
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -89,6 +91,17 @@ const CSS = `
 .pb-sl input { grid-column:1 / -1; width:100%; height:20px; margin:1px 0 0; accent-color:#35e07d; cursor:pointer; }
 .pb-check { display:flex; align-items:center; gap:7px; color:#aeb9c2; font-size:12px; cursor:pointer; white-space:nowrap; }
 .pb-check input { accent-color:#35e07d; width:15px; height:15px; margin:0; cursor:pointer; }
+.pb-modal { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center; padding:16px; background:rgba(4,6,8,.55); }
+.pb-modal * { box-sizing:border-box; margin:0; }
+.pb-box { width:min(620px, 100%); max-height:min(80vh, 720px); display:flex; flex-direction:column; gap:10px; padding:14px 16px; background:rgba(10,13,17,.97);
+  border:1px solid #2a3540; border-radius:6px; color:#ccd6de; font:13px/1.4 ui-sans-serif, system-ui, sans-serif; }
+.pb-box h2 { font:600 12px/1.2 ui-monospace, monospace; letter-spacing:.1em; text-transform:uppercase; color:#e8f1f5; }
+.pb-box pre { flex:1 1 auto; min-height:0; overflow:auto; padding:10px 12px; background:#06080b; border:1px solid #1a2129; border-radius:4px;
+  font:12px/1.5 ui-monospace, monospace; color:#d6e0e7; white-space:pre-wrap; overflow-wrap:anywhere; }
+.pb-box textarea { width:100%; height:120px; font:11px ui-monospace, monospace; background:#06080b; color:#d6e0e7; border:1px solid #2f7d55; border-radius:4px; }
+.pb-box p { color:#8494a0; font-size:12px; }
+.pb-btns { display:flex; gap:6px; justify-content:flex-end; }
+.pb-box :focus-visible { outline:2px solid #35e07d; outline-offset:2px; }
 .pb-info { font:11.5px/1.3 ui-monospace, monospace; color:#7f8d99; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:none; }
 .pb-kinds { flex:none; display:flex; overflow-x:auto; overflow-y:hidden; border-top:1px solid #1a2129; margin:0 -4px; padding:6px 4px 4px; touch-action:pan-x; overscroll-behavior-x:contain;
   scrollbar-width:thin; scrollbar-color:#2f3a45 transparent; }
@@ -260,6 +273,26 @@ export class PlantBar {
   }
   unsure() { clearTimeout(this.sure); this.sure = null; const a = this.sureAct; this.sureAct = null; if (!a) return;
     const b = this.b.acts[a], def = ACTS.find((x) => x[0] === a); b.classList.remove('pb-sure'); b.querySelector('span').textContent = def[1]; b.title = def[2]; b.style.minWidth = ''; }
+  // a box over the page: something to read and copy (Export's list of changes)
+  showText(title, shown, copyText = shown, note = '') {
+    if (this.modal) this.modal.remove();
+    const m = document.createElement('div'); m.className = 'pb-modal'; this.modal = m;
+    m.innerHTML = `<div class="pb-box" role="dialog" aria-modal="true" aria-label="${esc(title)}"><h2>${esc(title)}</h2><pre></pre>${note ? `<p>${esc(note)}</p>` : ''}
+      <textarea readonly hidden></textarea><div class="pb-btns"><button type="button" class="pb-b" data-m="copy"><span>Copy</span></button><button type="button" class="pb-b" data-m="close"><span>Close</span></button></div></div>`;
+    m.querySelector('pre').textContent = shown;
+    const close = () => { m.remove(); if (this.modal === m) this.modal = null; document.removeEventListener('keydown', key, true); };
+    const key = (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } e.stopPropagation(); };   // (keys stay in the box: no flying while it's open)
+    document.addEventListener('keydown', key, true);
+    m.addEventListener('click', async (e) => {
+      if (e.target === m) { close(); return; }
+      const b = e.target.closest('[data-m]'); if (!b) return;
+      if (b.dataset.m === 'close') { close(); return; }
+      const word = b.querySelector('span');
+      try { await navigator.clipboard.writeText(copyText); word.textContent = 'Copied'; }
+      catch (err) { const t = m.querySelector('textarea'); t.value = copyText; t.hidden = false; t.focus(); t.select(); word.textContent = 'Press Ctrl+C'; }   // (no clipboard here: the text picked out to copy by hand)
+    });
+    document.body.appendChild(m); m.querySelector('[data-m="copy"]').focus();
+  }
   showLevel(on) { this.levelShown = on == null ? null : !!on; if (on != null) this.state.level = !!on; this.render(); }
   render() {
     const s = this.state, b = this.b, kd = this.kinds.find((x) => x.id === s.kind), handles = s.mode === 'select' || s.mode === 'place';

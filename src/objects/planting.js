@@ -13,6 +13,7 @@
 //
 //   normalisePlanting(o)               any saved or pasted planting (the object or its text) made safe: bad entries dropped, gaps filled
 //   loadPlanting() / savePlanting(p)   the copy kept in this browser (load gives null when there is none)
+//   forgetPlanting()                   that copy thrown away (the page's default is used until the next change)
 //   new PlantIndex(planting)           where every stroke and item is, for quick tests. Make a new one after ANY change (it is
 //                                      cheap). A stroke or item added or taken away, and undo / redo, are noticed even if you
 //                                      forget (the index is brought up to date itself); a stroke or item edited in place is not
@@ -302,6 +303,7 @@ export function normalisePlanting(o) {
 }
 export function loadPlanting() { try { const t = localStorage.getItem(PLANTING_KEY); return t ? normalisePlanting(t) : null; } catch (e) { return null; } }
 export function savePlanting(p) { try { localStorage.setItem(PLANTING_KEY, JSON.stringify(p)); return true; } catch (e) { return false; } }
+export function forgetPlanting() { try { localStorage.removeItem(PLANTING_KEY); } catch (e) { /* no storage */ } }
 
 // ── undo / redo ────────────────────────────────────────────────────────────────────────────────────────────────────
 // Keeps the planting it is given and works on that same object: snapshot() once per change (a brush stroke or a drag,

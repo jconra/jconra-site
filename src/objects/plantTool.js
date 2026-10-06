@@ -14,13 +14,17 @@
 //     changed(planting, index): the planting changed (the page lays its plants again); opened(on): the bar opened or hid
 //     title: the bar's button ('Build'); town (optional): the page's town things (buildings, props, town trees, kept in its
 //       own layout), for kinds carrying `town: 'model:kind'`: { pick(cx, cy) -> id, get(id), add(key, x, z), change(id,
-//       fields, done), remove(id), snapshot(), undo(), redo(), sizeAll(id) -> how many changed }; the gizmo slides,
-//       lifts, turns and sizes them
+//       fields, done), remove(id), snapshot(), undo(), redo(), sizeAll(id) -> how many changed, layout(), setLayout(L),
+//       nameOf(item) -> a plain name, forget() (the copy kept in this browser thrown away) }; the gizmo slides, lifts,
+//       turns and sizes them
+//     defaults() (optional): -> Promise of the default fresh from the server, { town, planting, base (its fingerprint) },
+//       or null; Load default puts it in place and forgets what this browser keeps, Export lists the changes from it
 //   tool.update() each frame; tool.planting, tool.index; tool.active (the bar open)
 import * as THREE from 'three';
 import { Gizmo } from './gizmo.js';
 import { PlantBar } from './plantBar.js';
-import { emptyPlanting, normalisePlanting, loadPlanting, savePlanting, PlantIndex, PlantingHistory, newId, newSeed } from './planting.js';
+import { emptyPlanting, normalisePlanting, loadPlanting, savePlanting, forgetPlanting, PlantIndex, PlantingHistory, newId, newSeed } from './planting.js';
+import { listChanges, exportText } from './changes.js';
 
 const DEG = Math.PI / 180;
 
@@ -69,7 +73,7 @@ export class PlantTool {
     if (key === 'mode') { if (s.mode !== 'select' && s.mode !== 'place') this.select(null); this.dom.style.cursor = s.mode === 'paint' || s.mode === 'clear' || s.mode === 'place' ? 'crosshair' : ''; this.ring.visible = false; }
     if (key === 'gizmo') { this.gizmo.mode = s.gizmo; this.limits(); }
     if (key === 'procedural') { this.before(); this.planting.procedural = s.procedural; this.commit(); }
-    if (key === 'level' && this.townItem(this.sel)) { this.townBefore(); this.town.change(this.sel.slice(2), { level: s.level ? undefined : false }, true); }
+    if (key === 'level' && this.townItem(this.sel)) { this.townBefore(); this.town.change(this.sel.slice(2), { level: s.level ? true : undefined }, true); }
     if (key === 'clearRadius' && this.sel) { const it = this.item(this.sel); if (it) { this.before(true); it.clear = s.clearRadius; this.commit(); } }
   }
   action(a) {
@@ -79,23 +83,53 @@ export class PlantTool {
       if (!w) return;
       to.push(w);
       if (w === 'T') { if (a === 'undo') this.town.undo(); else this.town.redo(); this.syncUndo(); if (keep && this.townItem(keep)) this.select(keep); else this.select(null); return; }
+      if (w === 'B') {                                                   // (Load default: the town and the planting in one step)
+        if (a === 'undo') this.town.undo(); else this.town.redo();
+        const p = a === 'undo' ? this.history.undo() : this.history.redo(); if (p) this.replace(p, false); else this.syncUndo(); this.select(null); return; }
       const p = a === 'undo' ? this.history.undo() : this.history.redo();
       if (p) { this.replace(p, false); if (keep && (this.item(keep) || this.townItem(keep))) this.select(keep); }
     }
     else if (a === 'delete') this.removeSel();
     else if (a === 'duplicate') this.duplicateSel();
     else if (a === 'sizeAll') this.sizeAllSel();
-    else if (a === 'townReset' && this.town && this.town.reset) { this.townBefore(); this.town.reset(); this.select(null); this.bar.setInfo('The first town is back (Undo brings yours back).'); }
-    else if (a === 'copy') this.copy();
+    else if (a === 'loadDefault') this.loadDefault();
+    else if (a === 'export') this.exportChanges();
     else if (a === 'paste') this.paste();
-    else if (a === 'reset') this.replace({ ...emptyPlanting(), procedural: this.planting.procedural }, true);   // (the bar asks for a second press first; the land's own plants stay as they were)
   }
-  // Copy: the planting and the town together ({ v, planting, town }); Paste takes that, or a planting or a town layout alone
-  async copy() {
-    const both = this.town && this.town.layout, text = JSON.stringify(both ? { v: 1, planting: this.planting, town: this.town.layout() } : this.planting);
-    try { await navigator.clipboard.writeText(text); this.bar.setInfo(`Copied${both ? ': the planting and the town' : ''}. Paste it in chat to make it what everyone sees.`); }
-    catch (e) { prompt('Copy this:', text); }
+  // Load default (after a second press): the default fresh from the server in place of the town and the planting, and
+  // nothing kept in this browser until the next change, so a newer default reaches it by itself. One Undo brings it back
+  async loadDefault() {
+    if (!this.defaults) return;
+    this.bar.setInfo('Loading the default…');
+    const d = await this.defaults();
+    if (!d) { this.bar.setInfo("Couldn't fetch the default (offline?): nothing changed."); return; }
+    const town = !!(this.town && this.town.setLayout && d.town), n0 = this.log.length;
+    if (town) { this.townBefore(); this.town.setLayout(d.town); }
+    this.replace(normalisePlanting(d.planting || emptyPlanting()), true);
+    if (town) this.log.splice(n0, this.log.length - n0, 'B');
+    forgetPlanting(); if (this.town && this.town.forget) this.town.forget();
+    this.syncUndo();
+    this.bar.setInfo('The default is loaded; nothing is kept in this browser until you change something (Undo brings yours back).');
   }
+  // Export: what's different from the default, as a list to read in a box, with the data that makes it the new default
+  async exportChanges() {
+    if (!this.defaults) return;
+    this.bar.setInfo('Comparing with the default…');
+    const d = await this.defaults();
+    if (!d) { this.bar.setInfo("Couldn't fetch the default to compare with (offline?)."); return; }
+    const base = (k) => String((this.kindOf(k).name) || 'plant').replace(/\s*\(.*\)\s*$/, '').trim(), cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+    const names = {
+      town: (it) => (this.town && this.town.nameOf ? this.town.nameOf(it) : it.kind),
+      stroke: (s) => { if (s.mode === 'clear') return 'Cleared strip'; const kd = this.kindOf(s.kind); return kd.group === 'Fences' ? 'Fence line' : kd.group === 'Paths' ? cap(base(s.kind)) : `${cap(base(s.kind))} (painted)`; },
+      item: (it) => `Placed ${base(it.kind).toLowerCase()}`,
+    };
+    const r = listChanges({ town: d.town, planting: normalisePlanting(d.planting || emptyPlanting()) }, { town: this.town && this.town.layout ? this.town.layout() : null, planting: this.planting }, names);
+    const text = exportText(r, d.base);
+    this.bar.showText('Your changes from the default', r.count ? text.split('\n--- data for Claude')[0].trimEnd() : text, text,
+      r.count ? 'Copy takes this list and the data Claude needs to make it the default. Paste it in chat.' : '');
+    this.bar.setInfo(r.count ? `${r.count} line${r.count === 1 ? '' : 's'} of changes from the default.` : 'No changes from the default.');
+  }
+  // Paste takes a whole town and planting ({ v, planting, town }), or a planting or a town layout alone
   async paste() {
     let text = ''; try { text = await navigator.clipboard.readText(); } catch (e) { text = prompt('Paste the planting or the town here') || ''; }
     let o = null; try { o = JSON.parse(text); } catch (e) { /* not JSON */ }
@@ -106,7 +140,7 @@ export class PlantTool {
     if (planting) this.replace(normalisePlanting(planting), true);
     this.bar.setInfo(planting && town ? 'Pasted: the planting and the town.' : planting ? 'Pasted the planting.' : 'Pasted the town.');
   }
-  replace(p, snapshot) {                                                 // snapshot: a change of its own (Start over, Paste), not undo / redo
+  replace(p, snapshot) {                                                 // snapshot: a change of its own (Load default, Paste), not undo / redo
     if (snapshot) this.before();
     this.select(null); this.planting = p; this.history.planting = p;
     this.bar.setState({ procedural: p.procedural }); this.commit();
@@ -186,7 +220,7 @@ export class PlantTool {
   select(id) {
     this.sel = id; this.dragFrom = null;
     const t = this.townItem(id);
-    this.bar.showLevel(t && t.type === 'model' ? t.level !== false : null);   // (a building: its 'Level the ground under it' box)
+    this.bar.showLevel(t && t.type === 'model' ? t.level === true : null);   // (a building: its 'Level the ground under it' box)
     if (t) {                                                             // a building, prop or town tree: slides, lifts, turns upright, sizes evenly
       this.proxy.position.set(t.x, this.heightAt(t.x, t.z) + (t.y || 0), t.z); this.proxy.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.rot * DEG); this.proxy.scale.set(1, 1, 1);
       this.townFrom = { size: t.size }; this.gizmo.mode = this.st.gizmo; this.limits();

@@ -45,7 +45,8 @@ export function footprintOf(it) {
 // a prop's real height (measured once a kind), for its pick box
 const PROP_H = {};
 function propHeight(kind) { if (!(kind in PROP_H)) { try { const b = new THREE.Box3().setFromObject(makeProp(kind)); PROP_H[kind] = Math.max(0.5, b.max.y); } catch (e) { PROP_H[kind] = 2; } } return PROP_H[kind]; }
-export const levels = (it) => it.type === 'model' && it.level !== false && (TOWN_ASSETS[it.kind] || {}).level !== false;
+// (a building sits on the land as it is unless asked to level it, level: true: most have foundations enough for a gentle slope)
+export const levels = (it) => it.type === 'model' && it.level === true && (TOWN_ASSETS[it.kind] || {}).level !== false;
 
 // (world -> an item's own frame: x' = cos x - sin z, z' = sin x + cos z, its turn being rot)
 // THE GROUND PADS: H = Hpre, then under each building that levels the ground, its footprint flattened (to the average
@@ -192,7 +193,7 @@ export function normalise(L) {
     if (it.type === 'prop' && !PROP_KINDS.some(p => p.kind === it.kind)) continue;   // (a layout from a newer page: skipped, not a crash)
     if (it.type === 'tree' && !TOWN_TREES[it.kind]) continue;
     out.items.push({ id: it.id || newId(), type: it.type, kind: it.kind, x: +it.x || 0, z: +it.z || 0, rot: ((+it.rot || 0) % 360 + 360) % 360,
-      size: +it.size || (it.type === 'model' ? TOWN_ASSETS[it.kind].size : 1), ...(it.level === false ? { level: false } : {}), ...(+it.y ? { y: +(+it.y).toFixed(2) } : {}) });
+      size: +it.size || (it.type === 'model' ? TOWN_ASSETS[it.kind].size : 1), ...(it.level === true ? { level: true } : {}), ...(+it.y ? { y: +(+it.y).toFixed(2) } : {}) });
   }
   for (const r of (L && L.roads) || []) if (r && r.pts && r.pts.length) out.roads.push({ mat: r.mat || 'cobbles', w: +r.w || 4, pts: r.pts.map(p => [+(+p[0]).toFixed(2), +(+p[1]).toFixed(2)]) });
   return out;
