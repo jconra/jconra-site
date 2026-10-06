@@ -41,9 +41,16 @@ export const SKY_GLSL = `
     vec3 col = mix(mix(skyHorizon, skyToward, skyTowardSun(dir) * (1.0 - up * 0.7)), skyZenith, up);
     #ifndef LITE
     col += glowCol * (pow(sd, 5.0) * 0.45 + pow(sd, 48.0) * 0.9);                // the haze round the sun, wide and bright near it
-    if (starAmt > 0.0 && dir.y > 0.0) { vec3 q = dir * 260.0; vec3 cell = floor(q); float h = skyH(cell.xz + cell.y * 17.13);
-      float star = step(0.9965, h) * smoothstep(0.55, 0.0, length(fract(q) - 0.5)) * (0.5 + 0.5 * skyH(cell.zy + 3.7));
-      col += vec3(0.9, 0.94, 1.0) * star * starAmt * smoothstep(0.0, 0.15, dir.y); }
+    // the stars: one in a couple of hundred squares of a grid round the sky, each at its own spot in its square (not a
+    // row of them), mostly faint and the odd bright one, some bluer, some warmer; a fine point, a pixel or two. Their own
+    // numbers come from a hash with no sine in it: the sine one lost its precision on the graphics card as the numbers grew
+    // with height, so overhead there were none at all and low down they fell into patterns
+    if (starAmt > 0.0 && dir.y > 0.0) { vec3 q = dir * 300.0, cell = floor(q);
+      vec3 h = fract(cell * vec3(0.1031, 0.1030, 0.0973)); h += dot(h, h.yxz + 33.33); h = fract((h.xxy + h.yxx) * h.zyx);
+      if (h.x > 0.994) {
+        vec3 s = normalize(cell + 0.25 + fract(h.yzx * 13.7) * 0.5);   // (its spot: kept off its square's edges)
+        float d = length(dir - s) * 300.0, b = 0.22 + 1.5 * pow(fract(h.y * 7.31 + h.z * 3.17), 3.0);
+        col += mix(vec3(0.74, 0.82, 1.0), vec3(1.0, 0.88, 0.74), h.z) * b * exp(-d * d * 14.0) * starAmt * smoothstep(0.0, 0.15, dir.y); } }
     if (moonAmt > 0.0) { float md = dot(dir, moonDir); col += vec3(0.82, 0.86, 0.95) * moonAmt * (smoothstep(0.99985, 0.99992, md) * 3.0 + pow(max(md, 0.0), 64.0) * 0.12); }
     #endif
     vec2 c = skyCloud(from, dir);
