@@ -1,12 +1,17 @@
 # Amplify serves pages through CloudFront with s-maxage of a year, so an edge can keep an old page
-# long after a deploy. Pages must revalidate; the models and textures can stay cached, since their
-# names change when their contents do.
+# long after a deploy. Pages and data (the town's layout and planting keep their names as they change)
+# must revalidate; the models and textures can stay cached, since their names change when their
+# contents do.
 customHeaders:
   - pattern: '**/*.html'
     headers:
       - key: 'Cache-Control'
         value: 'public, max-age=0, s-maxage=0, must-revalidate'
   - pattern: '**/*.js'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=0, s-maxage=0, must-revalidate'
+  - pattern: '**/*.json'
     headers:
       - key: 'Cache-Control'
         value: 'public, max-age=0, s-maxage=0, must-revalidate'

@@ -53,8 +53,11 @@ const FOG_DIR = { view: { x: 0, y: 0, z: 1, w: 1 }, sun: { x: 0, y: 0, z: -1 }, 
 // at 9:40 it stands as high as the lab's old fixed sun, 12° further round, so the default look is all but the same.
 // season -1 midwinter .. 1 midsummer (0.64: a noon sun 60° up); dayMin: minutes a whole day takes when it goes by itself
 const DAY = { hour: 9 + 40 / 60, auto: false, dayMin: 12, season: 0.64, turn: 192, lat: 45, bake: null, baked: null, dirty: true, stamp: 0, glow: 1, elev: 48 };
-// THE TOWN's layout: the one saved in this browser, else the first town (models/town/layout.json)
-const TOWN_DEFAULT = normaliseTown(await fetch('/models/town/layout.json').then(r => r.ok ? r.json() : null).catch(() => null));
+// THE TOWN's layout: the one saved in this browser, else the first town (models/town/layout.json); likewise the Build
+// bar's hand planting, the one saved in this browser, else models/town/planting.json
+const getJSON = (url) => fetch(url).then(r => r.ok ? r.json() : null).catch(() => null);
+const [TOWN_FIRST, PLANTING_FIRST] = await Promise.all([getJSON('/models/town/layout.json'), getJSON('/models/town/planting.json')]);
+const TOWN_DEFAULT = normaliseTown(TOWN_FIRST);
 const PATHROAD = new Uint8Array(2048 * 2048 * 4);              // the paths-and-roads picture's pixels (see composePathRoad)
 const TOWN = { layout: normaliseTown(savedTown() || TOWN_DEFAULT), Hpre: null, block: null, road: null, canvas: document.createElement('canvas'), village: null };
 // THE TOWN'S PAVING (src/objects/stones.js, tuned in the Stone Lab): irregular stones, one per scattered point, so
@@ -1360,7 +1363,7 @@ function makePlantTool() {
     setLayout: (L) => { TOWN.village.setLayout(L); TOWN.editor.afterLayout(); },
     reset: () => { TOWN.village.setLayout(TOWN_DEFAULT); TOWN.editor.afterLayout(); },
   };
-  PLANT.tool = new PlantTool({ renderer, scene, camera, controls, dom: renderer.domElement, heightAt, groundAt, shadows: SHADOW.on, title: 'Build', town,
+  PLANT.tool = new PlantTool({ renderer, scene, camera, controls, dom: renderer.domElement, heightAt, groundAt, shadows: SHADOW.on, title: 'Build', town, initial: PLANTING_FIRST,
     // a placed plant's own scale: the brush's plants are sized in metres by the forest (its height over the model's), so the placed ones are too
     unitOf: (k) => { const g = COVER.parts[k]; if (k >= PLANT.LAWN_KIND || !g) return 1; if (!g.boundingBox) g.computeBoundingBox(); return KIND_INFO[k].height / Math.max(1e-4, g.boundingBox.max.y - g.boundingBox.min.y); },
     surfaces: () => TOWN.village ? [TOWN.village.group] : [], parts, materials: mats, kinds,
