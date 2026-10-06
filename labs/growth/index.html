@@ -179,8 +179,8 @@ let trees = [], CANOPY = new Float32Array(N * N), WIDE = new Float32Array(N * N)
 function ground(x, z) {
   const k = idx(x, z), canopy = CANOPY[k], shade = Math.min(1, Math.max(0, WIDE[k] * 2.2 - canopy * 0.8)), open = 1 - Math.min(1, canopy + shade), path = PATH[k] * 1.2;
   const hard = path + STEEP[k] * 1.5 + WATER[k] * 4, shore = Math.min(1, SHORE[k] * 2.5);
-  const blocked = hard + Math.max(0, WET[k] - 0.6) * 2 + shore * 1.2;
-  return { hard, blocked, shade: Math.min(1, shade + 0.6 * canopy), wet: Math.max(shore, WET[k]) * (1 - STEEP[k]),
+  const blocked = hard + Math.max(0, WET[k] - 0.6) * 2 + shore * 1.2, waterside = WATER[k] > 0.3 ? 0 : S(shore, 0.45, 0.9) * (1 - STEEP[k]);   // (the stony shore's band: this land has no ponds' depths)
+  return { hard, blocked, waterside, hardWater: hard, shade: Math.min(1, shade + 0.6 * canopy), wet: Math.max(shore, WET[k]) * (1 - STEEP[k]),
     dry: STEEP[k] > 0.4 ? 0 : DRY[k] * open, grass: (0.55 * open + 1.0 * shade + 0.15 * canopy) * (1 - DRY[k] * 0.4), shrub: 0.08 * open + 0.9 * shade + 0.35 * canopy,
     long: STEEP[k] > 0.4 ? 0 : (0.35 + 0.65 * DRY[k]) * (1 - Math.min(1, canopy * 1.5 + WIDE[k])) * (1 - Math.min(1, path + STEEP[k] + WET[k])) };
 }

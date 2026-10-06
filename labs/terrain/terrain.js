@@ -653,7 +653,12 @@ function* landSteps({ light = false, pads = true } = {}) {
     MAPS.gully = blur(fl, 1); MAPS.fan = blur(se, 2);
     // the shore: a band of stones round every pond and stream (and under the shallows), `shore` cells wide
     const wetCells = new Float32Array(N * N); for (let q = 0; q < N * N; q++) wetCells[q] = WDEPTH[q] > 0 ? 1 : 0;
-    MAPS.shore = LAND.shore > 0 ? blur(wetCells, LAND.shore) : wetCells.fill(0); }
+    MAPS.shore = LAND.shore > 0 ? blur(wetCells, LAND.shore) : wetCells.fill(0);
+    // a pond's rim: 1 in the cells beside its shore, less a cell further out, none past two (the waterside plants' shallows)
+    const rim = MAPS.rim = new Float32Array(N * N);
+    for (let j = 2; j < N - 2; j++) for (let i = 2; i < N - 2; i++) { const k = j * N + i; if (!POND[k]) continue; let m = 9;
+      for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) if (!POND[k + dj * N + di]) m = Math.min(m, Math.hypot(di, dj));
+      rim[k] = m <= 1 ? 1 : m <= 1.5 ? 0.6 : m <= 2 ? 0.25 : 0; } }
   const gully = MAPS.gully, fan = MAPS.fan, shore = MAPS.shore, dataB = new Uint8Array(N * N * 4);
   for (let q = 0; q < N * N; q++) {
     const sh = Math.min(1, Math.max(0, wide[q] * 2.2 - canopy[q] * 0.8)), open = 1 - Math.min(1, canopy[q] + sh);
@@ -1166,9 +1171,14 @@ function coverGround(x, z) {
   const i = Math.min(N - 1, Math.max(0, Math.floor((x + SIZE / 2) / TEX))), j = Math.min(N - 1, Math.max(0, Math.floor((z + SIZE / 2) / TEX))), k = j * N + i;
   const pi = Math.min(MAPS.P - 1, Math.max(0, Math.floor((x + SIZE / 2) / SIZE * MAPS.P))), pj = Math.min(MAPS.P - 1, Math.max(0, Math.floor((z + SIZE / 2) / SIZE * MAPS.P))), path = MAPS.path[(pj * MAPS.P + pi) * 4] / 255 + MAPS.path[(pj * MAPS.P + pi) * 4 + 1] / 1450;   // (near a path a little harder: fewer plants, tapering off over 12 m)
   const canopy = MAPS.canopy[k], shade = Math.min(1, Math.max(0, MAPS.wide[k] * 2.2 - canopy * 0.8)), open = 1 - Math.min(1, canopy + shade);
-  const yard = TOWN.yard ? TOWN.yard[k] : 0, hard = path + MAPS.steep[k] * 1.5 + waterAt(x, z) * 4 + (TOWN.block ? TOWN.block[k] * 2 : 0) + yard, shore = MAPS.shore ? Math.min(1, MAPS.shore[k] * 2.5) : 0;   // (nothing in the town's buildings and roads; mown yards round them: lawn, no meadow)
+  const wIn = waterAt(x, z), yard = TOWN.yard ? TOWN.yard[k] : 0, hard = path + MAPS.steep[k] * 1.5 + wIn * 4 + (TOWN.block ? TOWN.block[k] * 2 : 0) + yard, shore = MAPS.shore ? Math.min(1, MAPS.shore[k] * 2.5) : 0;   // (nothing in the town's buildings and roads; mown yards round them: lawn, no meadow)
   const blocked = hard + Math.max(0, MAPS.wet[k] - 0.6) * 2 + shore * 1.2;
-  return { hard, yard, blocked, shade: Math.min(1, shade + 0.6 * canopy), wet: Math.max(shore, MAPS.wet[k]) * (1 - MAPS.steep[k]),
+  // right at the water's edge (the waterside kinds, cattails): the stony shore's band, or a pond's shallows along its rim
+  // (the first cell or two out from the shore, less the deeper it is, none by 0.8 m), where the water doesn't keep them
+  // out (hardWater); never out in a river, nor across a pond that is shallow a long way out
+  const shallow = POND[k] && WDEPTH[k] < 0.8 ? (1 - WDEPTH[k] / 0.8) * (MAPS.rim ? MAPS.rim[k] : 0) : 0, inPond = wIn > 0.3 && shallow > 0;
+  const waterside = (wIn > 0.3 ? shallow : THREE.MathUtils.smoothstep(shore, 0.45, 0.9)) * (1 - MAPS.steep[k]), hardWater = inPond ? hard - wIn * 4 : hard;
+  return { hard, yard, blocked, waterside, hardWater, shade: Math.min(1, shade + 0.6 * canopy), wet: Math.max(shore, MAPS.wet[k]) * (1 - MAPS.steep[k]),
     dry: MAPS.steep[k] > 0.4 ? 0 : MAPS.dry[k] * open, grass: (0.55 * open + 1.0 * shade + 0.15 * canopy) * (1 - MAPS.dry[k] * 0.4), shrub: 0.08 * open + 0.9 * shade + 0.35 * canopy,
     long: MAPS.steep[k] > 0.4 ? 0 : (0.35 + 0.65 * MAPS.dry[k]) * (1 - Math.min(1, canopy * 1.5 + MAPS.wide[k])) * (1 - Math.min(1, path + MAPS.steep[k] + MAPS.wet[k])) };
 }
@@ -1242,7 +1252,7 @@ const keepWild = (sort, x, z) => { if (!PLANT.tool) return true; const v = plant
 // a painted plant stays out of the water (the wet-ground kinds may stand in it), off the paved roads (where the road
 // picture lays stones) and out of the buildings, as the land's own plants do; a placed plant goes wherever it is put
 function paintable(p) {
-  if (waterAt(p.x, p.z) > 0.05 && !(KIND_INFO[p.sp] && KIND_INFO[p.sp].hab === 'wet')) return false;
+  if (waterAt(p.x, p.z) > 0.05 && !(KIND_INFO[p.sp] && (KIND_INFO[p.sp].hab === 'wet' || KIND_INFO[p.sp].hab === 'waterside'))) return false;
   const P = 2048, i = Math.floor((p.x / SIZE + 0.5) * P), j = Math.floor((p.z / SIZE + 0.5) * P);
   if (i >= 0 && j >= 0 && i < P && j < P && Math.max(PATHROAD[(j * P + i) * 4 + 2], PATHROAD[(j * P + i) * 4 + 3]) > 128) return false;
   if (TOWN.block && TOWN.road) { const k = Math.min(N - 1, Math.max(0, Math.floor((p.z + SIZE / 2) / TEX))) * N + Math.min(N - 1, Math.max(0, Math.floor((p.x + SIZE / 2) / TEX))); if (TOWN.block[k] - TOWN.road[k] > 0.5) return false; }
@@ -1808,7 +1818,7 @@ $('coverOn').addEventListener('change', e => { COVER.on = e.target.checked; plac
 $('gWinner').checked = !!GROW.winner; $('gWinner').addEventListener('change', e => { GROW.winner = e.target.checked; placeCover(); });
 for (const [id, key, fmt] of [['gBare', 'bare', v => Math.round(v * 100) + '%'], ['gBareSize', 'bareSize', v => v + ' m'], ['gWetSize', 'wetSize', v => v > 0 ? `${(1 - 0.25 * v).toFixed(2)}× dry … ${(1 + 0.3 * v).toFixed(2)}× wet` : 'off'],
   ['gClumpEdge', 'clumpEdge', v => Math.round(v * 100) + '%'], ['gLonerBare', 'lonerBare', v => Math.round(v * 100) + '%'], ['gLongClear', 'longClear', v => Math.round(v * 100) + '%'], ['gPatchSize', 'patchSize', v => v + ' m'], ['gPatchSharp', 'patchSharp', v => Math.round(v * 100) + '%'], ['gClumpShare', 'clumpShare', v => Math.round(v * 100) + '%'], ['gClumpSize', 'clumpSize', v => v + ' m'],
-  ['gClumpCount', 'clumpCount', v => v + ' plants'], ['gLonerShare', 'lonerShare', v => Math.round(v * 100) + '%'], ['gFertSize', 'fertSize', v => v + ' m'], ['gFert', 'fert', v => Math.round(v * 100) + '%']]) {
+  ['gClumpCount', 'clumpCount', v => v + ' plants'], ['gLonerShare', 'lonerShare', v => Math.round(v * 100) + '%'], ['gWaterside', 'waterside', v => Math.round(v * 100) + '%'], ['gFertSize', 'fertSize', v => v + ' m'], ['gFert', 'fert', v => Math.round(v * 100) + '%']]) {
   const el = $(id); el.value = GROW[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); }); el.addEventListener('change', () => { GROW[key] = +el.value; placeCover(); });
 }
@@ -1835,7 +1845,7 @@ for (const [id, key, fmt] of [['gBare', 'bare', v => Math.round(v * 100) + '%'],
 function syncGrowthPanel() {
   const put = (id, v) => { const el = $(id); if (!el) return; if (el.type === 'checkbox') el.checked = v; else el.value = v; el.dispatchEvent(new Event('input')); };
   put('gWinner', !!GROW.winner);
-  for (const [id, key] of [['gBare', 'bare'], ['gBareSize', 'bareSize'], ['gWetSize', 'wetSize'], ['gClumpEdge', 'clumpEdge'], ['gLonerBare', 'lonerBare'], ['gLongClear', 'longClear'], ['gPatchSize', 'patchSize'], ['gPatchSharp', 'patchSharp'], ['gClumpShare', 'clumpShare'], ['gClumpSize', 'clumpSize'], ['gClumpCount', 'clumpCount'], ['gLonerShare', 'lonerShare'], ['gFertSize', 'fertSize'], ['gFert', 'fert']]) put(id, GROW[key]);
+  for (const [id, key] of [['gBare', 'bare'], ['gBareSize', 'bareSize'], ['gWetSize', 'wetSize'], ['gClumpEdge', 'clumpEdge'], ['gLonerBare', 'lonerBare'], ['gLongClear', 'longClear'], ['gPatchSize', 'patchSize'], ['gPatchSharp', 'patchSharp'], ['gClumpShare', 'clumpShare'], ['gClumpSize', 'clumpSize'], ['gClumpCount', 'clumpCount'], ['gLonerShare', 'lonerShare'], ['gWaterside', 'waterside'], ['gFertSize', 'fertSize'], ['gFert', 'fert']]) put(id, GROW[key]);
   for (const [id, key] of [['famSize', 'size'], ['famStrict', 'strength'], ['famPine', 'pineFrom']]) put(id, FAMILY[key]);
   PLANT_KINDS.forEach((K, k) => { put('kOn' + k, K.on); put('kStyle' + k, K.style); put('kSize' + k, K.size); });
   put('coverCount', COVER.count); put('coverSize', COVER.size);

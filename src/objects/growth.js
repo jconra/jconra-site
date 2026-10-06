@@ -22,12 +22,14 @@ const r = (a, b) => {
 // by labs/plants/build_sheet.py), in sheet order: each with its height (m), the ground it likes, and how it
 // grows to start with
 //   hab: long (open, dry rises)  grass (open and part shade)  shade (under and beside trees)
-//        shrub (the forest's edge)  wet (along water, on the stony shore too)  dry (open, dry, sunny)
+//        shrub (the forest's edge)  wet (damp hollows and along water, on the stony shore too)  dry (open, dry, sunny)
+//        waterside (right at the water's edge only: the stony shore and a pond's shallows; planted along it in their
+//        own clumps, see growPlantsSteps)
 export const KIND_INFO = [
   ['tall seed grass', 1.0, 'long', 'patch'], ['feather grass', 0.9, 'long', 'patch'], ['broad-blade grass', 0.8, 'long', 'patch'], ['bunchgrass', 0.55, 'grass', 'patch'],
   ['broad-leaf hosta', 0.55, 'shade', 'clump'], ['wild strawberry', 0.25, 'grass', 'patch'], ['dandelion', 0.35, 'grass', 'loner'], ['yucca', 0.8, 'dry', 'loner'],
   ['paintbrush', 0.5, 'long', 'clump'], ['snowdrops', 0.3, 'shade', 'clump'], ['columbine', 0.55, 'shade', 'loner'], ['violets', 0.2, 'shade', 'patch'],
-  ['cattails', 1.4, 'wet', 'clump'], ['sprig shrub', 0.8, 'shrub', 'clump'], ['spruce sapling', 1.1, 'shrub', 'loner'], ['marsh marigold', 0.4, 'wet', 'clump'],
+  ['cattails', 1.4, 'waterside', 'clump'], ['sprig shrub', 0.8, 'shrub', 'clump'], ['spruce sapling', 1.1, 'shrub', 'loner'], ['marsh marigold', 0.4, 'wet', 'clump'],
 ].map(([name, height, hab, style]) => ({ name, height, hab, style }));
 // the bigger plants are lit by the sun as the shapes they are (their own normals, bent 35% toward up so a
 // leaf seen from behind isn't black); the grasses and flowers are lit like the ground (every face as if up)
@@ -51,18 +53,19 @@ export const LIT_SOFTEN = 0.35;
 //   lonerBare (0..1): loners kept to the bare ground (1: only there), so the open areas hold the flowers
 //   longClear (0..1): long grasses kept out from under and beside the trees (1: none in the trees' shade)
 //   lawn (0..1): how much of the bare ground the short lawn grass covers (see lawnSpots)
+//   waterside (0..1): how thickly the waterside kinds (cattails) line the water's edge
 // (the defaults are Jacob's: the Growth Lab on 2026-10-01, then the Terrain Lab's on 2026-10-02)
 export const GROW_DEFAULTS = { patchSize: 90, patchSharp: 1, clumpShare: 0.23, clumpSize: 2.5, clumpCount: 10, lonerShare: 0.11, fertSize: 110, fert: 0.33,
-  winner: true, bare: 0.59, bareSize: 43, wetSize: 0.88, clumpEdge: 1, lonerBare: 0.16, longClear: 1, lawn: 1 };
+  winner: true, bare: 0.59, bareSize: 43, wetSize: 0.88, clumpEdge: 1, lonerBare: 0.16, longClear: 1, lawn: 1, waterside: 0.7 };
 export const COVER_DEFAULTS = { size: 2.6, density: 40000 };   // density: how many in a circle 140 m round (the Growth Lab's "how many")
 export const FAMILY_DEFAULTS = { size: 90, strength: 0.7, pineFrom: 25 };
 const KIND_SIZES = [1.8, 1.95, 1.85, 1.55, 0.65, 1.6, 1.9, 1.45, 1.15, 1.1, 1.6, 1.4, 1, 1.65, 1.05, 1.55];   // Jacob's, 2026-10-01
 export const defaultKinds = () => KIND_INFO.map((K, k) => ({ on: true, style: K.style, size: KIND_SIZES[k], weight: 1 }));
 
 // the rules growPlants uses, kept outside it so patchAt (the Growth Lab's picture of the patches) uses the same
-const blk = (k, g) => Math.min(1, KIND_INFO[k].hab === 'wet' ? g.hard : g.blocked);   // how far the ground keeps kind k out
+const blk = (k, g) => Math.min(1, KIND_INFO[k].hab === 'wet' ? g.hard : KIND_INFO[k].hab === 'waterside' ? (g.hardWater ?? g.hard) : g.blocked);   // how far the ground keeps kind k out (hardWater: as hard, but a pond's shallows let the waterside kinds in)
 let longClear = 1;                                                                       // (set from grow.longClear by each call)
-const want = (k, g) => g[KIND_INFO[k].hab] * (1 - blk(k, g)) * (KIND_INFO[k].hab === 'long' ? Math.max(0, 1 - g.shade * 3 * longClear) : 1);   // how much kind k likes the ground; long grass stays out of the trees' shade
+const want = (k, g) => (g[KIND_INFO[k].hab] || 0) * (1 - blk(k, g)) * (KIND_INFO[k].hab === 'long' ? Math.max(0, 1 - g.shade * 3 * longClear) : 1);   // how much kind k likes the ground; long grass stays out of the trees' shade
 const patchN = (G, k, x, z) => { const s = G.patchSize; return vnoise(x / s + k * 37.1, z / s - k * 19.7) * 0.7 + vnoise(x / s * 2.3 + k * 11.3, z / s * 2.3 + k * 5.9) * 0.3; };   // kind k's patch map
 const patchW = (G, K, k, g, x, z) => want(k, g) * K[k].weight * Math.pow(patchN(G, k, x, z), 1 + G.patchSharp * 8);   // kind k's claim on a spot
 const fertileAt = (G, x, z) => 1 - G.fert * (1 - smooth(vnoise(x / G.fertSize + 61, z / G.fertSize - 23), 0.3, 0.7));
@@ -90,9 +93,10 @@ export function patchAt(x, z, ground, kinds, grow) {
 }
 
 // THE GROUND PLANTS round a spot. Returns [{ x, z, sp, scale, yaw }].
-//   ground(x, z) -> { hard, blocked, grass, shrub, long, shade, wet, dry }: `hard` (0..1+) where nothing
-//     grows (paths, steep, in the water), `blocked` that and the mud and stony shore, which wet kinds don't
-//     mind; the rest how much each habitat likes the spot (0..1)
+//   ground(x, z) -> { hard, blocked, grass, shrub, long, shade, wet, dry, waterside, hardWater }: `hard` (0..1+) where
+//     nothing grows (paths, steep, in the water), `blocked` that and the mud and stony shore, which wet kinds don't
+//     mind, `hardWater` hard but for a pond's shallows (where the waterside kinds stand); the rest how much each
+//     habitat likes the spot (0..1)
 //   at { x, z }, radius (m), count (over the circle), size (all plants), kinds, grow
 // THE PLANTS FOLLOW THE CAMERA: the ground is cut into TILE m tiles; each tile always grows the same plants
 // (its own seeds), so moving the circle brings tiles in and drops others while every plant that stays keeps
@@ -116,7 +120,8 @@ export function* growPlantsSteps({ ground, at, radius, count, size = 1, kinds, g
   if (cache && cache.sig !== sig) { cache.tiles = new Map(); cache.sig = sig; }
   const on = K.map((_, k) => k).filter(k => K[k].on);
   if (!on.length || !count) return out;
-  const pk = on.filter(k => K[k].style === 'patch'), ck = on.filter(k => K[k].style === 'clump'), lk = on.filter(k => K[k].style === 'loner');
+  const side = (k) => KIND_INFO[k].hab === 'waterside', wk = on.filter(side), mid = on.filter(k => !side(k));   // (the waterside kinds have a pass of their own)
+  const pk = mid.filter(k => K[k].style === 'patch'), ck = mid.filter(k => K[k].style === 'clump'), lk = mid.filter(k => K[k].style === 'loner');
   let nL = lk.length ? Math.round(count * G.lonerShare) : 0, nC = ck.length ? Math.round(count * G.clumpShare) : 0;
   if (!pk.length) { if (ck.length) nC = count - nL; else nL = count; }
   const nP = pk.length ? count - nC - nL : 0;
@@ -165,6 +170,21 @@ export function* growPlantsSteps({ ground, at, radius, count, size = 1, kinds, g
         if (lb > 0 ? r(ts + t, seed + 79.3) > lb * b + (1 - lb) * (1 - b) : r(ts + t, seed + 79.3) < b) continue; }
       const k = lk[Math.floor(r(ts + t, seed + 71.9) * lk.length) % lk.length]; if (r(ts + t, seed + 75.7) > want(k, g) + 0.1) continue;   // (its own draw: 73.1 is the spot's depth in the tile)
       add(k, x, z, ts + t + seed * 1000 + 500, g); got++;
+    }
+    // the waterside kinds: clumps all along the water's edge. Spots tried all over the tile, kept only where the ground
+    // is right at the water (the stony shore, a pond's shallows), so a band a few metres wide isn't left to the few
+    // clump spots of the pass above that happen to land on it; each stem kept to the edge too. G.waterside: how thickly
+    if (wk.length && G.waterside > 0) for (let c = 1, tries = Math.round(60 * G.waterside * level); c <= tries; c++) {
+      const [cx, cz] = inTile(c, seed + 90), g = ground(cx, cz), cs = ts + c;
+      let total = 0; const w = wk.map(k => { const v = want(k, g) * K[k].weight; total += v; return v; });
+      if (total <= 0 || r(cs, seed + 91.3) > total / wk.length) continue;
+      let q = r(cs, seed + 93.7) * total, k = wk[wk.length - 1]; for (let n = 0; n < wk.length; n++) if ((q -= w[n]) <= 0) { k = wk[n]; break; }
+      const n = Math.max(3, Math.round(G.clumpCount * (0.6 + 0.8 * r(cs, seed + 95.1))));
+      for (let m = 0; m < n; m++) {
+        const a = r(cs * 37 + m, seed + 97.9) * Math.PI * 2, d = G.clumpSize * 0.8 * Math.sqrt(-2 * Math.log(Math.max(1e-4, r(cs * 37 + m, seed + 99.3)))) * 0.5;
+        const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d, gm = ground(x, z); if (blk(k, gm) >= 0.8 || want(k, gm) < 0.15) continue;
+        add(k, x, z, cs * 37 + m + seed * 1000 + 700, gm);
+      }
     }
     return list;
   }
