@@ -310,7 +310,7 @@ export class PlantBar {
   edges() { const t = this.b.tools; t.classList.toggle('pb-up', t.scrollTop > 1); t.classList.toggle('pb-down', t.scrollTop + t.clientHeight < t.scrollHeight - 1); }
   // scroll the plant row so the chosen kind is in sight
   reveal() {
-    const i = this.kinds.findIndex((k) => k.id === this.state.kind), btn = this.b.kindBtns[i], row = this.b.kinds; if (!btn) return;
+    const i = this.kinds.findIndex((k) => k.id === this.state.kind), btn = this.b.kindBtns.find((x) => +x.dataset.i === i), row = this.b.kinds; if (!btn) return;
     const r = btn.getBoundingClientRect(), R = row.getBoundingClientRect(); if (!R.width) return;   // (hidden)
     if (r.left < R.left) row.scrollLeft -= R.left - r.left + 12; else if (r.right > R.right) row.scrollLeft += r.right - R.right + 12;
   }
@@ -330,7 +330,7 @@ export class PlantBar {
     this.render(); if ('kind' in p || p.open) this.reveal();
   }
   setIcon(id, url) {
-    const i = this.kinds.findIndex((k) => String(k.id) === String(id)), btn = this.b.kindBtns[i]; if (!btn) return;
+    const i = this.kinds.findIndex((k) => String(k.id) === String(id)), btn = this.b.kindBtns.find((x) => +x.dataset.i === i); if (!btn) return;   // (by its own index: the buttons stand in their groups' order, not the kinds')
     const pic = btn.querySelector('.pb-kpic'), back = () => { pic.textContent = letters(nameOf(this.kinds[i])); }; pic.textContent = '';
     if (!url) { back(); return; }
     const img = document.createElement('img'); img.alt = ''; img.draggable = false; img.decoding = 'async';
