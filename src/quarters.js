@@ -22,6 +22,9 @@ import { buildBookshelf, SERIES } from './objects/bookshelf.js';
 const Q = new URLSearchParams(location.search);
 if (Q.has('edit')) document.body.classList.add('edit');   // the editing panel (the Quarters Lab) is jconra.com/?edit
 const $ = (id) => document.getElementById(id);
+// ?perf: the performance readout (src/perfHud.js): frame times, downloads, what's loading, the long frames and when each
+// thing finished (perfMark), for finding what stutters on a phone
+const PERF_MARKS = [], perfMark = (text) => { if (Q.has('perf')) PERF_MARKS.push({ at: performance.now() / 1000, T: typeof SEQ === 'undefined' ? 0 : SEQ.T, text }); };
 const FORCE_GL1 = Q.has('gl1');
 let renderer;
 if (FORCE_GL1) {
@@ -36,6 +39,14 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
+if (Q.has('perf')) import('./perfHud.js').then(({ perfHud }) => { window.__perf = perfHud({ renderer, state: perfState, marks: PERF_MARKS }); }).catch((e) => console.error('perf: not loaded', e));   // (__perf.report(): the report as text)
+// what the readout shows of the film: its time and scene, the boot, and how far the town has got
+function perfState() {
+  const V = valley, town_ = !V ? (townFailed ? 'failed' : townBuilding ? 'building the land and the town' : 'not started yet')
+    : !V.settled() ? `laying plants (${V.COVER.job ? 'busy' : 'done'}), trees ${V.treeForest && V.treeForest.ready ? 'baked' : 'baking'}, plants ${V.coverForest && V.coverForest.ready ? 'baked' : 'baking'}`
+    : townWarm < 3 ? 'ready, warming up' : 'ready';
+  return { T: SEQ.T, set: currentSet, phase: BOOT.on ? 'boot: ' + BOOT.phase : SEQ.playing ? 'playing' : 'held', town: town_ };
+}
 
 const ROOM_METRES = 3.4;                        // wall to wall
 const FAR = 4e7;
@@ -233,7 +244,7 @@ function stepPull(dt) {
   post.focus = camera.position.distanceTo(controls.target);
   if (u >= 1) { pull = null; finishBoot(); }
 }
-function finishBoot() { BOOT.phase = 'done'; BOOT.on = false; pull = null; if (!SEQ.active) activateIntro(); SEQ.T = 0; SEQ.playing = true; scrubbed(); }
+function finishBoot() { perfMark('boot done: the film starts'); BOOT.phase = 'done'; BOOT.on = false; pull = null; if (!SEQ.active) activateIntro(); SEQ.T = 0; SEQ.playing = true; scrubbed(); }
 
 function loadRoom(name) {
   build = name;
@@ -397,7 +408,7 @@ function loadSitter() {
   if (sitter || sitterLoading) return;
   sitterLoading = true;
   loader.load('/models/jacob4.glb', (gltf) => {                  // model 4: Jacob's own Blender build
-    bootProgress('jacob', 1);
+    bootProgress('jacob', 1); perfMark('Jacob loaded');
     const model = gltf.scene;
     model.traverse(o => {
       if (!o.isMesh) return;
@@ -438,7 +449,7 @@ function loadSitter() {
         act.enabled = true; act.setEffectiveWeight(0); act.play(); waveParts[part] = act;
       }
       waveAction = waveParts.arm;
-      SEQ.waveLen = src.duration; bootProgress('clips', 1);
+      SEQ.waveLen = src.duration; bootProgress('clips', 1); perfMark('wave clip loaded');
     });
     // standing up (Mixamo, retargeted) and Tripo's own walk; both start silent and the timeline drives them
     loader.load('/models/stand_up_clip.glb', (g) => {
@@ -620,7 +631,7 @@ const STATION_AT = new THREE.Vector3(100000, 0, 0);
 const HANGAR_AT = new THREE.Vector3(-100000, 0, 0);       // the human-scale hangar, off on its own
 const MAP_AT = new THREE.Vector3(0, 0, 120000);            // the map over the photograph, off on its own
 const TOWN_AT = new THREE.Vector3(0, 0, 0);                // the projects world: the valley, in a scene of its own (its own origin)
-let town = null, valley = null, townCam = null, townControls = null, townFailed = false;
+let town = null, valley = null, townCam = null, townControls = null, townFailed = false, townBuilding = false;
 const TOWN_INPUT = { dest: null, holding: false, turn: 0, throttle: 0 };
 const liveInTown = () => currentSet === 'town' && SEQ.T >= total() - 1e-6;
 const SKY = new THREE.Color(0x9ec9ec);
@@ -631,7 +642,7 @@ function loadStation() {
   stationLoading = true;
   loadKit('/models/kit/', f => bootProgress('station', f)).then(parts => {
     bootProgress('station', 1);
-    station = new StationKit(parts).build(DEFAULT_LAYOUT);
+    perfMark('station kit loaded'); station = new StationKit(parts).build(DEFAULT_LAYOUT);
     station.position.copy(STATION_AT); station.visible = false; scene.add(station); checkBoot();
     pickHangar();
     buildTraffic(parts);
@@ -658,7 +669,7 @@ function loadStation() {
     earthOut.rotation.set(0, -Math.PI / 2, 0); earthOut.rotateX(Math.atan2(3400, 12000));
     hangarSet.floor.add(earthOut); hangarSet.earthOut = earthOut;
     buildMapSet(parts);
-    syncMapToHangar();
+    syncMapToHangar(); perfMark('station, hangar and map built');
     buildTownSet(parts);
     loader.load('/models/props/helmet.glb', (g) => {
       helmet = g.scene; helmet.traverse(o => { if (o.isMesh) { o.castShadow = true; if (o.material.map) o.material.map.colorSpace = THREE.SRGBColorSpace; } });
@@ -672,6 +683,7 @@ function loadStation() {
 // beforehand; then the timeline's camera is copied into it through the arrival, and in the live flight it follows the
 // fighter itself (or the landmarks' holograms move it). The fighter: src/objects/valleyFlight.js
 async function buildTownSet(parts) {
+  townBuilding = true; perfMark('town: building');
   try {
     const [{ makeValley }, { valleyFlight }] = await Promise.all([import('./valley.js'), import('./objects/valleyFlight.js')]);
     townCam = new THREE.PerspectiveCamera(camera.fov, camera.aspect, 0.1, 6000);
@@ -680,6 +692,7 @@ async function buildTownSet(parts) {
     town = valleyFlight({ V: valley, parts });
     const A = town.ARRIVE, f = A.to.clone().sub(A.from).setY(0).normalize();
     townCam.position.copy(A.to).addScaledVector(f, -FOLLOW.back).add(new THREE.Vector3(0, FOLLOW.up, 0)); townControls.target.copy(A.to).addScaledVector(f, FOLLOW.ahead); townCam.lookAt(townControls.target);
+    perfMark('town: built (plants and trees next)');
     if (currentSet === 'town') { townRatio(true); seek(SEQ.T); }      // (someone got to the town before it was ready: shown now, from where they are)
   } catch (e) { townFailed = true; tourBar(); console.error('town: not built', e); }
 }
@@ -2221,14 +2234,14 @@ let fps = 60, shown = 0, offStage = 0, townWarm = 0;
 // the cut to the town doesn't stall (drawn into a target of its own instead, the first real frame still took ~0.3 s)
 function offStageTown(dt) {
   if (!valley.settled()) { if ((offStage = (offStage + 1) % 2) === 0) valley.update(dt * 2, null, true); return; }
-  if (townWarm === 0) { townWarm = 1; const go = () => { townWarm = 2; }; if (renderer.compileAsync) renderer.compileAsync(valley.scene, townCam).then(go, go); else go(); return; }
+  if (townWarm === 0) { townWarm = 1; perfMark('town: plants laid, trees baked; warming'); const go = () => { townWarm = 2; }; if (renderer.compileAsync) renderer.compileAsync(valley.scene, townCam).then(go, go); else go(); return; }
   if (townWarm !== 2) return; townWarm = 3;
   const cam = townCam.clone(), A = town.ARRIVE, scissor = renderer.getScissorTest();
   renderer.setScissorTest(true); renderer.setScissor(0, 0, 1 / renderer.getPixelRatio(), 1 / renderer.getPixelRatio());
   renderer.render(valley.scene, cam);
   cam.position.copy(A.from).add(new THREE.Vector3(-120, 90, 0)); cam.lookAt(A.from.clone().add(new THREE.Vector3(26, 0, 0))); cam.updateMatrixWorld();   // (the arrival's first view: in from the west)
   renderer.render(valley.scene, cam);
-  renderer.setScissorTest(scissor);
+  renderer.setScissorTest(scissor); perfMark('town: warmed');
 }
 renderer.info.autoReset = false;
 renderer.setAnimationLoop(() => {
