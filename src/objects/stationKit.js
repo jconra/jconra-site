@@ -170,6 +170,9 @@ function endFace(part, axis, end) {
   return new THREE.Vector3(med(xs), med(ys), med(zs));
 }
 
+// parts whose file changed under the same name (their pictures shrunk to 2048 px, 2026-10-07): asked for with a version, so
+// no cache along the way hands back the old one
+const PART_VERSION = { ring3t: 2, ring5t: 2, ship2: 2 };
 export async function loadKit(base = '/models/kit/', onProgress) {
   const loader = new GLTFLoader();
   const loaded = {}, totals = {};
@@ -180,7 +183,7 @@ export async function loadKit(base = '/models/kit/', onProgress) {
   };
   const parts = {};
   await Promise.all(PART_FILES.map(name => new Promise((res, rej) => {
-    loader.load(`${base}${name}.glb`, (gltf) => {
+    loader.load(`${base}${name}.glb${PART_VERSION[name] ? '?v=' + PART_VERSION[name] : ''}`, (gltf) => {
       let mesh = null;
       gltf.scene.updateMatrixWorld(true);
       gltf.scene.traverse(o => { if (o.isMesh && !mesh) mesh = o; });

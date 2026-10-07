@@ -17,6 +17,7 @@ import { buildHangarSet, shutFighter } from './objects/hangarSet.js';
 import { addAfterburner } from './objects/afterburner.js';
 import { loadUSMap } from './objects/usMap.js';
 import { chooseTier } from './quality.js';
+import { warmQueue } from './warmQueue.js';
 import { buildBookshelf, SERIES } from './objects/bookshelf.js';
 
 const Q = new URLSearchParams(location.search);
@@ -45,7 +46,7 @@ function perfState() {
   const V = valley, town_ = !V ? (townFailed ? 'failed' : townBuilding ? 'building the land and the town' : 'not started yet')
     : !V.settled() ? `laying plants (${V.COVER.job ? 'busy' : 'done'}), trees ${V.treeForest && V.treeForest.ready ? 'baked' : 'baking'}, plants ${V.coverForest && V.coverForest.ready ? 'baked' : 'baking'}`
     : townWarm < 3 ? 'ready, warming up' : 'ready';
-  return { T: SEQ.T, set: currentSet, phase: BOOT.on ? 'boot: ' + BOOT.phase : SEQ.playing ? 'playing' : 'held', town: town_ };
+  return { T: SEQ.T, set: currentSet, phase: BOOT.on ? 'boot: ' + BOOT.phase : SEQ.playing ? 'playing' : 'held', town: town_, extra: 'warm-up: ' + WARM.status() };
 }
 
 const ROOM_METRES = 3.4;                        // wall to wall
@@ -320,7 +321,7 @@ function loadRoom(name) {
   placeSitter();
   $('boot')?.remove();
   bootProgress('cabin', 1); loadSitter(); loadStation();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getProps: () => PROPS, total, getHangarSet: () => hangarSet, getValley: () => valley, getTownCam: () => townCam, getTownWarm: () => townWarm, TOWNTOUR, tourStart, tourStop, MAP_HANDOFF, hangarShipPos, getMap: () => mapSet, getTown: () => town, TOWN_INPUT });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getProps: () => PROPS, total, getHangarSet: () => hangarSet, getValley: () => valley, getTownCam: () => townCam, getTownWarm: () => townWarm, getWarm: () => WARM, TOWNTOUR, tourStart, tourStop, MAP_HANDOFF, hangarShipPos, getMap: () => mapSet, getTown: () => town, TOWN_INPUT, getStorm: () => STORM, isTownFailed: () => townFailed });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; if (e.total) bootProgress('cabin', e.loaded / e.total); },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -569,12 +570,12 @@ const KEYS = [
   // builds around the nose and washes the frame out; as it clears, clouds pop into being all round.
   { t: 48,  set: 'map', cam: { at: 'chase', back: 70, up: 24, side: 10 }, look: 'ship' },
   { t: 51.5,  set: 'map', cam: { at: 'chase', back: 40, up: 12, side: 0 },  look: 'ship' },
-  { t: 57.5,  set: 'map', cam: { at: 'chase', back: 42, up: 14, side: -6 }, look: 'ship' },
+  { t: 52.09, set: 'map', cam: { at: 'chase', back: 42, up: 14, side: -6 }, look: 'ship' },
   // THE TOWN. Out of the white: the valley, the fighter coming down through the clouds into its open west end, the camera
   // high behind it. From the last key the flight is live - tap or click where to go, or WASD - and the landmarks are the
   // projects (hover or tap one for its name, click it for its hologram).
-  { t: 57.51, set: 'town', cam: { at: 'follow', back: 120, up: 90 }, look: 'jet' },
-  { t: 61,  set: 'town', cam: { at: 'follow', back: 38, up: 20 },  look: 'jet' },
+  { t: 52.1, set: 'town', cam: { at: 'follow', back: 120, up: 90 }, look: 'jet' },
+  { t: 55.59, set: 'town', cam: { at: 'follow', back: 38, up: 20 },  look: 'jet' },
 ];
 const ACTS = { wave: 1.3, stand: 2.7, walk: 4.2, walkSpeed: 1.1, walkDir: 75 };   // Jacob's quicker start (2026-09-27)   // seconds; m/s; degrees from +z toward +x
 // in the hangar: when he starts walking in, where from (metres beside the fighter's spot, the
@@ -608,8 +609,10 @@ const MAP_CLOSEST = 320;               // metres: how near the tour keys bring t
 const MAP = { glow: 29.1, tourEnd: 43.5, shipIn: 27.5, shipAt: 33.5,
   dive: 46.5, diveEnd: 51.1,             // the fighter noses down and races for the cloud bank
   target: [-201, 113, 4],                // where it goes in: the big swirl of cloud off the West Coast, in the picture's units
-  fire: 48.1, flash: 50.9, clear: 53.1,  // the glow builds, peaks white, and clears
-  clouds: 51.1, cloudsIn: 2.4 };          // clouds pop in over this many seconds from here
+  fire: 48.1, flash: 50.9, clear: 52.0,  // the glow builds, peaks white, and clears
+  // clouds pop in over this many seconds from here, each grown in `grow`: wisps, then white, and the cut to the town comes at
+  // the white (its first key), the town's own clouds thinning to wisps at once (Jacob: as short as it can be, ~half a second)
+  clouds: 51.7, cloudsIn: 0.35, grow: 0.3 };
 // BOARDING (2026-09-27): he walks up to the side of the cockpit (just forward of the wing, where the
 // hull only reaches out 0.7 m), climbs the side with the climb clip (climbLen) onto the rim, turns
 // to the nose and lowers into the seat (sitIn); the canopy closes behind him and it rolls out.
@@ -690,8 +693,8 @@ async function buildTownSet(parts) {
     townControls = { target: new THREE.Vector3(), enabled: false, enableZoom: false, update() { townCam.lookAt(this.target); }, addEventListener() {} };   // (the holograms' glide moves these)
     valley = await makeValley({ renderer, camera: townCam, controls: townControls, quality: chooseTier(renderer), slice: true, showEnabled: () => liveInTown() });   // (laid a slice a frame: the boot and the cabin play on meanwhile)
     town = valleyFlight({ V: valley, parts });
-    const A = town.ARRIVE, f = A.to.clone().sub(A.from).setY(0).normalize();
-    townCam.position.copy(A.to).addScaledVector(f, -FOLLOW.back).add(new THREE.Vector3(0, FOLLOW.up, 0)); townControls.target.copy(A.to).addScaledVector(f, FOLLOW.ahead); townCam.lookAt(townControls.target);
+    const A = town.ARRIVE, f = A.to.clone().sub(A.from).setY(0).normalize(), k0 = KEYS.find((k) => setOf(k) === 'town').cam;   // (waiting where the arrival opens: the first town key, behind the fighter)
+    townCam.position.copy(A.from).addScaledVector(f, -(k0.back || 0)).add(new THREE.Vector3(0, k0.up || 0, 0)); townControls.target.copy(A.from).addScaledVector(f, 26); townCam.lookAt(townControls.target);
     perfMark('town: built (plants and trees next)');
     if (currentSet === 'town') { townRatio(true); seek(SEQ.T); }      // (someone got to the town before it was ready: shown now, from where they are)
   } catch (e) { townFailed = true; tourBar(); console.error('town: not built', e); }
@@ -709,7 +712,7 @@ function stepTown(T, a, b, u, set = 'town') {
   if (!live) { const sc = valley.SHOW.sc; if (sc && sc.isOpen) { sc.back = null; sc.close(); }   // (back into the timeline: any hologram goes, and nothing glides)
     town.poseAt(T - t0, total() - t0); town.liveFrom = false; tourStop(false); tourBar(); }
   else { town.poseAt(total() - t0, total() - t0); town.liveFrom = true; TOWNTOUR.startAt = performance.now() + 1500; }   // however it got here (a jump to the end, too), the live flight starts where the arrival ends
-  town.setCloud(1 - THREE.MathUtils.smoothstep(T, t0, t0 + 3.2));
+  { const k = T - t0; town.setCloud(k < 0.35 ? 1 - 0.6 * THREE.MathUtils.smoothstep(k, 0, 0.35) : 0.4 * (1 - THREE.MathUtils.smoothstep(k, 0.35, 2.4))); }   // (white at the cut, wisps a third of a second on, gone by two and a half)
   camera.position.copy(cameraAt(T)).add(TOWN_AT);
   controls.target.copy(lookPoint(a.look, set).lerp(lookPoint(b.look, set), u)); camera.lookAt(controls.target);
   syncTownCam(); town.faceClouds(townCam);
@@ -973,12 +976,20 @@ function stepMap(T, a, b, u, set = 'map') {
       P.setXYZ(i, q.x, q.y, q.z);
     }
     P.needsUpdate = true; MS.sparks.material.opacity = fire; }
-  // clouds pop in as the fire clears, each at its own moment, growing with a little overshoot
-  for (const c of MS.clouds) {
-    const k = (T - MAP.clouds - c.userData.when * MAP.cloudsIn) / 0.5;
+  // clouds pop in as the fire clears, each at its own moment, growing with a little overshoot; while the film is held for the
+  // town (STORM: not ready yet when the cut comes), they drift and roll, shading between white and storm grey
+  const st = T >= firstKey('town') - 0.05 ? STORM.t : 0, sk = Math.min(1, st / 0.6);   // (only where it's held: scrubbed back, the map is as it was)
+  MS.ship.visible = sk < 0.5 && T < MAP.clouds + 0.2;                 // (inside the cloud once it's thick: its burners don't glow through the white)
+  MS.clouds.forEach((c, i) => {
+    const k = (T - MAP.clouds - c.userData.when * MAP.cloudsIn) / MAP.grow;
     c.visible = k > 0;
     if (c.visible) { const e = k >= 1 ? 1 : 1 - Math.pow(1 - Math.min(1, k), 3) * Math.cos(Math.min(1, k) * 4); c.scale.setScalar(c.userData.size * Math.max(0.01, e)); c.quaternion.copy(camera.quaternion); }
-  }
+    const at = c.userData.at;
+    c.position.set(at.x + Math.sin(st * 0.55 + i * 1.3) * 11 * sk, at.y + Math.cos(st * 0.42 + i * 2.1) * 8 * sk, at.z);
+    if (sk > 0) { c.rotateZ(st * 0.25 * (i % 2 ? 1 : -1)); c.scale.multiplyScalar(1 + 0.12 * sk * Math.sin(st * 0.9 + i)); }
+    c.material.color.setScalar(1 - sk * 0.62 * (0.5 + 0.5 * Math.sin(st * 1.4 + i * 2.4)));
+  });
+  scene.background = sk > 0 ? STORM_SKY : SPACE_SKY;                   // (held: a storm-grey sky behind the cloud, so a gap between the puffs isn't space)
   if (MS.map) {
     MS.map.glow(THREE.MathUtils.smoothstep(T, MAP.glow, MAP.glow + 1.4));
     // the story: the current state, unless one is being poked at
@@ -1598,7 +1609,11 @@ function stepSequence(dt) {
     // the click that opened it also let go of the pointer, which clears the hold)
     const editing = document.activeElement && document.activeElement.closest && document.activeElement.closest('#panel');
     if (!SEQ.playing && !RESUME.held && !RESUME.hold && !editing && !BOOT.on && !pull && SEQ.T < total() && performance.now() - RESUME.last > RESUME.after * 1000 && !cardOpen()) SEQ.playing = true;   // (not during the boot: it played under the pull-back and the camera snapped back to the monitor)
-    if (SEQ.playing) { seek(SEQ.T + dt); if (SEQ.T >= total()) SEQ.playing = false; }
+    if (SEQ.playing) {
+      const cut = firstKey('town');
+      if (SEQ.T < cut && SEQ.T + dt >= cut - 0.03 && !townReady() && !townFailed && STORM.t < STORM.most) { STORM.t += dt; seek(cut - 0.03); }   // (held in the cloud, moving, until the town is ready: at most STORM.most s, then the town set says it's on its way)
+      else { if (SEQ.T < cut - 0.05) STORM.t = 0; seek(SEQ.T + dt); if (SEQ.T >= total()) SEQ.playing = false; }   // (STORM.t kept through the release, so a hold that ran out isn't started again)
+    }
     else if (currentSet === 'town' && SEQ.T >= total() - 1e-6) { tourStep(dt); liveTown(dt); }   // the timeline is done: the flight is live (and the tour)
     else if (SEQ.T >= HANGAR.roll && Math.abs(FLY.roll - FLY.target) > 0.05) seek(SEQ.T);     // paused in flight, the fighter still banks to the pointer
   } else {
@@ -1740,7 +1755,7 @@ const PROP_SETS = {
     { name: 'books', books: true, x: -1.525, y: 2.132, z: 1.2, yaw: 90, lean: 0, height: 1, length: 1.42 },
     // a framed newspaper clipping beside the poster: Jacob's 'Academic ace' item from the base paper; a click shows it large
     { name: 'clipping', image: '/textures/posters/academic-ace.jpg', x: -1.63, y: 1.58, z: 0.85, yaw: 90, lean: 0, height: 0.3, frame: true, clip: 'ace' },
-    { name: 'gladius', file: '/models/props/gladius.glb', x: -1.29, y: 2.21, z: -1.06, yaw: -47, lean: 0, height: 0.33, stand: true, pitch: -15, roll: -72, spin: 111, rise: 0.51, belly: -1 },   // on the shelf by the bass (Jacob, 2026-09-23)
+    { name: 'gladius', file: '/models/props/gladius.glb?v=2', x: -1.29, y: 2.21, z: -1.06, yaw: -47, lean: 0, height: 0.33, stand: true, pitch: -15, roll: -72, spin: 111, rise: 0.51, belly: -1 },   // on the shelf by the bass (Jacob, 2026-09-23)
   ],
 };
 let PROPS = [];
@@ -1869,7 +1884,19 @@ function buildScreens(name) {
 // of where it was measured, back toward the wall, and the first face it meets is the glass. The
 // screen then sits just proud of that face, turned to match it, so a few centimetres of measuring
 // error cannot leave it floating or buried.
+// Where that comes out for a build, saved (a few hundred rays at the room took 2.5-3.5 s on a phone-speed processor, a
+// freeze in the boot's typing): a build listed here is put straight there. Measured again by removing its line (and a
+// snap of the room in the Quarters Lab copies these out: SNAPPED).
+const SCREEN_SNAP = {
+  Smart: [{ p: [-0.08007, 1.62964, -1.28511], q: [0, 0, 0, 1], s: [0.74603, 0.82664] }, { p: [-0.67525, 1.631, -1.13947], q: [0, 0.198243, 0, 0.980153], s: [0.74603, 0.82664] },
+    { p: [0.53127, 1.61348, -1.15229], q: [0, -0.169552, 0, 0.985521], s: [0.62667, 0.77801] }],   // (measured 2026-10-07)
+};
 function snapScreens() {
+  const saved = SCREEN_SNAP[build];
+  if (saved && saved.length === SCREENS.length) {
+    SCREENS.forEach((sc, i) => { const v = saved[i]; sc.position.fromArray(v.p); sc.quaternion.fromArray(v.q); sc.scale.set(v.s[0], v.s[1], 1); sc.userData.snap = { position: sc.position.clone(), scale: sc.scale.clone() }; });
+    applyScreenFit(); return;
+  }
   const ray = new THREE.Raycaster(); const targets = [];
   room.traverse(o => { if (o.isMesh && o.name !== 'Roof' && o.name !== 'RoofLid') targets.push(o); });
   for (const sc of SCREENS) {
@@ -1893,6 +1920,7 @@ function snapScreens() {
     }
   }
   for (const sc of SCREENS) sc.userData.snap = { position: sc.position.clone(), scale: sc.scale.clone() };   // where the snap put it, for the fit to build on
+  window.SNAPPED = JSON.stringify(SCREENS.map((sc) => ({ p: sc.position.toArray().map((v) => +v.toFixed(5)), q: sc.quaternion.toArray().map((v) => +v.toFixed(6)), s: [+sc.scale.x.toFixed(5), +sc.scale.y.toFixed(5)] })));
   applyScreenFit();
 }
 // SCREEN FIT. The snap sizes each live screen from the bezel it finds; where that comes out short of
@@ -2227,21 +2255,27 @@ loadRoom(build);
 // ── loop ────────────────────────────────────────────────────────────────────────
 const clock = THREE.Timer ? new THREE.Timer() : new THREE.Clock();
 let fps = 60, shown = 0, offStage = 0, townWarm = 0;
-// THE TOWN, OFF STAGE: its plants laid and its trees' pictures baked where the fighter arrives (quietly, every other frame);
-// once that's done, its shaders built (in the background where the browser can), then the town drawn once to the screen
-// itself through a one-pixel window, from where the town waits and from where the arrival opens, just before the frame
-// paints over it: every picture sent to the graphics card and every way of drawing it set up for the screen as it is, so
-// the cut to the town doesn't stall (drawn into a target of its own instead, the first real frame still took ~0.3 s)
+// THE WARM-UP (src/warmQueue.js): every scene got ready to draw a few milliseconds a frame, long before its cut - its
+// pictures sent to the graphics card as they load, then its shaders and shapes a small batch at a time - in the order the
+// scenes come; more of it a frame behind the boot's typing, where a stutter isn't seen. The boot isn't held for it
+const firstKey = (set) => (KEYS.find((k) => setOf(k) === set) || { t: 0 }).t;
+const WARM = warmQueue(renderer);
+// the town ready to cut to: built, laid and baked, its townsfolk placed, and warmed up; until then the film holds in the cloud
+const STORM = { t: 0, most: 20 }, STORM_SKY = new THREE.Color(0x8c939b), SPACE_SKY = new THREE.Color(0x000000);
+const townReady = () => { const ws = WARM.sets.find((s) => s.name === 'town'); return !!(town && valley && valley.settled() && ws && ws.done); };
+WARM.add({ name: 'cabin', roots: () => scene.children.filter((o) => o !== station && o !== (hangarSet && hangarSet.floor) && o !== (mapSet && mapSet.floor)), scene: () => scene, camera: () => camera, ready: () => !!sitter, due: 0 });
+WARM.add({ name: 'station', roots: () => [station], scene: () => scene, camera: () => camera, ready: () => !!station, due: firstKey('station') });
+WARM.add({ name: 'hangar', roots: () => [hangarSet && hangarSet.floor], scene: () => scene, camera: () => camera, ready: () => !!hangarSet, due: firstKey('hangar') });
+WARM.add({ name: 'map', roots: () => [mapSet && mapSet.floor], scene: () => scene, camera: () => camera, ready: () => !!(mapSet && mapSet.map), due: firstKey('map') });
+WARM.add({ name: 'town', roots: () => (valley ? [valley.scene] : []), scene: () => valley.scene, camera: () => townCam, ready: () => !!(valley && valley.settled()), due: firstKey('town'), verts: 8000,
+  textures: () => (valley ? Object.values(valley.U).map((u) => u.value) : []) });   // (the ground's own maps, handed to its shader: sent as soon as there's a valley, behind the boot where it can)
+// THE TOWN, OFF STAGE: its plants laid, its trees' pictures baked and its townsfolk placed where the fighter arrives (quietly:
+// every frame behind the boot, every other frame after); the warm-up does the rest
 function offStageTown(dt) {
-  if (!valley.settled()) { if ((offStage = (offStage + 1) % 2) === 0) valley.update(dt * 2, null, true); return; }
-  if (townWarm === 0) { townWarm = 1; perfMark('town: plants laid, trees baked; warming'); const go = () => { townWarm = 2; }; if (renderer.compileAsync) renderer.compileAsync(valley.scene, townCam).then(go, go); else go(); return; }
-  if (townWarm !== 2) return; townWarm = 3;
-  const cam = townCam.clone(), A = town.ARRIVE, scissor = renderer.getScissorTest();
-  renderer.setScissorTest(true); renderer.setScissor(0, 0, 1 / renderer.getPixelRatio(), 1 / renderer.getPixelRatio());
-  renderer.render(valley.scene, cam);
-  cam.position.copy(A.from).add(new THREE.Vector3(-120, 90, 0)); cam.lookAt(A.from.clone().add(new THREE.Vector3(26, 0, 0))); cam.updateMatrixWorld();   // (the arrival's first view: in from the west)
-  renderer.render(valley.scene, cam);
-  renderer.setScissorTest(scissor); perfMark('town: warmed');
+  const ws = WARM.sets.find((s) => s.name === 'town'), was = townWarm; townWarm = !valley.settled() ? 0 : ws && ws.done ? 3 : 1;
+  if (townWarm === 1 && was === 0) perfMark('town: plants laid, trees baked, townsfolk placed; warming');
+  if (townWarm === 3 && was !== 3) perfMark('town: warmed');
+  if (!valley.settled() && (BOOT.on || (offStage = (offStage + 1) % 2) === 0)) valley.update(BOOT.on ? dt : dt * 2, null, true);
 }
 renderer.info.autoReset = false;
 renderer.setAnimationLoop(() => {
@@ -2260,10 +2294,11 @@ renderer.setAnimationLoop(() => {
   stepSequence(dt);
   if (!SEQ.active) controls.update();     // while the timeline owns the camera, orbit must not touch it: its 14 m limit would drag it into the station
   if ($('autoFocus').checked) post.focus = camera.position.distanceTo(controls.target);
-  // the town is drawn by the valley, from its own scene and camera; elsewhere the film's own (the valley, off stage, lays its
-  // plants and bakes its trees round the way in, every other frame once the greeting is done)
+  // the warm-up's share first (its unseen draws are painted over by the frame); then the town drawn by the valley, from its own
+  // scene and camera, or elsewhere the film's own (the valley, off stage, readied round the way in)
+  WARM.step(BOOT.on ? 14 : 4);
   if (currentSet === 'town' && valley) { valley.update(dt); valley.render(); }
-  else { if (valley && !BOOT.on) offStageTown(dt); post.render(dt); }   // (off stage first: its unseen draw is painted over)
+  else { if (valley) offStageTown(dt); post.render(dt); }
   if (raw > 0) fps += (1 / raw - fps) * Math.min(1, raw * 2);   // weighted by the frame's own length: a two-second frame counts in full, not five percent
   if ((shown += raw) > 0.5) {
     shown = 0;

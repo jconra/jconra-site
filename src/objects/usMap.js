@@ -34,8 +34,10 @@ export async function loadUSMap(url = '/labs/map/us.svg', { colour = 0x35e07d, l
   for (const path of data.paths) {
     const id = path.userData.node.id, name = path.userData.node.dataset.name || id;
     if (!id || id.length !== 2) continue;
-    const st = { id, name, group: new THREE.Group(), fills: [], amount: 0, box: new THREE.Box2(), svgBox: new THREE.Box2() };
-    const fillMat = new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+    const st = { id, name, group: new THREE.Group(), fills: [], lines: [], amount: 0, box: new THREE.Box2(), svgBox: new THREE.Box2() };
+    // (both sides, but drawn in one pass: three draws a see-through double-sided thing twice, back then front, and the map's
+    // 234 fills made that the map's whole cost; flat and facing the camera, they look the same)
+    const fillMat = new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true });
     const dark = new LineMaterial({ color: 0x06100a, linewidth: 3.2, transparent: true, opacity: 0, depthWrite: false, resolution });
     const light = new LineMaterial({ color: line, linewidth: 1.1, transparent: true, opacity: 0, depthWrite: false, resolution });
     lineMats.push(dark, light);
@@ -57,7 +59,7 @@ export async function loadUSMap(url = '/labs/map/us.svg', { colour = 0x35e07d, l
       for (const [mat, z] of [[dark, lift + 0.3], [light, lift + 0.5]]) {
         const geo = new LineGeometry(); geo.setPositions(flat);
         const l = new Line2(geo, mat); l.computeLineDistances(); l.position.z = z; l.frustumCulled = false; l.renderOrder = 1;
-        st.group.add(l);
+        st.group.add(l); st.lines.push(l);
       }
     }
     st.fillMat = fillMat; st.dark = dark; st.light = light;
@@ -81,6 +83,8 @@ export async function loadUSMap(url = '/labs/map/us.svg', { colour = 0x35e07d, l
       st.light.opacity = 0.7 * glow + 0.3 * st.amount;
       st.dark.linewidth = 3.2 + 2.5 * st.amount; st.light.linewidth = 1.1 + 0.6 * st.amount;
       if (st.pin) st.pin.scale.setScalar(Math.max(0.001, st.amount));
+      for (const f of st.fills) f.visible = st.fillMat.opacity > 0.002;   // (faded out: not drawn at all)
+      for (const l of st.lines) l.visible = l.material.opacity > 0.002;
     },
     // the state's flag as its fill: drawn here for the ones that can be, else an image from the
     // flags folder if there is one; mapped over the state's box

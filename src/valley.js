@@ -573,8 +573,38 @@ function bakedPaths() {
   BAKE.why = 'the footpaths drawn here: the planting\'s paths differ from the bake\'s'; return null;
 }
 if (!(await useBake())) { buildHeights(); if (!live) console.warn('valley: the land worked out here, not baked:', BAKE.why); }
-const geo = new THREE.PlaneGeometry(SIZE - TEX, SIZE - TEX, SEG, SEG); geo.rotateX(-Math.PI / 2);   // a vertex on each cell's middle
-function shapeMesh() { const p = geo.attributes.position; for (let i = 0; i < p.count; i++) p.setY(i, heightAt(p.getX(i), p.getZ(i))); p.needsUpdate = true; geo.computeVertexNormals(); }
+// THE GROUND'S MESH, in 8 x 8 tiles: a vertex on each cell's middle (every other one on potato), the same points and triangles
+// as one big plane, cut up so a page can send it to the graphics card a piece at a time (in one go it was a half-second
+// freeze on a phone) and the tiles behind the camera aren't drawn. Each vertex's normal is worked out over the whole grid,
+// summing its triangles' as three's computeVertexNormals does, so the light runs on across the tiles' edges unbroken
+const TILES = 8, VS = SEG + 1, STEP = (SIZE - TEX) / SEG, X0 = -(SIZE - TEX) / 2, EDGES = Array.from({ length: TILES + 1 }, (_, k) => Math.round(k * SEG / TILES));
+const HV = new Float32Array(VS * VS), NV = new Float32Array(VS * VS * 3), groundTiles = [];
+for (let tj = 0; tj < TILES; tj++) for (let ti = 0; ti < TILES; ti++) {
+  const i0 = EDGES[ti], i1 = EDGES[ti + 1], j0 = EDGES[tj], j1 = EDGES[tj + 1], w = i1 - i0 + 1, h = j1 - j0 + 1, idx = [];
+  for (let iy = 0; iy < h - 1; iy++) for (let ix = 0; ix < w - 1; ix++) { const a = ix + w * iy, b = ix + w * (iy + 1), c = ix + 1 + w * (iy + 1), d = ix + 1 + w * iy; idx.push(a, b, d, b, c, d); }   // (a plane's own order)
+  const g = new THREE.BufferGeometry(), pos = new Float32Array(w * h * 3);
+  for (let iy = 0; iy < h; iy++) for (let ix = 0; ix < w; ix++) { const q = (ix + w * iy) * 3; pos[q] = X0 + (i0 + ix) * STEP; pos[q + 2] = X0 + (j0 + iy) * STEP; }
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(w * h * 3), 3)); g.setIndex(idx);
+  groundTiles.push({ i0, j0, w, h, geo: g });
+}
+// the heights into the tiles, and the normals over the whole grid: `vertex(i, j)` the height at a grid point
+function meshFrom(vertex) {
+  for (let j = 0; j < VS; j++) for (let i = 0; i < VS; i++) HV[j * VS + i] = vertex(i, j);
+  NV.fill(0);
+  const add = (k, x, y, z) => { NV[k * 3] += x; NV[k * 3 + 1] += y; NV[k * 3 + 2] += z; };
+  const face = (A, B, C) => {                                          // three's: (C - B) x (A - B), added to each corner
+    const ax = (A % VS) * STEP, az = ((A / VS) | 0) * STEP, bx = (B % VS) * STEP, bz = ((B / VS) | 0) * STEP, cx = (C % VS) * STEP, cz = ((C / VS) | 0) * STEP;
+    const cbx = cx - bx, cby = HV[C] - HV[B], cbz = cz - bz, abx = ax - bx, aby = HV[A] - HV[B], abz = az - bz;
+    const nx = cby * abz - cbz * aby, ny = cbz * abx - cbx * abz, nz = cbx * aby - cby * abx; add(A, nx, ny, nz); add(B, nx, ny, nz); add(C, nx, ny, nz); };
+  for (let iy = 0; iy < SEG; iy++) for (let ix = 0; ix < SEG; ix++) { const a = ix + VS * iy, b = ix + VS * (iy + 1), c = ix + 1 + VS * (iy + 1), d = ix + 1 + VS * iy; face(a, b, d); face(b, c, d); }
+  for (let k = 0; k < VS * VS; k++) { const x = NV[k * 3], y = NV[k * 3 + 1], z = NV[k * 3 + 2], l = Math.hypot(x, y, z) || 1; NV[k * 3] = x / l; NV[k * 3 + 1] = y / l; NV[k * 3 + 2] = z / l; }
+  for (const t of groundTiles) {
+    const p = t.geo.attributes.position, n = t.geo.attributes.normal;
+    for (let iy = 0; iy < t.h; iy++) for (let ix = 0; ix < t.w; ix++) { const q = ix + t.w * iy, k = (t.j0 + iy) * VS + t.i0 + ix; p.array[q * 3 + 1] = HV[k]; n.array[q * 3] = NV[k * 3]; n.array[q * 3 + 1] = NV[k * 3 + 1]; n.array[q * 3 + 2] = NV[k * 3 + 2]; }
+    p.needsUpdate = true; n.needsUpdate = true; t.geo.computeBoundingSphere(); t.geo.computeBoundingBox();
+  }
+}
+function shapeMesh() { meshFrom((i, j) => heightAt(X0 + i * STEP, X0 + j * STEP)); }
 shapeMesh();
 
 // ── THE LAND'S OWN MAPS ─────────────────────────────────────────────────────────
@@ -1149,7 +1179,8 @@ mat.onBeforeCompile = (sh) => {
 };
 mat.customProgramCacheKey = () => 'terrain-lab-29' + (GL2 ? 'g' : '');
 if (!GL2) mat.extensions = { derivatives: true };
-const ground = new THREE.Mesh(geo, mat); scene.add(ground); ground.receiveShadow = SHADOW.on;
+const ground = new THREE.Group(); ground.name = 'ground'; scene.add(ground);
+for (const t of groundTiles) { const m = new THREE.Mesh(t.geo, mat); m.receiveShadow = SHADOW.on; ground.add(m); }
 // THE TREES: the Tree Lab's forest (ez-tree species, meshes near, octahedral imposters beyond, a
 // dithered crossfade between), planted where the canopy map grew them instead of on tiles
 const TREE_SPECIES = FOREST_SPECIES.filter(sp => sp.name !== 'bush');
@@ -1938,8 +1969,8 @@ function folkFloor(x, z) {
     if (i >= 0 && j >= 0 && i < P && j < P && Math.max(PATHROAD[o + 2], PATHROAD[o + 3]) > 128) y += lift * (1 - THREE.MathUtils.smoothstep(Math.hypot(x - camera.position.x, z - camera.position.z), PAVE.lod * 0.75, PAVE.lod)); }
   return y;
 }
-if (FOLK.on) loadPeople().then((lib) => { FOLK.lib = lib; }).catch((e) => console.warn('townsfolk: not loaded', e));
-function folkFrame(dt) {
+if (FOLK.on) loadPeople().then((lib) => { FOLK.lib = lib; }).catch((e) => { FOLK.failed = true; console.warn('townsfolk: not loaded', e); });   // (failed: the town is settled without them)
+function folkFrame(dt, quiet = false) {   // (quiet: off stage, the grid and the people made and placed, nobody walking)
   if (!FOLK.lib || !TOWN.village || !PLANT.tool) return;               // (the placed plants drawn first: the planting's paths, fences and placed things are in the grid)
   // now and then: what the grid is made from, looked at for a change (the grid made again 2.5 s after the last one), and the bridges' decks
   if ((FOLK.tick = (FOLK.tick + 1) % 60) === 1) {
@@ -1955,7 +1986,7 @@ function folkFrame(dt) {
       if (!FOLK.town) FOLK.town = new Townsfolk({ scene, lib: FOLK.lib, shade: FOLK_SHADE, shadows: SHADOW.on, floorAt: folkFloor, count: FOLK.count, size: FOLK.size });
       FOLK.town.setGrid(FOLK.grid); FOLK.town.group.visible = FOLK.on;
       const note = $('folkNote'); if (note) note.textContent = `${FOLK.grid.places.length} places to go${FOLK.grid.dropped ? ` (${FOLK.grid.dropped} out of reach or past the town: left out)` : ''}.`; } }
-  if (FOLK.town && FOLK.on && FOLK.grid) FOLK.town.update(dt, camera, THREE.MathUtils.smoothstep(-DAY.elev, -2, 8));   // (night: from the sun 2° up to 8° down)
+  if (FOLK.town && FOLK.on && FOLK.grid && !quiet) FOLK.town.update(dt, camera, THREE.MathUtils.smoothstep(-DAY.elev, -2, 8));   // (night: from the sun 2° up to 8° down)
 }
 // THE SHOWCASE (src/objects/showcase.js): the landmarks standing for Jacob's projects (models/town/showcase.json: which kinds
 // of building or prop stand for which project, and its slides). Over one the pointer becomes a hand and its name shows; a
@@ -2019,7 +2050,7 @@ applyWeights();
 U.stoneSpread.value = U.stampSpread.value = FOREST.spread;   // (one spread for everything that changes with distance)
 // THE RAIN (the lab's WATCH IT RAIN): while it rains the land isn't finished, so nothing follows it
 const RAIN = { gen: null, paused: false, perFrame: 1500, done: 0, trail: [], frame: 0 };
-function fastMesh() { if (SEG !== N - 1) { shapeMesh(); return; } const p = geo.attributes.position; for (let k = 0; k < p.count; k++) p.setY(k, Hg[k]); p.needsUpdate = true; geo.computeVertexNormals(); }
+function fastMesh() { if (SEG !== N - 1) shapeMesh(); else meshFrom((i, j) => Hg[j * N + i]); }   // (a vertex on each cell: the heights as they are)
 // ── THE TIME OF DAY (src/objects/daylight.js): the sun's way over the land, and everything it lights ──────────────
 // When the time changes: the light's colour, strength and way (the sun; after dark the moon, which takes over once the sun
 // is three degrees down, when both are at nothing, so nothing jumps), the sky light, the sky dome and its clouds, the haze
@@ -2084,7 +2115,7 @@ function dayFrame(dt, quiet = false) {
   if (!DAY.bake && DAY.baked && shadeTex && DAY.baked.angleTo(SUN_DIR) > 0.6 * Math.PI / 180) { DAY.baked.copy(SUN_DIR); DAY.bake = sunShadeSteps(SUN_DIR, 0.4); }   // (it hands back control often; the frame's budget below decides how long it runs)
   if (DAY.bake) { const t0 = performance.now(), budget = Math.min(3, Math.max(0.8, dt * 1000 * 0.18)); while (performance.now() - t0 < budget) if (DAY.bake.next().done) { DAY.bake = null; break; } }   // (about a sixth of the frame: 3 ms at 60 Hz, 1.2 ms at 144)
   lampsFrame();
-  if (!quiet) folkFrame(dt);
+  folkFrame(dt, quiet);
 }
 // THE STREET LAMPS come on as the sun goes: the lantern glass brightens, a soft halo round it, and a warm pool on the
 // ground under it. Faked (sprites and a ground disc, added light): no real lights, which would cost every lit surface in
@@ -2147,7 +2178,8 @@ function update(dt, afterShow = null, quiet = false) {
   }
 }
 // all laid and baked, nothing still being worked out a slice at a time (off stage, a page can stop updating it)
-const settled = () => !!(treeForest && treeForest.ready && coverForest && coverForest.ready && !COVER.job && !TOWN.job && !PAVE.job);
+const settled = () => !!(treeForest && treeForest.ready && coverForest && coverForest.ready && !COVER.job && !TOWN.job && !PAVE.job
+  && (!FOLK.on || FOLK.failed || (FOLK.lib && FOLK.town && !FOLK.job && !FOLK.due)));   // (the townsfolk too: their grid made and the people placed)
 function render() {
   renderer.toneMappingExposure = DL.exposure;                         // (the time of day's: set when drawn, so it never changes another scene's)
   U.eyePos.value.copy(camera.position);                              // (the paving's 3D stones sink past PAVE.lod from here)
@@ -2168,7 +2200,7 @@ function bakeData() {
 }
 return {
   scene, sky, sun, hemi, ground, mat, lawn, U, MAPS, TOWN, PLANT, COVER, GROW, PLANT_KINDS, FAMILY, FOREST, LEAF, LAND, VALLEY, SHAPE, WATER, PAVE, DAY, DL, STONES, LAWN, CALM, FOLK, SHOW, BEAMS, RAIN, FENCE,
-  TS, QUAL, TEXTURES, LAYERS, TREE_SPECIES, TOWN_DEFAULT, PLANTING_FIRST, weights, FLOW, SETTLE, WDEPTH, ACC, POND, OUTLETS, Hg, N, SIZE, TEX, SEG, geo, SUN_NOW, FOG_DIR, LAMPU,
+  TS, QUAL, TEXTURES, LAYERS, TREE_SPECIES, TOWN_DEFAULT, PLANTING_FIRST, weights, FLOW, SETTLE, WDEPTH, ACC, POND, OUTLETS, Hg, N, SIZE, TEX, SEG, groundTiles, SUN_NOW, FOG_DIR, LAMPU,
   BAKE, bakeData, update, render, settled, heightAt, groundAt, slopeAt, waterAt, coverGround, buildLand, buildHeights, shapeMesh, fastMesh, baseGrid, erodeSteps, smoothErosion, cutRavines, addCrags, findWater, townLand, paintWater,
   placeCover, placeTrees, placeStones, placeLawn, calmCover, buildPaving, applyPave, paveLater, composePathRoad, tex, setAverages, applyWeights, drawPaths, followShadow, followCover, townRebuildNow, beamsReady,
   get treeForest() { return treeForest; }, get coverForest() { return coverForest; }, get trees() { return trees; }, get pathCanvas() { return pathCanvas; },

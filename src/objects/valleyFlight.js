@@ -22,6 +22,9 @@ function rnd(seed) { let s = seed >>> 0 || 1; return () => ((s = (s * 1664525 + 
 export function valleyFlight({ V, parts, shipLength = 7 }) {
   const group = new THREE.Group(); group.name = 'valleyFlight'; V.scene.add(group);
   const jet = new THREE.Group(), body = shutFighter(parts.ship1, { metres: shipLength }); body.position.y -= 1.5;   // canopy shut for the flight
+  // its own copies of the fighter's materials: the kit's are shared with the fighters in space, and the valley patches every
+  // plain lit material in its scene (the hill's shadow, the lamps), which would leak out to them and rebuild their shaders
+  { const mine = new Map(); body.traverse((o) => { if (o.isMesh && o.material && !o.material.isShaderMaterial) { if (!mine.has(o.material)) mine.set(o.material, o.material.clone()); o.material = mine.get(o.material); } }); }
   jet.add(body); group.add(jet);
   const heading0 = Math.atan2(ARRIVE.to.x - ARRIVE.from.x, ARRIVE.to.z - ARRIVE.from.z);
   const state = { pos: ARRIVE.from.clone(), heading: heading0, speed: 0, bank: 0, turn: 0, alt: ARRIVE.to.y };
