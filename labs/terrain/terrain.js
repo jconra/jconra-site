@@ -36,7 +36,9 @@ const GL2 = renderer.capabilities.isWebGL2;
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 5000);
 const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
 
-const V = await makeValley({ renderer, camera, controls, quality: QUAL, lab: true });
+const V = await makeValley({ renderer, camera, controls, quality: QUAL, lab: true, live: Q.has('live') });   // (?live: the land worked out here, not loaded from its bake)
+// where the land came from, said in the land's own section: its bake, or worked out here and why (a stale bake says so)
+if ($('shapeInfo')) $('shapeInfo').textContent = V.BAKE.from === 'baked' ? 'The land: from its bake' + (V.BAKE.why ? ` (${V.BAKE.why})` : '') + '.' : `The land: worked out here (${V.BAKE.why}).`;
 const { scene, sky, U, TOWN, PLANT, COVER, GROW, PLANT_KINDS, FAMILY, FOREST, LEAF, LAND, VALLEY, SHAPE, WATER, PAVE, DAY, DL, STONES, LAWN, CALM, FOLK, SHOW, BEAMS, RAIN, TS, TEXTURES, LAYERS, TREE_SPECIES, TOWN_DEFAULT, weights,
   FLOW, SETTLE, WDEPTH, ACC, POND, OUTLETS, Hg, N, SIZE, TEX, heightAt, groundAt, slopeAt, coverGround, buildLand, buildHeights, shapeMesh, fastMesh, baseGrid, erodeSteps, smoothErosion, cutRavines, addCrags, findWater, townLand, paintWater,
   placeCover, placeTrees, placeStones, placeLawn, calmCover, buildPaving, applyPave, paveLater, composePathRoad, tex, setAverages, applyWeights, drawPaths, followShadow, followCover, townRebuildNow } = V;
@@ -234,6 +236,7 @@ const trailGeo = new THREE.BufferGeometry(), trailLines = new THREE.LineSegments
 trailLines.frustumCulled = false; trailLines.visible = false; scene.add(trailLines);
 function endRain(msg) { RAIN.gen = null; trailLines.visible = false; if (RAIN.before) smoothErosion(RAIN.before); cutRavines(Hg); addCrags(Hg); findWater(Hg); townLand(); fastMesh(); buildLand(); if (V.treeForest) V.treeForest.group.visible = $('treesOn').checked; $('shapeInfo').textContent = msg; }
 function startRain() {
+  TOWN.job = null;                                                      // (a town rebuild in slices is for the land as it was)
   FLOW.fill(0); SETTLE.fill(0);
   baseGrid(); RAIN.before = Float32Array.from(Hg);
   WDEPTH.fill(0); ACC.fill(0); paintWater(new Uint8Array(N * N)); fastMesh();   // no water drawn while it rains: the old rivers belong to the finished land, not this bare one

@@ -4,12 +4,13 @@
 // rocks), the stones, the town (buildings, props, paving, lamps), the townsfolk, the showcase's landmarks and holograms, and
 // the time of day with its sky, haze and sunbeams. The lab's panel, editors and tools stay in labs/terrain/terrain.js.
 //
-//   const V = await makeValley({ renderer, camera, controls, quality, lab, showEnabled })
+//   const V = await makeValley({ renderer, camera, controls, quality, lab, live, showEnabled })
 //     renderer: the page's; camera: the page's (it is moved by the page); controls: OrbitControls, or anything like it: a
 //       `target` (Vector3) the camera looks at, update(), `enabled` and addEventListener (the landmarks' camera glide uses
 //       them); quality: chooseTier()'s answer (src/quality.js); lab: the lab's own
 //       extras (the Build bar's editing, its town editor, the copies kept in this browser) - without it the town and the
-//       planting are the shipped ones (models/town/layout.json, planting.json) and nothing is edited or saved;
+//       planting are the shipped ones (models/town/layout.json, planting.json) and nothing is edited or saved; live: the
+//       land worked out here and now, not loaded from its bake (models/town/land; see THE BAKE);
 //       showEnabled(): when the landmarks answer the pointer (the default: while the Build bar is shut)
 //     V.scene: its own scene (its sky, haze, light); V.update(dt, afterShow) each frame, then V.render()
 //   TIER_SET: what each quality tier means here
@@ -83,7 +84,7 @@ export const TIER_SET = {
             u: { wWaveOn: 1, stampFar: 73 }, checks: { stampOn: true, hexOn: true, farOn: true, wWaveOn: true, cloudsOn: true, beamsOn: true } },
 };
 
-export async function makeValley({ renderer, camera, controls, quality, lab = false, showEnabled = null }) {
+export async function makeValley({ renderer, camera, controls, quality, lab = false, live = false, showEnabled = null }) {
 // THE TIME OF DAY's state (the rest is by the frame loop, see dayFrame): hour, local solar time; turn: the sun's whole
 // path turned round. 192: the sun rises and sets through the valley's two open ends (the hills there 3-4° high from the
 // town and the meadow; everywhere else 20-40°, so a sun setting there left the valley in shadow by mid-afternoon), and
@@ -93,6 +94,27 @@ const DAY = { hour: 9 + 40 / 60, auto: false, dayMin: 12, season: 0.64, turn: 19
 // THE TOWN's layout: in the lab the one saved in this browser, else the first town (models/town/layout.json); likewise the
 // Build bar's hand planting, the one saved in this browser, else models/town/planting.json. Anywhere else, the shipped ones
 const getJSON = (url) => fetch(url).then(r => r.ok ? r.json() : null).catch(() => null);
+// THE BAKE (models/town/land, made by ~/pw/_bakeland.cjs from the lab worked out live): what took the time at every load -
+// the land's heights before the town's pads (the noise, terraces, erosion, ravines, crags, the outlets cut), its water
+// cells and picture, the erosion's gullies and fans, and the shipped planting's footpaths' picture - as lossless pictures,
+// fetched with the town's files. Used only if made from this very land: its key is the land's settings and the code that
+// shapes it, so any change to either and the land is worked out here again (and says so: BAKE.why). The footpaths'
+// picture likewise, keyed by the path strokes and the code that draws them
+const BAKE = { from: 'live', why: live ? 'asked for (?live)' : '', pathCand: null };
+const pngData = async (url) => {                                       // a picture's pixels, byte for byte (no colour or alpha changes)
+  const blob = await fetch(url).then((r) => (r.ok ? r.blob() : Promise.reject(new Error(url + ' ' + r.status))));
+  let img; try { img = await createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' }); }
+  catch (e) { img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(blob); }); }
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+  return { canvas: c, data: g.getImageData(0, 0, c.width, c.height).data };
+};
+const streamOf = (rgba, n) => { const out = new Uint8Array(n); for (let i = 0, j = 0; j < n; i += 4) { out[j++] = rgba[i]; if (j < n) out[j++] = rgba[i + 1]; if (j < n) out[j++] = rgba[i + 2]; } return out; };   // (three bytes a pixel)
+const fnvBytes = (arrs, step = 1) => { let h = 0x811c9dc5; for (const a of arrs) { const u = new Uint8Array(a.buffer, a.byteOffset, a.byteLength); for (let i = 0; i < u.length; i += step) { h ^= u[i]; h = Math.imul(h, 0x01000193); } } return (h >>> 0).toString(16); };
+let bakeP = live ? null : getJSON('/models/town/land/land.json').then(async (m) => {
+  if (!m || m.v !== 1) return null;
+  const at = (f) => `/models/town/land/${m.files[f]}`, [h, c, w, pa] = await Promise.all(['heights', 'cells', 'water', 'paths'].map((f) => pngData(at(f))));
+  return { m, heights: streamOf(h.data, m.bytes.heights), cells: streamOf(c.data, m.bytes.cells), water: w, paths: pa };
+}).catch((e) => { console.warn('valley: the land\'s bake could not be read', e); return null; });
 const [TOWN_FIRST, PLANTING_FIRST] = await Promise.all(['layout', 'planting'].map((f) => getJSON(`/models/town/${f}.json`)));
 const TOWN_DEFAULT = normaliseTown(TOWN_FIRST);
 const PATHROAD = new Uint8Array(2048 * 2048 * 4);              // the paths-and-roads picture's pixels (see composePathRoad)
@@ -454,6 +476,7 @@ const waterAt = (x, z) => { if (!MAPS.water) return 0; const P = MAPS.WP, i = Ma
 // the land before erosion: the noise, then the terraces (the slope read over ~12 m, so the noise's
 // small wobbles don't count as steep)
 function baseGrid() {
+  MAPS.gullyB = MAPS.fanB = null;                                      // (the land shaped again here: the bake's gullies and fans go with it)
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) Hg[j * N + i] = baseHeight(cellX(i), cellX(j));
   if (!SHAPE.terraceOn) return;
   const B = Float32Array.from(Hg), at = (i, j) => B[Math.min(N - 1, Math.max(0, j)) * N + Math.min(N - 1, Math.max(0, i))];
@@ -519,7 +542,34 @@ function heightAt(x, z) {
   const i = fx | 0, j = fz | 0, u = fx - i, v = fz - j, k = j * N + i;
   return (Hg[k] * (1 - u) + Hg[k + 1] * u) * (1 - v) + (Hg[k + N] * (1 - u) + Hg[k + N + 1] * u) * v;
 }
-buildHeights();
+// the bake's keys: the land's settings and the source of everything that shapes it; the footpaths' strokes and their drawing
+const landKey = () => textHash(JSON.stringify([N, SIZE, VALLEY, SHAPE, WATER, LAND.treeline]) + [hash, vnoise, ridged, baseHeight, cellX, terrace, erode, erodeSteps, flood, findPools, carveOutlets, floodGrid, blurGrid, cutRavines, findWater, paintWater, baseGrid, smoothErosion, addCrags, buildHeights, blur, erosionBytes].map(String).join('\n'));
+const pathKey = () => textHash(JSON.stringify([SIZE, NEAR_REACH, plantNow().planting.strokes.filter((st) => (st.kind === PLANT.PATH && st.mode !== 'clear') || st.kind === PLANT.NOPATH).map((st) => [st.kind, st.r, st.pts])]) + String(drawPaths) + String(nearFromCore));
+async function useBake() {
+  const B = bakeP && await bakeP; bakeP = null;                       // (let go once read: kept, a rejected bake held two big pictures)
+  if (!B) { if (!live) BAKE.why = 'no bake to read'; return false; }
+  if (B.m.key !== landKey()) { BAKE.why = 'stale: the land changed since it was baked (run ~/pw/_bakeland.cjs)'; return false; }
+  try { return applyBake(B); } catch (e) { BAKE.why = 'it couldn\'t be used: ' + e.message; return false; }   // (worked out here instead: that redoes all it touched)
+}
+function applyBake(B) {
+  const NN = N * N, wd = new Float32Array(B.cells.buffer, 0, NN), pond = B.cells.subarray(NN * 4, NN * 5), gully = B.cells.subarray(NN * 5, NN * 6), fan = B.cells.subarray(NN * 6, NN * 7);
+  const hs = B.m.hashes, ok = fnvBytes([B.heights]) === hs.heights && fnvBytes([wd, pond, gully, fan]) === hs.cells && fnvBytes([B.water.data], 61) === hs.water;
+  if (!ok) { BAKE.why = 'it read back differently here (a browser changing the pictures\' colours?)'; return false; }
+  Hg.set(new Float32Array(B.heights.buffer, 0, NN)); POND.set(pond); WDEPTH.set(wd); FLOW.fill(0); SETTLE.fill(0); ACC.fill(0); DOWN.fill(-1);
+  OUTLETS.splice(0, OUTLETS.length, ...B.m.outlets); MAPS.gullyB = gully; MAPS.fanB = fan;
+  waterCanvas = B.water.canvas; waterTex = new THREE.CanvasTexture(waterCanvas); waterTex.flipY = false; waterTex.minFilter = THREE.LinearMipmapLinearFilter; waterTex.needsUpdate = true;
+  MAPS.water = B.water.data; MAPS.WP = waterCanvas.width;
+  townLand();
+  BAKE.pathCand = { paths: B.paths, key: B.m.pathKey, hash: hs.paths };   // (taken by the first laying of the land, once the planting is known)
+  BAKE.from = 'baked'; return true;
+}
+// the bake's footpaths, once (the first laying of the land): only if they were drawn from this planting's paths
+function bakedPaths() {
+  const c = BAKE.pathCand; BAKE.pathCand = null; if (!c) return null;
+  if (c.key === pathKey() && fnvBytes([c.paths.data], 61) === c.hash) return c.paths;
+  BAKE.why = 'the footpaths drawn here: the planting\'s paths differ from the bake\'s'; return null;
+}
+if (!(await useBake())) { buildHeights(); if (!live) console.warn('valley: the land worked out here, not baked:', BAKE.why); }
 const geo = new THREE.PlaneGeometry(SIZE - TEX, SIZE - TEX, SEG, SEG); geo.rotateX(-Math.PI / 2);   // a vertex on each cell's middle
 function shapeMesh() { const p = geo.attributes.position; for (let i = 0; i < p.count; i++) p.setY(i, heightAt(p.getX(i), p.getZ(i))); p.needsUpdate = true; geo.computeVertexNormals(); }
 shapeMesh();
@@ -611,6 +661,15 @@ function* sunShadeSteps(dir, budget = 3) {
 // the wet, dry and steep ground unless `pads` (the ground's shape changed under something that levels it). landSteps
 // hands back control between its parts (and every row of tree spots), so a light rebuild runs a slice a frame (TOWN.job)
 function buildLand(o) { TOWN.job = null; const g = landSteps(o); while (!g.next().done); }   // all at once (any slices in flight dropped)
+// the erosion's marks as the ground reads them (maskB's R and G), a byte a cell: where the water ran (gullies) and where it
+// laid soil down (fans), softened. Baked with the land (its key covers this too)
+function erosionBytes() {
+  const fl = new Float32Array(N * N), se = new Float32Array(N * N), gully = new Uint8Array(N * N), fan = new Uint8Array(N * N);
+  for (let q = 0; q < N * N; q++) { fl[q] = Math.min(1, Math.max(0, (Math.log(1 + FLOW[q]) - 2.2) / 2.5)); se[q] = Math.min(1, SETTLE[q] * 4); }
+  const g = blur(fl, 1), f = blur(se, 2);
+  for (let q = 0; q < N * N; q++) { gully[q] = g[q] * 255; fan[q] = Math.min(1, f[q] * 2) * 255; }
+  return { gully, fan };
+}
 function* landSteps({ light = false, pads = true } = {}) {
   const layout = TOWN.village ? TOWN.village.layout : TOWN.layout;
   if (!light) paintRoads(TOWN.canvas, layout, SIZE);
@@ -653,9 +712,8 @@ function* landSteps({ light = false, pads = true } = {}) {
   MAPS.wet = wet; MAPS.dry = dry; MAPS.canopy = canopy; MAPS.wide = wide; MAPS.steep = steep;
   yield;
   // where the water ran (gullies) and where it laid soil down (fans), from the erosion, softened
-  if (!light || !MAPS.gully) { const fl = new Float32Array(N * N), se = new Float32Array(N * N);
-    for (let q = 0; q < N * N; q++) { fl[q] = Math.min(1, Math.max(0, (Math.log(1 + FLOW[q]) - 2.2) / 2.5)); se[q] = Math.min(1, SETTLE[q] * 4); }
-    MAPS.gully = blur(fl, 1); MAPS.fan = blur(se, 2);
+  if (!light || !MAPS.shore) {
+    if (!MAPS.gullyB) ({ gully: MAPS.gullyB, fan: MAPS.fanB } = erosionBytes());   // (baked: the bake's)
     // the shore: a band of stones round every pond and stream (and under the shallows), `shore` cells wide
     const wetCells = new Float32Array(N * N); for (let q = 0; q < N * N; q++) wetCells[q] = WDEPTH[q] > 0 ? 1 : 0;
     MAPS.shore = LAND.shore > 0 ? blur(wetCells, LAND.shore) : wetCells.fill(0);
@@ -664,17 +722,18 @@ function* landSteps({ light = false, pads = true } = {}) {
     for (let j = 2; j < N - 2; j++) for (let i = 2; i < N - 2; i++) { const k = j * N + i; if (!POND[k]) continue; let m = 9;
       for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) if (!POND[k + dj * N + di]) m = Math.min(m, Math.hypot(di, dj));
       rim[k] = m <= 1 ? 1 : m <= 1.5 ? 0.6 : m <= 2 ? 0.25 : 0; } }
-  const gully = MAPS.gully, fan = MAPS.fan, shore = MAPS.shore, dataB = new Uint8Array(N * N * 4);
+  const er = MAPS.gullyB ? { gully: MAPS.gullyB, fan: MAPS.fanB } : erosionBytes(), shore = MAPS.shore, dataB = new Uint8Array(N * N * 4);   // (none: the land shaped again meanwhile, by the rain)
   for (let q = 0; q < N * N; q++) {
     const sh = Math.min(1, Math.max(0, wide[q] * 2.2 - canopy[q] * 0.8)), open = 1 - Math.min(1, canopy[q] + sh);
     const cover = WDEPTH[q] > 0 ? 0 : Math.min(1, (0.55 * open + 1.0 * sh + 0.3 * canopy[q]) * (1 - steep[q]) * (1 - Math.max(0, wet[q] - 0.6) * 2));   // where plants would grow
-    dataB[q * 4] = gully[q] * 255; dataB[q * 4 + 1] = Math.min(1, fan[q] * 2) * 255; dataB[q * 4 + 2] = cover * 255; dataB[q * 4 + 3] = Math.min(1, shore[q] * 2.5) * 255;
+    dataB[q * 4] = er.gully[q]; dataB[q * 4 + 1] = er.fan[q]; dataB[q * 4 + 2] = cover * 255; dataB[q * 4 + 3] = Math.min(1, shore[q] * 2.5) * 255;
   }
   if (!U.maskB.value) { const t = new THREE.DataTexture(dataB, N, N, THREE.RGBAFormat); t.magFilter = t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; U.maskB.value = t; } else U.maskB.value.image.data.set(dataB);
   U.maskB.value.needsUpdate = true;
   yield;
   if (!(same && shadeTex)) bakeShade(canopy, wide);                    // (else only the trees' shade can have changed: worked out again a little each frame, at the end)
-  if (!light) drawPaths(false);                                       // (light: a town change doesn't touch the footpaths)
+  const bp = light ? null : bakedPaths();                              // (the bake's footpaths, if they're this planting's)
+  if (!light && !bp) drawPaths(false);                                 // (light: a town change doesn't touch the footpaths; baked: read below)
   // pack: R wet, G dry, B canopy, A part shade (and steep into the part-shade texture's spare... kept in the shader from the normal)
   const data = new Uint8Array(N * N * 4);
   for (let q = 0; q < N * N; q++) { data[q * 4] = wet[q] * 255; data[q * 4 + 1] = dry[q] * 255; data[q * 4 + 2] = canopy[q] * 255; data[q * 4 + 3] = Math.min(1, Math.max(0, wide[q] * 2.2 - canopy[q] * 0.8)) * 255; }
@@ -682,8 +741,10 @@ function* landSteps({ light = false, pads = true } = {}) {
   else maskA.image.data.set(data);
   maskA.needsUpdate = true;
   U.maskA.value = maskA;
-  if (!light) { const P = 2048; MAPS.path = pathCanvas.getContext('2d').getImageData(0, 0, P, P).data; MAPS.P = P; nearFromCore(MAPS.path, P);
-    composePathRoad(); buildPaving(); }
+  if (!light) { const P = 2048;
+    if (bp) { pathCanvas = bp.canvas; MAPS.path = bp.data; }            // (baked: its nearness already in G)
+    else { MAPS.path = pathCanvas.getContext('2d').getImageData(0, 0, P, P).data; nearFromCore(MAPS.path, P); }
+    MAPS.P = P; composePathRoad(); buildPaving(); }
   yield;
   COVER.cache = {};                                   // the land changed: the remembered tiles are stale
   placeTrees(); yield; yield* placeStonesSteps(); yield;
@@ -2084,10 +2145,22 @@ function render() {
   renderer.render(scene, camera);
   if (BEAMS.on && DAY.elev > -1 && BEAMS.fx) { BEAMS.fx.render(camera, SUN_NOW, { ...BEAMS.opts, strength: BEAMS.strength * beamsAmount(DAY.elev), color: DL.sun }); }
 }
+// for the bake rig (~/pw/_bakeland.cjs), on a land worked out live: everything it saves, as base64, with the keys and hashes
+function bakeData() {
+  if (BAKE.from !== 'live' || !MAPS.gullyB || !MAPS.path || !MAPS.water) return { from: BAKE.from };
+  const b64 = (u) => { u = new Uint8Array(u.buffer, u.byteOffset, u.byteLength); let s = ''; for (let i = 0; i < u.length; i += 32768) s += String.fromCharCode.apply(null, u.subarray(i, i + 32768)); return btoa(s); };
+  const gully = MAPS.gullyB, fan = MAPS.fanB;                          // (as landSteps worked them out, and wrote them into maskB)
+  const rgb = (rgba) => { const out = new Uint8Array(rgba.length / 4 * 3); for (let i = 0, j = 0; i < rgba.length; i += 4) { out[j++] = rgba[i]; out[j++] = rgba[i + 1]; out[j++] = rgba[i + 2]; } return out; };
+  const waterRgba = Uint8Array.from(MAPS.water); for (let i = 3; i < waterRgba.length; i += 4) waterRgba[i] = 255;   // (opaque: its soft edge's alpha isn't read)
+  const hpre = TOWN.Hpre, pond = Uint8Array.from(POND), wd = Float32Array.from(WDEPTH);
+  return { from: 'live', N, SIZE, P: MAPS.P, key: landKey(), pathKey: pathKey(), outlets: OUTLETS.map((o) => [...o]),
+    hpre: b64(hpre), wdepth: b64(wd), pond: b64(pond), gully: b64(gully), fan: b64(fan), water: b64(rgb(waterRgba)), paths: b64(rgb(MAPS.path)),
+    hashes: { heights: fnvBytes([hpre]), cells: fnvBytes([wd, pond, gully, fan]), water: fnvBytes([waterRgba], 61), paths: fnvBytes([MAPS.path], 61) } };
+}
 return {
   scene, sky, sun, hemi, ground, mat, lawn, U, MAPS, TOWN, PLANT, COVER, GROW, PLANT_KINDS, FAMILY, FOREST, LEAF, LAND, VALLEY, SHAPE, WATER, PAVE, DAY, DL, STONES, LAWN, CALM, FOLK, SHOW, BEAMS, RAIN, FENCE,
   TS, QUAL, TEXTURES, LAYERS, TREE_SPECIES, TOWN_DEFAULT, PLANTING_FIRST, weights, FLOW, SETTLE, WDEPTH, ACC, POND, OUTLETS, Hg, N, SIZE, TEX, SEG, geo, SUN_NOW, FOG_DIR, LAMPU,
-  update, render, heightAt, groundAt, slopeAt, waterAt, coverGround, buildLand, buildHeights, shapeMesh, fastMesh, baseGrid, erodeSteps, smoothErosion, cutRavines, addCrags, findWater, townLand, paintWater,
+  BAKE, bakeData, update, render, heightAt, groundAt, slopeAt, waterAt, coverGround, buildLand, buildHeights, shapeMesh, fastMesh, baseGrid, erodeSteps, smoothErosion, cutRavines, addCrags, findWater, townLand, paintWater,
   placeCover, placeTrees, placeStones, placeLawn, calmCover, buildPaving, applyPave, paveLater, composePathRoad, tex, setAverages, applyWeights, drawPaths, followShadow, followCover, townRebuildNow, beamsReady,
   get treeForest() { return treeForest; }, get coverForest() { return coverForest; }, get trees() { return trees; }, get pathCanvas() { return pathCanvas; },
 };
