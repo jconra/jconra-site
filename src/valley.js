@@ -4,15 +4,18 @@
 // rocks), the stones, the town (buildings, props, paving, lamps), the townsfolk, the showcase's landmarks and holograms, and
 // the time of day with its sky, haze and sunbeams. The lab's panel, editors and tools stay in labs/terrain/terrain.js.
 //
-//   const V = await makeValley({ renderer, camera, controls, quality, lab, live, showEnabled })
+//   const V = await makeValley({ renderer, camera, controls, quality, lab, live, slice, showEnabled })
 //     renderer: the page's; camera: the page's (it is moved by the page); controls: OrbitControls, or anything like it: a
 //       `target` (Vector3) the camera looks at, update(), `enabled` and addEventListener (the landmarks' camera glide uses
 //       them); quality: chooseTier()'s answer (src/quality.js); lab: the lab's own
 //       extras (the Build bar's editing, its town editor, the copies kept in this browser) - without it the town and the
 //       planting are the shipped ones (models/town/layout.json, planting.json) and nothing is edited or saved; live: the
-//       land worked out here and now, not loaded from its bake (models/town/land; see THE BAKE);
+//       land worked out here and now, not loaded from its bake (models/town/land; see THE BAKE); slice: the land laid a few
+//       milliseconds a frame (a page that is showing something else meanwhile, the film), not in one go;
 //       showEnabled(): when the landmarks answer the pointer (the default: while the Build bar is shut)
-//     V.scene: its own scene (its sky, haze, light); V.update(dt, afterShow) each frame, then V.render()
+//     V.scene: its own scene (its sky, haze, light); V.update(dt, afterShow) each frame, then V.render() (which also sets the
+//       renderer's exposure to the time of day's: a page sharing its renderer sets its own back); V.update(dt, null, true):
+//       quietly, off stage (no landmarks, townsfolk or globes), while V.settled() is false: the plants laid, the trees baked
 //   TIER_SET: what each quality tier means here
 // (Ground textures, the paving's settings, the forest's, the plants' and the land's own: Jacob's, as tuned in the lab.)
 import * as THREE from 'three';
@@ -84,7 +87,7 @@ export const TIER_SET = {
             u: { wWaveOn: 1, stampFar: 73 }, checks: { stampOn: true, hexOn: true, farOn: true, wWaveOn: true, cloudsOn: true, beamsOn: true } },
 };
 
-export async function makeValley({ renderer, camera, controls, quality, lab = false, live = false, showEnabled = null }) {
+export async function makeValley({ renderer, camera, controls, quality, lab = false, live = false, slice = false, showEnabled = null }) {
 // THE TIME OF DAY's state (the rest is by the frame loop, see dayFrame): hour, local solar time; turn: the sun's whole
 // path turned round. 192: the sun rises and sets through the valley's two open ends (the hills there 3-4° high from the
 // town and the meadow; everywhere else 20-40°, so a sun setting there left the valley in shadow by mid-afternoon), and
@@ -744,7 +747,7 @@ function* landSteps({ light = false, pads = true } = {}) {
   if (!light) { const P = 2048;
     if (bp) { pathCanvas = bp.canvas; MAPS.path = bp.data; }            // (baked: its nearness already in G)
     else { MAPS.path = pathCanvas.getContext('2d').getImageData(0, 0, P, P).data; nearFromCore(MAPS.path, P); }
-    MAPS.P = P; composePathRoad(); buildPaving(); }
+    MAPS.P = P; composePathRoad(); PAVE.job = null; yield* buildPavingSteps(); }   // (the paving in steps too: laid all at once by buildLand)
   yield;
   COVER.cache = {};                                   // the land changed: the remembered tiles are stale
   placeTrees(); yield; yield* placeStonesSteps(); yield;
@@ -1298,7 +1301,9 @@ function placeLawn() {
 function plantSpecies(parts, material) {
   return parts.map((g, k) => { const root = new THREE.Group(); root.add(new THREE.Mesh(g, material)); return { name: 'ground ' + KIND_INFO[k].name, root, height: KIND_INFO[k].height, weight: 1, grid: 8, cell: 128, upNormals: !KIND_INFO[k].lit, soften: KIND_INFO[k].lit ? LIT_SOFTEN : 0, sway: KIND_INFO[k].lit ? 0.45 : 1, tint: false, sink: KIND_INFO[k].sink * COVER.sink }; });   // big plants sway less
 }
-loadSheet('/models/props/groundPlants.glb', 4, (parts, m) => { COVER.parts = parts; COVER.material = m; COVER.plantSp = plantSpecies(parts, m); makePlantTool(); placeCover(); }, [0.5, 1.0], (k) => !!KIND_INFO[k].lit);
+// (laid once the land is: laid in slices, it may still be under way when the sheet arrives)
+const LAND_READY = { done: false, then: [] }, whenLand = (f) => { if (LAND_READY.done) f(); else LAND_READY.then.push(f); };
+loadSheet('/models/props/groundPlants.glb', 4, (parts, m) => { COVER.parts = parts; COVER.material = m; COVER.plantSp = plantSpecies(parts, m); whenLand(() => { makePlantTool(); placeCover(); }); }, [0.5, 1.0], (k) => !!KIND_INFO[k].lit);
 // HAND PLANTING (src/objects/plantTool.js, planting.js): planting by hand over (or instead of) the land's own. Painted
 // strokes grow their plants here, with the land's, so they get the same imposters, wind and shade; where it was painted,
 // cleared or placed a plant (its clear radius), or everywhere when the land's plants are switched off, the land's own
@@ -1788,7 +1793,9 @@ function* buildPavingSteps() {
   if (note) note.textContent = `${field.stones.length.toLocaleString()} stones${tris ? `, ${(tris / 1000).toFixed(0)}k triangles in 3D (sunk into the ground past ${PAVE.lod} m)` : ', painted'} · laid in ${(performance.now() - t0).toFixed(0)} ms`;
 }
 const paveLater = () => { clearTimeout(paveTimer); paveTimer = setTimeout(() => { PAVE.job = buildPavingSteps(); }, 400); };   // (a road edit: laid again a slice a frame, from the frame loop)
-buildLand();
+if (slice) { TOWN.job = null; const g = landSteps(); for (let done = false; !done;) { const t0 = performance.now(); while (performance.now() - t0 < 10) if ((done = g.next().done)) break; if (!done) await new Promise((r) => requestAnimationFrame(r)); } }   // (a slice a frame)
+else buildLand();
+LAND_READY.done = true; for (const f of LAND_READY.then.splice(0)) f();
 // THE TOWN: the buildings, props and the editor. Potato and normal (phones) get the 1K pictures, gaming the 2K
 TOWN.village = new Village({ scene, lo: QUAL.tier !== 'gaming', heightAt, size: SIZE });
 TOWN.village.setLayout(TOWN.layout);
@@ -2053,13 +2060,12 @@ function applyDay() {
   shownColour(DL.horizon, DL.exposure, SHOWN.away); shownColour(DL.toward, DL.exposure, SHOWN.toward);
   shownColour(GLOW_C.copy(DL.sun).multiplyScalar(DL.glow * 1.35).add(DL.toward), DL.exposure, SHOWN.glowAt);
   scene.fog.color.setRGB(SHOWN.away.x, SHOWN.away.y, SHOWN.away.z, THREE.SRGBColorSpace); scene.background.copy(scene.fog.color); U.skyCol.value.copy(DL.horizon);
-  renderer.toneMappingExposure = DL.exposure;
   lightRatio(U.sunGlint.value, sun.color, sun.intensity, NOON_SUN);
   lightRatio(lawn.uniforms.sunTint.value, sun.color, sun.intensity, NOON_SUN); lightRatio(lawn.uniforms.skyTint.value, hemi.color, hemi.intensity, NOON_SKY);
   DAY.glow = Math.min(1, DL.hemiI / 0.9); DAY.elev = e; DAY.stamp++;
   aimLight(LIGHT_NOW);
 }
-function dayFrame(dt) {
+function dayFrame(dt, quiet = false) {
   if (DAY.auto) { DAY.hour = (DAY.hour + dt * 24 / (DAY.dayMin * 60)) % 24; DAY.dirty = true; }
   if (DAY.dirty) { DAY.dirty = false; applyDay(); if (DAY.show) DAY.show(); }
   for (const f of [treeForest, coverForest]) if (f && f.ready && f.dayStamp !== DAY.stamp) { f.dayStamp = DAY.stamp; f.setSun(SUN_DIR, DAY.glow); }
@@ -2078,7 +2084,7 @@ function dayFrame(dt) {
   if (!DAY.bake && DAY.baked && shadeTex && DAY.baked.angleTo(SUN_DIR) > 0.6 * Math.PI / 180) { DAY.baked.copy(SUN_DIR); DAY.bake = sunShadeSteps(SUN_DIR, 0.4); }   // (it hands back control often; the frame's budget below decides how long it runs)
   if (DAY.bake) { const t0 = performance.now(), budget = Math.min(3, Math.max(0.8, dt * 1000 * 0.18)); while (performance.now() - t0 < budget) if (DAY.bake.next().done) { DAY.bake = null; break; } }   // (about a sixth of the frame: 3 ms at 60 Hz, 1.2 ms at 144)
   lampsFrame();
-  folkFrame(dt);
+  if (!quiet) folkFrame(dt);
 }
 // THE STREET LAMPS come on as the sun goes: the lantern glass brightens, a soft halo round it, and a warm pool on the
 // ground under it. Faked (sprites and a ground disc, added light): no real lights, which would cost every lit surface in
@@ -2131,16 +2137,19 @@ beamsReady();
 renderer.getDrawingBufferSize(U.res.value);
 // EACH FRAME: the town's and the paving's slices, the landmarks, the plants' circle, the water, the sky, the breeze, the time of
 // day, the shadows' square, the forests (afterShow: the page's own, after the landmarks have moved the camera); then render
-function update(dt, afterShow = null) {
+function update(dt, afterShow = null, quiet = false) {
   if (TOWN.job) { const t0 = performance.now(), budget = Math.min(6, Math.max(2, dt * 1000 * 0.25)); while (performance.now() - t0 < budget) if (TOWN.job.next().done) { TOWN.job = null; break; } }   // (a light town rebuild, a slice a frame: townRebuildNow)
   if (PAVE.job) { const t0 = performance.now(), budget = Math.min(6, Math.max(2, dt * 1000 * 0.25)); while (performance.now() - t0 < budget) if (PAVE.job.next().done) { PAVE.job = null; break; } }   // (the paving laid again after a road edit: paveLater)
-  if (SHOW.sc) SHOW.sc.update(dt); tickGlobes(dt); if (afterShow) afterShow(); followCover(); U.time.value += dt; sky.update(camera, dt); if (WIND.on) tickWind(dt); dayFrame(dt); followShadow();
+  if (!quiet) { if (SHOW.sc) SHOW.sc.update(dt); tickGlobes(dt); } if (afterShow) afterShow(); followCover(); U.time.value += dt; sky.update(camera, dt); if (WIND.on) tickWind(dt); dayFrame(dt, quiet); followShadow();
   for (const f of [treeForest, coverForest]) if (f) {
     f.landU.landShade.value = U.shadeMap.value; f.landU.landShadeK.value.set(U.hillShade.value, U.aoShade.value, U.treeShade.value * 0.6, U.shadeMap.value ? 1 : 0);   // the land's baked shade, on the plants too
     f.update(camera, controls.target, camera.position, dt);
   }
 }
+// all laid and baked, nothing still being worked out a slice at a time (off stage, a page can stop updating it)
+const settled = () => !!(treeForest && treeForest.ready && coverForest && coverForest.ready && !COVER.job && !TOWN.job && !PAVE.job);
 function render() {
+  renderer.toneMappingExposure = DL.exposure;                         // (the time of day's: set when drawn, so it never changes another scene's)
   U.eyePos.value.copy(camera.position);                              // (the paving's 3D stones sink past PAVE.lod from here)
   renderer.render(scene, camera);
   if (BEAMS.on && DAY.elev > -1 && BEAMS.fx) { BEAMS.fx.render(camera, SUN_NOW, { ...BEAMS.opts, strength: BEAMS.strength * beamsAmount(DAY.elev), color: DL.sun }); }
@@ -2160,7 +2169,7 @@ function bakeData() {
 return {
   scene, sky, sun, hemi, ground, mat, lawn, U, MAPS, TOWN, PLANT, COVER, GROW, PLANT_KINDS, FAMILY, FOREST, LEAF, LAND, VALLEY, SHAPE, WATER, PAVE, DAY, DL, STONES, LAWN, CALM, FOLK, SHOW, BEAMS, RAIN, FENCE,
   TS, QUAL, TEXTURES, LAYERS, TREE_SPECIES, TOWN_DEFAULT, PLANTING_FIRST, weights, FLOW, SETTLE, WDEPTH, ACC, POND, OUTLETS, Hg, N, SIZE, TEX, SEG, geo, SUN_NOW, FOG_DIR, LAMPU,
-  BAKE, bakeData, update, render, heightAt, groundAt, slopeAt, waterAt, coverGround, buildLand, buildHeights, shapeMesh, fastMesh, baseGrid, erodeSteps, smoothErosion, cutRavines, addCrags, findWater, townLand, paintWater,
+  BAKE, bakeData, update, render, settled, heightAt, groundAt, slopeAt, waterAt, coverGround, buildLand, buildHeights, shapeMesh, fastMesh, baseGrid, erodeSteps, smoothErosion, cutRavines, addCrags, findWater, townLand, paintWater,
   placeCover, placeTrees, placeStones, placeLawn, calmCover, buildPaving, applyPave, paveLater, composePathRoad, tex, setAverages, applyWeights, drawPaths, followShadow, followCover, townRebuildNow, beamsReady,
   get treeForest() { return treeForest; }, get coverForest() { return coverForest; }, get trees() { return trees; }, get pathCanvas() { return pathCanvas; },
 };

@@ -16,8 +16,7 @@ import { loadKit, StationKit, DEFAULT_LAYOUT } from './objects/stationKit.js';
 import { buildHangarSet, shutFighter } from './objects/hangarSet.js';
 import { addAfterburner } from './objects/afterburner.js';
 import { loadUSMap } from './objects/usMap.js';
-import { buildTown } from './objects/town.js';
-import { loadTownLayout } from './objects/townLayout.js';
+import { chooseTier } from './quality.js';
 import { buildBookshelf, SERIES } from './objects/bookshelf.js';
 
 const Q = new URLSearchParams(location.search);
@@ -310,7 +309,7 @@ function loadRoom(name) {
   placeSitter();
   $('boot')?.remove();
   bootProgress('cabin', 1); loadSitter(); loadStation();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getProps: () => PROPS, total, getHangarSet: () => hangarSet, MAP_HANDOFF, hangarShipPos, getMap: () => mapSet, getTown: () => town, TOWN_INPUT });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getProps: () => PROPS, total, getHangarSet: () => hangarSet, getValley: () => valley, getTownCam: () => townCam, getTownWarm: () => townWarm, TOWNTOUR, tourStart, tourStop, MAP_HANDOFF, hangarShipPos, getMap: () => mapSet, getTown: () => town, TOWN_INPUT });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; if (e.total) bootProgress('cabin', e.loaded / e.total); },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -560,9 +559,9 @@ const KEYS = [
   { t: 48,  set: 'map', cam: { at: 'chase', back: 70, up: 24, side: 10 }, look: 'ship' },
   { t: 51.5,  set: 'map', cam: { at: 'chase', back: 40, up: 12, side: 0 },  look: 'ship' },
   { t: 57.5,  set: 'map', cam: { at: 'chase', back: 42, up: 14, side: -6 }, look: 'ship' },
-  // THE TOWN. Out of the white: the projects world, the fighter skimming in over the forest to the
-  // town, the camera high behind it. From the last key the flight is live - tap or click where to
-  // go, or WASD - and the roofs are the projects.
+  // THE TOWN. Out of the white: the valley, the fighter coming down through the clouds into its open west end, the camera
+  // high behind it. From the last key the flight is live - tap or click where to go, or WASD - and the landmarks are the
+  // projects (hover or tap one for its name, click it for its hologram).
   { t: 57.51, set: 'town', cam: { at: 'follow', back: 120, up: 90 }, look: 'jet' },
   { t: 61,  set: 'town', cam: { at: 'follow', back: 38, up: 20 },  look: 'jet' },
 ];
@@ -620,8 +619,8 @@ const PARTS = [
 const STATION_AT = new THREE.Vector3(100000, 0, 0);
 const HANGAR_AT = new THREE.Vector3(-100000, 0, 0);       // the human-scale hangar, off on its own
 const MAP_AT = new THREE.Vector3(0, 0, 120000);            // the map over the photograph, off on its own
-const TOWN_AT = new THREE.Vector3(0, -50000, -150000);     // the projects world, off on its own
-let town = null;
+const TOWN_AT = new THREE.Vector3(0, 0, 0);                // the projects world: the valley, in a scene of its own (its own origin)
+let town = null, valley = null, townCam = null, townControls = null, townFailed = false;
 const TOWN_INPUT = { dest: null, holding: false, turn: 0, throttle: 0 };
 const liveInTown = () => currentSet === 'town' && SEQ.T >= total() - 1e-6;
 const SKY = new THREE.Color(0x9ec9ec);
@@ -667,29 +666,43 @@ function loadStation() {
     });
   }).catch(e => console.error(e));
 }
-// THE TOWN SET: the projects (projects/projects.json, the list the projects page and Town Map read), built into a town
-function buildTownSet(parts) {
-  Promise.all([fetch('/projects/projects.json').then(r => r.json()).then(j => j.projects).catch(() => []), loadTownLayout()]).then(([list, layout]) => {
-    const projects = layout ? list : list.filter(p => p.group !== 'other');   // with no drawn layout, the spiral takes all but the small old experiments
-    town = buildTown(parts, projects, { renderer, origin: TOWN_AT, light: !renderer.capabilities.isWebGL2, layout });   // a machine without WebGL2 gets imposters only, no shadows
-    town.floor.position.copy(TOWN_AT); town.floor.visible = false; scene.add(town.floor);
-    town.poseAt(0);
-  });
+// THE TOWN SET: the valley village (src/valley.js: the Terrain Lab's world with the shipped town and planting, the land
+// from its bake), in a scene of its own with its own sky, haze and light, seen through its own camera (townCam). Until the
+// town is shown that camera waits where the fighter arrives, so the plants are laid and the trees' pictures baked there
+// beforehand; then the timeline's camera is copied into it through the arrival, and in the live flight it follows the
+// fighter itself (or the landmarks' holograms move it). The fighter: src/objects/valleyFlight.js
+async function buildTownSet(parts) {
+  try {
+    const [{ makeValley }, { valleyFlight }] = await Promise.all([import('./valley.js'), import('./objects/valleyFlight.js')]);
+    townCam = new THREE.PerspectiveCamera(camera.fov, camera.aspect, 0.1, 6000);
+    townControls = { target: new THREE.Vector3(), enabled: false, enableZoom: false, update() { townCam.lookAt(this.target); }, addEventListener() {} };   // (the holograms' glide moves these)
+    valley = await makeValley({ renderer, camera: townCam, controls: townControls, quality: chooseTier(renderer), slice: true, showEnabled: () => liveInTown() });   // (laid a slice a frame: the boot and the cabin play on meanwhile)
+    town = valleyFlight({ V: valley, parts });
+    const A = town.ARRIVE, f = A.to.clone().sub(A.from).setY(0).normalize();
+    townCam.position.copy(A.to).addScaledVector(f, -FOLLOW.back).add(new THREE.Vector3(0, FOLLOW.up, 0)); townControls.target.copy(A.to).addScaledVector(f, FOLLOW.ahead); townCam.lookAt(townControls.target);
+    if (currentSet === 'town') { townRatio(true); seek(SEQ.T); }      // (someone got to the town before it was ready: shown now, from where they are)
+  } catch (e) { townFailed = true; tourBar(); console.error('town: not built', e); }
 }
+// the town drawn at its quality tier's pixel ratio (a phone's 1.5, potato's 0.5: the Terrain Lab's), the film's elsewhere
+function townRatio(on) { renderer.setPixelRatio(Math.min(devicePixelRatio, on && valley ? valley.TS.ratio : 2)); post.setSize(innerWidth, innerHeight); }
+// the timeline's camera into the town's (through the arrival)
+function syncTownCam() { townCam.position.copy(camera.position); townCam.quaternion.copy(camera.quaternion); townControls.target.copy(controls.target); }
 // the fighter over the town: by the clock through the last keys, live after them
 function stepTown(T, a, b, u, set = 'town') {
-  if (!town) return;
+  const showTime = () => { const el = $('seqTime'); if (el && document.activeElement !== el) el.value = T.toFixed(2); $('seqTimeOut').textContent = T.toFixed(1) + ' s'; };
+  if (!town) { tourBar(); showTime(); return; }                      // (not built yet: the bar says it's coming)
   const t0 = KEYS.find(k => setOf(k) === 'town').t, live = T >= total() - 1e-6;
-  if (!live) { town.poseAt(T - t0, total() - t0); town.liveFrom = false; }
-  else if (!town.liveFrom) { town.poseAt(total() - t0, total() - t0); town.liveFrom = true; }   // however it got here (a jump to the end, too), the live flight starts where the arrival ends
+  if (live && town.liveFrom) { showTime(); return; }                 // (the live flight has the cameras: a scrub on past the end changes nothing)
+  if (!live) { const sc = valley.SHOW.sc; if (sc && sc.isOpen) { sc.back = null; sc.close(); }   // (back into the timeline: any hologram goes, and nothing glides)
+    town.poseAt(T - t0, total() - t0); town.liveFrom = false; tourStop(false); tourBar(); }
+  else { town.poseAt(total() - t0, total() - t0); town.liveFrom = true; TOWNTOUR.startAt = performance.now() + 1500; }   // however it got here (a jump to the end, too), the live flight starts where the arrival ends
   town.setCloud(1 - THREE.MathUtils.smoothstep(T, t0, t0 + 3.2));
   camera.position.copy(cameraAt(T)).add(TOWN_AT);
   controls.target.copy(lookPoint(a.look, set).lerp(lookPoint(b.look, set), u)); camera.lookAt(controls.target);
-  town.faceClouds(camera);
+  syncTownCam(); town.faceClouds(townCam);
   post.focus = camera.position.distanceTo(controls.target);
   for (const h of holos) h.fill = 0;
-  const el = $('seqTime'); if (el && document.activeElement !== el) el.value = T.toFixed(2);
-  $('seqTimeOut').textContent = T.toFixed(1) + ' s';
+  showTime();
 }
 // the live flight, once the timeline has run out: the fighter goes where it is sent and the
 // camera follows it smoothly
@@ -697,50 +710,122 @@ const FOLLOW = { back: 38, up: 20, ahead: 30 };
 function liveTown(dt) {
   if (!town || currentSet !== 'town') return;
   town.update(dt, TOWN_INPUT);
-  const f = town.forward(), want = town.state.pos.clone().addScaledVector(f, -FOLLOW.back).add(new THREE.Vector3(0, FOLLOW.up, 0)).add(TOWN_AT);
-  camera.position.lerp(want, Math.min(1, dt * 2.5));
-  controls.target.lerp(town.lookAhead(FOLLOW.ahead).add(TOWN_AT), Math.min(1, dt * 4)); camera.lookAt(controls.target);
-  town.faceClouds(camera);
-  post.focus = camera.position.distanceTo(controls.target);
+  const sc = valley.SHOW.sc;
+  if (!(sc && (sc.gliding || sc.isOpen))) {                // (a hologram open, or its camera on the way: the camera is its)
+    const f = town.forward(), want = town.state.pos.clone().addScaledVector(f, -FOLLOW.back).add(new THREE.Vector3(0, FOLLOW.up, 0));
+    want.y = Math.max(want.y, town.groundAt(want.x, want.z) + 6);   // (never into a hillside behind it)
+    townCam.position.lerp(want, Math.min(1, dt * 2.5));
+    townControls.target.lerp(town.lookAhead(FOLLOW.ahead), Math.min(1, dt * 4)); townCam.lookAt(townControls.target);
+  }
+  town.faceClouds(townCam);
 }
-// pointing at the town: a hover on a roof shows its card, a click on it opens the project, a
-// click on the ground sends the fighter there; WASD steers
+// THE TOUR: a little after the fighter has arrived, it flies to each landmark in turn (in from the side the landmark faces,
+// so its hologram faces the camera; the globe with the observatory behind it; Montana's flowers from the south, so the
+// state reads the right way up) and opens its hologram for a while, then flies on. Any touch, click, scroll or key hands
+// the controls back at once (an open hologram stays, still: a tap off it closes it); the bar at the bottom says where the
+// tour is, and offers it again (a scroll still runs the film: back, it leaves the town, and the tour starts over when the
+// arrival comes round again). `item`: the layout's own building or prop (else the landmark's first); `d`: how far out
+// the fighter stops; `side`: the way from the landmark to the viewer, if not the way it faces
+const TOWNTOUR = { on: false, user: false, done: false, i: -1, phase: 'idle', t: 0, leg: 0, A: null, B: null, target: null, startAt: 0, dwell: 10, shown: '', shownCur: false,
+  stops: [
+    { id: 'rmrf', item: 'imurp4z641c', d: 52 },                         // the hangar, from its open front (the Lurcher in its door)
+    { id: 'subnet', item: 'obelisk1', d: 26 },                          // the obelisk, from the face its message starts on
+    { id: 'math', item: 'imurp4z6311', d: 50 },                         // the school, from the street it faces
+    { id: 'labs', item: 'imurp4z63u', d: 26 },                          // an easel on the plaza
+    { id: 'portfolio', item: 'imurp4z632', d: 58 },                     // the town hall, from the plaza
+    { id: 'valehex', item: 'valehex1', d: 30, side: [0.71, 0.71] },     // the globe, the observatory behind it
+    { id: 'montana', item: 'montana1', d: 52, side: [0, 1] },           // the outline in flowers, from the south
+    { id: 'shipwrecked', item: 'raft1', d: 38, side: [0, -1] },         // the raft on the pond, from the town's shore
+  ] };
+// where to stop for a landmark: A, well out; then B, in front of it (so the fighter arrives facing it)
+function tourAim(stop) {
+  const T = TOWNTOUR, all = valley.SHOW.sc.targets(), tg = all.find((t) => t.item && t.item.id === stop.item) || all.find((t) => t.id === stop.id);
+  if (!tg || !tg.box) return false;
+  const c = tg.box.getCenter(new THREE.Vector3()), a = ((tg.item && tg.item.rot) || 0) * Math.PI / 180;
+  const s = stop.side ? new THREE.Vector3(stop.side[0], 0, stop.side[1]).normalize() : new THREE.Vector3(Math.sin(a), 0, Math.cos(a));   // (a building's front: its own +z, turned with it)
+  T.target = tg; T.A = c.clone().addScaledVector(s, stop.d + 45).setY(0); T.B = c.clone().addScaledVector(s, stop.d).setY(0);
+  return true;
+}
+function tourStart(from = 0) {
+  const T = TOWNTOUR, sc = valley && valley.SHOW.sc; if (!town || !sc || !liveInTown()) return;
+  if (sc.isOpen) { sc.back = null; sc.close(); }                     // (one left open: the tour's camera follows the fighter from here)
+  T.on = true; T.user = false; T.done = false; T.startAt = 0; T.i = from - 1; tourNext();
+}
+function tourNext() {
+  const T = TOWNTOUR; T.i++;
+  while (T.i < T.stops.length && !tourAim(T.stops[T.i])) T.i++;     // (a landmark that isn't there: passed over)
+  if (T.i >= T.stops.length) { T.on = false; T.done = true; T.i = -1; TOWN_INPUT.dest = null; TOWN_INPUT.cruise = 0; tourBar(); return; }
+  T.phase = 'fly'; T.leg = 0; T.t = 0; T.shownCur = false; TOWN_INPUT.dest = T.A.clone(); TOWN_INPUT.cruise = 24; TOWN_INPUT.holding = false; tourBar();
+}
+function tourStop(byUser = true) {
+  const T = TOWNTOUR; if (!T.on) return;
+  T.on = false; if (byUser) T.user = true;
+  TOWN_INPUT.dest = null; TOWN_INPUT.cruise = 0;
+  const sc = valley && valley.SHOW.sc; if (sc && (sc.isOpen || sc.gliding)) { sc.touched(); sc.back = null; }   // (it stays, the slides still; closed later, the camera goes back to the fighter)
+  tourBar();
+}
+function tourStep(dt) {
+  const T = TOWNTOUR;
+  if (!T.on) { if (T.startAt && performance.now() > T.startAt && !T.user && valley && valley.SHOW.sc) { T.startAt = 0; tourStart(0); } tourBar(); return; }
+  if (!liveInTown() || !valley.SHOW.sc) { tourStop(false); return; }
+  const sc = valley.SHOW.sc, p = town.state.pos; T.t += dt;
+  if (T.phase === 'fly') {   // (30 s a stretch at most: held up somewhere, on with the next)
+    if (T.leg === 0 && (Math.hypot(p.x - T.A.x, p.z - T.A.z) < 25 || T.t > 30)) { T.leg = 1; T.t = 0; TOWN_INPUT.dest = T.B.clone(); }   // (on into the last stretch without stopping)
+    else if (T.leg === 1 && ((!TOWN_INPUT.dest && town.state.speed < 1.5) || T.t > 30)) { T.phase = 'settle'; T.t = 0; }
+  } else if (T.phase === 'settle') { if (T.t > 0.8) { sc.present(T.stops[T.i].id, T.target); T.phase = 'show'; T.t = 0; T.shownCur = true; } }
+  else if (T.phase === 'show') { if (T.t > T.dwell) { sc.close(); T.phase = 'back'; T.t = 0; } }
+  else if (T.phase === 'back') { if (!sc.gliding && T.t > 1.2) tourNext(); }
+  tourBar();
+}
+// the bar: while touring, where it is; otherwise (in the live town) the button to tour again
+function tourBar() {
+  const T = TOWNTOUR, el = $('tourBar'); if (!el) return;
+  const live = liveInTown() && valley && valley.SHOW.sc, stop = T.on && T.i >= 0 ? T.stops[T.i] : null;
+  const lm = stop && valley.SHOW.sc.byId ? valley.SHOW.sc.byId.get(stop.id) : null;
+  const waiting = currentSet === 'town' && !town;                    // (the town not built yet, or it failed)
+  const state = waiting ? (townFailed ? 'failed' : 'loading') : !live ? 'off' : T.on ? `on:${T.i}` : T.startAt && !T.user ? 'off' : 'button';
+  if (state === T.shown) return; T.shown = state;
+  el.classList.toggle('on', state !== 'off');
+  $('tourText').textContent = stop ? `Touring the town · ${T.i + 1} of ${T.stops.length}${lm ? ': ' + lm.label : ''}` : waiting ? (townFailed ? "The town didn't load" : 'The town is on its way…') : '';
+  $('tourHint').textContent = T.on ? 'Tap or press a key to fly yourself' : waiting && townFailed ? 'Reloading the page may bring it' : '';
+  $('tourGo').hidden = T.on || waiting; $('tourGo').textContent = T.user && !T.done ? 'Go on with the tour' : 'Tour the town';
+}
+$('tourGo')?.addEventListener('click', () => { const T = TOWNTOUR; tourStart(T.user && !T.done && T.i >= 0 ? T.i + (T.shownCur ? 1 : 0) : 0); });   // (on from the stop it was at, or the next if that one was shown)
+// the visitor's own touch, click or key hands the controls back (heard first, before anything acts on it, and not stopped);
+// before the tour has begun, it's theirs from the start. A scroll is the film's (it runs the timeline), unless it's over a
+// hologram's screen, reading it
+for (const ev of ['pointerdown', 'wheel', 'keydown']) addEventListener(ev, (e) => {
+  const T = TOWNTOUR; if (!T.on && !(T.startAt && liveInTown())) return;
+  if (e.target && e.target.closest && e.target.closest('#tourGo')) return;
+  if (ev === 'keydown' && (e.repeat || ['Shift', 'Control', 'Alt', 'Meta'].includes(e.key))) return;
+  if (ev === 'wheel') { const sc = valley && valley.SHOW.sc; if (!(sc && sc.screenAt(e.clientX, e.clientY))) return; }
+  if (T.on) tourStop(true); else { T.user = true; T.startAt = 0; tourBar(); }
+}, { capture: true, passive: true });
+// pointing at the town: the landmarks answer for themselves (hover names one, a click raises its hologram: the valley's
+// showcase); a click on the ground sends the fighter there, a press held steers it; WASD steers
 {
-  const ray = new THREE.Raycaster(), card = $('townCard');
-  let hovered = null, down = new THREE.Vector2();
-  const cast = (e) => { ray.setFromCamera(new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera); return ray; };
-  const showCard = (b, e) => {
-    if (!b) { card.classList.remove('on'); hovered = null; return; }
-    hovered = b; const pr = b.userData.project;
-    card.querySelector('b').textContent = pr.name; card.querySelector('span').textContent = pr.text;
-    card.style.left = Math.min(innerWidth - 300, e.clientX + 14) + 'px'; card.style.top = Math.min(innerHeight - 120, e.clientY + 14) + 'px';
-    card.classList.add('on');
-  };
-  renderer.domElement.addEventListener('pointermove', (e) => { if (currentSet !== 'town' || !town || e.pointerType !== 'mouse') return; showCard(town.pick(cast(e)), e); });
+  const ray = new THREE.Raycaster();
+  let down = new THREE.Vector2();
+  const cast = (e) => { ray.setFromCamera(new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), townCam); return ray; };
+  // a landmark, its hologram, or (with one open) a tap that closes it: the showcase's, not the fighter's
+  const showcases = (e) => { const sc = valley && valley.SHOW.sc; return !!(sc && (sc.isOpen || sc.screenAt(e.clientX, e.clientY) || sc.landmarkAt(e.clientX, e.clientY))); };
   // a press held for a moment steers: the fighter chases the ground under the finger (or mouse)
   // until it is let go, then finishes the trip and stops; a quick tap is handled on release
   let holdTimer = 0, steering = false, lastE = null;
   const steerTo = (e) => { const g = town.groundPoint(cast(e)); if (g) TOWN_INPUT.dest = g.sub(TOWN_AT); };
   renderer.domElement.addEventListener('pointerdown', (e) => {
     down.set(e.clientX, e.clientY); lastE = e;
-    if (!town || !liveInTown() || !e.isPrimary) return;
+    if (!town || !liveInTown() || !e.isPrimary || showcases(e)) return;
     clearTimeout(holdTimer);
-    holdTimer = setTimeout(() => { if (TOWN_SCRUBBING()) return; steering = true; TOWN_INPUT.holding = true; showCard(null, lastE); steerTo(lastE); }, 160);
+    holdTimer = setTimeout(() => { if (TOWN_SCRUBBING()) return; steering = true; TOWN_INPUT.holding = true; steerTo(lastE); }, 160);
   });
   renderer.domElement.addEventListener('pointermove', (e) => { lastE = e; if (steering && liveInTown()) { if (TOWN_SCRUBBING()) { steering = false; TOWN_INPUT.holding = false; TOWN_INPUT.dest = null; return; } steerTo(e); } });
   const release = () => { clearTimeout(holdTimer); const was = steering; steering = false; TOWN_INPUT.holding = false; return was; };
   renderer.domElement.addEventListener('pointercancel', release);
   renderer.domElement.addEventListener('pointerup', (e) => {
     if (release()) return;                                   // it was a hold: the fighter goes on to where the finger was
-    if (currentSet !== 'town' || !town || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) return;
-    const r = cast(e), b = town.pick(r);
-    if (b) {
-      if (e.pointerType === 'mouse' || hovered === b) { if (b.userData.project.href) window.open(b.userData.project.href, '_blank'); }
-      else showCard(b, e);                                   // on touch: first tap shows the card, the second opens
-      return;
-    }
-    showCard(null, e);
-    const g = town.groundPoint(r); if (g) TOWN_INPUT.dest = g.sub(TOWN_AT);
+    if (!liveInTown() || !town || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8 || showcases(e)) return;
+    const g = town.groundPoint(cast(e)); if (g) TOWN_INPUT.dest = g.sub(TOWN_AT);
   });
   const keys = {};
   addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; steer(); });
@@ -748,6 +833,8 @@ function liveTown(dt) {
   function steer() {
     TOWN_INPUT.turn = (keys.a ? 1 : 0) - (keys.d ? 1 : 0); TOWN_INPUT.throttle = (keys.w ? 1 : 0) - (keys.s ? 1 : 0);
     if (TOWN_INPUT.turn) TOWN_INPUT.dest = null;
+    const sc = valley && valley.SHOW.sc;                               // (flying off with a hologram open: it goes, and the camera goes with the fighter)
+    if ((TOWN_INPUT.turn || TOWN_INPUT.throttle) && sc && sc.isOpen && liveInTown()) { sc.back = null; sc.close(); }
   }
 }
 // THE MAP SET: the photograph as a big flat picture (its own pixels as units), the states laid on
@@ -1024,13 +1111,15 @@ function pickHangar() {
 const setOf = (k) => k.set || 'cabin';
 function showSet(name) {
   if (name === currentSet) return;
-  currentSet = name;
+  const was = currentSet; currentSet = name;
+  if (name === 'town' || was === 'town') townRatio(name === 'town');
   const inCabin = name === 'cabin', inHangar = name === 'hangar', inMap = name === 'map', inTown = name === 'town';
   if (mapSet) mapSet.floor.visible = inMap;
-  if (town) town.floor.visible = inTown;
+  if (inTown && valley) valley.DAY.dirty = true;           // (its light, haze and exposure put back: the other sets set their own)
+  if (!inTown && valley && valley.SHOW.sc && valley.SHOW.sc.isOpen) valley.SHOW.sc.close();
   scene.background = inTown ? SKY : new THREE.Color(0x000000);
   scene.fog = inTown ? new THREE.Fog(SKY, 600, 2600) : null;
-  if (!inTown) { $('townCard').classList.remove('on'); TOWN_INPUT.dest = null; }
+  if (!inTown) { TOWN_INPUT.dest = null; tourStop(false); tourBar(); }
   if (!inMap) { poked = null; $('mapCaption').classList.remove('on'); }
   if (!inCabin) { $('likesCard').classList.remove('on'); $('clipCard').classList.remove('on'); }   // (the room's cards stay in the room)
   room.visible = inCabin; for (const sc of SCREENS) sc.visible = inCabin;
@@ -1497,14 +1586,13 @@ function stepSequence(dt) {
     const editing = document.activeElement && document.activeElement.closest && document.activeElement.closest('#panel');
     if (!SEQ.playing && !RESUME.held && !RESUME.hold && !editing && !BOOT.on && !pull && SEQ.T < total() && performance.now() - RESUME.last > RESUME.after * 1000 && !cardOpen()) SEQ.playing = true;   // (not during the boot: it played under the pull-back and the camera snapped back to the monitor)
     if (SEQ.playing) { seek(SEQ.T + dt); if (SEQ.T >= total()) SEQ.playing = false; }
-    else if (currentSet === 'town' && SEQ.T >= total() - 1e-6) liveTown(dt);                   // the timeline is done: the flight is live
+    else if (currentSet === 'town' && SEQ.T >= total() - 1e-6) { tourStep(dt); liveTown(dt); }   // the timeline is done: the flight is live (and the tour)
     else if (SEQ.T >= HANGAR.roll && Math.abs(FLY.roll - FLY.target) > 0.05) seek(SEQ.T);     // paused in flight, the fighter still banks to the pointer
   } else {
     if (chairPivot && CHAIR.swivel) chairPivot.rotation.y += THREE.MathUtils.degToRad(CHAIR.speed) * dt;
     if (sitterMixer) sitterMixer.update(dt);
   }
   for (const h of holos) h.update(dt);
-  if (town) town.frame(camera, controls.target, dt);
   for (const sc of SCREENS) sc.update(dt);
 }
 // the wheel scrubs time instead of zooming, when that is switched on; a first scroll starts the intro
@@ -2116,6 +2204,7 @@ $('copy').onclick = () => {
 addEventListener('resize', () => {
   if (mapSet && mapSet.map) mapSet.map.setResolution(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  if (townCam) { townCam.aspect = camera.aspect; townCam.updateProjectionMatrix(); }
   renderer.setSize(innerWidth, innerHeight); post.setSize(innerWidth, innerHeight);
 });
 
@@ -2124,7 +2213,23 @@ loadRoom(build);
 
 // ── loop ────────────────────────────────────────────────────────────────────────
 const clock = THREE.Timer ? new THREE.Timer() : new THREE.Clock();
-let fps = 60, shown = 0;
+let fps = 60, shown = 0, offStage = 0, townWarm = 0;
+// THE TOWN, OFF STAGE: its plants laid and its trees' pictures baked where the fighter arrives (quietly, every other frame);
+// once that's done, its shaders built (in the background where the browser can), then the town drawn once to the screen
+// itself through a one-pixel window, from where the town waits and from where the arrival opens, just before the frame
+// paints over it: every picture sent to the graphics card and every way of drawing it set up for the screen as it is, so
+// the cut to the town doesn't stall (drawn into a target of its own instead, the first real frame still took ~0.3 s)
+function offStageTown(dt) {
+  if (!valley.settled()) { if ((offStage = (offStage + 1) % 2) === 0) valley.update(dt * 2, null, true); return; }
+  if (townWarm === 0) { townWarm = 1; const go = () => { townWarm = 2; }; if (renderer.compileAsync) renderer.compileAsync(valley.scene, townCam).then(go, go); else go(); return; }
+  if (townWarm !== 2) return; townWarm = 3;
+  const cam = townCam.clone(), A = town.ARRIVE, scissor = renderer.getScissorTest();
+  renderer.setScissorTest(true); renderer.setScissor(0, 0, 1 / renderer.getPixelRatio(), 1 / renderer.getPixelRatio());
+  renderer.render(valley.scene, cam);
+  cam.position.copy(A.from).add(new THREE.Vector3(-120, 90, 0)); cam.lookAt(A.from.clone().add(new THREE.Vector3(26, 0, 0))); cam.updateMatrixWorld();   // (the arrival's first view: in from the west)
+  renderer.render(valley.scene, cam);
+  renderer.setScissorTest(scissor);
+}
 renderer.info.autoReset = false;
 renderer.setAnimationLoop(() => {
   renderer.info.reset();
@@ -2142,7 +2247,10 @@ renderer.setAnimationLoop(() => {
   stepSequence(dt);
   if (!SEQ.active) controls.update();     // while the timeline owns the camera, orbit must not touch it: its 14 m limit would drag it into the station
   if ($('autoFocus').checked) post.focus = camera.position.distanceTo(controls.target);
-  post.render(dt);
+  // the town is drawn by the valley, from its own scene and camera; elsewhere the film's own (the valley, off stage, lays its
+  // plants and bakes its trees round the way in, every other frame once the greeting is done)
+  if (currentSet === 'town' && valley) { valley.update(dt); valley.render(); }
+  else { if (valley && !BOOT.on) offStageTown(dt); post.render(dt); }   // (off stage first: its unseen draw is painted over)
   if (raw > 0) fps += (1 / raw - fps) * Math.min(1, raw * 2);   // weighted by the frame's own length: a two-second frame counts in full, not five percent
   if ((shown += raw) > 0.5) {
     shown = 0;

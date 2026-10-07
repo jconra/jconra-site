@@ -84,8 +84,23 @@ function globeMaterial() {
   return m;
 }
 // the atmosphere: a glow round the globe's edge, brightest where it's seen edge-on
-const AIR_VS = `varying vec3 vN; varying vec3 vV; void main() { vN = normalize(normalMatrix * normal); vec4 p = modelViewMatrix * vec4(position, 1.0); vV = normalize(-p.xyz); gl_Position = projectionMatrix * p; }`;
-const AIR_FS = `uniform vec3 uColor; varying vec3 vN; varying vec3 vV; void main() { float f = pow(1.0 - abs(dot(vN, vV)), 2.6); gl_FragColor = vec4(uColor * f * 2.2, f); }`;
+// (with a logarithmic depth buffer, as the jconra.com film has: depth as everything else writes it, three's chunk for a perspective camera)
+const AIR_VS = `varying vec3 vN; varying vec3 vV;
+#include <logdepthbuf_pars_vertex>
+void main() { vN = normalize(normalMatrix * normal); vec4 p = modelViewMatrix * vec4(position, 1.0); vV = normalize(-p.xyz); gl_Position = projectionMatrix * p;
+#ifdef USE_LOGDEPTHBUF
+#ifdef USE_LOGDEPTHBUF_EXT
+vFragDepth = 1.0 + gl_Position.w; vIsPerspective = 1.0;
+#else
+gl_Position.z = log2(max(1e-6, gl_Position.w + 1.0)) * logDepthBufFC - 1.0; gl_Position.z *= gl_Position.w;
+#endif
+#endif
+}`;
+const AIR_FS = `uniform vec3 uColor; varying vec3 vN; varying vec3 vV;
+#include <logdepthbuf_pars_fragment>
+void main() {
+#include <logdepthbuf_fragment>
+float f = pow(1.0 - abs(dot(vN, vV)), 2.6); gl_FragColor = vec4(uColor * f * 2.2, f); }`;
 
 let CACHE = null;
 function build(freq) {

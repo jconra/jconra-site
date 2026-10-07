@@ -47,6 +47,7 @@ export function makeLawn({ cap = 60000, shade = null, lamps = null } = {}) {   /
     uniforms, side: THREE.DoubleSide, fog: true,
     vertexShader: WIND_GLSL + `
       #include <fog_pars_vertex>
+      #include <logdepthbuf_pars_vertex>
       attribute float aH; attribute vec3 iPos; attribute vec2 iTurn; attribute vec2 iVary;
       varying float vH; varying vec2 vVary; varying vec3 vN; varying vec2 vLand;
       void main() {
@@ -56,6 +57,13 @@ export function makeLawn({ cap = 60000, shade = null, lamps = null } = {}) {   /
         world.xz += windAt(iPos.xz) * aH * aH * p.y * 2.5;                // the blades are short and soft: they bend further than the plants
         vH = aH; vVary = iVary; vLand = iPos.xz; vN = normalize(vec3(s, 0.6, c));
         vec4 mv = viewMatrix * vec4(world, 1.0); gl_Position = projectionMatrix * mv;
+        #ifdef USE_LOGDEPTHBUF
+        #ifdef USE_LOGDEPTHBUF_EXT
+        vFragDepth = 1.0 + gl_Position.w; vIsPerspective = 1.0;
+        #else
+        gl_Position.z = log2(max(1e-6, gl_Position.w + 1.0)) * logDepthBufFC - 1.0; gl_Position.z *= gl_Position.w;
+        #endif
+        #endif   // (a page drawing with a logarithmic depth buffer, as the jconra.com film does: depth as everything else writes it; three's chunk, for a perspective camera)
         #ifdef USE_FOG
         vFogDepth = -mv.z;
         #endif
@@ -63,9 +71,11 @@ export function makeLawn({ cap = 60000, shade = null, lamps = null } = {}) {   /
     fragmentShader: `
       #include <common>
       #include <fog_pars_fragment>
+      #include <logdepthbuf_pars_fragment>
       uniform vec3 root, tip, sunDir, skyTint, sunTint; uniform sampler2D shadeMap; uniform float landSize, hillShade, aoShade, treeShade;
       varying float vH; varying vec2 vVary; varying vec3 vN; varying vec2 vLand;
       void main() {
+        #include <logdepthbuf_fragment>
         vec3 col = mix(root, tip, smoothstep(0.1, 1.0, vH)) * (1.0 + vVary.y);
         col = mix(col, col.yxz * vec3(1.0, 1.0, 0.8), vVary.x);         // some blades a touch yellower
         float sunPart = 0.47 + 0.35 * abs(dot(normalize(vN), sunDir)), ao = 1.0;   // (with the 0.28 even part, the sky's share of noon's light as the ground gets it: 0.75 .. 1.1, as it was)

@@ -267,6 +267,15 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
       uniform vec3 shadowAt; uniform float shadowRange, edgeFrom, edgeTo, edgeShade, edgeJitter;
       float edgeHash(vec2 c) { vec3 p = fract(vec3(c.xyx) * 0.1031); p += dot(p, p.yzx + 33.33); return fract((p.x + p.y) * p.z); }
       ` + LOOKUP + `
+      #if defined( USE_LOGDEPTHBUF ) && defined( USE_LOGDEPTHBUF_EXT )
+      // a page with a logarithmic depth buffer (the jconra.com film): the surface's depth written as the log depth everything
+      // else writes (three's own sum), not the ordinary depth, which a WebGL1 card would otherwise get here
+      float surfaceLogDepth(vec4 nrm) {
+        float off = (0.5 - clamp(nrm.a, 0.0, 1.0)) * 2.0 * vRadius;
+        vec4 clip = projectionMatrix * vec4(vViewPos + vToCamView * off, 1.0);
+        return log2(1.0 + clip.w) * logDepthBufFC * 0.5;
+      }
+      #endif
       void main() {
         #include <logdepthbuf_fragment>
         // dithered fade, the COMPLEMENT of the mesh's: the mesh keeps the pixels where its fade beats the dither, the imposter the others, so in the crossfade every pixel is drawn by exactly one of them
@@ -275,7 +284,11 @@ export function imposterMaterial(bake, { sunDir = new THREE.Vector3(0.5, 1, 0.3)
         vec4 col; vec4 nrm; lookup(col, nrm);
         if (col.a < 0.45) discard;
         #ifdef GL_EXT_frag_depth
+        #if defined( USE_LOGDEPTHBUF ) && defined( USE_LOGDEPTHBUF_EXT )
+        if (useDepth > 0.5) gl_FragDepthEXT = surfaceLogDepth(nrm / max(col.a, 0.001));   // (else the log depth written above stands: every path writes it)
+        #else
         gl_FragDepthEXT = useDepth > 0.5 ? surfaceDepth(nrm / max(col.a, 0.001)) : gl_FragCoord.z;   // (written on every path: left unwritten on one, a WebGL1 card's depth is anything)
+        #endif
         #endif
         nrm /= max(col.a, 0.001); vec3 n = normalize(nrm.rgb * 2.0 - 1.0);   // read through the colour's coverage: filtered against the empty background otherwise
         float c = cos(vYaw), s = sin(vYaw);

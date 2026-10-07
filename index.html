@@ -55,6 +55,14 @@
                 padding:12px 18px; background:rgba(4,8,12,.72); border:1px solid rgba(53,224,125,.45); border-radius:6px; text-align:center;
                 opacity:0; transition:opacity .35s; }
   #mapCaption.on { opacity:1; }
+  /* the town's tour: where it is, or the button to take it */
+  #tourBar { position:fixed; left:50%; bottom:calc(18px + env(safe-area-inset-bottom, 0px)); transform:translateX(-50%); z-index:6; display:none; max-width:min(92vw, 520px);
+             padding:8px 14px; background:rgba(4,8,12,.78); border:1px solid rgba(53,224,125,.45); border-radius:6px; text-align:center; font:13px/1.4 ui-sans-serif, system-ui, sans-serif; color:#e8f1f5; }
+  #tourBar.on { display:block; }
+  #tourBar b { display:block; font:400 14px nasa, ui-sans-serif, sans-serif; letter-spacing:.06em; color:#35e07d; }
+  #tourBar small { display:block; color:#8aa3b3; }
+  #tourBar b:empty, #tourBar small:empty { display:none; }
+  #tourGo { font:600 12px ui-monospace, monospace; letter-spacing:.06em; background:none; border:1px solid #2f7d55; color:#35e07d; border-radius:4px; padding:6px 12px; cursor:pointer; }
   #townCard { position:fixed; z-index:6; pointer-events:none; width:280px; padding:10px 14px; background:rgba(4,8,12,.84); border:1px solid rgba(53,224,125,.5); border-radius:6px; opacity:0; transition:opacity .2s; }
   #townCard.on { opacity:1; }
   /* the room's clickable things: a small tag by the cursor, and the card a click opens */
@@ -94,6 +102,7 @@
 <a id="back" href="/labs/">&larr; labs</a>
 <div id="hud"></div>
 <div id="mapCaption"><b></b><span></span></div>
+<div id="tourBar"><b id="tourText"></b><small id="tourHint"></small><button id="tourGo" type="button">Tour the town</button></div>
 <div id="flash"></div>
 <div id="townCard"><b></b><span></span></div>
 <div id="hoverTag"></div>
