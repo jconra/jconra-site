@@ -380,6 +380,84 @@
      "text": "A companion page breaks the game down into its parts and shows off its 3D models on their own. Click the grid to make a model walk to that spot, and drag to turn the view round it.\n\nThe game itself is plain JavaScript on an early version of three.js, the same library this town is built with."
     }
    ]
+  },
+  {
+   "id": "subnet",
+   "label": "Teaching tools",
+   "at": [
+    "obelisk"
+   ],
+   "color": "#5dffa0",
+   "link": "/projects/subnetCalc/index.html",
+   "slides": [
+    {
+     "img": "/textures/projects/subnetCalc.jpg",
+     "title": "A tool for my classmates",
+     "project": "Subnetting Calculator",
+     "dates": "2012",
+     "text": "In 2012 I was a student at the Air Force's Cyber Warfare Operations schoolhouse, and our networking block got to subnetting: splitting a network's addresses into smaller networks by working in binary. It's the part that breaks people. Classmates spent hours practising, and some were close to tears.\n\nThen I saw one student writing the steps out in an Excel sheet, and I thought I could do better. I was just learning JavaScript, and I raced to finish a calculator my classmates could study with."
+    },
+    {
+     "img": "/textures/projects/subnetCalc.jpg",
+     "title": "Still in use three years later",
+     "project": "Subnetting Calculator",
+     "dates": "2012 – 2015 and on",
+     "text": "When I came back to the schoolhouse three years later as an instructor, they were still handing it to students. Hundreds of students have used it, which makes it one of my earliest projects and one of my most useful.\n\nIt isn't a fancy program. It's a tool somebody needed, built by one of them."
+    },
+    {
+     "img": "/textures/projects/subnetCalc.jpg",
+     "title": "How it works",
+     "project": "Subnetting Calculator",
+     "dates": "2012",
+     "text": "Type in an IP address and a subnet mask and it shows every octet in binary, under the values of its bits (128, 64, 32 down to 1), coloured by what each bit is doing: green for the network, red for the subnet, blue for the host.\n\nAlongside, it works out everything a student is asked for: the class, the network, subnet and host bits, the network ID, the first and last host, the broadcast address, the next subnet, and how many subnets and hosts there are. 'Ask Me a Question' gives random practice questions (first host, last host, mask, network ID, subnet ID, broadcast, or the mask you need for so many hosts or subnets) and checks your answer.\n\nMade with: plain JavaScript and HTML, written while I was learning both. The background is a honeycomb of hexagons, hence this obelisk."
+    },
+    {
+     "img": "/textures/projects/shots/jeopardy.jpg",
+     "title": "Test review for my classes",
+     "project": "Jeopardy",
+     "dates": "2016",
+     "link": "/projects/jeopardy/index.html",
+     "text": "In 2016 I was back at the Air Force's Cyber Warfare Operations schoolhouse, this time as an instructor, and I made this Jeopardy game to help my classes get ready for their tests. The school had been reviewing with a PowerPoint version of Jeopardy; I replaced it with one that was easy to fill with new questions.\n\nThis copy is loaded with Linux questions: twelve categories of five, among them Boot Process, Shells, Permissions, Logging and Text Streams. They range from 'This symbol is the top of the directory structure' to working out what a file's permissions become after a change. A few Star Wars jokes slipped in along the way, and the two teams ticked when it opens are HanShotFirst and KillTac9."
+    },
+    {
+     "img": "/textures/projects/shots/jeopardy.jpg",
+     "title": "How it plays, and your own questions",
+     "project": "Jeopardy",
+     "dates": "2016",
+     "link": "/projects/jeopardy/index.html",
+     "text": "Up to four teams type in their names and press Play. Pick a box and its question fills the screen while bars down both sides count off ten seconds, green to yellow to red. Click to show the answer, then click Correct or Incorrect: the team whose turn it is wins or loses that amount, and the turn passes on. Clear the board and Round 2 brings six new categories at double the money. Clicking a score lets you fix it.\n\nTo use your own questions, save the page and open it in a text editor such as Notepad. Near the top is a plain list (JSON, a simple text format) of categories, each with five questions and answers. Type over them and save. A question can also set its own timer or keep a command on one line.\n\nMade with: plain JavaScript and HTML, all in one file."
+    },
+    {
+     "img": "/textures/projects/tutorial.jpg",
+     "title": "Teaching games at DuckCon",
+     "project": "DuckCon",
+     "dates": "April 2018",
+     "link": "/projects/duckcon/index.html",
+     "text": "On April 20, 2018, the cyber warfare instructors in my squadron, the 333rd Training Squadron, put on DuckCon for students at Gulfport High School in Gulfport, Mississippi. It was an off-base technology show: wireless security, programming, cyber careers and the weak spots of the internet and websites, all to get students interested in science, technology, engineering and math.\n\nFor it, I made slides: web pages that teach basic JavaScript, working up to simple browser games. I picked JavaScript because all you need to start is a text editor and a web browser, and a canvas, a blank drawing area on a web page, lets you draw things with very little code.\n\nOn the front page even the title is a game: the words 'HTML games' are made of coloured blocks, and you can shoot them apart with a little ship that follows your mouse."
+    },
+    {
+     "img": "/textures/projects/tutorial.jpg",
+     "title": "What the lessons teach",
+     "project": "DuckCon",
+     "dates": "2018",
+     "link": "/projects/duckcon/index.html",
+     "text": "The tutorial has six lessons. Each gives short, complete pages to paste into a text editor and open in a browser, most explained line by line.\n\nGetting Started draws rectangles, makes the canvas fill the window, builds a house from a box and a triangle, and covers colours, even see-through ones. Loops repeats one drawing command to make a row of bars, then a checkerboard with a loop inside a loop. Animation bounces a square off the walls by asking the browser to run your code again before every screen refresh. Mouse drops a green square wherever you click, using a listener: code that waits for something to happen. Keyboard moves a square with the arrow keys, keeping a list of held keys so two work at once. Functions draws trucks with a circle function for wheels.\n\nPress F12 and the console names the line with a mistake."
+    },
+    {
+     "img": "/textures/projects/shots/arcade-collage.jpg",
+     "title": "The example games",
+     "project": "DuckCon",
+     "dates": "2018",
+     "link": "/projects/duckcon/examples/index.html",
+     "text": "The tutorial ends with six example games. As I wrote there, they aren't exactly fun, but they use the lessons' ideas and the code is full of comments explaining it.\n\nClick the Dot: click each growing dot fast; it averages your reaction time.\nFlappy Dot: hold the mouse button to rise, release to fall, through gaps in a cave.\nHTML Games Shooter: the tutorial's block-letter title, to shoot apart.\nMissile Defense: click to set off blasts that stop missiles hitting your cities; one exploding missile can set off others.\nLander: land gently on the moon, then dock with the orbiting ship before your fuel runs out. It shows how to use pictures in a game.\nRotator: steer a jet with the mouse through the hole in each oncoming wall, tilting it with the buttons.\n\nLander, Missile Defense and Rotator are also on my projects page, under Arcade games."
+    },
+    {
+     "img": "/textures/projects/shots/town-obelisk.jpg",
+     "title": "The obelisk",
+     "project": "Subnetting Calculator",
+     "text": "This obelisk is covered in the calculator's hexagons. Some cells glow and some don't: they are bits. Read them in order and they say something.\n\nA hint for anyone who wants to try: eight bits a letter, most significant first, starting on the face with the bright frame up its sides and reading like a book, then on round to the right. The rows alternate five cells and four."
+    }
+   ]
   }
  ]
 }

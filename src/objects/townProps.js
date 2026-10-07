@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeValehexGlobe } from './valehexGlobe.js';
 import { makeStateMap } from './stateMap.js';
+import { makeObelisk } from './obelisk.js';
 
 // footprint is [width along x, depth along z] in metres. The signpost's is its post and the stones
 // round it: it turns about the post, and its arrows reach out 0.8 m above head height.
@@ -27,8 +28,9 @@ export const PROP_KINDS = [
   { kind: 'signpost', name: 'Signpost', footprint: [0.5, 0.5] },
   { kind: 'flowerBed', name: 'Flower bed', footprint: [2.45, 2.45] },
   { kind: 'valehexGlobe', name: 'Valehex globe', footprint: [1.2, 1.2] },   // (its own module: shaders of its own, and it turns)
-  { kind: 'stateMap', name: 'Montana (its outline)', footprint: [4, 2.3] },
-  { kind: 'dock', name: 'Wooden dock', footprint: [1.7, 6.2] },   // (its own module: the state's shape, unseen; its border is planted in flowers)
+  { kind: 'stateMap', name: 'Montana (its outline)', footprint: [4, 2.3] },   // (its own module: the state's shape, unseen; its border is planted in flowers)
+  { kind: 'dock', name: 'Wooden dock', footprint: [1.7, 6.2] },
+  { kind: 'obelisk', name: 'Hex obelisk', footprint: [0.9, 0.9] },          // (its own module: shaders of its own, and a message in its cells)
 ];
 
 // ── palette ─────────────────────────────────────────────────────────────────
@@ -517,6 +519,7 @@ const CACHE = new Map();
 export function makeProp(kind) {
   if (kind === 'valehexGlobe') return makeValehexGlobe();
   if (kind === 'stateMap') return makeStateMap();
+  if (kind === 'obelisk') return makeObelisk();
   const make = BUILDERS[kind];
   if (!make) throw new Error(`townProps: no prop called "${kind}"`);
   const M = materials();

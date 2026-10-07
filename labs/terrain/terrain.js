@@ -1844,7 +1844,7 @@ function walkPlaces(L) {
       else if (it.kind === 'flowerBed') { add(it, 0, d / 2 + 0.35 * S, 0, -1, 'garden'); add(it, 0, -d / 2 - 0.35 * S, 0, 1, 'garden'); }
       else if (it.kind === 'signpost') add(it, 0.7 * S, 0.7 * S, -1, -1, 'sign');
       else if (it.kind === 'dock') add(it, 0, d / 2 - 0.6 * S, 0, 1, 'bridge');   // (out at its end, looking over the water)
-      else if (it.kind === 'valehexGlobe' || it.kind === 'stateMap') for (let q = 0; q < 4; q++) { const a = (q + 0.5) / 4 * Math.PI * 2, r = w / 2 + 0.9 * S; add(it, Math.sin(a) * r, Math.cos(a) * r, -Math.sin(a), -Math.cos(a), 'fountain'); }   // (round it, looking up at it)
+      else if (it.kind === 'valehexGlobe' || it.kind === 'stateMap' || it.kind === 'obelisk') for (let q = 0; q < 4; q++) { const a = (q + 0.5) / 4 * Math.PI * 2, r = w / 2 + 0.9 * S; add(it, Math.sin(a) * r, Math.cos(a) * r, -Math.sin(a), -Math.cos(a), 'fountain'); }   // (round it, looking up at it)
     }
   }
   // spots to wander to along the roads (every 28 m) and the footpaths (every 40 m; those out past the town are dropped

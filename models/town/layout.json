@@ -104,7 +104,8 @@
 {"id":"valehex1","type":"prop","kind":"valehexGlobe","x":-1,"z":-277,"rot":0,"size":2.6},
 {"id":"montana1","type":"prop","kind":"stateMap","x":-70,"z":-278,"rot":0,"size":10},
 {"id":"dock1","type":"prop","kind":"dock","x":28,"z":-90.6,"rot":0,"size":1.6},
-{"id":"raft1","type":"model","kind":"raft","x":31.6,"z":-87,"rot":0,"size":7}
+{"id":"raft1","type":"model","kind":"raft","x":31.6,"z":-87,"rot":0,"size":7},
+{"id":"obelisk1","type":"prop","kind":"obelisk","x":-80,"z":-190,"rot":0,"size":2.6}
 ],
 "roads": [
 {"mat":"flagstones","w":34,"pts":[[-15,-200]]},
