@@ -15,9 +15,9 @@
      "img": "/textures/projects/shots/rmrf.jpg",
      "title": "Capture the flag on an island",
      "project": "RMRF",
-     "text": "RMRF is a capture-the-flag game for the browser, built with three.js (a library for drawing 3D in a web page). Each of two teams has a walled main base, with its flag inside a keep, and a smaller forward base with an elevator. You start in an underground garage, pick a vehicle and ride the elevator up to the surface. The only way to win is to steal the enemy flag and carry it home. Wiping out the other team's vehicles doesn't end the match.\n\nThe look is a homage to the old game Return Fire: bright beaches, straight roads and tiny soldiers walking around the bases. The islands are generated from a seed number, so every match gets new ground. You can play the computer, watch two AI teams fight, or try the campaign maps. On a phone, one thumb steers and the other fires. Claude (Anthropic's AI) has been my coding partner on it.\n\nMade with: JavaScript and three.js 0.160 (kept on that version so it still runs on WebGL 1), Web Audio for sound, deployed to AWS Amplify.",
+     "text": "RMRF is a capture-the-flag game for the browser, built with three.js (a library for drawing 3D in a web page). Each of two teams has a walled main base, with its flag inside a keep, and a smaller forward base with an elevator. You start in an underground garage, pick a vehicle and ride the elevator up to the surface. The only way to win is to steal the enemy flag and carry it home. Wiping out the other team's vehicles doesn't end the match.\n\nThe look is a homage to the old game Return Fire: bright beaches, straight roads and tiny soldiers walking around the bases. The islands are generated from a seed number, so every match gets new ground. You can play the computer or watch two AI teams fight. The game is complete apart from its campaign, which I'm still building. On a phone, one thumb steers and the other fires. Claude (Anthropic's AI) has been my coding partner on it.\n\nMade with: JavaScript and three.js 0.160 (kept on that version so it still runs on WebGL 1), Web Audio for sound, deployed to AWS Amplify.",
      "link": "https://rmrfbase.com",
-     "dates": "June 2026",
+     "dates": "May 2026 – now",
      "madeWith": "Built with Claude"
     },
     {
@@ -26,7 +26,7 @@
      "project": "RMRF",
      "text": "The Lurcher is a six-legged walker with twin guns. It isn't fast, but it's tough and hard-hitting, and it can step in any direction without turning first.\n\nThe Firebrat is a hovering scout: quick off the mark and the most fragile. It fires a laser, can cross water, drops land mines and sensor pods, and it's the only vehicle that can steal the flag.\n\nThe Valkyrie flies on two ducted rotors, so walls, water and trees don't stop it. It's slow to get going, then outruns everything. Click a target and it locks on and fires homing missiles.\n\nThe Jotun is a slow tracked tank with a railgun that hits hard from long range and can break open the enemy's keep, the building that holds the flag.\n\nOn paper they form a loop, like rock-paper-scissors: the Lurcher's firepower beats the Firebrat, the Valkyrie outmaneuvers the Lurcher, the Jotun's range beats the Valkyrie, and the quick Firebrat beats the slow Jotun.\n\nMade with: three.js models built in code, tuned in the Vehicle Designer.",
      "link": "https://rmrfbase.com",
-     "dates": "June 2026 – September 2026",
+     "dates": "May 2026 – now",
      "madeWith": "Built with Claude"
     },
     {
@@ -35,7 +35,7 @@
      "project": "RMRF",
      "text": "Each AI team has a commander with a personality: Turtle, Warrior, Hunter or Rogue. The Turtle leans toward defending, the Warrior toward attacking, the Rogue toward sneaking in the back way, and the Hunter can set traps: a Firebrat mines a lane, then a Lurcher fires a few shots to lure the enemy across the mines.\n\nWhich mission to run comes from a system I call MissionScore. The commander scores every mission (scout, siege, capture, defend and more) from what it knows: which towers still stand, what vehicles it has left, whether a flag is exposed. The top score runs. Personality is part of that score: it counts four times over at the start and eases back to a small nudge by about four minutes. A failed mission takes a penalty that fades, because the worst thing a commander can do is repeat a failing plan. A route only counts as clear if the team has actually had eyes on it.\n\nMade with: JavaScript (js/AIStrategies.js, js/AI.js), A* route-finding.",
      "link": "https://rmrfbase.com",
-     "dates": "June 2026 – September 2026",
+     "dates": "May 2026 – now",
      "madeWith": "Built with Claude"
     },
     {
@@ -44,7 +44,7 @@
      "project": "RMRF",
      "text": "Each base has walls and corner gun towers. When a tower is damaged, a jeep drives a repair crew out to fix it. The jeep is easy to kill, shooting it cancels the repair, and the AI knows that too.\n\nWrecked vehicles leave scrap. Scrap builds new vehicles in the garage (2 for a Firebrat, 5 for a Jotun), and in the Scrap Shop it pays for walls and gun towers that a crew builds where you choose. Fuel and ammo run low, and neutral depots refill them or hand out shields.\n\nLand mines hit either team. Stray too far out over deep water and a submarine surfaces and fires homing missiles. Kills earn bronze, silver and gold stars that make a vehicle stronger. Every sound is synthesized in the browser, with no recordings, and placed in 3D, so you can hear an enemy before you see it, and so can the AI.\n\nMade with: JavaScript, three.js, Web Audio (synthesized engine and gun sounds placed in 3D).",
      "link": "https://rmrfbase.com",
-     "dates": "June 2026 – September 2026",
+     "dates": "May 2026 – now",
      "madeWith": "Built with Claude"
     },
     {
@@ -53,7 +53,7 @@
      "project": "RMRF",
      "text": "Around the game I built a set of tools, so I can work on one piece at a time.\n\nThe Vehicle Designer (rmrfbase.com/vehicle-designer) puts each of the four vehicles on its own stage, where I tune the models and hear their engines and guns.\n\nThe Sound Lab is a modular synthesizer in the browser: you wire sound sources and filters together with virtual cables. Those patches are the actual engine and gun sounds in the game. The picture is the Jotun's railgun: a rising charge, a crack and a deep boom.\n\nThe Map Designer builds campaign maps with the game's own island generator and models, so the editor shows a map the way the game draws it. The Asset Designer is where I tune the buildings and props that go on those maps.\n\nThere are also small labs that each isolate one problem, like the Standoff Playground for working out where a vehicle should park to shell an enemy base.\n\nMade with: JavaScript and three.js; Web Audio for the Sound Lab.",
      "link": "https://rmrfbase.com",
-     "dates": "June 2026 – September 2026",
+     "dates": "May 2026 – now",
      "madeWith": "Built with Claude"
     },
     {
@@ -62,7 +62,7 @@
      "project": "RMRF",
      "text": "The hard part is getting the AI to play well, so I made ways to watch and measure it.\n\nThe AI Lab is a live console that runs beside a match and shows what both commanders are thinking: every mission's score with the math behind it, and what each unit is doing. In the game, a menu turns on overlays like sight cones and engine-noise rings.\n\nA test rig runs the game with no screen and plays whole tournaments of AI-versus-AI matches faster than real time. The matches are repeatable, so I can compare before and after a change match by match. In one stretch of fixes in early July, the share of test matches ending in a capture went from 13% to 97.5%. Some of the best fixes came from watching matches on my phone and spotting what the numbers missed. Claude wrote up the big changes in a 25-post devblog.\n\nMade with: AI Lab pages in rmrf/ai-lab; headless Playwright test rig (~/pw/tourney.cjs).",
      "link": "https://rmrfbase.com",
-     "dates": "June 2026 – September 2026",
+     "dates": "May 2026 – now",
      "madeWith": "Built with Claude"
     }
    ]
@@ -325,7 +325,7 @@
      "img": "/textures/projects/shots/montana.jpg",
      "title": "Real ground, measured from the air",
      "project": "Montana",
-     "text": "This is a piece of Paradise Valley, Montana, rebuilt in 3D from real measurements. The ground comes from USGS LiDAR: laser scans taken from an aircraft that record the height of the ground and everything standing on it.\n\nThe main area is a 1.5 km square with a height every 2 m. A sharper patch about 500 m across, at roughly 1 m, sits in the middle, and an aerial photo is laid over the top. Around it is a 60 km square of simpler terrain from a regional height map, so the real mountains stand on the horizon, from about 1,440 m up to 3,290 m. You can switch on elevation colours or stretch the heights to read the slopes. I built the first viewer and its data tools with Claude (Anthropic's AI) as a coding partner.\n\nMade with: three.js r158 (kept for WebGL1), USGS LiDAR height data, an aerial photo, a 60 km regional height map.",
+     "text": "This is a real place: a piece of Paradise Valley, Montana, rebuilt in 3D from real measurements, so the ground, the hills and every tree stand where they really are, as accurate as the LiDAR scan. The ground comes from USGS LiDAR: laser scans taken from an aircraft that record the height of the ground and everything standing on it.\n\nThe main area is a 1.5 km square with a height every 2 m. A sharper patch about 500 m across, at roughly 1 m, sits in the middle, and an aerial photo from the USDA's NAIP program is laid over the top. Around it is a 60 km square of simpler terrain from a regional height map, so the real mountains stand on the horizon, from about 1,440 m up to 3,290 m. You can switch on elevation colours or stretch the heights to read the slopes. I built the first viewer and its data tools with Claude (Anthropic's AI) as a coding partner.\n\nData: ground and tree heights from USGS LiDAR; aerial photo from USDA NAIP (the National Agriculture Imagery Program).\n\nMade with: three.js r158 (kept for WebGL1), a 60 km regional height map.",
      "link": "https://montana.jconra.com",
      "dates": "August 2026 - September 2026"
     },
@@ -333,7 +333,7 @@
      "img": "/textures/projects/shots/montana.jpg",
      "title": "Every tree where it really stands",
      "project": "Montana",
-     "text": "The forest isn't scattered at random. A Python script reads the LiDAR scan, works out where the ground is, and marks each high point in the treetops more than 2.5 m tall as a tree. It found about 25,800 trees, and each one is placed and sized by its measured height. Trees that land on the buildings get dropped, because the scan read some roofs as treetops, and the whole set is moved 3 m north to line up with the photo.\n\nClose to the camera the trees are detailed pines made with ez-tree, an open-source tree generator. Farther away they fade into flat pictures of the tree that always turn to face you, which are much cheaper to draw. Aspen groves grow at two spots I marked, and bushier pines line the driveway. A set of labs on the site compares tree models, bushes and ways of drawing distant trees.\n\nMade with: Python (laspy, numpy) for tree extraction, ez-tree for the pine and aspen models, three.js r158.",
+     "text": "The forest isn't scattered at random. A Python script reads the LiDAR scan, works out where the ground is, and marks each high point in the treetops more than 2.5 m tall as a tree. It found about 25,800 trees, and each one is placed and sized by its measured height. Trees that land on the buildings get dropped, because the scan read some roofs as treetops, and the whole set is moved 3 m north to line up with the photo.\n\nClose to the camera the trees are detailed pines made with ez-tree, an open-source tree generator. Farther away they fade into flat pictures of the tree that always turn to face you, which are much cheaper to draw. Aspen groves grow at two spots I marked, and bushier pines line the driveway. A set of labs on the site compares tree models, bushes and ways of drawing distant trees.\n\nMade with: USGS LiDAR, Python (laspy, numpy) for tree extraction, ez-tree for the pine and aspen models, three.js r158.",
      "link": "https://montana.jconra.com/labs/",
      "dates": "August 2026 - September 2026"
     },
@@ -361,14 +361,14 @@
      "img": "/textures/projects/shots/shipwrecked.jpg",
      "title": "Stranded on an island",
      "project": "Shipwrecked",
-     "dates": "Before 2019 (on my old site)",
-     "text": "Shipwrecked is a survival game that starts you washed up on an island. The island is grown from a seed number, so every seed gives you new ground to explore: beaches, palms and pines, bushes, rocks and the sea all round.\n\nYou have to keep yourself alive. Hunger drops as you go (faster when you run), and when it runs out your health goes with it. A wound keeps bleeding until you bandage it. Crabs pinch, boars charge, and if you wade out too far a shark starts circling you.\n\nYou move with the arrow keys or W A S D, and hold Shift to run."
+     "dates": "May 2017",
+     "text": "Shipwrecked is a survival game that starts you washed up on an island. I built it as my capstone project for my computer science degree, finished in May 2017. The island is grown from a seed number, so every seed gives you new ground to explore: beaches, palms and pines, bushes, rocks and the sea all round.\n\nYou have to keep yourself alive. Hunger drops as you go (faster when you run), and when it runs out your health goes with it. A wound keeps bleeding until you bandage it. Crabs pinch, boars charge, and if you wade out too far a shark starts circling you.\n\nYou move with the arrow keys or W A S D, and hold Shift to run."
     },
     {
      "img": "/textures/projects/shots/shipwrecked.jpg",
      "title": "Build your way off",
      "project": "Shipwrecked",
-     "dates": "Before 2019 (on my old site)",
+     "dates": "May 2017",
      "text": "Everything comes from what the island gives you. Pick up sticks and stones, pull rope out of the bushes, eat coconuts, and once you have an axe, chop trees into boards.\n\nEach thing you build opens the next: a lean-to first, then an axe and a campfire to cook on, a twig hut, a spear, a cottage, a bow, clothes from leather, and bandages. Shelters are where you sleep through the night.\n\nThe last thing you can build is the raft: ten boards and five rope, then put it in the water. Climb aboard and you have beaten the game. That raft is the one tied up at this dock."
     },
     {
@@ -376,7 +376,7 @@
      "title": "The demo page",
      "project": "Shipwrecked Demo Page",
      "link": "https://shipwrecked.jconra.com/demos/",
-     "dates": "Before 2019 (on my old site)",
+     "dates": "May 2017",
      "text": "A companion page breaks the game down into its parts and shows off its 3D models on their own. Click the grid to make a model walk to that spot, and drag to turn the view round it.\n\nThe game itself is plain JavaScript on an early version of three.js, the same library this town is built with."
     }
    ]
