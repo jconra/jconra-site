@@ -401,7 +401,7 @@
      "img": "/textures/projects/subnetCalc.jpg",
      "title": "Still in use three years later",
      "project": "Subnetting Calculator",
-     "dates": "2012 – 2015 and on",
+     "dates": "2012 and on",
      "text": "When I came back to the schoolhouse three years later as an instructor, they were still handing it to students. Hundreds of students have used it, which makes it one of my earliest projects and one of my most useful.\n\nIt isn't a fancy program. It's a tool somebody needed, built by one of them."
     },
     {
@@ -417,7 +417,7 @@
      "project": "Jeopardy",
      "dates": "2016",
      "link": "/projects/jeopardy/index.html",
-     "text": "In 2016 I was back at the Air Force's Cyber Warfare Operations schoolhouse, this time as an instructor, and I made this Jeopardy game to help my classes get ready for their tests. The school had been reviewing with a PowerPoint version of Jeopardy; I replaced it with one that was easy to fill with new questions.\n\nThis copy is loaded with Linux questions: twelve categories of five, among them Boot Process, Shells, Permissions, Logging and Text Streams. They range from 'This symbol is the top of the directory structure' to working out what a file's permissions become after a change. A few Star Wars jokes slipped in along the way, and the two teams ticked when it opens are HanShotFirst and KillTac9."
+     "text": "In 2016 I was back at the Air Force's Cyber Warfare Operations schoolhouse, this time as an instructor, and I made this Jeopardy game to help my classes get ready for their tests. The school had been reviewing with a clunky Jeopardy made in PowerPoint; I replaced it with a JavaScript one that could do a lot more, like keeping each team's score, and that was easy to fill with new questions.\n\nThis copy is loaded with Linux questions: twelve categories of five, among them Boot Process, Shells, Permissions, Logging and Text Streams. They range from 'This symbol is the top of the directory structure' to working out what a file's permissions become after a change. A few Star Wars jokes slipped in along the way, and the two teams ticked when it opens are HanShotFirst and KillTac9."
     },
     {
      "img": "/textures/projects/shots/jeopardy.jpg",
