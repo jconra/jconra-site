@@ -25,6 +25,9 @@
 //       { kind, x, y, z, rx, ry, rz, s, distance } or null: Select turns it into a placed one (see pickUpWild)
 //     a kind may carry mix: [kinds]: its brush paints them mixed (the page sorts out which where), and a click puts down
 //       one of them, picked at random
+//     planting (optional): the planting to work on, already made (normalisePlanting), in place of the one kept in this
+//       browser or `initial`; readonly (optional): draw the placed things only, with no bar, gizmo or brush, nothing listened
+//       to and nothing saved (a page showing the town, not editing it)
 //   tool.update() each frame; tool.planting, tool.index; tool.active (the bar open)
 import * as THREE from 'three';
 import { Gizmo } from './gizmo.js';
@@ -37,7 +40,7 @@ const DEG = Math.PI / 180;
 export class PlantTool {
   constructor(o) {
     Object.assign(this, o);
-    this.planting = normalisePlanting(loadPlanting() || o.initial || emptyPlanting());
+    this.planting = o.planting || normalisePlanting((!o.readonly && loadPlanting()) || o.initial || emptyPlanting());
     this.index = new PlantIndex(this.planting);
     this.history = new PlantingHistory(this.planting);
     this.sel = null; this.stroke = null; this.painting = null; this.down = null; this.fingers = new Set(); this.log = []; this.redoLog = [];
@@ -48,6 +51,7 @@ export class PlantTool {
     this.kindOf = (k) => this.kinds.find((x) => x.id === k) || {};
     this.post = new THREE.CylinderGeometry(0.35, 0.35, 1, 6).translate(0, 0.5, 0); this.unseen = new THREE.MeshBasicMaterial({ visible: false });
     this.meshes = this.kinds.map((kd) => kd.id).map((k) => this.makeMesh(k, 256));
+    if (o.readonly) { this.bar = null; this.gizmo = null; this.syncItems(); return; }
     // the brush: a ring on the ground (green paint, red clear) and the stroke's trail
     const ringGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(65 * 3), 3));
     this.ring = new THREE.Line(ringGeo, new THREE.LineBasicMaterial({ color: 0x35e07d, depthTest: false, transparent: true, opacity: 0.9 }));
@@ -67,7 +71,7 @@ export class PlantTool {
     const picker = !this.parts[k], m = new THREE.InstancedMesh(picker ? this.post : this.parts[k], picker ? this.unseen : this.materials[k], n);
     m.count = 0; m.frustumCulled = false; m.castShadow = m.receiveShadow = !picker && !!this.shadows; m.userData.kind = k; m.userData.picker = picker; this.group.add(m); return m;
   }
-  get active() { return !!this.bar.state.open; }
+  get active() { return !!(this.bar && this.bar.state.open); }
   // open or hide the bar from outside (the town editor taking over): as if its own button was pressed, so the
   // chosen plant is let go and the page hears of it
   setOpen(on) { if (this.active === !!on) return; this.bar.setState({ open: !!on }); this.barChanged({ ...this.bar.state }, 'open'); }
@@ -462,7 +466,7 @@ export class PlantTool {
 
   // the bar's plant icons: each kind drawn small, from a little above, on a transparent ground
   // a kind's icon from any object (say a tree as loaded), for the kinds the page draws itself
-  iconFrom(k, object) { this.makeIcons([[k, object]]); }
+  iconFrom(k, object) { if (this.bar) this.makeIcons([[k, object]]); }
   makeIcons(only = null) {
     const S = 96, rt = new THREE.WebGLRenderTarget(S, S), scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(30, 1, 0.01, 2000);
     scene.add(new THREE.HemisphereLight(0xffffff, 0x445533, 2.2)); const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(1, 2, 1.5); scene.add(sun);
@@ -484,6 +488,6 @@ export class PlantTool {
   }
 
   update() {
-    this.gizmo.update();
+    if (this.gizmo) this.gizmo.update();
   }
 }
