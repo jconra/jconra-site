@@ -1032,6 +1032,7 @@ function showSet(name) {
   scene.fog = inTown ? new THREE.Fog(SKY, 600, 2600) : null;
   if (!inTown) { $('townCard').classList.remove('on'); TOWN_INPUT.dest = null; }
   if (!inMap) { poked = null; $('mapCaption').classList.remove('on'); }
+  if (!inCabin) { $('likesCard').classList.remove('on'); $('clipCard').classList.remove('on'); }   // (the room's cards stay in the room)
   room.visible = inCabin; for (const sc of SCREENS) sc.visible = inCabin;
   if (sitter) sitter.visible = (inCabin || inHangar) && SITTER.on;
   if (helmet) helmet.visible = inHangar || (inCabin && HELMET.show);
@@ -1491,9 +1492,10 @@ function faceCamera(amount) {
 function stepSequence(dt) {
   if (SEQ.active) {
     // left alone for a few seconds after a scrub, it plays on (not while a panel control has the
-    // focus - someone editing a key wants the frame to hold)
+    // focus - someone editing a key wants the frame to hold - nor while a card from the room is open:
+    // the click that opened it also let go of the pointer, which clears the hold)
     const editing = document.activeElement && document.activeElement.closest && document.activeElement.closest('#panel');
-    if (!SEQ.playing && !RESUME.held && !RESUME.hold && !editing && !BOOT.on && !pull && SEQ.T < total() && performance.now() - RESUME.last > RESUME.after * 1000) SEQ.playing = true;   // (not during the boot: it played under the pull-back and the camera snapped back to the monitor)
+    if (!SEQ.playing && !RESUME.held && !RESUME.hold && !editing && !BOOT.on && !pull && SEQ.T < total() && performance.now() - RESUME.last > RESUME.after * 1000 && !cardOpen()) SEQ.playing = true;   // (not during the boot: it played under the pull-back and the camera snapped back to the monitor)
     if (SEQ.playing) { seek(SEQ.T + dt); if (SEQ.T >= total()) SEQ.playing = false; }
     else if (currentSet === 'town' && SEQ.T >= total() - 1e-6) liveTown(dt);                   // the timeline is done: the flight is live
     else if (SEQ.T >= HANGAR.roll && Math.abs(FLY.roll - FLY.target) > 0.05) seek(SEQ.T);     // paused in flight, the fighter still banks to the pointer
@@ -1635,6 +1637,8 @@ const PROP_SETS = {
     { name: 'ska poster', image: '/textures/posters/ska.jpg', x: -1.63, y: 1.38, z: 0.1, yaw: 90, lean: 0, height: 0.61, frame: true },
     // the books Jacob likes, along the ledge over the bed (spines to the room); a click lists them
     { name: 'books', books: true, x: -1.525, y: 2.132, z: 1.2, yaw: 90, lean: 0, height: 1, length: 1.42 },
+    // a framed newspaper clipping beside the poster: Jacob's 'Academic ace' item from the base paper; a click shows it large
+    { name: 'clipping', image: '/textures/posters/academic-ace.jpg', x: -1.63, y: 1.58, z: 0.85, yaw: 90, lean: 0, height: 0.3, frame: true, clip: 'ace' },
     { name: 'gladius', file: '/models/props/gladius.glb', x: -1.29, y: 2.21, z: -1.06, yaw: -47, lean: 0, height: 0.33, stand: true, pitch: -15, roll: -72, spin: 111, rise: 0.51, belly: -1 },   // on the shelf by the bass (Jacob, 2026-09-23)
   ],
 };
@@ -1691,6 +1695,7 @@ function buildPoster(pr, i) {
     const w = tex.image.width / tex.image.height, holder = new THREE.Group(); holder.name = 'Prop_' + pr.name;
     const face = new THREE.Mesh(new THREE.PlaneGeometry(w, 1), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0 }));
     face.position.set(0, 0.5, 0.006); face.receiveShadow = true; holder.add(face);
+    if (pr.clip) { face.userData.clip = pr.clip; pr.picks = [face]; }
     if (pr.frame) {
       const t = 0.018, d = 0.012, fm = new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.5, metalness: 0.3 });
       for (const [fw, fh, fx, fy] of [[w + 2 * t, t, 0, -t / 2], [w + 2 * t, t, 0, 1 + t / 2], [t, 1, -w / 2 - t / 2, 0.5], [t, 1, w / 2 + t / 2, 0.5]]) {
@@ -1820,7 +1825,8 @@ function buildScreenPick() {
 }
 buildScreens(build);
 {
-  // a tap on a screen that has a link opens it; a drag is the camera, not a tap
+  // a tap on a screen that has a link opens it; a drag is the camera, not a tap. On the click, not
+  // the pointerup: a touch's click comes after its pointerup and would land on the card just opened
   const ray = new THREE.Raycaster(), down = new THREE.Vector2();
   renderer.domElement.addEventListener('pointerdown', e => down.set(e.clientX, e.clientY));
   // what the pointer is over: a screen with a link, or a book (the nearest of either)
@@ -1830,13 +1836,15 @@ buildScreens(build);
     const hit = ray.intersectObjects([...SCREENS, ...picks], false)[0];
     if (!hit) return null;
     if (hit.object.userData.book) return { book: hit.object.userData.book };
+    if (hit.object.userData.clip) return { clip: hit.object.userData.clip };
     return hit.object.href ? { href: hit.object.href } : null;
   };
-  renderer.domElement.addEventListener('pointerup', e => {
+  renderer.domElement.addEventListener('click', e => {
     if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6 || currentSet !== 'cabin') return;
     const at = pointAt(e);
     if (at && at.href) location.href = at.href;
     else if (at && at.book) openLikes(at.book);
+    else if (at && at.clip) openClipping(at.clip);
   });
   // the pointing hand over anything that does something, and a tag saying what a book is
   const tag = $('hoverTag');
@@ -1844,8 +1852,9 @@ buildScreens(build);
     if (e.pointerType !== 'mouse' || e.buttons || currentSet !== 'cabin') { renderer.domElement.style.cursor = ''; tag.classList.remove('on'); return; }
     const at = pointAt(e);
     renderer.domElement.style.cursor = at ? 'pointer' : '';
-    if (at && at.book) {
-      tag.innerHTML = `<b>${at.book.title}</b><br>${at.book.series.name} · ${at.book.series.author}`;
+    const html = at && at.book ? `<b>${at.book.title}</b><br>${at.book.series.name} · ${at.book.series.author}` : at && at.clip ? CLIPPINGS[at.clip].tag : '';
+    if (html) {
+      tag.innerHTML = html;
       tag.style.left = Math.min(e.clientX + 16, innerWidth - 280) + 'px'; tag.style.top = (e.clientY + 18) + 'px'; tag.classList.add('on');
     } else tag.classList.remove('on');
   });
@@ -1856,12 +1865,35 @@ buildScreens(build);
 function openLikes(book) {
   $('likesTitle').textContent = 'Books I like';
   $('likesList').innerHTML = SERIES.map(s => `<li class="${s === book.series ? 'hit' : ''}">${s.name}<span>${s.author}</span></li>`).join('');
-  $('likesCard').classList.add('on'); $('hoverTag').classList.remove('on');
+  $('likesCard').classList.add('on'); $('clipCard').classList.remove('on'); $('hoverTag').classList.remove('on');
   SEQ.playing = false; RESUME.hold = true;
 }
 function closeLikes() { $('likesCard').classList.remove('on'); scrubbed(); }
 $('likesClose').onclick = closeLikes;
-addEventListener('keydown', e => { if (e.key === 'Escape' && $('likesCard').classList.contains('on')) closeLikes(); });
+// THE CLIPPING CARD: a click on something framed on the wall shows it large, with where it came
+// from. The film holds while it is open, as it does for the books.
+const CLIPPINGS = {
+  ace: {
+    title: 'Academic ace', tag: '<b>Academic ace</b><br>Keesler News · Oct. 16, 2008', img: '/textures/posters/academic-ace.jpg',
+    alt: "Keesler News clipping, Oct. 16, 2008: 'Academic ace', a photo of Airman 1st Class Jacob Conrads with its caption",
+    note: 'From the <i>Keesler News</i>, the paper of Keesler Air Force Base in Biloxi, Mississippi: Thursday, October 16, 2008, page 6. '
+      + '<a href="https://web.archive.org/web/20101230013643/http://www.keesler.af.mil/shared/media/document/AFD-081015-024.pdf" target="_blank" rel="noopener">The whole issue</a>, saved by the Wayback Machine.',
+  },
+};
+function openClipping(id) {
+  const c = CLIPPINGS[id]; if (!c) return;
+  $('clipTitle').textContent = c.title; $('clipImg').src = c.img; $('clipImg').alt = c.alt; $('clipNote').innerHTML = c.note;
+  $('clipCard').classList.add('on'); $('likesCard').classList.remove('on'); $('hoverTag').classList.remove('on');
+  SEQ.playing = false; RESUME.hold = true;
+}
+function closeClipping() { $('clipCard').classList.remove('on'); scrubbed(); }
+function cardOpen() { return $('likesCard').classList.contains('on') || $('clipCard').classList.contains('on'); }
+$('clipClose').onclick = closeClipping;
+addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if ($('likesCard').classList.contains('on')) closeLikes();
+  if ($('clipCard').classList.contains('on')) closeClipping();
+});
 
 // ── camera views, in metres inside the cabin ────────────────────────────────────
 const VIEWS = {
