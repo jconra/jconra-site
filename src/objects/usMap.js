@@ -8,7 +8,7 @@
 // Outlines are fat lines (Line2): a black line with a thin light one on top, so they read on cloud
 // and on land alike, and survive the depth-of-field blur that ate the one-pixel lines. A lit state
 // fills with its flag where one is drawn (Colorado, New Mexico; others are a plain tint until an
-// image lands in textures/flags/XX.png), and can carry a pin.
+// image lands in textures/flags/XX.png and its id is in `flagFiles`), and can carry a pin.
 import * as THREE from 'three';
 import { SVGLoader } from 'three/addons/loaders/SVGLoader.js';
 import { Line2 } from 'three/addons/lines/Line2.js';
@@ -21,7 +21,7 @@ const PHOTO = { w: 833, h: 827 };
 // the states' longitude and latitude bounds [west, east, south, north], for placing pins on places
 export const STATE_BOUNDS = { CO: [-109.06, -102.04, 36.99, 41.0], NM: [-109.05, -103.0, 31.33, 37.0], MD: [-79.49, -75.05, 37.89, 39.72], MS: [-91.66, -88.1, 30.17, 35.0], WA: [-124.85, -116.92, 45.54, 49.0] };
 
-export async function loadUSMap(url = '/labs/map/us.svg', { colour = 0x35e07d, line = 0xf2fff6, lift = 0.6, flagDir = '/textures/flags/' } = {}) {
+export async function loadUSMap(url = '/labs/map/us.svg', { colour = 0x35e07d, line = 0xf2fff6, lift = 0.6, flagDir = '/textures/flags/', flagFiles = [] } = {}) {   // (flagFiles: the states with a picture in flagDir; none asked for otherwise)
   const data = await new SVGLoader().loadAsync(url);
   const group = new THREE.Group();
   const states = new Map(), pickable = [];
@@ -86,8 +86,8 @@ export async function loadUSMap(url = '/labs/map/us.svg', { colour = 0x35e07d, l
       for (const f of st.fills) f.visible = st.fillMat.opacity > 0.002;   // (faded out: not drawn at all)
       for (const l of st.lines) l.visible = l.material.opacity > 0.002;
     },
-    // the state's flag as its fill: drawn here for the ones that can be, else an image from the
-    // flags folder if there is one; mapped over the state's box
+    // the state's flag as its fill: drawn here for the ones that can be, else its picture from the
+    // flags folder if it has one (flagFiles); mapped over the state's box
     flag(id) {
       const st = states.get(id); if (!st) return;
       const set = (tex) => {
@@ -98,7 +98,7 @@ export async function loadUSMap(url = '/labs/map/us.svg', { colour = 0x35e07d, l
       };
       const drawn = drawFlag(id);
       if (drawn) { set(new THREE.CanvasTexture(drawn)); return; }
-      new THREE.TextureLoader().load(`${flagDir}${id}.png`, set, undefined, () => {});
+      if (flagFiles.includes(id)) new THREE.TextureLoader().load(`${flagDir}${id}.png`, set, undefined, () => {});
     },
     // A map pin standing on a spot in the state, shown as the state lights: a tapered point down to
     // the map, a round head, a dark outline (the same shapes a little bigger, drawn inside out) and
