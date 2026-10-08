@@ -19,6 +19,7 @@ import { loadUSMap } from './objects/usMap.js';
 import { chooseTier } from './quality.js';
 import { warmQueue } from './warmQueue.js';
 import { filmBar } from './filmBar.js';
+import { mapCards } from './mapCards.js';
 import { buildBookshelf, SERIES } from './objects/bookshelf.js';
 
 const Q = new URLSearchParams(location.search);
@@ -325,7 +326,7 @@ function loadRoom(name) {
   placeSitter();
   $('boot')?.remove();
   bootProgress('cabin', 1); loadSitter(); loadStation();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getProps: () => PROPS, total, getHangarSet: () => hangarSet, getValley: () => valley, getTownCam: () => townCam, getTownWarm: () => townWarm, getWarm: () => WARM, TOWNTOUR, tourStart, tourStop, MAP_HANDOFF, hangarShipPos, getMap: () => mapSet, getTown: () => town, TOWN_INPUT, getStorm: () => STORM, isTownFailed: () => townFailed, TOWN_VIEW, ROOM_HOLD, TOWN_ZOOM_PEEK: () => TOWN_ZOOM.z, TOWN_ZOOM_SET: (z) => { TOWN_ZOOM.want = TOWN_ZOOM.z = z; } });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getProps: () => PROPS, total, getHangarSet: () => hangarSet, getValley: () => valley, getTownCam: () => townCam, getTownWarm: () => townWarm, getWarm: () => WARM, TOWNTOUR, tourStart, tourStop, MAP_HANDOFF, hangarShipPos, getMap: () => mapSet, getTown: () => town, TOWN_INPUT, getStorm: () => STORM, isTownFailed: () => townFailed, TOWN_VIEW, ROOM_HOLD, TOWN_ZOOM_PEEK: () => TOWN_ZOOM.z, TOWN_ZOOM_SET: (z) => { TOWN_ZOOM.want = TOWN_ZOOM.z = z; }, getMapCards: () => MAPCARDS });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; if (e.total) bootProgress('cabin', e.loaded / e.total); },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -609,6 +610,23 @@ const PINS = {
   MD: { place: 'Columbia',   lonlat: [-76.861, 39.204] },
   MS: { place: 'Biloxi',     lonlat: [-88.885, 30.396] },
   WA: { place: 'Seattle',    lonlat: [-122.332, 47.606] },
+};
+// THE MAP'S CARDS (src/mapCards.js): pictures from Jacob's years in a state, thrown up from its pin as it lights, in this
+// order; a click shows one large with its line. Each has a full-size picture in textures/achievements/ and a small one in
+// small/ for the card (a cut-out PNG keeps the one, on a dark card)
+const MAP_CARDS = {
+  MD: [
+    { name: 'redTeam', title: 'Red Team', text: 'A plaque from four years on an Air Force Red Team, July 2013 to November 2016: "He who knows his own vulnerabilities knows where the enemy will strike."' },
+    { name: 'marylandService', title: '318th COG, Detachment 1', text: 'A farewell from the detachment at the National Security Agency in Maryland, signed by the team: March 2013 to December 2016.' },
+    { name: 'csDegree', title: 'Computer Science degree', text: 'Bachelor of Science in Computer Science, magna cum laude, from the University of Maryland University College, May 2018.' },
+  ],
+  MS: [
+    { name: 'jointService', title: 'Joint Service Commendation Medal', text: 'Awarded in March 2017 for meritorious service with the National Security Agency.' },
+    { name: 'tSgt', png: true, title: 'Technical Sergeant', text: 'The stripes of a Technical Sergeant, the rank held while teaching at Keesler.' },
+    { name: 'podium', title: 'Instructor, 333rd Training Squadron', text: 'TSgt Jacob "bitWizard" Conrads, Cyber Warfare Operations instructor, December 2016 to November 2018: "Well... the problem isn\'t the computer."' },
+    { name: 'cissp', title: 'CISSP', text: 'Certified Information Systems Security Professional, from (ISC)², certified since 2018.' },
+    { name: 'biloxiLighthouse', title: 'Farewell from the 333rd', text: 'A farewell poster from the 333rd Training Squadron at Keesler Air Force Base in Biloxi, "America\'s Finest Cyber Schoolhouse", signed by the squadron.' },
+  ],
 };
 const MAP_CLOSEST = 320;               // metres: how near the tour keys bring the camera to the map (the 65.5 s key); a narrow screen stops further out
 const MAP = { glow: 29.1, tourEnd: 43.5, shipIn: 27.5, shipAt: 33.5,
@@ -1063,6 +1081,7 @@ function stepMap(T, a, b, u, set = 'map') {
   };
   renderer.domElement.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse') at(e); });
   renderer.domElement.addEventListener('pointerup', (e) => { if (e.pointerType !== 'mouse') at(e); });
+  renderer.domElement.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && poked) { poked = null; if (!SEQ.playing) seek(SEQ.T); } });
 }
 // TRAFFIC. Nothing is parked in space: what flies, flies on the timeline. A freighter crosses far
 // behind the station while the camera is wide, and a pair of fighters comes past close in front
@@ -1696,14 +1715,15 @@ function stepSequence(dt) {
   for (const sc of SCREENS) sc.update(dt);
 }
 // the wheel scrubs time instead of zooming, when that is switched on; a first scroll starts the intro
-renderer.domElement.addEventListener('wheel', (e) => {
+function filmWheel(e) {
   if (liveInTown()) { e.preventDefault(); const sc = valley && valley.SHOW.sc; if (!(sc && (sc.isOpen || sc.gliding))) TOWN_ZOOM.want = THREE.MathUtils.clamp(TOWN_ZOOM.want - e.deltaY * (e.deltaMode ? 0.04 : 0.0012), 0, 1); return; }   // (not while a hologram has the camera)   // (in the town the wheel zooms; the film bar goes back)
   if (!SEQ.scrub || !chairPivot) return;
   e.preventDefault();
   if (!SEQ.active) activateIntro();
   SEQ.playing = false; scrubbed();
   seek(SEQ.T + e.deltaY * 0.0025);
-}, { passive: false });
+}
+renderer.domElement.addEventListener('wheel', filmWheel, { passive: false });
 renderer.domElement.addEventListener('pointerdown', () => { RESUME.held = true; scrubbed(); });
 addEventListener('pointerup', () => { RESUME.held = false; scrubbed(); });
 addEventListener('pointercancel', () => { RESUME.held = false; scrubbed(); });
@@ -1720,12 +1740,13 @@ renderer.domElement.addEventListener('pointermove', (e) => {
 // A SCRUB IS DELIBERATE: a mostly vertical swipe of about 180 px inside half a second. Anything
 // gentler is not the timeline's: in the town it steers the fighter (and must never send it back
 // to where it came in), while he flies a sideways drag banks him.
-let touchScrubbing = false;
+let touchScrubbing = false, touchScrubFrom = null;
 const TOWN_SCRUBBING = () => touchScrubbing;
 {
   let lastY = null, id = null, startX = 0, startY = 0, startT = 0, mode = null;
-  renderer.domElement.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse' && e.isPrimary) { lastY = e.clientY; startX = e.clientX; startY = e.clientY; startT = performance.now(); id = e.pointerId; mode = null; } });
-  renderer.domElement.addEventListener('pointermove', (e) => {
+  touchScrubFrom = (e) => { if (e.pointerType !== 'mouse' && e.isPrimary) { lastY = e.clientY; startX = e.clientX; startY = e.clientY; startT = performance.now(); id = e.pointerId; mode = null; } };   // (the canvas's, or a map card's: see MAPCARDS)
+  renderer.domElement.addEventListener('pointerdown', touchScrubFrom);
+  addEventListener('pointermove', (e) => {
     if (e.pointerId !== id || lastY === null || !SEQ.scrub || !chairPivot) return;
     if (!mode) {
       const dx = e.clientX - startX, dyy = e.clientY - startY, quick = performance.now() - startT < 500;
@@ -1743,7 +1764,7 @@ const TOWN_SCRUBBING = () => touchScrubbing;
     seek(SEQ.T + dy * 0.012);
   });
   const end = (e) => { if (e.pointerId === id) { lastY = null; id = null; if (mode === 'bank') FLY.target = 0; mode = null; touchScrubbing = false; } };
-  renderer.domElement.addEventListener('pointerup', end); renderer.domElement.addEventListener('pointercancel', end);
+  addEventListener('pointerup', end); addEventListener('pointercancel', end);
 }
 
 // ── editing the keys ────────────────────────────────────────────────────────────
@@ -2090,7 +2111,7 @@ function openClipping(id) {
   SEQ.playing = false; RESUME.hold = true;
 }
 function closeClipping() { $('clipCard').classList.remove('on'); scrubbed(); }
-function cardOpen() { return $('likesCard').classList.contains('on') || $('clipCard').classList.contains('on'); }
+function cardOpen() { return $('likesCard').classList.contains('on') || $('clipCard').classList.contains('on') || MAPCARDS.isOpen(); }
 $('clipClose').onclick = closeClipping;
 addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
@@ -2365,6 +2386,18 @@ const FILMBAR = filmBar({ art: { station: { src: '/textures/filmbar/station2.png
     play: () => { RESUME.paused = false; RESUME.hold = false; RESUME.last = 0; if (!SEQ.active) activateIntro(); SEQ.playing = true; },
     seek: (T) => { if (!SEQ.active) activateIntro(); SEQ.playing = false; RESUME.held = true; scrubbed(); seek(T); },
     release: () => { RESUME.held = false; scrubbed(); } } });
+// the map's cards, thrown from each state's pin as it lights and gone as the next one lights (the last at the tour's end)
+const PIN_V = new THREE.Vector3();
+function pinOnScreen(id) {
+  const st = mapSet && mapSet.map && mapSet.map.states.get(id); if (!st || !st.pin) return null;
+  st.pin.getWorldPosition(PIN_V).project(camera); if (PIN_V.z > 1) return null;
+  const r = renderer.domElement.getBoundingClientRect(); return { x: r.left + (PIN_V.x * 0.5 + 0.5) * r.width, y: r.top + (-PIN_V.y * 0.5 + 0.5) * r.height };
+}
+const MAPCARDS = mapCards({
+  cards: Object.entries(MAP_CARDS).flatMap(([state, list]) => list.map((c) => ({ ...c, state, img: `/textures/achievements/${c.name}.${c.png ? 'png' : 'jpg'}`, thumb: c.png ? `/textures/achievements/${c.name}.png` : `/textures/achievements/small/${c.name}.jpg`, dark: !!c.png }))),
+  timing: (id) => { const k = TOUR.findIndex((s) => s.id === id); return k < 0 ? null : { from: TOUR[k].t, until: (TOUR[k + 1] || { t: MAP.tourEnd }).t }; },
+  hold: () => { SEQ.playing = false; RESUME.hold = true; }, release: scrubbed });
+MAPCARDS.el.addEventListener('wheel', filmWheel, { passive: false }); MAPCARDS.el.addEventListener('pointerdown', touchScrubFrom);   // (over a card the wheel and a swipe still scrub)
 renderer.info.autoReset = false;
 renderer.setAnimationLoop(() => {
   renderer.info.reset();
@@ -2385,6 +2418,7 @@ renderer.setAnimationLoop(() => {
     if (D.auto && !on) { D.hour = D.home; D.dirty = true; }
     D.auto = on; }
   FILMBAR.update(SEQ.active && !BOOT.on && !pull && !document.body.classList.contains('edit'));   // (the film bar: not over the boot, nor beside the editing panel)
+  MAPCARDS.update(currentSet === 'map' && SEQ.active && !BOOT.on && !document.body.classList.contains('edit'), SEQ.T, pinOnScreen);
   if (!SEQ.active) controls.update();     // while the timeline owns the camera, orbit must not touch it: its 14 m limit would drag it into the station
   if ($('autoFocus').checked) post.focus = camera.position.distanceTo(controls.target);
   // the warm-up's share first (its unseen draws are painted over by the frame); then the town drawn by the valley, from its own
