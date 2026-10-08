@@ -35,7 +35,7 @@ const CATALOGUE = [
   ['Clothes and props', [
     ['hoodie1', 'Skyline hoodie A', 'hoodie1.glb', 5.9, 'Tripo generation of the city skyline hoodie.'],
     ['hoodie2', 'Skyline hoodie B', 'hoodie2.glb', 6.9, 'The second generation of the same hoodie.'],
-    ['helmet', 'Flight helmet', 'props/helmet.glb', 1.5, 'Worn in the fighter.'],
+    ['helmet', 'Flight helmet', 'props/helmet.glb?v=2', 0.7, 'Worn in the fighter.'],
     ['bass', 'Bass guitar', 'props/bass.glb', 1.1, 'Hangs on the cabin wall.'],
     ['gladius', 'Gladius', 'props/gladius.glb?v=2', 0.7, 'Aegis Gladius, made to decorate the quarters; detailed enough to fly.'],
   ]],

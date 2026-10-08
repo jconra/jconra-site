@@ -128,7 +128,7 @@ post.setSize(innerWidth, innerHeight);
 // ── the room ────────────────────────────────────────────────────────────────────
 const room = new THREE.Group();
 scene.add(room);
-let windows = null, chairPivot = null, props = [];
+let windows = null, chairPivot = null, props = [], roomModel = null, roomBuild = null;
 const CHAIR = { swivel: false, speed: 12, angle: 0, x: 25, y: 0, z: -55, height: 100 };   // x, z: where Jacob slid it (2026-09-20)   // x, y, z: nudges in cm from where the chair stands; height: the seat, % (the chair squashed or stretched on its base)
 let chairBase = null;
 function placeChair() {
@@ -157,7 +157,10 @@ const BUILDS = {
   // unit: metres per model unit, and the model is already centred on its own axes; the box is not
   // used for scale, because walls added later would shrink and shift the room
   // noGlass: the room's "Windows" piece is the frames, with no glass in them, so there is nothing to take out
-  Smart: { file: '/models/quarters_smart.glb', note: 'Smart Mesh room · Jacob\'s SpaceDorm · 42k triangles · 5.3 MB', unit: 3.4, ownRoof: true, noGlass: true, lampY: 2.8 },
+  Smart: { file: '/models/quarters_smart.glb', note: 'Smart Mesh room · Jacob\'s SpaceDorm · 42k triangles · 5.3 MB', unit: 3.4, ownRoof: true, noGlass: true, lampY: 2.8,
+    // its inside, in the file's units (for keepInRoom): the walls' planes, the open right side's edge on the floor, the ceiling
+    // and the back wall, the see-through front and how far the left wall reaches past it
+    inside: { left: -0.48, back: -0.48, floor: 0.122, ceil: 0.893, front: 0.49, leftTo: 0.573, right: { floor: 0.419, ceil: 0.446, back: 0.465 } } },
 };
 let build = BUILDS[Q.get('build')] ? Q.get('build') : 'Smart';   // the clean room by default; ?build=Light for the old one
 const loader = new GLTFLoader();
@@ -271,7 +274,7 @@ function loadRoom(name) {
   // stand the room on the floor: centred on the box, or on its own axes when the scale is fixed
   if (fixed) model.position.set(0, 0, 0);       // the file's own origin: its floor top is at a known height, whatever hangs below it
   else model.position.set(-box.min.x * scale - (size.x * scale) / 2, -box.min.y * scale, -box.min.z * scale - (size.z * scale) / 2);
-  room.add(model);
+  room.add(model); roomModel = model; roomBuild = BUILDS[name];
   // The chair's axis below is read through the meshes' world matrices, which still hold the raw
   // export until this runs: without it the axis lands in raw units and the chair orbits the room.
   room.updateMatrixWorld(true);
@@ -321,7 +324,7 @@ function loadRoom(name) {
   placeSitter();
   $('boot')?.remove();
   bootProgress('cabin', 1); loadSitter(); loadStation();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getProps: () => PROPS, total, getHangarSet: () => hangarSet, getValley: () => valley, getTownCam: () => townCam, getTownWarm: () => townWarm, getWarm: () => WARM, TOWNTOUR, tourStart, tourStop, MAP_HANDOFF, hangarShipPos, getMap: () => mapSet, getTown: () => town, TOWN_INPUT, getStorm: () => STORM, isTownFailed: () => townFailed, TOWN_VIEW });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getProps: () => PROPS, total, getHangarSet: () => hangarSet, getValley: () => valley, getTownCam: () => townCam, getTownWarm: () => townWarm, getWarm: () => WARM, TOWNTOUR, tourStart, tourStop, MAP_HANDOFF, hangarShipPos, getMap: () => mapSet, getTown: () => town, TOWN_INPUT, getStorm: () => STORM, isTownFailed: () => townFailed, TOWN_VIEW, ROOM_HOLD });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; if (e.total) bootProgress('cabin', e.loaded / e.total); },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -528,8 +531,8 @@ const KEYS = [
   // Jacob's keys (2026-09-20): a captured look point is pushed out along the line of sight (2 m in
   // the cabin, 1 km outside) so a wobble of the camera's path can never put it behind the camera
   { t: 0,  cam: [-0.028, 1.602, -0.742], look: [-0.027, 1.592, -1.201], chair: -112, face: 0 },   // square on the terminal (the pull-back lands here)
-  { t: 1.4,  cam: [1.74, 1.933, 1.591],    look: [0.031, 1.532, -0.695],  chair: -112, face: 0 },
-  { t: 2.5,  cam: [2.045, 2.003, 2.362],   look: [0.837, 1.758, 0.787],   chair: 114,  face: 1 },
+  { t: 1.4,  cam: [1.384, 1.85, 1.115],    look: [-0.325, 1.449, -1.171], chair: -112, face: 0 },   // (these two pulled in along their own lines of sight, 0.6 and 1.1 m,
+  { t: 2.5,  cam: [1.381, 1.868, 1.496],   look: [0.173, 1.623, -0.079],  chair: 114,  face: 1 },   //  Jacob, 2026-10-07: past the room a wide window saw space)
   { t: 7.98, cam: [0.103, 2.22, -1.746],   look: [-1.852, 2.057, -1.354], chair: 210.9, face: 0.69 },   // at the window (Jacob, 2026-09-27: out at 8 s)
   // OUTSIDE. Station keys are in the station's own metres.
   { t: 7.99, set: 'station', cam: [748.697, 822.855, -292.606], look: [229.139, 788.329, -1146.344] },
@@ -675,7 +678,7 @@ function loadStation() {
     buildMapSet(parts);
     syncMapToHangar(); perfMark('station, hangar and map built');
     buildTownSet(parts);
-    loader.load('/models/props/helmet.glb', (g) => {
+    loader.load('/models/props/helmet.glb?v=2', (g) => {             // (v2: its picture 1024 px, a plain standard material; a new name for caches)
       helmet = g.scene; helmet.traverse(o => { if (o.isMesh) { o.castShadow = true; if (o.material.map) o.material.map.colorSpace = THREE.SRGBColorSpace; } });
       wearHelmet();
     });
@@ -791,7 +794,7 @@ function tourStep(dt) {
   const sc = valley.SHOW.sc, p = town.state.pos; T.t += dt;
   if (T.phase === 'fly') { if ((!TOWN_INPUT.dest && town.state.speed < 1.5) || T.t > 45) { T.phase = 'settle'; T.t = 0; } }   // (45 s at most: held up somewhere, on with it)
   else if (T.phase === 'settle') { if (T.t > 0.8) { const id = T.stops[T.i].id, l = sc.byId.get(id), n = l && l.pictures ? l.pictures.length : 1;
-    sc.present(id, T.target); T.dwell = Math.max(7, 0.8 + n * (sc.every || 4)); T.phase = 'show'; T.t = 0; T.shownCur = true; } }   // (long enough for every picture: the opening, then each one's turn, closing just before the first comes round again)
+    const ev = sc.every || 4; sc.present(id, T.target); T.dwell = 0.8 + ev * Math.max(n, Math.ceil(6.2 / ev)); T.phase = 'show'; T.t = 0; T.shownCur = true; } }   // (long enough for every picture: the opening, then whole turns of them, 7 s at least, closing just before the next would come up)
   else if (T.phase === 'show') { if (T.t > T.dwell) { sc.close(); T.phase = 'back'; T.t = 0; } }
   else if (T.phase === 'back') { if (!sc.gliding && T.t > 1.2) tourNext(); }
   tourBar();
@@ -1224,6 +1227,43 @@ function keysAround(T) {
   const a = ks[k], b = ks[k + 1] || ks[k];
   return { a, b, u: b === a ? 0 : Math.min(1, Math.max(0, (T - a.t) / Math.max(1e-6, b.t - a.t))), k, ks, set };
 }
+// THE CABIN'S EDGES: the room is a cutaway (open on its right, its front wall seen through from outside) and the keys pull the
+// camera back past it; on a wide window the view's edges looked past the room into space. Each frame the edges of the view
+// (its corners and the middles of its sides) are followed into the room: one that would leave it (past the open side's edge,
+// in front of the left wall's end) brings the camera forward along its line of sight, the look point with it, by as little
+// as clears them all: the same shot, a little closer, and only when the window is wide enough to need it
+const ROOM_EDGES = [[-1, -1], [-1, 0], [-1, 1], [1, -1], [1, 0], [1, 1], [0, 1], [0, -1]], ROOM_HOLD = { on: true, last: 0, at: new THREE.Vector3() };   // (last: how far it brought the camera in, metres; at: where it left it)
+function keepInRoom() {
+  ROOM_HOLD.last = 0;
+  const R = roomBuild && roomBuild.inside; if (!R || !roomModel || !ROOM_HOLD.on) return;
+  camera.updateMatrixWorld(); roomModel.updateMatrixWorld();
+  const inv = roomModel.matrixWorld.clone().invert(), fwd = controls.target.clone().sub(camera.position).normalize();
+  const c = camera.position.clone().applyMatrix4(inv), fade = Math.min(1, (c.z - R.back - 0.05) / 0.15);   // (out through the window: not the room's to hold; let go over the last half metre)
+  if (fade <= 0) return;
+  const rays = ROOM_EDGES.map(([x, y]) => new THREE.Vector3(x * 0.995, y * 0.995, 0.5).unproject(camera).sub(camera.position).normalize());
+  const inside = (d) => {                                              // (the camera brought d metres forward: does every edge land in the room?)
+    const o = camera.position.clone().addScaledVector(fwd, d), ol = o.clone().applyMatrix4(inv);
+    for (const r of rays) {
+      const dl = o.clone().add(r).applyMatrix4(inv).sub(ol);
+      let t = Infinity, wall = null;
+      const hit = (name, plane, v, dv) => { if (Math.abs(dv) < 1e-9) return; const k = (plane - v) / dv; if (k > 1e-6 && k < t) { t = k; wall = name; } };
+      hit('back', R.back, ol.z, dl.z); hit('floor', R.floor, ol.y, dl.y); hit('ceil', R.ceil, ol.y, dl.y); hit('left', R.left, ol.x, dl.x);
+      if (!wall) return false;
+      const x = ol.x + dl.x * t, z = ol.z + dl.z * t;
+      if (wall === 'back' && x > R.right.back) return false;                                 // the back wall, past its end
+      if (wall === 'floor' && (x > R.right.floor || z > R.front)) return false;               // the floor, past its edge
+      if (wall === 'ceil' && (x > R.right.ceil || z > R.front)) return false;                 // the ceiling, past its edge
+      if (wall === 'left' && z > R.leftTo) return false;                                       // in front of the left wall's end
+    }
+    return true;
+  };
+  if (inside(0)) return;
+  const f = camera.position.clone().add(fwd).applyMatrix4(inv).sub(c);   // (a metre forward, in the room's units)
+  let lo = 0, hi = f.z < 0 ? Math.min(2.5, (c.z - R.back - 0.05) / -f.z) : 2.5;   // (never past the back wall: behind it every edge fails)
+  for (let i = 0; i < 18; i++) { const mid = (lo + hi) / 2; if (inside(mid)) hi = mid; else lo = mid; }
+  const d = hi * fade * fade * (3 - 2 * fade);
+  camera.position.addScaledVector(fwd, d); controls.target.addScaledVector(fwd, d); camera.lookAt(controls.target); ROOM_HOLD.last = d; ROOM_HOLD.at.copy(camera.position);
+}
 // A key's camera is a point, or a place relative to the hangar the intro turns to: `{ at: 'mouth',
 // out, up, side }` in metres out from the mouth along its opening, up, and to its right - so the
 // hangar keys follow the station's layout instead of being re-typed after every change to it.
@@ -1372,6 +1412,7 @@ function seek(T) {
   // the camera
   camera.position.copy(cameraAt(T));
   controls.target.copy(lookPoint(a.look, set).lerp(lookPoint(b.look, set), u)); camera.lookAt(controls.target);
+  keepInRoom();
   post.focus = camera.position.distanceTo(controls.target);
   // he keeps his eyes on the camera: the head turns toward it after the clips have posed it, by
   // as much as the keys ask for, and never further than a neck goes
@@ -1705,11 +1746,12 @@ function showKey() {
 // the camera as it is now, written into a key in that key's own frame (its set's metres)
 function captureView(k) {
   const off = setOf(k) === 'station' ? STATION_AT : setOf(k) === 'hangar' ? HANGAR_AT : setOf(k) === 'map' ? MAP_AT : new THREE.Vector3();
-  k.cam = camera.position.clone().sub(off).toArray().map(v => +v.toFixed(3));
+  const dir = controls.target.clone().sub(camera.position).normalize(), reach = setOf(k) === 'cabin' ? 2 : 1000, pos = camera.position.clone();
+  if (ROOM_HOLD.last && pos.distanceToSquared(ROOM_HOLD.at) < 1e-10) pos.addScaledVector(dir, -ROOM_HOLD.last);   // (the key itself, not this window's pull-in: keepInRoom)
+  k.cam = pos.clone().sub(off).toArray().map(v => +v.toFixed(3));
   // the look point pushed out along the line of sight (2 m in the cabin, 1 km outside): a wobble
   // of the camera's path between keys can then never put it behind the camera and flip the view
-  const dir = controls.target.clone().sub(camera.position).normalize(), reach = setOf(k) === 'cabin' ? 2 : 1000;
-  k.look = camera.position.clone().addScaledVector(dir, reach).sub(off).toArray().map(v => +v.toFixed(3));
+  k.look = pos.clone().addScaledVector(dir, reach).sub(off).toArray().map(v => +v.toFixed(3));
 }
 function editKey(id, v) {
   const k = KEYS[keyIndex], [field, idx] = KEYFIELDS[id];
@@ -2252,6 +2294,7 @@ addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
   if (townCam) { townCam.aspect = camera.aspect; townCam.updateProjectionMatrix(); }
   renderer.setSize(innerWidth, innerHeight); post.setSize(innerWidth, innerHeight);
+  if (SEQ.active && currentSet === 'cabin' && !BOOT.on && !pull) seek(SEQ.T);   // (the cabin's hold on its edges depends on the window's shape)
 });
 
 frame('Desk');
@@ -2270,6 +2313,7 @@ const STORM = { t: 0, most: 20 }, STORM_SKY = new THREE.Color(0x8c939b), SPACE_S
 const townReady = () => { const ws = WARM.sets.find((s) => s.name === 'town'); return !!(town && valley && valley.settled() && ws && ws.done); };
 WARM.add({ name: 'cabin', roots: () => scene.children.filter((o) => o !== station && o !== (hangarSet && hangarSet.floor) && o !== (mapSet && mapSet.floor)), scene: () => scene, camera: () => camera, ready: () => !!sitter, due: 0 });
 WARM.add({ name: 'station', roots: () => [station], scene: () => scene, camera: () => camera, ready: () => !!station, due: firstKey('station') });
+WARM.add({ name: 'helmet', roots: () => [helmet], scene: () => scene, camera: () => camera, ready: () => !!helmet, due: firstKey('hangar') - 0.5 });   // (it rides hidden on his head from the cabin on, loaded late: warmed before the hangar, not found later by a look-over in the middle of the film)
 WARM.add({ name: 'hangar', roots: () => [hangarSet && hangarSet.floor], scene: () => scene, camera: () => camera, ready: () => !!hangarSet, due: firstKey('hangar') });
 WARM.add({ name: 'map', roots: () => [mapSet && mapSet.floor], scene: () => scene, camera: () => camera, ready: () => !!(mapSet && mapSet.map), due: firstKey('map') });
 WARM.add({ name: 'town', roots: () => (valley ? [valley.scene] : []), scene: () => valley.scene, camera: () => townCam, ready: () => !!(valley && valley.settled()), due: firstKey('town'), verts: 8000,

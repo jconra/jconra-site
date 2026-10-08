@@ -22,7 +22,7 @@ import { makeShieldMaterial, pushShieldHit, stepShield } from '../../labs/shield
 const W = 1024, H = 1152, SIDE = 54, PAD = 66, PIC = { x: PAD, y: 22, w: W - PAD * 2, h: Math.round((W - PAD * 2) * 9 / 16) };
 const PANEL = { x: PAD, y: PIC.y + PIC.h + 16, w: W - PAD * 2, h: H - (PIC.y + PIC.h + 16) - 22 };
 const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-const AUTO = 4;                                         // (s a picture shows before the next, until someone steps them by hand)
+const AUTO = 2;                                         // (s a picture shows before the next, until someone steps them by hand: Jacob's 2 s)
 
 // the racket's outline (in screen widths): an oval head round the screen's middle (RX, RY), a throat narrowing below it
 // (THROAT long) into a straight handle (HANDLE long, GRIP half as wide) standing on the landmark

@@ -69,7 +69,7 @@ export function warmQueue(renderer) {
     s.root.traverse((o) => { if (o.isLight) o.layers.enable(LAYER); });   // (its lights seen by the warm-up's camera too: the same lights, the same shaders)
     s.i = 0; s.verts = s.verts || s.verts0 || 20000; s.fresh = s.fresh || 4; s.pending = null; s.scanned = now();
   }
-  const timed = (what, fn) => { const t = now(); fn(); const dt = now() - t; if (dt > 30) { log.push({ what, ms: Math.round(dt) }); if (log.length > 60) log.shift(); } return dt; };
+  const timed = (what, fn) => { const t = now(); fn(); const dt = now() - t; if (dt > 30) { log.push({ what, ms: Math.round(dt), at: Math.round(t) }); if (log.length > 60) log.shift(); } return dt; };   // (at: when, in the page's ms)
   return {
     log, sets,
     add(set) { sets.push({ ...set, extra: set.textures, textures: undefined, verts0: set.verts, verts: undefined, done: false, objs: null }); sets.sort((a, b) => a.due - b.due); },
@@ -115,7 +115,7 @@ export function warmQueue(renderer) {
         return;                                                        // (one scene at a time)
       }
       // all caught up: a finished scene looked over again for anything new, one every few seconds
-      if (now() - scanAt > 3000) { scanAt = now(); const done = sets.filter((s) => s.done && s.ready()); if (done.length) { const s = done[lastScan++ % done.length]; collect(s); if (s.objs.length) { s.done = false; s.textures = undefined; } } }
+      if (now() - scanAt > 3000) { scanAt = now(); const done = sets.filter((s) => s.done && s.ready()); if (done.length) { const s = done[lastScan++ % done.length]; collect(s); if (s.objs.length) { s.done = false; s.textures = undefined; log.push({ what: `${s.name} found ${s.objs.length} new: ${s.objs.slice(0, 6).map((o) => o.name || o.type).join(', ')}`, ms: 0, at: Math.round(now()) }); if (log.length > 60) log.shift(); } } }   // (noted in the log: what turned up later)
     },
     status() { return sets.map((s) => `${s.name} ${s.done ? 'ready' : !s.ready() ? (s.textures && s.textures.length ? `pictures ${s.textures.length}` : 'waiting') : s.objs ? `${s.i}/${s.objs.length}` : 'starting'}`).join(' · '); },
   };
