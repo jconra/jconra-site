@@ -598,7 +598,7 @@ function scrubbed() { RESUME.last = performance.now(); RESUME.hold = false; }
 const TOUR = [
   { id: 'CO', t: 31.3, title: 'Colorado',    text: 'Born and raised.' },
   { id: 'NM', t: 33.7, title: 'New Mexico',  text: '4 years USAF avionics on MQ-1 and MQ-9 aircraft.' },
-  { id: 'MD', t: 36.1, title: 'Maryland',    text: '4 years Red Team for USAF Cyber Warfare Operations. Computer Science BA, UMUC.' },
+  { id: 'MD', t: 36.1, title: 'Maryland',    text: '4 years Red Team for USAF Cyber Warfare Operations. Computer Science BS, UMUC.' },
   { id: 'MS', t: 38.5, title: 'Mississippi', text: '2 years at Keesler AFB teaching Cyberspace Warfare Operations: Windows, Linux and Python.' },
   { id: 'WA', t: 40.9, title: 'Washington',  text: '7 years AWS Systems Engineer for filesystems (EFS, FSx). Helicopter pilot, 176 hours.' },
 ];
@@ -624,7 +624,7 @@ const MAP_CARDS = {
     { name: 'jointService', title: 'Joint Service Commendation Medal', text: 'Awarded in March 2017 for meritorious service with the National Security Agency.' },
     { name: 'tSgt', png: true, title: 'Technical Sergeant', text: 'The stripes of a Technical Sergeant, the rank held while teaching at Keesler.' },
     { name: 'podium', title: 'Instructor, 333rd Training Squadron', text: 'TSgt Jacob "bitWizard" Conrads, Cyber Warfare Operations instructor, December 2016 to November 2018: "Well... the problem isn\'t the computer."' },
-    { name: 'cissp', title: 'CISSP', text: 'Certified Information Systems Security Professional, from (ISC)², certified since 2018.' },
+    { name: 'cissp', v: 2, title: 'CISSP', text: 'Certified Information Systems Security Professional, from (ISC)², certified since 2018.' },
     { name: 'biloxiLighthouse', title: 'Farewell from the 333rd', text: 'A farewell poster from the 333rd Training Squadron at Keesler Air Force Base in Biloxi, "America\'s Finest Cyber Schoolhouse", signed by the squadron.' },
   ],
 };
@@ -2394,7 +2394,7 @@ function pinOnScreen(id) {
   const r = renderer.domElement.getBoundingClientRect(); return { x: r.left + (PIN_V.x * 0.5 + 0.5) * r.width, y: r.top + (-PIN_V.y * 0.5 + 0.5) * r.height };
 }
 const MAPCARDS = mapCards({
-  cards: Object.entries(MAP_CARDS).flatMap(([state, list]) => list.map((c) => ({ ...c, state, img: `/textures/achievements/${c.name}.${c.png ? 'png' : 'jpg'}`, thumb: c.png ? `/textures/achievements/${c.name}.png` : `/textures/achievements/small/${c.name}.jpg`, dark: !!c.png }))),
+  cards: Object.entries(MAP_CARDS).flatMap(([state, list]) => list.map((c) => ({ ...c, state, img: `/textures/achievements/${c.name}.${c.png ? 'png' : 'jpg'}${c.v ? '?v=' + c.v : ''}`, thumb: (c.png ? `/textures/achievements/${c.name}.png` : `/textures/achievements/small/${c.name}.jpg`) + (c.v ? '?v=' + c.v : ''), dark: !!c.png }))),   // (v: a picture changed since it went out, as images are kept a year)
   timing: (id) => { const k = TOUR.findIndex((s) => s.id === id); return k < 0 ? null : { from: TOUR[k].t, until: (TOUR[k + 1] || { t: MAP.tourEnd }).t }; },
   hold: () => { SEQ.playing = false; RESUME.hold = true; }, release: scrubbed });
 MAPCARDS.el.addEventListener('wheel', filmWheel, { passive: false }); MAPCARDS.el.addEventListener('pointerdown', touchScrubFrom);   // (over a card the wheel and a swipe still scrub)
