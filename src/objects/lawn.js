@@ -98,7 +98,7 @@ export function makeLawn({ cap = 60000, shade = null, lamps = null } = {}) {   /
   function set(spots) {
     const n = Math.min(cap, spots.length);
     for (let k = 0; k < n; k++) { const t = spots[k]; iPos.setXYZ(k, t.x, t.y, t.z); iTurn.setXY(k, t.turn, t.size); iVary.setXY(k, t.yellow, t.light); }
-    geo.instanceCount = n; for (const a of [iPos, iTurn, iVary]) a.needsUpdate = true;
+    geo.instanceCount = n; if (n) for (const a of [iPos, iTurn, iVary]) { a.updateRange.offset = 0; a.updateRange.count = n * a.itemSize; a.needsUpdate = true; }   // (only the tufts in use are sent)
     return n;
   }
   const colours = (r, t) => { uniforms.root.value.copy(r); uniforms.tip.value.copy(t); };

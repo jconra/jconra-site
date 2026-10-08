@@ -103,6 +103,15 @@ function bleedLeafMap(tex) {
   out.generateMipmaps = true; out.anisotropy = tex.anisotropy; out.flipY = tex.flipY;
   out.userData.bled = true; out.needsUpdate = true; return out;
 }
+// SENDING PER-PLANT DATA to the graphics card: a stretch of an attribute (items lo..hi); a stretch asked for while another is
+// still waiting to go (two moves before a draw) is joined to it, so neither is lost
+const PENDING = new WeakMap();
+function sent() { PENDING.delete(this); this.updateRange.count = -1; }   // (its first sending is all of it, which leaves the stretch asked for set: cleared)
+function sendPart(a, lo, hi) {
+  const w = PENDING.get(a);
+  if (w) { lo = Math.min(lo, w[0]); hi = Math.max(hi, w[1]); }
+  PENDING.set(a, [lo, hi]); a.onUploadCallback = sent; a.updateRange.offset = lo * a.itemSize; a.updateRange.count = (hi - lo + 1) * a.itemSize; a.needsUpdate = true;
+}
 const switchHash = (x, z) => { const v = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453; return v - Math.floor(v); };   // (a tree's own 0..1 from where it stands)
 
 export const FOREST_SPECIES = [
@@ -236,6 +245,7 @@ export class Forest {
   growDraws(cap) {
     for (const b of this.built) { const g = b.imposter.geometry;
       for (const [name, size] of [['iPos', 3], ['iYaw', 1], ['iScale', 1], ['iTint', 3], ['iFade', 1]]) { const a = new THREE.InstancedBufferAttribute(new Float32Array(cap * size), size); a.setUsage(THREE.DynamicDrawUsage); g.setAttribute(name, a); }
+      delete g._maxInstanceCount;                                       // (three fixes the most instances it will draw at a geometry's first draw and never raises it: without this, plants past the old room were never drawn)
       g.instanceCount = 0; }
     this.cap = cap;
   }
@@ -354,17 +364,19 @@ export class Forest {
     const fwd = new THREE.Vector3().subVectors(target, camera.position).setY(0).normalize();
     const camP = camera.position.clone().addScaledVector(fwd, D * this.ahead);
     if (!this.assignDirty && this.lastAt && this.lastAt.distanceToSquared(camP) < 4) return;
-    this.assignDirty = false; this.lastAt = camP.clone();
+    const full = this.assignDirty; this.assignDirty = false; this.lastAt = camP.clone();   // (full: everything was written again, so all of it is sent)
     const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpS = new THREE.Vector3(), tmpP = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
     // SPREAD: each tree switches at its own distance, D * (1 - spread / 2 .. 1 + spread / 2), so the change
     // comes a tree at a time instead of as one line across the wood
     const S = THREE.MathUtils.clamp(this.spread || 0, 0, 1.5);
     const reach = D * (1 + S / 2) + B, reach2 = reach * reach, cx = camP.x, cy = camP.y, cz = camP.z;
     for (const b of this.built) {
-      const { sp, imposter, meshes, trees } = b, aFade = imposter.geometry.attributes.iFade.array;
-      if (b.near) for (const k of b.near) aFade[k] = 1;                  // last time's near plants: whole imposters again
+      const { sp, imposter, meshes, trees } = b, iFade = imposter.geometry.attributes.iFade, aFade = iFade.array;
+      let lo = Infinity, hi = -1;                                          // (the imposter fades changed: only that stretch is sent)
+      if (b.near) for (const k of b.near) { aFade[k] = 1; if (k < lo) lo = k; if (k > hi) hi = k; }   // last time's near plants: whole imposters again
       b.near = [];
-      if (!meshes.length || D <= 0) { imposter.geometry.attributes.iFade.needsUpdate = true; for (const m of meshes) m.count = 0; continue; }
+      const live = Math.min(trees.length, aFade.length);                 // (the plants drawn: past them nothing need be sent)
+      if (!meshes.length || D <= 0) { if (full && live) sendPart(iFade, 0, live - 1); else if (hi >= lo) sendPart(iFade, lo, hi); for (const m of meshes) m.count = 0; continue; }
       const cand = [];
       for (let k = 0; k < trees.length; k++) { const t = trees[k], p = t.pos, dx = p.x - cx, dy = p.y - cy, dz = p.z - cz, d2 = dx * dx + dy * dy + dz * dz;
         if (d2 >= reach2) continue;
@@ -377,12 +389,14 @@ export class Forest {
       for (let i = 0; i < n; i++) {
         const [k, d, Dk] = cand[i], t = trees[k];
         const f = B > 0 ? THREE.MathUtils.clamp((Dk + B - d) / (2 * B), 0, 1) : d < Dk ? 1 : 0;
-        aFade[k] = 1 - f; b.near.push(k);
+        aFade[k] = 1 - f; b.near.push(k); if (k < lo) lo = k; if (k > hi) hi = k;
         tmpQ.setFromAxisAngle(Y, t.yaw); tmpS.setScalar(t.scale * sp.unit); tmpP.copy(t.pos); tmpP.y -= sp.baseY * t.scale * sp.unit; tmpM.compose(tmpP, tmpQ, tmpS);
         for (const m of meshes) { m.setMatrixAt(i, tmpM.clone().multiply(m.userData.local)); m.userData.fade.array[i] = f; m.setColorAt(i, t.tint); }
       }
-      imposter.geometry.attributes.iFade.needsUpdate = true;
-      for (const m of meshes) { m.count = n; m.instanceMatrix.needsUpdate = true; m.userData.fade.needsUpdate = true; m.instanceColor.needsUpdate = true; }
+      // sent to the graphics card: the stretch of imposter fades that changed, and only the slots in use of the near draws (the
+      // whole arrays were sent each time, up to 750 KB a draw: flying, that was most frames, ~7 MB a frame and a stutter)
+      if (full && live) sendPart(iFade, 0, live - 1); else if (hi >= lo) sendPart(iFade, lo, hi);
+      for (const m of meshes) { m.count = n; if (n) for (const a of [m.instanceMatrix, m.userData.fade, m.instanceColor]) sendPart(a, 0, n - 1); }
     }
   }
   // the sun moved (the page's time of day): the imposters' own copy of its direction, and how low it is (their low-sun
@@ -408,7 +422,7 @@ export class Forest {
         aPos[k * 3] = t.pos.x; aPos[k * 3 + 1] = t.pos.y - sp.baseY * t.scale * sp.unit; aPos[k * 3 + 2] = t.pos.z;
         aYaw[k] = t.yaw; aScl[k] = t.scale * sp.unit; aTint[k * 3] = t.tint.r; aTint[k * 3 + 1] = t.tint.g; aTint[k * 3 + 2] = t.tint.b; aFade[k] = 1; }
       g.instanceCount = n;
-      for (const a of ['iPos', 'iYaw', 'iScale', 'iTint', 'iFade']) g.attributes[a].needsUpdate = true;
+      if (n) for (const a of ['iPos', 'iYaw', 'iScale', 'iTint', 'iFade']) sendPart(g.attributes[a], 0, n - 1);   // (this species' own plants: its arrays have room for the whole list)
     }
     this.assignDirty = true;
   }
