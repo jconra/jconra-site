@@ -385,16 +385,16 @@ showTier();
 const clock = new THREE.Clock(); let fps = 60, shown = 0; renderer.info.autoReset = false;   // the readout counts the scene, not the atlas viewer
 // FLYING: W A S D across, Space up, C down (src/objects/flyKeys.js), faster the higher you are
 const fly = flyKeys({ camera, controls, heightAt, speed: 10 });
-// the panel: the time (and jumps to the moments worth seeing), letting it go by, the time of year, where the sun sets
+// the panel: the time (also along the bottom of the page) (and jumps to the moments worth seeing), letting it go by, the time of year, where the sun sets
 { const fmtH = (h) => { const m = Math.round(h * 60) % 1440; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
   const elevAt = (h) => elevationOf(sunDirection(h, DAY));
   const when = (side, target) => { if (side === 'noon') return 12; const lo = side === 'rise' ? 0 : 12, hi = side === 'rise' ? 12 : 24;   // (the first time on that side of noon the sun crosses that height)
     let prev = elevAt(lo); for (let h = lo + 0.01; h <= hi; h += 0.01) { const e = elevAt(h); if (side === 'rise' ? (prev < target && e >= target) : (prev > target && e <= target)) return h; prev = e; } return side === 'rise' ? 6 : 19; };
   let last = 0;
   DAY.show = () => { const now = performance.now(); if (DAY.auto && now - last < 250) return; last = now;
-    $('dayHour').value = DAY.hour; $('dayHourOut').textContent = fmtH(DAY.hour);
+    $('dayHour').value = $('dayBarHour').value = DAY.hour; $('dayHourOut').textContent = $('dayBarOut').textContent = fmtH(DAY.hour);
     $('dayNote').textContent = DAY.elev > 0 ? `The sun is ${DAY.elev.toFixed(0)}° up.` : DAY.elev > -6 ? `The sun set ${(-DAY.elev).toFixed(0)}° ago: twilight.` : DAY.elev > -12 ? 'Blue hour going to night.' : 'Night, by the moon.'; };
-  $('dayHour').addEventListener('input', (e) => { DAY.hour = +e.target.value; DAY.dirty = true; });
+  for (const id of ['dayHour', 'dayBarHour']) $(id).addEventListener('input', (e) => { DAY.hour = +e.target.value; DAY.dirty = true; });   // (the panel's, and the bar's along the bottom)
   $('dayAuto').checked = DAY.auto; $('dayAuto').addEventListener('change', (e) => { DAY.auto = e.target.checked; });
   for (const [id, key, fmt] of [['dayLen', 'dayMin', (v) => `${v} min`], ['daySeason', 'season', (v) => `noon sun ${(90 - DAY.lat + 23.44 * v).toFixed(0)}° up`], ['dayTurn', 'turn', (v) => `${v}°`]]) {
     const el = $(id), go = () => { DAY[key] = +el.value; $(id + 'Out').textContent = fmt(+el.value); DAY.dirty = true; }; el.value = DAY[key]; el.addEventListener('input', go); $(id + 'Out').textContent = fmt(DAY[key]); }

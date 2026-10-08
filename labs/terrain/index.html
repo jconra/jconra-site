@@ -46,11 +46,19 @@
   #split .l { right:10px; } #split .r { left:10px; }
   @media (max-width:700px) { #panel, #panel.min { width:auto; left:12px; top:auto; bottom:12px; max-height:46vh; } }
   @media (max-width:700px) { #panel, #panel.min { bottom:82px; } }   /* on a phone the round Plants button keeps the corner below the settings, not on top of them */
+  /* the time of day along the bottom, between the round Plants button and the settings (the same as the panel's Time) */
+  #dayBar { position:fixed; left:84px; right:var(--plantbar-right, 12px); bottom:12px; height:58px; z-index:5; box-sizing:border-box; display:flex; align-items:center; gap:12px; padding:0 16px;
+    background:rgba(10,13,17,.86); border:1px solid #212a34; border-radius:6px; color:#ccd6de; font:11px ui-monospace,monospace; letter-spacing:.08em; text-transform:uppercase; }
+  #dayBar input { flex:1; min-width:0; margin:0; accent-color:#35e07d; cursor:pointer; }
+  #dayBar output { min-width:5ch; text-align:right; color:#35e07d; font:600 13px ui-monospace,monospace; letter-spacing:0; font-variant-numeric:tabular-nums; }
+  body.planting #dayBar, body.showing #dayBar { display:none; }   /* the plant bar has the bottom then; a hologram wants the screen */
+  @media (max-width:700px) { #dayBar label { display:none; } #dayBar { padding:0 12px; } }
 </style>
 </head>
 <body>
 <a id="back" href="../">&larr; labs</a>
 <div id="hud"></div>
+<div id="dayBar"><label for="dayBarHour">Time of day</label><input id="dayBarHour" type="range" min="0" max="24" step="0.01" aria-label="Time of day"><output id="dayBarOut" for="dayBarHour"></output></div>
 <div id="split"><span class="l">PLAIN</span><span class="r">TECHNIQUES</span></div>
 <div id="panel">
   <h1>Terrain Lab <button id="min" type="button">hide</button></h1>
