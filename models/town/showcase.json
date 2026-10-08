@@ -21,20 +21,28 @@
      "caption": "Capture the flag on an island"
     },
     {
+     "img": "/textures/projects/shots/rmrf-valkyrie.jpg",
+     "caption": "A Valkyrie over the island"
+    },
+    {
      "img": "/textures/projects/shots/rmrf-vehicles.jpg",
      "caption": "Four vehicles, four jobs"
+    },
+    {
+     "img": "/textures/projects/shots/rmrf-garage.jpg",
+     "caption": "Pick a vehicle in the garage"
     },
     {
      "img": "/textures/projects/shots/rmrf-island.jpg",
      "caption": "A commander that plans its own missions"
     },
     {
-     "img": "/textures/projects/shots/rmrf-ranks.jpg",
-     "caption": "Towers, scrap and submarines"
+     "img": "/textures/projects/shots/rmrf-fight.jpg",
+     "caption": "A fight on the shore"
     },
     {
-     "img": "/textures/projects/shots/sound-lab.jpg",
-     "caption": "The tools around the game"
+     "img": "/textures/projects/shots/rmrf-ranks.jpg",
+     "caption": "Towers, scrap and submarines"
     }
    ]
   },
