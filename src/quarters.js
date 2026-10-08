@@ -18,6 +18,7 @@ import { addAfterburner } from './objects/afterburner.js';
 import { loadUSMap } from './objects/usMap.js';
 import { chooseTier } from './quality.js';
 import { warmQueue } from './warmQueue.js';
+import { filmBar } from './filmBar.js';
 import { buildBookshelf, SERIES } from './objects/bookshelf.js';
 
 const Q = new URLSearchParams(location.search);
@@ -589,7 +590,7 @@ const ACTS = { wave: 1.3, stand: 2.7, walk: 4.2, walkSpeed: 1.1, walkDir: 75 }; 
 // at the edge of the screen, and how quickly it follows
 const FLY = { roll: 0, target: 0, maxRoll: 45, follow: 0.08 };
 // a scrub pauses the intro; after three seconds with no scrolling and nothing pressed, it plays on
-const RESUME = { after: 3, last: 0, held: false, hold: false };   // hold: set by editing in the panel, cleared by a scrub
+const RESUME = { after: 3, last: 0, held: false, hold: false, paused: false };   // hold: set by editing in the panel, cleared by a scrub; paused: the film bar's pause, cleared only by its play
 function scrubbed() { RESUME.last = performance.now(); RESUME.hold = false; }
 // the story on the map: which state lights when, and what is said. Poking a state with the
 // pointer lights it and shows its line (or just its name) and holds the timeline.
@@ -1654,7 +1655,7 @@ function stepSequence(dt) {
     // focus - someone editing a key wants the frame to hold - nor while a card from the room is open:
     // the click that opened it also let go of the pointer, which clears the hold)
     const editing = document.activeElement && document.activeElement.closest && document.activeElement.closest('#panel');
-    if (!SEQ.playing && !RESUME.held && !RESUME.hold && !editing && !BOOT.on && !pull && SEQ.T < total() && performance.now() - RESUME.last > RESUME.after * 1000 && !cardOpen()) SEQ.playing = true;   // (not during the boot: it played under the pull-back and the camera snapped back to the monitor)
+    if (!SEQ.playing && !RESUME.held && !RESUME.hold && !RESUME.paused && !editing && !BOOT.on && !pull && SEQ.T < total() && performance.now() - RESUME.last > RESUME.after * 1000 && !cardOpen()) SEQ.playing = true;   // (not during the boot: it played under the pull-back and the camera snapped back to the monitor)
     if (SEQ.playing) {
       const cut = firstKey('town');
       if (SEQ.T < cut && SEQ.T + dt >= cut - 0.03 && !townReady() && !townFailed && STORM.t < STORM.most) { STORM.t += dt; seek(cut - 0.03); }   // (held in the cloud, moving, until the town is ready: at most STORM.most s, then the town set says it's on its way)
@@ -2326,6 +2327,18 @@ function offStageTown(dt) {
   if (townWarm === 3 && was !== 3) perfMark('town: warmed');
   if (!valley.settled() && (BOOT.on || (offStage = (offStage + 1) % 2) === 0)) valley.update(BOOT.on ? dt : dt * 2, null, true);
 }
+// THE FILM BAR (src/filmBar.js): the whole film down the right edge, its ball the pause/play button; where the ball is at the
+// film's beats (in film order): at the station through the cabin and out of the window, leaving it with the hangar (the hangar
+// and the launch take the first stretch of space, room to find a moment in them), across space for the map, into the clouds'
+// glow at the dive, under them at the cut, down into the village by the end
+const FILMBAR = filmBar({ art: { station: '/textures/filmbar/station.png', village: '/textures/filmbar/village.png' },
+  stops: [[0, 'station', 0.3], [firstKey('station'), 'station', 0.65], [firstKey('hangar'), 'station', 1], [MAP.shipIn, 'space', 0.3], [MAP.fire, 'village', 0.08], [MAP.flash, 'village', 0.2], [firstKey('town'), 'village', 0.3], [total(), 'village', 0.8]],
+  marks: TOUR.map((s) => ({ T: s.t, label: s.id, title: s.title })),
+  film: { T: () => SEQ.T, total, playing: () => SEQ.playing, live: () => SEQ.T >= total() - 1e-6,
+    pause: () => { SEQ.playing = false; RESUME.paused = true; },
+    play: () => { RESUME.paused = false; RESUME.hold = false; RESUME.last = 0; if (!SEQ.active) activateIntro(); SEQ.playing = true; },
+    seek: (T) => { if (!SEQ.active) activateIntro(); SEQ.playing = false; RESUME.held = true; scrubbed(); seek(T); },
+    release: () => { RESUME.held = false; scrubbed(); } } });
 renderer.info.autoReset = false;
 renderer.setAnimationLoop(() => {
   renderer.info.reset();
@@ -2341,6 +2354,7 @@ renderer.setAnimationLoop(() => {
     stepPull(dt);
   }
   stepSequence(dt);
+  FILMBAR.update(SEQ.active && !BOOT.on && !pull && !document.body.classList.contains('edit'));   // (the film bar: not over the boot, nor beside the editing panel)
   if (!SEQ.active) controls.update();     // while the timeline owns the camera, orbit must not touch it: its 14 m limit would drag it into the station
   if ($('autoFocus').checked) post.focus = camera.position.distanceTo(controls.target);
   // the warm-up's share first (its unseen draws are painted over by the frame); then the town drawn by the valley, from its own
