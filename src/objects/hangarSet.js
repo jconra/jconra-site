@@ -14,11 +14,11 @@ import { addAfterburner } from './afterburner.js';
 // at `slopeDeg` (the open canopy tilts up at about 42 degrees, the hull's sill and roll bar under
 // it do not), between the hinge and the nose end of the canopy. A plain box took some of the hull
 // with it, which tore when the canopy swung. Measured in Blender, 2026-09-20.
-const SHIP1_CANOPY = { xMin: -0.115, xMax: 0.21, hinge: { x: -0.10, y: 0.215 }, slopeDeg: 30, closeDeg: -50 };
+const SHIP1_CANOPY = { xMin: -0.115, xMax: 0.21, hinge: { x: -0.10, y: 0.215 }, slopeDeg: 30, closeDeg: -60 };   // (closeDeg: Jacob, 2026-10-07: further down, it didn't quite shut)
 
 // The fighter with its canopy SHUT, for the flights: the hull and the split-off canopy turned down
 // onto the sill (the same numbers the hangar uses), in the part's own units under a group.
-export function shutFighter(F, { deg = -50, drop = 0.05, slide = 0.02, metres = 7 } = {}) {
+export function shutFighter(F, { deg = SHIP1_CANOPY.closeDeg, drop = 0.05, slide = 0.02, metres = 7 } = {}) {
   const fu = metres / F.size.x, g = new THREE.Group();
   const { hull, canopy } = splitCanopy(F.geometry, SHIP1_CANOPY);
   const hullMesh = new THREE.Mesh(hull, F.material); hullMesh.castShadow = true;

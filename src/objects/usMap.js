@@ -16,7 +16,7 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 
 // SVG units -> photo pixels: px = a*x - b*y + tx, py = b*x + a*y + ty (fitted 2026-09-20)
-export const FIT = { a: 0.40125, b: -0.05498, tx: 201.78, ty: 269.94 };
+export const FIT = { a: 0.40451, b: -0.0198, tx: 213.96, ty: 238.16 };   // (2026-10-07: the 2026-09-20 fit turned 5° clockwise about Jacksonville, FL, to Jacob's eye: it sat turned against the photo)
 const PHOTO = { w: 833, h: 827 };
 // the states' longitude and latitude bounds [west, east, south, north], for placing pins on places
 export const STATE_BOUNDS = { CO: [-109.06, -102.04, 36.99, 41.0], NM: [-109.05, -103.0, 31.33, 37.0], MD: [-79.49, -75.05, 37.89, 39.72], MS: [-91.66, -88.1, 30.17, 35.0], WA: [-124.85, -116.92, 45.54, 49.0] };

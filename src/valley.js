@@ -54,16 +54,23 @@ import { KIND_INFO, LIT_SOFTEN, GROW_DEFAULTS, FAMILY_DEFAULTS, COVER_DEFAULTS, 
 // fogSun3: the way to the sun itself and fogGlow the sky's glow round it (so the haze has it too). The fog is mixed in after
 // three's tone mapping, so its colours are given as the dome shows them (shownColour: exposed, tone-mapped, sRGB). Patched
 // once, when this module is first loaded: fog off (a scene without it) is untouched.
-const FOG_DIR = { view: { x: 0, y: 0, z: 1, w: 1 }, sun: { x: 0, y: 0, z: -1 }, col: { x: 0, y: 0, z: 0 }, sun3: { x: 0, y: 1, z: 0 }, glow: { x: 0, y: 0, z: 0 } };
-{ const add = (u) => { u.fogView = { value: FOG_DIR.view }; u.fogSunV = { value: FOG_DIR.sun }; u.fogSunCol = { value: FOG_DIR.col }; u.fogSun3 = { value: FOG_DIR.sun3 }; u.fogGlow = { value: FOG_DIR.glow }; };
+// fogEdge (the film's, off in the lab): the land's own edges lost in thick haze, so nobody flies off the world: past x
+// metres from the middle (along either axis) everything fades into the fog, wholly by y; z how much; w on. Each pixel's place
+// is found from its depth and its direction (fogView), so no geometry stands in the way
+const FOG_DIR = { view: { x: 0, y: 0, z: 1, w: 1 }, sun: { x: 0, y: 0, z: -1 }, col: { x: 0, y: 0, z: 0 }, sun3: { x: 0, y: 1, z: 0 }, glow: { x: 0, y: 0, z: 0 }, edge: { x: 650, y: 790, z: 1, w: 0 }, zen: { x: 0, y: 0, z: 0 } };
+{ const add = (u) => { u.fogView = { value: FOG_DIR.view }; u.fogSunV = { value: FOG_DIR.sun }; u.fogSunCol = { value: FOG_DIR.col }; u.fogSun3 = { value: FOG_DIR.sun3 }; u.fogGlow = { value: FOG_DIR.glow }; u.fogEdge = { value: FOG_DIR.edge }; u.fogZen = { value: FOG_DIR.zen }; };
   add(THREE.UniformsLib.fog); for (const k of Object.keys(THREE.ShaderLib)) if (THREE.ShaderLib[k].uniforms && THREE.ShaderLib[k].uniforms.fogColor) add(THREE.ShaderLib[k].uniforms);
-  THREE.ShaderChunk.fog_pars_fragment += '\n#ifdef USE_FOG\nuniform vec4 fogView; uniform vec3 fogSunV, fogSunCol, fogSun3, fogGlow;\n#endif\n';
+  THREE.ShaderChunk.fog_pars_fragment += '\n#ifdef USE_FOG\nuniform vec4 fogView, fogEdge; uniform vec3 fogSunV, fogSunCol, fogSun3, fogGlow, fogZen;\n#endif\n';
   const was = 'gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );';
   if (!THREE.ShaderChunk.fog_fragment.includes(was)) console.warn('valley: no fog line found; the haze stays one colour');
-  THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace(was, `vec3 fogC = fogColor;
+  THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace(was, `if (fogEdge.w > 0.0 && fogView.z > 0.0) { vec3 fogV = vec3((gl_FragCoord.xy * fogView.xy * 2.0 - 1.0) * fogView.zw, -1.0) * vFogDepth;
+		vec3 fogW = cameraPosition + (vec4(fogV, 0.0) * viewMatrix).xyz; fogFactor = max(fogFactor, smoothstep(fogEdge.x, fogEdge.y, max(abs(fogW.x), abs(fogW.z))) * fogEdge.z); }
+	vec3 fogC = fogColor;
 	if (fogSunCol.x + fogSunCol.y + fogSunCol.z > 0.0) { vec3 fd = normalize(vec3((gl_FragCoord.xy * fogView.xy * 2.0 - 1.0) * fogView.zw, -1.0));
 		float sd = max(dot(fd, fogSun3), 0.0);
 		fogC = mix(fogColor, fogSunCol, pow(clamp(dot(fd, fogSunV) * 0.5 + 0.5, 0.0, 1.0), 3.0)) + fogGlow * (pow(sd, 5.0) * 0.333 + pow(sd, 48.0) * 0.667); }
+	if (fogEdge.w > 0.0 && fogZen.x + fogZen.y + fogZen.z > 0.0) { vec3 fogU = normalize((vec4(vec3((gl_FragCoord.xy * fogView.xy * 2.0 - 1.0) * fogView.zw, -1.0), 0.0) * viewMatrix).xyz);
+		fogC = mix(fogC, fogZen, pow(clamp(fogU.y, 0.0, 1.0), 0.55)); }   // (the edge fog's: land lost in it above the horizon takes the sky's colour there, as the dome rises to its zenith)
 	gl_FragColor.rgb = mix( gl_FragColor.rgb, fogC, fogFactor );`); }
 // QUALITY: what each tier means here. `forest`, `cover` and `u` seed the defaults before anything is
 // built; `controls` are the panel's own controls, set (and fired) when the tier changes while running.
@@ -2070,7 +2077,7 @@ function shownColour(c, exposure, out) {
   out.x = enc(1.60475 * fx - 0.53108 * fy - 0.07367 * fz); out.y = enc(-0.10208 * fx + 1.10813 * fy - 0.00605 * fz); out.z = enc(-0.00327 * fx - 0.07276 * fy + 1.07602 * fz);
   return out;
 }
-const SHOWN = { away: { x: 0, y: 0, z: 0 }, toward: { x: 0, y: 0, z: 0 }, glowAt: { x: 0, y: 0, z: 0 } }, GLOW_C = new THREE.Color();
+const SHOWN = { away: { x: 0, y: 0, z: 0 }, toward: { x: 0, y: 0, z: 0 }, glowAt: { x: 0, y: 0, z: 0 }, zen: { x: 0, y: 0, z: 0 } }, GLOW_C = new THREE.Color();
 function aimLight(dir) {
   SUN_DIR.copy(dir); SUN_AT.copy(dir); SUN_X.set(SUN_AT.z, 0, -SUN_AT.x).normalize(); SUN_Y.crossVectors(SUN_AT, SUN_X);   // (SUN_X: up x SUN_AT)
   lawn.uniforms.sunDir.value.copy(dir); U.sunDirW.value.copy(dir);
@@ -2088,7 +2095,7 @@ function applyDay() {
   su.starAmt.value = DL.stars; su.moonDir.value.copy(MOON_NOW); su.moonAmt.value = Math.min(1, DL.moonI / 0.4);
   // the haze: the colours the dome shows at the horizon (away from the sun; toward it; toward it with its glow), so far land
   // melts into the sky behind it. The fog colour is handed to three in working colour, which it turns back to the same sRGB
-  shownColour(DL.horizon, DL.exposure, SHOWN.away); shownColour(DL.toward, DL.exposure, SHOWN.toward);
+  shownColour(DL.horizon, DL.exposure, SHOWN.away); shownColour(DL.toward, DL.exposure, SHOWN.toward); shownColour(DL.zenith, DL.exposure, SHOWN.zen);
   shownColour(GLOW_C.copy(DL.sun).multiplyScalar(DL.glow * 1.35).add(DL.toward), DL.exposure, SHOWN.glowAt);
   scene.fog.color.setRGB(SHOWN.away.x, SHOWN.away.y, SHOWN.away.z, THREE.SRGBColorSpace); scene.background.copy(scene.fog.color); U.skyCol.value.copy(DL.horizon);
   lightRatio(U.sunGlint.value, sun.color, sun.intensity, NOON_SUN);
@@ -2107,6 +2114,7 @@ function dayFrame(dt, quiet = false) {
   FOG_DIR.sun.x = DAY_F.x; FOG_DIR.sun.y = DAY_F.y; FOG_DIR.sun.z = DAY_F.z;
   const dome = sky.mesh.visible ? 1 : 0;                                 // (no dome, as on potato or with the clouds off: the background is one colour, so the haze is too)
   FOG_DIR.col.x = SHOWN.toward.x * dome; FOG_DIR.col.y = SHOWN.toward.y * dome; FOG_DIR.col.z = SHOWN.toward.z * dome;
+  FOG_DIR.zen.x = SHOWN.zen.x * dome; FOG_DIR.zen.y = SHOWN.zen.y * dome; FOG_DIR.zen.z = SHOWN.zen.z * dome;
   FOG_DIR.glow.x = Math.max(0, SHOWN.glowAt.x - SHOWN.toward.x) * dome; FOG_DIR.glow.y = Math.max(0, SHOWN.glowAt.y - SHOWN.toward.y) * dome; FOG_DIR.glow.z = Math.max(0, SHOWN.glowAt.z - SHOWN.toward.z) * dome;
   DAY_F.copy(SUN_NOW).transformDirection(camera.matrixWorldInverse); FOG_DIR.sun3.x = DAY_F.x; FOG_DIR.sun3.y = DAY_F.y; FOG_DIR.sun3.z = DAY_F.z;
   renderer.getDrawingBufferSize(DAY_V2); const th = Math.tan(camera.fov * Math.PI / 360) / camera.zoom;
@@ -2199,7 +2207,7 @@ function bakeData() {
     hashes: { heights: fnvBytes([hpre]), cells: fnvBytes([wd, pond, gully, fan]), water: fnvBytes([waterRgba], 61), paths: fnvBytes([MAPS.path], 61) } };
 }
 return {
-  scene, sky, sun, hemi, ground, mat, lawn, U, MAPS, TOWN, PLANT, COVER, GROW, PLANT_KINDS, FAMILY, FOREST, LEAF, LAND, VALLEY, SHAPE, WATER, PAVE, DAY, DL, STONES, LAWN, CALM, FOLK, SHOW, BEAMS, RAIN, FENCE,
+  scene, sky, sun, hemi, ground, mat, lawn, U, MAPS, TOWN, PLANT, COVER, GROW, PLANT_KINDS, FAMILY, FOREST, LEAF, LAND, VALLEY, SHAPE, WATER, PAVE, DAY, DL, STONES, LAWN, CALM, FOLK, SHOW, BEAMS, RAIN, FENCE, FOG_EDGE: FOG_DIR.edge,
   TS, QUAL, TEXTURES, LAYERS, TREE_SPECIES, TOWN_DEFAULT, PLANTING_FIRST, weights, FLOW, SETTLE, WDEPTH, ACC, POND, OUTLETS, Hg, N, SIZE, TEX, SEG, groundTiles, SUN_NOW, FOG_DIR, LAMPU,
   BAKE, bakeData, update, render, settled, heightAt, groundAt, slopeAt, waterAt, coverGround, buildLand, buildHeights, shapeMesh, fastMesh, baseGrid, erodeSteps, smoothErosion, cutRavines, addCrags, findWater, townLand, paintWater,
   placeCover, placeTrees, placeStones, placeLawn, calmCover, buildPaving, applyPave, paveLater, composePathRoad, tex, setAverages, applyWeights, drawPaths, followShadow, followCover, townRebuildNow, beamsReady,

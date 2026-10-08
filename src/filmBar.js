@@ -1,12 +1,13 @@
 // THE FILM BAR: where a page's scroll bar would be, the whole film from top to bottom: the space station at the top (Jacob's
-// art), open space below it, and at the bottom the clouds over the village. A glowing ball comes down it as the film plays:
+// art), open space below it, and the village in its valley at the bottom. A glowing ball comes down it as the film plays:
 // at the station through the cabin and out of the window, leaving it with the hangar and the launch, across space through
-// the map (its states marked on the way), into the clouds for the dive and down into the village at the cut. The ball shows a pause sign while the
+// the map (its states marked on the way), to the mountain tops for the dive and down into the village at the cut. The ball shows a pause sign while the
 // film plays and is the pause button; paused (by it, or by any other way the film stops), it shows a play sign and plays
 // on. Dragging the ball, or pressing anywhere on the bar, takes the film there. On a narrow screen only half of it shows,
 // at the edge, so it's not in the way.
 //
 //   filmBar({ art: { station, village }, stops, marks, film }) -> { el, update() }
+//     art: each piece { src, left, width } (left and width as parts of the art's whole width, so each keeps its place and size)
 //     stops: [[T, piece, frac]] in film order, piece 'station' | 'space' | 'village' and how far down it (0..1): where the
 //       ball is at T (in between, it goes evenly)
 //     marks: [{ T, label, title }] small labels along the way
@@ -16,7 +17,7 @@ const CSS = `
   pointer-events:none; touch-action:none; user-select:none; -webkit-user-select:none; }
 #filmBar.on { opacity:1; pointer-events:auto; }
 #filmBar .fbTrack { position:absolute; left:50%; width:2px; margin-left:-1px; background:linear-gradient(rgba(170,210,255,.0), rgba(170,210,255,.35) 12%, rgba(170,210,255,.35) 88%, rgba(170,210,255,0)); }
-#filmBar img { position:absolute; left:0; width:100%; pointer-events:none; -webkit-user-drag:none; }
+#filmBar img { position:absolute; pointer-events:none; -webkit-user-drag:none; }
 #filmBar .fbMark { position:absolute; left:50%; transform:translate(-50%,-50%); font:600 9px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing:.06em;
   color:#dff3ff; background:rgba(8,22,40,.72); border:1px solid rgba(140,200,255,.45); border-radius:7px; padding:2px 4px; }
 #filmBar.on.live { pointer-events:none; } #filmBar.on.live .fbBall { pointer-events:auto; }   /* (the film over: only a drag of the ball takes it back) */
@@ -32,19 +33,20 @@ const CSS = `
 export function filmBar({ art, stops, marks = [], film }) {
   const style = document.createElement('style'); style.textContent = CSS; document.head.appendChild(style);
   const el = document.createElement('div'); el.id = 'filmBar';
-  el.innerHTML = `<div class="fbTrack"></div><img class="fbStation" alt="" src="${art.station}"><img class="fbVillage" alt="" src="${art.village}">`
+  el.innerHTML = `<div class="fbTrack"></div><img class="fbStation" alt="" src="${art.station.src}"><img class="fbVillage" alt="" src="${art.village.src}">`
     + marks.map((m) => `<div class="fbMark" title="${m.title || ''}">${m.label}</div>`).join('')
     + `<button type="button" class="fbBall" aria-label="Pause the film"><svg viewBox="0 0 10 10"></svg></button>`;
   document.body.appendChild(el);
   const ball = el.querySelector('.fbBall'), svg = ball.querySelector('svg'), track = el.querySelector('.fbTrack');
   const imgS = el.querySelector('.fbStation'), imgV = el.querySelector('.fbVillage'), markEls = [...el.querySelectorAll('.fbMark')];
-  const ratio = { station: 292 / 249, village: 674 / 256 };            // (the pieces' height over width, as drawn)
+  const ratio = () => ({ station: imgS.naturalWidth ? imgS.naturalHeight / imgS.naturalWidth : 1.18, village: imgV.naturalWidth ? imgV.naturalHeight / imgV.naturalWidth : 2.47 });   // (height over width, as drawn)
   let L = null, shownY = -1, shownGlyph = '';
   // the layout: each piece's top and height down the bar, for the width the bar has now
   function layout() {
-    const w = el.clientWidth, h = el.clientHeight, sH = w * ratio.station, vH = w * ratio.village, top = 4;
+    const w = el.clientWidth, h = el.clientHeight, r = ratio(), sW = w * art.station.width, vW = w * art.village.width, sH = sW * r.station, vH = vW * r.village, top = 4;
     L = { h, station: [top, sH], village: [h - vH, vH], space: [top + sH, Math.max(1, h - vH - top - sH)] };
-    imgS.style.top = `${L.station[0]}px`; imgS.style.height = `${sH}px`; imgV.style.top = `${L.village[0]}px`; imgV.style.height = `${vH}px`;
+    Object.assign(imgS.style, { top: `${L.station[0]}px`, left: `${w * art.station.left}px`, width: `${sW}px`, height: `${sH}px` });
+    Object.assign(imgV.style, { top: `${L.village[0]}px`, left: `${w * art.village.left}px`, width: `${vW}px`, height: `${vH}px` });
     track.style.top = `${L.station[0] + sH * 0.5}px`; track.style.height = `${L.village[0] + vH * 0.3 - (L.station[0] + sH * 0.5)}px`;
     markEls.forEach((m, i) => { m.style.top = `${yAt(marks[i].T)}px`; });
     shownY = -1;

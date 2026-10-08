@@ -73,6 +73,7 @@ export function valleyFlight({ V, parts, shipLength = 7 }) {
     forward: fwd,
     lookAhead(d = 26) { return state.pos.clone().addScaledVector(fwd(), d); },
     groundAt: (x, z) => V.heightAt(x, z),
+    topAt: (x, z) => topAt(x, z),                                       // (the highest treetop round there, -1e9 where there are none)
     // one step of the live flight (see the top)
     update(dt, input = {}) {
       let want = state.heading, wantSpeed = 0, dist = 0;

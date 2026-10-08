@@ -325,7 +325,7 @@ function loadRoom(name) {
   placeSitter();
   $('boot')?.remove();
   bootProgress('cabin', 1); loadSitter(); loadStation();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getProps: () => PROPS, total, getHangarSet: () => hangarSet, getValley: () => valley, getTownCam: () => townCam, getTownWarm: () => townWarm, getWarm: () => WARM, TOWNTOUR, tourStart, tourStop, MAP_HANDOFF, hangarShipPos, getMap: () => mapSet, getTown: () => town, TOWN_INPUT, getStorm: () => STORM, isTownFailed: () => townFailed, TOWN_VIEW, ROOM_HOLD });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getProps: () => PROPS, total, getHangarSet: () => hangarSet, getValley: () => valley, getTownCam: () => townCam, getTownWarm: () => townWarm, getWarm: () => WARM, TOWNTOUR, tourStart, tourStop, MAP_HANDOFF, hangarShipPos, getMap: () => mapSet, getTown: () => town, TOWN_INPUT, getStorm: () => STORM, isTownFailed: () => townFailed, TOWN_VIEW, ROOM_HOLD, TOWN_ZOOM_PEEK: () => TOWN_ZOOM.z, TOWN_ZOOM_SET: (z) => { TOWN_ZOOM.want = TOWN_ZOOM.z = z; } });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; if (e.total) bootProgress('cabin', e.loaded / e.total); },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -582,7 +582,7 @@ const KEYS = [
   { t: 52.1, set: 'town', cam: { at: 'follow', back: 120, up: 90 }, look: 'jet' },
   { t: 55.59, set: 'town', cam: { at: 'view' }, look: 'jetAt' },
 ];
-const ACTS = { wave: 1.3, stand: 2.7, walk: 4.2, walkSpeed: 1.1, walkDir: 75 };   // Jacob's quicker start (2026-09-27)   // seconds; m/s; degrees from +z toward +x
+const ACTS = { wave: 1.3, stand: 2.7, walk: 4.2, walkSpeed: 1.1, walkDir: 75 }, HEAD_DOWN = 10;   // Jacob's quicker start (2026-09-27)   // seconds; m/s; degrees from +z toward +x
 // in the hangar: when he starts walking in, where from (metres beside the fighter's spot, the
 // right of the mouth's view is -z), when he is in the seat, when the canopy starts down and how
 // long it takes, and when the fighter rolls, at what acceleration
@@ -625,7 +625,7 @@ const BOARD = { rimX: -0.2, rimY: 1.15, rimZ: -0.6, ladderZ: -1.0, climbLen: 1.5
 const HANGAR = { walk: 14.0, from: [0.3, 0, -5.8], to: [0.0, 0, -1.5], speed: 1.15, climb: 18.6, sit: 21.1, canopy: 21.2, canopyLen: 1.7, roll: 23.5, accel: 5,
   // the fit in the seat: how far down from the measured seat pan he sits, how far back, and how far
   // he reclines (degrees); and how far the canopy turns to shut
-  seatDown: 0.17, seatBack: 0, recline: 24, canopyDeg: -50, canopyDrop: 0.05, canopySlide: 0.02 };   // canopyDrop / canopySlide: metres the shut canopy is let down / slid toward the nose
+  seatDown: 0.17, seatBack: 0, recline: 24, canopyDeg: -60, canopyDrop: 0.05, canopySlide: 0.02 };   // canopyDrop / canopySlide: metres the shut canopy is let down / slid toward the nose
 // The greeting comes in parts: each is its own hologram over his head, which forms, holds, and
 // dissolves again as the next one forms.
 const PARTS = [
@@ -697,6 +697,7 @@ async function buildTownSet(parts) {
     townCam = new THREE.PerspectiveCamera(camera.fov, camera.aspect, 0.1, 6000);
     townControls = { target: new THREE.Vector3(), enabled: false, enableZoom: false, update() { townCam.lookAt(this.target); }, addEventListener() {} };   // (the holograms' glide moves these)
     valley = await makeValley({ renderer, camera: townCam, controls: townControls, quality: chooseTier(renderer), slice: true, showEnabled: () => liveInTown() });   // (laid a slice a frame: the boot and the cabin play on meanwhile)
+    valley.FOG_EDGE.w = 1;                                              // (the land's edges lost in thick haze, where the fighter is turned back: Jacob, 2026-10-07)
     town = valleyFlight({ V: valley, parts });
     const A = town.ARRIVE, f = A.to.clone().sub(A.from).setY(0).normalize(), k0 = KEYS.find((k) => setOf(k) === 'town').cam;   // (waiting where the arrival opens: the first town key, behind the fighter)
     townCam.position.copy(A.from).addScaledVector(f, -(k0.back || 0)).add(new THREE.Vector3(0, k0.up || 0, 0)); townControls.target.copy(A.from).addScaledVector(f, 26); townCam.lookAt(townControls.target);
@@ -715,8 +716,8 @@ function stepTown(T, a, b, u, set = 'town') {
   const t0 = KEYS.find(k => setOf(k) === 'town').t, live = T >= total() - 1e-6;
   if (live && town.liveFrom) { showTime(); return; }                 // (the live flight has the cameras: a scrub on past the end changes nothing)
   if (!live) { const sc = valley.SHOW.sc; if (sc && sc.isOpen) { sc.back = null; sc.close(); }   // (back into the timeline: any hologram goes, and nothing glides)
-    town.poseAt(T - t0, total() - t0); town.liveFrom = false; tourStop(false); tourBar(); }
-  else { town.poseAt(total() - t0, total() - t0); town.liveFrom = true; TOWNTOUR.startAt = performance.now() + 1500; }   // however it got here (a jump to the end, too), the live flight starts where the arrival ends
+    town.poseAt(T - t0, total() - t0); town.liveFrom = false; town.jet.visible = true; tourStop(false); tourBar(); }
+  else { town.poseAt(total() - t0, total() - t0); town.liveFrom = true; TOWN_ZOOM.z = TOWN_ZOOM.want = 0; TOWN_ZOOM.turn = null; TOWNTOUR.startAt = performance.now() + 1500; }   // (the zoom back to the high view the arrival ends on)   // however it got here (a jump to the end, too), the live flight starts where the arrival ends
   { const k = T - t0; town.setCloud(k < 0.35 ? 1 - 0.6 * THREE.MathUtils.smoothstep(k, 0, 0.35) : 0.4 * (1 - THREE.MathUtils.smoothstep(k, 0.35, 2.4))); }   // (white at the cut, wisps a third of a second on, gone by two and a half)
   const e = 1 - (1 - u) * (1 - u);                                   // (eased out like the fighter's own arrival: the camera's swing into the town's view comes to rest with it, so the live flight takes over without a jolt)
   camera.position.copy(cameraAt(a.t + e * (b.t - a.t))).add(TOWN_AT);
@@ -730,15 +731,28 @@ function stepTown(T, a, b, u, set = 'town') {
 // angle, as RMRF's does: high, looking north (`dist` m from the fighter, `pitch` radians down, `yaw` round from the south),
 // never turning with it, so a tap on the ground always means the same direction on screen
 const TOWN_VIEW = { dist: 70, pitch: 0.72, yaw: 0 };
+// ZOOMING IN THE TOWN (Jacob, 2026-10-07): the wheel, or two fingers pinched, take the camera from that high view (z 0) in close
+// and low behind the fighter (z 1: CLOSE), turning to follow its heading on the way in; the film bar is the way back into the film
+const TOWN_ZOOM = { z: 0, want: 0, pinched: false, turn: null }, CLOSE = { dist: 11, pitch: 0.15, ahead: 2, up: 1 };   // (close: the fighter in the lower third, the horizon above it)
 const townView = () => { const { dist, pitch, yaw } = TOWN_VIEW; return new THREE.Vector3(dist * Math.cos(pitch) * Math.sin(yaw), dist * Math.sin(pitch), dist * Math.cos(pitch) * Math.cos(yaw)); };
 function liveTown(dt) {
   if (!town || currentSet !== 'town') return;
   town.update(dt, TOWN_INPUT);
   const sc = valley.SHOW.sc;
+  town.jet.visible = !(sc && sc.gliding) || townCam.position.distanceTo(town.state.pos) > 6;   // (a hologram's glide passing through the fighter: not drawn while the camera is inside it)
   if (!(sc && (sc.gliding || sc.isOpen))) {                // (a hologram open, or its camera on the way: the camera is its)
-    const want = town.state.pos.clone().add(townView()), k = Math.min(1, dt * 3);
-    want.y = Math.max(want.y, town.groundAt(want.x, want.z) + 6);   // (never into a hillside)
-    townCam.position.lerp(want, k); townControls.target.lerp(town.state.pos, k); townCam.lookAt(townControls.target);   // (both eased alike: the angle holds while it moves)
+    const Z = TOWN_ZOOM; Z.z += (Z.want - Z.z) * Math.min(1, dt * 5);
+    const z = Z.z, s = z * z * (3 - 2 * z), dist = TOWN_VIEW.dist * Math.pow(CLOSE.dist / TOWN_VIEW.dist, z), pitch = TOWN_VIEW.pitch + (CLOSE.pitch - TOWN_VIEW.pitch) * s;
+    const w = THREE.MathUtils.smoothstep(z, 0.35, 0.9);
+    let turn = town.state.heading + Math.PI - TOWN_VIEW.yaw; turn = Math.atan2(Math.sin(turn), Math.cos(turn));   // (behind the fighter: its heading turned round)
+    if (w > 0 && w < 1 && Z.turn != null) { const d = turn - Z.turn; turn = Z.turn + Math.atan2(Math.sin(d), Math.cos(d)); }   // (part-way in: carried on round, never flipped across at due south)
+    Z.turn = turn;
+    const yaw = TOWN_VIEW.yaw + turn * w, f = town.forward(), k = Math.min(1, dt * 3), lead = town.state.speed * dt * (1 - k) / Math.max(k, 1e-6);   // (lead: what the easing trails by at this speed)
+    const at = town.state.pos.clone().addScaledVector(f, (CLOSE.ahead + lead) * s).add(new THREE.Vector3(0, CLOSE.up * s, 0));   // (close in, it looks a little ahead of and over the fighter)
+    const want = at.clone().add(new THREE.Vector3(dist * Math.cos(pitch) * Math.sin(yaw), dist * Math.sin(pitch), dist * Math.cos(pitch) * Math.cos(yaw)));
+    let top = -1e9; for (const [ox, oz] of [[0, 0], [5, 0], [-5, 0], [0, 5], [0, -5]]) top = Math.max(top, town.topAt(want.x + ox, want.z + oz));
+    want.y = Math.max(want.y, town.groundAt(want.x, want.z) + 4, top + 3);   // (never into a hillside or a treetop)
+    townCam.position.lerp(want, k); townControls.target.lerp(at, k); townCam.lookAt(townControls.target);   // (both eased alike: the angle holds while it moves)
   }
   town.faceClouds(townCam);
 }
@@ -767,7 +781,9 @@ function tourAim(stop) {
   const c = tg.box.getCenter(new THREE.Vector3()), across = new THREE.Vector3(Math.cos(TOWN_VIEW.yaw), 0, -Math.sin(TOWN_VIEW.yaw));   // (square to the way the camera looks)
   const side = Math.sign(across.dot(town.state.pos.clone().sub(c))) || 1;
   const fit = Math.min(1, townCam.aspect / (16 / 9));                 // (a phone held upright sees a narrow strip across: it stops that much closer, so the landmark stays in view)
-  T.target = tg; T.P = c.addScaledVector(across, side * stop.d * fit).setY(0);
+  T.target = tg;
+  if (TOWN_ZOOM.want > 0.5) { const back = town.state.pos.clone().sub(c).setY(0), r = back.length(); if (r < 1) back.set(0, 0, 1); T.P = c.clone().addScaledVector(back.normalize(), Math.min(stop.d, Math.max(r - 8, 4))).setY(0); }   // (zoomed in behind it: stopping short on the way in, the landmark ahead; always at least 8 m on toward it, so it turns to face it)
+  else T.P = c.addScaledVector(across, side * stop.d * fit).setY(0);
   return true;
 }
 function tourStart(from = 0) {
@@ -840,16 +856,25 @@ for (const ev of ['pointerdown', 'wheel', 'keydown']) addEventListener(ev, (e) =
     down.set(e.clientX, e.clientY); lastE = e;
     if (!town || !liveInTown() || !e.isPrimary || showcases(e)) return;
     clearTimeout(holdTimer);
-    holdTimer = setTimeout(() => { if (TOWN_SCRUBBING()) return; steering = true; TOWN_INPUT.holding = true; steerTo(lastE); }, 160);
+    holdTimer = setTimeout(() => { if (TOWN_SCRUBBING() || TOWN_ZOOM.pinched) return; steering = true; TOWN_INPUT.holding = true; steerTo(lastE); }, 160);
   });
-  renderer.domElement.addEventListener('pointermove', (e) => { lastE = e; if (steering && liveInTown()) { if (TOWN_SCRUBBING()) { steering = false; TOWN_INPUT.holding = false; TOWN_INPUT.dest = null; return; } steerTo(e); } });
+  renderer.domElement.addEventListener('pointermove', (e) => { lastE = e; if (steering && liveInTown()) { if (TOWN_SCRUBBING() || TOWN_ZOOM.pinched) { steering = false; TOWN_INPUT.holding = false; TOWN_INPUT.dest = null; return; } steerTo(e); } });
   const release = () => { clearTimeout(holdTimer); const was = steering; steering = false; TOWN_INPUT.holding = false; return was; };
   renderer.domElement.addEventListener('pointercancel', release);
   renderer.domElement.addEventListener('pointerup', (e) => {
     if (release()) return;                                   // it was a hold: the fighter goes on to where the finger was
-    if (!liveInTown() || !town || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8 || showcases(e)) return;
+    if (!liveInTown() || !town || TOWN_ZOOM.pinched || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8 || showcases(e)) return;
     const g = town.groundPoint(cast(e)); if (g) TOWN_INPUT.dest = g.sub(TOWN_AT);
   });
+  // two fingers pinched zoom (the wheel's, on a touch screen); while they're down nothing steers, and the tap that ends it isn't one
+  const fingers = new Map(); let pinch0 = null;
+  const spread = () => { const [a, b] = [...fingers.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+  renderer.domElement.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'touch') return; fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (fingers.size === 2 && liveInTown()) { pinch0 = { d: spread(), z: TOWN_ZOOM.want }; TOWN_ZOOM.pinched = true; if (release()) TOWN_INPUT.dest = null; const sc = valley && valley.SHOW.sc; if (sc) sc.press = null; } });   // (a hold cut short goes nowhere; the showcase's press isn't a tap)
+  renderer.domElement.addEventListener('pointermove', (e) => { const f = fingers.get(e.pointerId); if (!f) return; f.x = e.clientX; f.y = e.clientY;
+    const sc = valley && valley.SHOW.sc; if (pinch0 && fingers.size === 2 && !(sc && (sc.isOpen || sc.gliding))) TOWN_ZOOM.want = THREE.MathUtils.clamp(pinch0.z + Math.log(spread() / Math.max(1, pinch0.d)) * 0.9, 0, 1); });
+  const lift = (e) => { fingers.delete(e.pointerId); if (fingers.size < 2) pinch0 = null; if (!fingers.size) setTimeout(() => { TOWN_ZOOM.pinched = false; }, 0); };   // (after this lift's own tap check)
+  renderer.domElement.addEventListener('pointerup', lift); renderer.domElement.addEventListener('pointercancel', lift);
   const keys = {};
   addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; steer(); });
   addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; steer(); });
@@ -1418,7 +1443,7 @@ function seek(T) {
   // he keeps his eyes on the camera: the head turns toward it after the clips have posed it, by
   // as much as the keys ask for, and never further than a neck goes
   const face = (a.face || 0) + ((b.face || 0) - (a.face || 0)) * u;
-  if (face > 0 && sitter) faceCamera(face);
+  if (face > 0 && sitter) faceCamera(face, THREE.MathUtils.degToRad(HEAD_DOWN) * THREE.MathUtils.smoothstep(T, ACTS.stand, ACTS.stand + 0.6));   // (stood up, his face a little down: Jacob, 2026-10-07, he was looking up too high)
   // the parts of the greeting: over his head, turned to the camera, each one forming then dissolving
   const over = lookAtHim(); over.y += 0.14;
   const toCam = new THREE.Vector3().subVectors(camera.position, over); toCam.y = 0; toCam.normalize();
@@ -1631,7 +1656,7 @@ function applyHelmetFit() {
   helmet.position.copy(B.position).addScaledVector(B.up, HELMET.up / 100 / headScale).addScaledVector(B.fwd, HELMET.forward / 100 / headScale);
   helmet.visible = currentSet === 'hangar' || (currentSet === 'cabin' && HELMET.show);
 }
-function faceCamera(amount) {
+function faceCamera(amount, down = 0) {   // (down: radians the face is tipped down from looking straight at the camera)
   const head = sitter.getObjectByName('Head'); if (!head) return;
   head.updateWorldMatrix(true, false);
   const hp = head.getWorldPosition(new THREE.Vector3());
@@ -1643,7 +1668,7 @@ function faceCamera(amount) {
   // yaw about the world's up, then the nod about the axis across the new line of sight, so the
   // nod stays a nod whichever way the chair has him facing
   const across = new THREE.Vector3(to.z, 0, -to.x).normalize();
-  const turn = new THREE.Quaternion().setFromAxisAngle(across, -THREE.MathUtils.clamp(pitch, -0.35, 0.35) * amount)
+  const turn = new THREE.Quaternion().setFromAxisAngle(across, -(THREE.MathUtils.clamp(pitch, -0.35, 0.35) * amount - down))
     .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -THREE.MathUtils.clamp(yaw, -1.0, 1.0) * amount));
   const parentQ = head.parent.getWorldQuaternion(new THREE.Quaternion());
   const worldQ = head.getWorldQuaternion(new THREE.Quaternion());
@@ -1672,6 +1697,7 @@ function stepSequence(dt) {
 }
 // the wheel scrubs time instead of zooming, when that is switched on; a first scroll starts the intro
 renderer.domElement.addEventListener('wheel', (e) => {
+  if (liveInTown()) { e.preventDefault(); const sc = valley && valley.SHOW.sc; if (!(sc && (sc.isOpen || sc.gliding))) TOWN_ZOOM.want = THREE.MathUtils.clamp(TOWN_ZOOM.want - e.deltaY * (e.deltaMode ? 0.04 : 0.0012), 0, 1); return; }   // (not while a hologram has the camera)   // (in the town the wheel zooms; the film bar goes back)
   if (!SEQ.scrub || !chairPivot) return;
   e.preventDefault();
   if (!SEQ.active) activateIntro();
@@ -1704,7 +1730,7 @@ const TOWN_SCRUBBING = () => touchScrubbing;
     if (!mode) {
       const dx = e.clientX - startX, dyy = e.clientY - startY, quick = performance.now() - startT < 500;
       const flying = SEQ.active && SEQ.T >= HANGAR.roll && !liveInTown();
-      if (quick && Math.abs(dyy) > 180 && Math.abs(dyy) > 2 * Math.abs(dx)) { mode = 'scrub'; touchScrubbing = true; lastY = e.clientY; return; }
+      if (quick && Math.abs(dyy) > 180 && Math.abs(dyy) > 2 * Math.abs(dx) && !liveInTown()) { mode = 'scrub'; touchScrubbing = true; lastY = e.clientY; return; }   // (not in the town: the film bar goes back)
       if (flying && Math.abs(dx) > 30 && Math.abs(dx) > Math.abs(dyy)) mode = 'bank';
       else if (!quick) mode = 'none';                        // too slow for a scrub: it is someone steering or looking
       if (!mode) return;
@@ -2329,10 +2355,10 @@ function offStageTown(dt) {
 }
 // THE FILM BAR (src/filmBar.js): the whole film down the right edge, its ball the pause/play button; where the ball is at the
 // film's beats (in film order): at the station through the cabin and out of the window, leaving it with the hangar (the hangar
-// and the launch take the first stretch of space, room to find a moment in them), across space for the map, into the clouds'
-// glow at the dive, under them at the cut, down into the village by the end
-const FILMBAR = filmBar({ art: { station: '/textures/filmbar/station.png', village: '/textures/filmbar/village.png' },
-  stops: [[0, 'station', 0.3], [firstKey('station'), 'station', 0.65], [firstKey('hangar'), 'station', 1], [MAP.shipIn, 'space', 0.3], [MAP.fire, 'village', 0.08], [MAP.flash, 'village', 0.2], [firstKey('town'), 'village', 0.3], [total(), 'village', 0.8]],
+// and the launch take the first stretch of space, room to find a moment in them), across space for the map, down to the
+// mountain tops through the dive, into the village at the cut and down it by the end
+const FILMBAR = filmBar({ art: { station: { src: '/textures/filmbar/station2.png', left: 2 / 256, width: 249 / 256 }, village: { src: '/textures/filmbar/village2.png', left: 40 / 256, width: 186 / 256 } },   // (Jacob's 256-wide art, 2026-10-07: no sky or clouds)
+  stops: [[0, 'station', 0.3], [firstKey('station'), 'station', 0.65], [firstKey('hangar'), 'station', 1], [MAP.shipIn, 'space', 0.3], [MAP.fire, 'space', 0.96], [MAP.flash, 'village', 0.02], [firstKey('town'), 'village', 0.1], [total(), 'village', 0.75]],
   marks: TOUR.map((s) => ({ T: s.t, label: s.id, title: s.title })),
   film: { T: () => SEQ.T, total, playing: () => SEQ.playing, live: () => SEQ.T >= total() - 1e-6,
     pause: () => { SEQ.playing = false; RESUME.paused = true; },
@@ -2354,6 +2380,10 @@ renderer.setAnimationLoop(() => {
     stepPull(dt);
   }
   stepSequence(dt);
+  if (valley) { const D = valley.DAY, on = liveInTown() && !!town && town.liveFrom;   // (the sun moves through the day once the flight is live; back in the film, the arrival at its own hour again)
+    if (D.home == null) D.home = D.hour;
+    if (D.auto && !on) { D.hour = D.home; D.dirty = true; }
+    D.auto = on; }
   FILMBAR.update(SEQ.active && !BOOT.on && !pull && !document.body.classList.contains('edit'));   // (the film bar: not over the boot, nor beside the editing panel)
   if (!SEQ.active) controls.update();     // while the timeline owns the camera, orbit must not touch it: its 14 m limit would drag it into the station
   if ($('autoFocus').checked) post.focus = camera.position.distanceTo(controls.target);

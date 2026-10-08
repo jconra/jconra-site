@@ -147,12 +147,16 @@
    "text": "This site is my résumé, built as a place you travel through instead of a page you read. It opens on a short film, about a minute long, that ends with a dive through the clouds down to a town. Each of my bigger projects has a landmark here, and clicking one raises a hologram like this one, with pictures and notes.\n\nThe picture is the site this one replaced: jacobconrads.com as it was in 2019, a spinning 3D cube of projects. It still works, on the projects page with about fifty other things I've made. The new site is plain JavaScript and three.js with no build step, and it turns its detail up or down to suit the machine, from a gaming PC to a phone. I've built it since September 2026 with Claude, Anthropic's AI, as my coding partner.\n\nMade with: Plain JavaScript and three.js 0.158 (loaded from unpkg, no build step).\n\n## The film: cabin to clouds\n\nIt starts on a computer screen: a terminal types who I am while loading bars fill for the cabin, my 3D model, its movements and the station. The camera pulls back, and I'm at a desk in a cabin on a space station. I wave, stand and walk off; the camera goes out the window and round the station to a hangar, where I climb into a fighter and fly out toward Earth.\n\n## The map: where I have lived\n\nOver the map, the five states I've lived in light up with a line each: born and raised in Colorado, Air Force avionics in New Mexico, Red Team and a computer science degree in Maryland, teaching cyber warfare at Keesler in Mississippi, and seven years as an AWS systems engineer in Washington. Then the fighter dives through the clouds. Scrolling or swiping moves the whole film forward or back.\n\nMade with: three.js; my 3D model (model 4) is a Tripo-rigged body with a head I reworked in Blender; the stand-up, ladder/climb and sit-down clips are from Mixamo, the sitting and walking are Tripo's own clips, and the wave is Mixamo's reworked in code; the station assembled in my Station Builder.\n\n## The land under the town [https://jconra.com/labs/terrain/]\n\nThe town sits in a valley made in my Terrain Lab, which began as a page for testing ground textures and grew into the land the town stands on. The land is a grid about 1.6 km across. Noise (smooth random numbers) raises mountains on both sides of a winding valley, steep ground gets terraces and crags, and then over a hundred thousand simulated raindrops run downhill, each picking up soil as it speeds up and dropping it where it slows. In the lab you can watch it rain.\n\nWater comes from the land the same way: hollows fill into ponds, rivers form where enough water gathers, and lake outlets wear into gorges with froth at the falls. The ground's look is worked out from the land too: dirt on slopes, rock on cliffs, stones by the creeks, and a trick called hex-tiling hides where the ground pictures repeat.\n\nMade with: three.js; erosion after Hans Beyer's raindrop method, hex-tiling after Mikkelsen's 2022 paper (both credited in terrain.js).\n\n## Forest, light and townsfolk [https://jconra.com/labs/terrain/]\n\nNear you the trees are real models; farther out they are imposters. Each tree is photographed from dozens of angles into one picture sheet when the page loads, and far away it becomes a flat card showing the angle closest to yours, so thousands of trees cost little. I place the town's buildings, paths and fences by hand with a Build bar, and paint in extra plants and rocks; the buildings are models I generated with Tripo, an AI tool that makes 3D models.\n\nThe sun follows its path across the sky, so the time of day sets the light: a warm dusk with sunbeams through the treetops, then stars, a moon, and street lamps that light the paving and walls around them. Townsfolk walk between doors, market stalls, benches and the fountain, keep to the right, stop to chat or wave, and mostly go indoors at night.\n\nMade with: three.js; trees from ez-tree (an open-source tree generator); buildings and ground plants from Tripo; townsfolk from Quaternius's free (CC0) modular character pack.\n\n## Things built along the way [https://jconra.com/labs/]\n\nMany pieces got their own lab page first. The Quarters Lab edits the film's keyframes while it plays, and a Station Builder put the station together from parts. The Model Lab (pictured) shows every model on the site in one viewer, and a Rig Lab poses a model and measures what each bone moves.\n\nFor the town there is a Stone Lab for paving that never repeats (painted stones far off, real 3D stones up close), a Foliage Lab that lights each leaf by how much sky it can see, low-poly pines of about a hundred triangles, and street-lamp light worked out from one top-down picture of every lamp. Smaller touches: afterburners with shock diamonds that open with thrust, Colorado's flag on the map drawn to the rules in state law, and a 404 page where a husky tilts its head in 3D.\n\nMade with: three.js; Blender; the 404 husky is a Tripo model lightened in Blender.",
    "pictures": [
     {
-     "img": "/textures/projects/shots/old-site.jpg",
+     "img": "/textures/projects/shots/town-sunbeams.jpg",
      "caption": "A résumé you fly through"
     },
     {
      "img": "/textures/projects/shots/film-cabin.jpg",
      "caption": "The film: cabin to clouds"
+    },
+    {
+     "img": "/textures/projects/shots/film-station.jpg",
+     "caption": "Out of the window: the station"
     },
     {
      "img": "/textures/projects/shots/film-map.jpg",
@@ -164,14 +168,18 @@
      "link": "https://jconra.com/labs/terrain/"
     },
     {
+     "img": "/textures/projects/shots/town-dusk.jpg",
+     "caption": "Dusk: the lamps come on",
+     "link": "https://jconra.com/labs/terrain/"
+    },
+    {
      "img": "/textures/projects/shots/town-night.jpg",
      "caption": "Forest, light and townsfolk",
      "link": "https://jconra.com/labs/terrain/"
     },
     {
-     "img": "/textures/projects/shots/model-lab.jpg",
-     "caption": "Things built along the way",
-     "link": "https://jconra.com/labs/"
+     "img": "/textures/projects/shots/old-site.jpg",
+     "caption": "The site this one replaced (2019)"
     }
    ]
   },
