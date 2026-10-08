@@ -2002,7 +2002,7 @@ const SHOW = { sc: null, byKind: {}, byItem: {} };
 getJSON('/models/town/showcase.json').then((data) => {
   if (!data) return;
   for (const l of data.landmarks) { for (const k of l.at || []) SHOW.byKind[k] = l.id; for (const id of l.ids || []) SHOW.byItem[id] = l.id; }   // (ids: one particular building or prop, by its id)
-  SHOW.sc = new Showcase({ scene, camera, controls, dom: renderer.domElement, data, targets: showTargets, enabled: showEnabled || (() => !document.body.classList.contains('planting')), blocked: showBlocked, scale: TS.lite ? 0.75 : 1 });
+  SHOW.sc = new Showcase({ scene, camera, controls, dom: renderer.domElement, data, targets: showTargets, enabled: showEnabled || (() => !document.body.classList.contains('planting')), blocked: showBlocked, scale: TS.lite ? 0.75 : 1, renderer });
 });
 // something nearer than a landmark along the pointer's ray: another thing of the town's (its own mesh, not its unseen pick
 // box) or the land itself (the heights marched)
