@@ -921,7 +921,7 @@ function buildMapSet(parts) {
       c.position.copy(c.userData.at); c.visible = false; c.renderOrder = 2; floor.add(c); clouds.push(c);   // over the state outlines (1)
     } }
   mapSet = { floor, pic, ship, plume, sparks, clouds, map: null };
-  loadUSMap('/labs/map/us.svg').then(map => {
+  loadUSMap('/labs/map/us.svg', { flagFiles: ['MD', 'MS', 'WA'] }).then(map => {   // (Colorado's and New Mexico's flags are drawn; these three are pictures, Wikimedia Commons' public-domain flags)
     mapSet.map = map; pic.add(map.group); map.setResolution(innerWidth, innerHeight);
     for (const s of TOUR) { map.flag(s.id); map.pin(s.id, PINS[s.id] || {}); }
     applyMapFit();

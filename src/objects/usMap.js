@@ -7,8 +7,8 @@
 //
 // Outlines are fat lines (Line2): a black line with a thin light one on top, so they read on cloud
 // and on land alike, and survive the depth-of-field blur that ate the one-pixel lines. A lit state
-// fills with its flag where one is drawn (Colorado, New Mexico; others are a plain tint until an
-// image lands in textures/flags/XX.png and its id is in `flagFiles`), and can carry a pin.
+// fills with its flag where one is drawn (Colorado, New Mexico), or from its picture in
+// textures/flags/XX.png when its id is in `flagFiles` (Maryland, Mississippi, Washington), and can carry a pin.
 import * as THREE from 'three';
 import { SVGLoader } from 'three/addons/loaders/SVGLoader.js';
 import { Line2 } from 'three/addons/lines/Line2.js';
@@ -18,6 +18,19 @@ import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 // SVG units -> photo pixels: px = a*x - b*y + tx, py = b*x + a*y + ty (fitted 2026-09-20)
 export const FIT = { a: 0.40451, b: -0.0198, tx: 213.96, ty: 238.16 };   // (2026-10-07: the 2026-09-20 fit turned 5° clockwise about Jacksonville, FL, to Jacob's eye: it sat turned against the photo)
 const PHOTO = { w: 833, h: 827 };
+// LOCAL NUDGES (2026-10-07, to Jacob's eye): the fit is one turn, scale and shift for the whole country, and the photo's
+// northeast sits a little further right and down than that puts it (Lake Michigan, the Massachusetts coast). Each nudge moves
+// the outline near its point (photo pixels) by up to `d` pixels, fading out over about `r`, so the rest stays where it fits
+export const WARP = [
+  { at: [508, 290], d: [6, 0], r: 26 },     // Lake Michigan
+  { at: [604, 276], d: [5, 4], r: 28 },     // Boston and Cape Cod
+];
+export const toPhoto = (x, y) => {                                 // SVG units -> photo pixels: the fit, then the nudges
+  let px = FIT.a * x - FIT.b * y + FIT.tx, py = FIT.b * x + FIT.a * y + FIT.ty;
+  const ox = px, oy = py;
+  for (const w of WARP) { const f = Math.exp(-((ox - w.at[0]) ** 2 + (oy - w.at[1]) ** 2) / (w.r * w.r)); px += w.d[0] * f; py += w.d[1] * f; }
+  return [px, py];
+};
 // the states' longitude and latitude bounds [west, east, south, north], for placing pins on places
 export const STATE_BOUNDS = { CO: [-109.06, -102.04, 36.99, 41.0], NM: [-109.05, -103.0, 31.33, 37.0], MD: [-79.49, -75.05, 37.89, 39.72], MS: [-91.66, -88.1, 30.17, 35.0], WA: [-124.85, -116.92, 45.54, 49.0] };
 
@@ -26,7 +39,7 @@ export async function loadUSMap(url = '/labs/map/us.svg', { colour = 0x35e07d, l
   const group = new THREE.Group();
   const states = new Map(), pickable = [];
   const toPlane = (x, y) => {                                       // SVG -> picture plane local (x right, y up, centred)
-    const px = FIT.a * x - FIT.b * y + FIT.tx, py = FIT.b * x + FIT.a * y + FIT.ty;
+    const [px, py] = toPhoto(x, y);
     return [px - PHOTO.w / 2, PHOTO.h / 2 - py];
   };
   const resolution = new THREE.Vector2(innerWidth, innerHeight);
