@@ -1,14 +1,16 @@
 // SHOWCASE: the town's landmarks presenting Jacob's projects. Over a landmark (a building or prop that stands for a
 // project, or for a group of them) the pointer becomes a hand and its name shows; a click (on a touch screen: a tap shows
 // the name, a second tap opens it) raises a hologram over it: a force field (the Shield Lab's) the shape of a tennis racket
-// standing on the landmark, and in its head a screen with the project's pictures as a slideshow (thin buttons either side, a counter, slides moving
-// on by themselves until someone touches it) with each picture's own text under it, on a solid panel that scrolls (wheel,
-// drag). The camera glides to face it, and back when it closes (Escape, the ×, a tap off it). All of it in the scene: the
-// screen is a picture drawn on a canvas, so it stays put over its landmark.
+// standing on the landmark, and in its head a screen: the project's pictures as a slideshow, moving on by themselves every
+// few seconds (each with its caption; thin buttons either side and the arrow keys step them, which stops them moving on),
+// and under them, on a solid panel, its title, subtitle and one write-up that never changes by itself (it scrolls: wheel,
+// drag), so reading is never cut off. The camera glides to face it, and back when it closes (Escape, the ×, a tap off it).
+// All of it in the scene: the screen is a picture drawn on a canvas, so it stays put over its landmark.
 //
 //   new Showcase({ scene, camera, controls, dom, data, targets, enabled, blocked, scale })
-//     data: { landmarks: [{ id, label, color, link, slides: [{ img, title, text, project, link, dates, madeWith }] }] }
-//       (a slide's link, dates and madeWith fall back to the landmark's)
+//     data: { landmarks: [{ id, label, color, link, title, subtitle, dates, madeWith, text, pictures: [{ img, caption, link }] }] }
+//       text: paragraphs (a blank line between); '# ' a project's heading, '## ' a section's, '> ' a line of when and with what,
+//       '- ' a list; a heading ending ' [url]' is a link. A picture's link (else the landmark's) is the Visit button's
 //     targets(): [{ id (a landmark's), obj (the Object3D to hit), box (its world Box3) }]   enabled(): false while editing
 //     blocked(ray, distance): is something else (another building, a hill) in the way of a landmark that far along the ray
 //     scale: the screen's canvas resolution (1: 1024 px wide; potato less)
@@ -20,7 +22,7 @@ import { makeShieldMaterial, pushShieldHit, stepShield } from '../../labs/shield
 const W = 1024, H = 1152, SIDE = 54, PAD = 66, PIC = { x: PAD, y: 22, w: W - PAD * 2, h: Math.round((W - PAD * 2) * 9 / 16) };
 const PANEL = { x: PAD, y: PIC.y + PIC.h + 16, w: W - PAD * 2, h: H - (PIC.y + PIC.h + 16) - 22 };
 const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-const AUTO = 14;                                        // (s a slide shows before the next, until someone touches the screen)
+const AUTO = 4;                                         // (s a picture shows before the next, until someone steps them by hand)
 
 // the racket's outline (in screen widths): an oval head round the screen's middle (RX, RY), a throat narrowing below it
 // (THROAT long) into a straight handle (HANDLE long, GRIP half as wide) standing on the landmark
@@ -36,7 +38,7 @@ function racketShape({ RX, RY, THROAT, HANDLE, GRIP, OPEN }) {
 
 export class Showcase {
   constructor({ scene, camera, controls, dom, data, targets, enabled = () => true, blocked = null, scale = 1 }) {
-    Object.assign(this, { scene, camera, controls, dom, targets, enabled, blocked, scale, fz: 1 });
+    Object.assign(this, { scene, camera, controls, dom, targets, enabled, blocked, scale, fz: 1, every: AUTO });   // (every: how long a picture shows, for a tour to wait out)
     this.byId = new Map((data && data.landmarks || []).map((l) => [l.id, l]));
     this.ray = new THREE.Raycaster(); this.ndc = new THREE.Vector2(); this.v = new THREE.Vector3(); this.time = 0;
     // the hologram's parts
@@ -74,7 +76,7 @@ export class Showcase {
     window.addEventListener('pointerup', (e) => this.up(e));
     window.addEventListener('pointercancel', (e) => { if (this.drag && e.pointerId !== this.drag.id) return; this.press = null; const d = this.drag; this.drag = null; if (d && this.controls && !this.gliding) this.controls.enabled = true; });   // (a press taken away mid-way: nothing done, the camera free)
     dom.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && !this.drag) this.hover(null); });   // (the mouse gone off the page: its name too; a touch leaves after every lift, so not those)
-    dom.addEventListener('wheel', (e) => { const r = this.screenAt(e.clientX, e.clientY); if (r && r.inText) { e.preventDefault(); e.stopImmediatePropagation(); this.scrollBy(e.deltaY * (e.deltaMode ? 30 : 1)); this.touched(); } }, { capture: true, passive: false });
+    dom.addEventListener('wheel', (e) => { const r = this.screenAt(e.clientX, e.clientY); if (r && r.inText) { e.preventDefault(); e.stopImmediatePropagation(); this.scrollBy(e.deltaY * (e.deltaMode ? 30 : 1)); } }, { capture: true, passive: false });   // (reading: the pictures go on moving)
     window.addEventListener('keydown', (e) => {
       if (!this.isOpen || e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey) return;
       if (e.key === 'Escape') { this.close(); return; }
@@ -95,6 +97,7 @@ export class Showcase {
     if (px < SIDE + 4) part = 'prev'; else if (px > W - SIDE - 4) part = 'next';
     else if (this.closeBox && inside(this.closeBox, px, py)) part = 'close';
     else if (this.visitBox && inside(this.visitBox, px, py)) part = 'visit';
+    else { const ln = (this.textLinks || []).find((b) => inside(b, px, py)); if (ln) part = 'link:' + ln.url; }   // (a heading that is a link)
     return { px, py, part, inText: py > PANEL.y && px > PANEL.x && px < PANEL.x + PANEL.w, inPic };
   }
   // the landmark under the pointer (its box first, then its own mesh)
@@ -135,7 +138,8 @@ export class Showcase {
     if (s && this.drag) { e.stopImmediatePropagation(); return; }       // (a second finger on the screen: held, nothing more)
     this.press = { x: e.clientX, y: e.clientY, t: performance.now(), type: e.pointerType, id: e.pointerId, um: this.userMoved };
     if (s) {                                                             // (a press on the screen is the screen's: the camera stays still)
-      e.stopImmediatePropagation(); this.touched();
+      e.stopImmediatePropagation(); if (!s.inText || s.part === 'visit') this.touched();   // (a press on the pictures stops them, and on Visit, so it goes where it said; one in the write-up is reading)
+      if (s.part === 'visit') this.press.link = this.slideLink();
       this.drag = s.inText ? { y: e.clientY, k: this.pxPerScreenPx(), moved: false, id: e.pointerId } : { y: e.clientY, k: 0, moved: false, still: true, id: e.pointerId };
       if (this.controls) this.controls.enabled = false;
     }
@@ -149,7 +153,8 @@ export class Showcase {
     if (!this.enabled()) return;
     const s = this.screenAt(e.clientX, e.clientY);
     if (s) { if (s.part === 'prev') this.step(-1); else if (s.part === 'next') this.step(1); else if (s.part === 'close') this.close();
-      else if (s.part === 'visit') { const l = this.slideLink(); if (l) window.open(l, '_blank', 'noopener'); } return; }
+      else if (s.part === 'visit') { const l = p.link || this.slideLink(); if (l) window.open(l, '_blank', 'noopener'); }   // (the link as it was when pressed)
+      else if (s.part && s.part.startsWith('link:')) window.open(s.part.slice(5), '_blank', 'noopener'); return; }
     const t = this.landmarkAt(e.clientX, e.clientY);
     if (!t) { this.armed = null; this.hover(null); if (this.isOpen) this.close(); return; }
     // a touch: the first tap names it, a second opens it
@@ -169,7 +174,7 @@ export class Showcase {
     const l = this.byId.get(id); if (!l) return;
     target = target || this.targets().find((t) => t.id === id); if (!target) return;
     const box = target.box, size = box.getSize(this.v), wide = THREE.MathUtils.clamp(Math.max(size.x, size.z) * 0.55, 6, 11);
-    this.cur = l; this.slide = 0; this.scroll = 0; this.auto = AUTO; this.dirty = true; this.grow = 0; this.lines = null;
+    this.cur = l; this.slide = 0; this.scroll = 0; this.auto = AUTO; this.dirty = true; this.grow = 0; this.lines = null; this.textLinks = [];
     this.fz = this.camera.aspect < 0.8 ? 1.4 : 1;                       // (a phone held upright: the screen fills its width, so bigger type)
     this.size = wide; const h = wide * H / W;
     this.anchor = new THREE.Vector3((box.min.x + box.max.x) / 2, box.max.y, (box.min.z + box.max.z) / 2);
@@ -177,7 +182,7 @@ export class Showcase {
     const col = new THREE.Color(l.color || '#59d8ff'); this.field.material.uniforms.uColor.value.copy(col);
     this.screen.scale.setScalar(wide); this.field.scale.setScalar(wide); this.field.position.z = -0.5;
     this.state = 'opening'; this.t = 0; this.isOpen = true; this.group.visible = true; this.screenMat.opacity = 0; this.hit = false;
-    for (const s of l.slides) this.image(s.img);
+    for (const s of l.pictures || []) this.image(s.img);
     this.glideTo(h);
   }
   close() {
@@ -187,9 +192,9 @@ export class Showcase {
     if (this.back && !this.userMoved) this.glide(this.back.pos, this.back.target, 1.0);
     this.back = null;
   }
-  step(d) { const n = this.cur.slides.length; this.slide = (this.slide + d + n) % n; this.scroll = 0; this.dirty = true; this.auto = this.auto === Infinity ? Infinity : AUTO; }
+  step(d) { const n = (this.cur.pictures || []).length; if (!n) return; this.slide = (this.slide + d + n) % n; this.dirty = true; this.auto = this.auto === Infinity ? Infinity : AUTO; }   // (the pictures only: the write-up stays where it was read to)
   scrollBy(px) { const max = Math.max(0, (this.textH || 0) - (this.textView || 0)); const s = THREE.MathUtils.clamp((this.scroll || 0) + px, 0, max); if (s !== this.scroll) { this.scroll = s; this.dirty = true; } }
-  slideLink() { const s = this.cur.slides[this.slide]; return s.link || this.cur.link || null; }
+  slideLink() { const s = (this.cur.pictures || [])[this.slide]; return (s && s.link) || this.cur.link || null; }
   image(src) {
     if (!src || this.imgs.has(src)) return this.imgs.get(src);
     const im = new Image(); im.decoding = 'async'; im.onload = () => { this.dirty = true; }; im.src = src; this.imgs.set(src, im); return im;
@@ -235,7 +240,7 @@ export class Showcase {
 
   // ── the screen's picture ─────────────────────────────────────────────────────────────────────────────────────
   draw() {
-    const c = this.ctx, l = this.cur, s = l.slides[this.slide], n = l.slides.length, k = this.scale, col = l.color || '#59d8ff';
+    const c = this.ctx, l = this.cur, pics = l.pictures || [], n = pics.length, s = pics[this.slide] || {}, k = this.scale, col = l.color || '#59d8ff', z = this.fz;   // (z: the type's size, bigger on a phone)
     c.setTransform(k, 0, 0, k, 0, 0); c.clearRect(0, 0, W, H);
     // the frame: a faint glass behind everything, a glowing edge
     round(c, 4, 4, W - 8, H - 8, 26); c.fillStyle = 'rgba(8, 26, 38, 0.38)'; c.fill(); c.lineWidth = 3; c.strokeStyle = rgba(col, 0.75); c.shadowColor = col; c.shadowBlur = 14; c.stroke(); c.shadowBlur = 0;
@@ -247,39 +252,47 @@ export class Showcase {
     // the picture (cut to fill its 16:9 box), with a hologram's faint scan lines
     c.save(); round(c, PIC.x, PIC.y, PIC.w, PIC.h, 14); c.clip();
     c.fillStyle = '#071219'; c.fillRect(PIC.x, PIC.y, PIC.w, PIC.h);
-    const im = this.image(s.img);
+    const im = s.img ? this.image(s.img) : null;
     if (im && im.complete && im.naturalWidth) { const r = Math.max(PIC.w / im.naturalWidth, PIC.h / im.naturalHeight), iw = im.naturalWidth * r, ih = im.naturalHeight * r;
       c.drawImage(im, PIC.x + (PIC.w - iw) / 2, PIC.y + (PIC.h - ih) / 2, iw, ih); }
-    else { c.fillStyle = rgba(col, 0.7); c.font = `500 28px ${FONT}`; c.textAlign = 'center'; c.fillText('loading…', PIC.x + PIC.w / 2, PIC.y + PIC.h / 2); c.textAlign = 'left'; }
+    else { c.fillStyle = rgba(col, 0.7); c.font = `500 28px ${FONT}`; c.textAlign = 'center'; c.fillText(n ? 'loading…' : 'pictures to come', PIC.x + PIC.w / 2, PIC.y + PIC.h / 2); c.textAlign = 'left'; }
     c.fillStyle = 'rgba(160, 230, 255, 0.05)'; for (let y = PIC.y; y < PIC.y + PIC.h; y += 4) c.fillRect(PIC.x, y, PIC.w, 1);
-    const g = c.createLinearGradient(0, PIC.y + PIC.h - 70, 0, PIC.y + PIC.h); g.addColorStop(0, 'rgba(4, 12, 18, 0)'); g.addColorStop(1, 'rgba(4, 12, 18, 0.7)'); c.fillStyle = g; c.fillRect(PIC.x, PIC.y + PIC.h - 70, PIC.w, 70);
+    const g = c.createLinearGradient(0, PIC.y + PIC.h - 90, 0, PIC.y + PIC.h); g.addColorStop(0, 'rgba(4, 12, 18, 0)'); g.addColorStop(1, 'rgba(4, 12, 18, 0.75)'); c.fillStyle = g; c.fillRect(PIC.x, PIC.y + PIC.h - 90, PIC.w, 90);
     c.restore();
-    // the counter and dots, the ×
-    c.font = `600 24px ${FONT}`; c.fillStyle = '#e8f8ff'; c.fillText(`${this.slide + 1} / ${n}${s.project && s.project !== l.label ? ' · ' + l.label : ''}`, PIC.x + 18, PIC.y + PIC.h - 18);
-    if (n > 1) { const dw = Math.min(22, 300 / n); for (let i = 0; i < n; i++) { c.beginPath(); c.arc(PIC.x + PIC.w - 24 - (n - 1 - i) * dw, PIC.y + PIC.h - 26, i === this.slide ? 6 : 4, 0, Math.PI * 2); c.fillStyle = i === this.slide ? '#ffffff' : rgba(col, 0.7); c.fill(); } }
+    // its caption, the dots (where it is among them), the ×
+    const dw = Math.min(22, 300 / Math.max(1, n)), dotsW = n > 1 ? (n - 1) * dw + 40 : 0;
+    if (s.caption) { c.font = `600 ${Math.round(26 * z)}px ${FONT}`; c.fillStyle = '#ffffff'; c.fillText(fit(c, s.caption, PIC.w - 36 - dotsW), PIC.x + 18, PIC.y + PIC.h - 18); }
+    if (n > 1) for (let i = 0; i < n; i++) { c.beginPath(); c.arc(PIC.x + PIC.w - 24 - (n - 1 - i) * dw, PIC.y + PIC.h - 26, i === this.slide ? 6 : 4, 0, Math.PI * 2); c.fillStyle = i === this.slide ? '#ffffff' : rgba(col, 0.7); c.fill(); }
     this.closeBox = { x: PIC.x + PIC.w - 62, y: PIC.y + 12, w: 50, h: 50 };
     c.beginPath(); c.arc(this.closeBox.x + 25, this.closeBox.y + 25, 23, 0, Math.PI * 2); c.fillStyle = this.hot === 'close' ? 'rgba(255,255,255,0.3)' : 'rgba(4, 12, 18, 0.6)'; c.fill();
     c.strokeStyle = '#ffffff'; c.lineWidth = 4; c.beginPath(); c.moveTo(this.closeBox.x + 16, this.closeBox.y + 16); c.lineTo(this.closeBox.x + 34, this.closeBox.y + 34); c.moveTo(this.closeBox.x + 34, this.closeBox.y + 16); c.lineTo(this.closeBox.x + 16, this.closeBox.y + 34); c.stroke();
-    // the text panel: solid, its title, when and with whom, a link, then the text, which scrolls
+    // the panel: solid; the project's title (and a Visit button), its subtitle, when and with what, then the write-up, which scrolls
     round(c, PANEL.x, PANEL.y, PANEL.w, PANEL.h, 16); c.fillStyle = '#0d1b26'; c.fill(); c.lineWidth = 2; c.strokeStyle = rgba(col, 0.35); c.stroke();
-    const x0 = PANEL.x + 30, x1 = PANEL.x + PANEL.w - 30, link = this.slideLink(), z = this.fz;   // (z: the type's size, bigger on a phone)
+    const x0 = PANEL.x + 30, x1 = PANEL.x + PANEL.w - 30, link = this.slideLink();
     let y = PANEL.y + 58 * z;
     const bh = Math.round(46 * z); c.font = `700 ${Math.round(24 * z)}px ${FONT}`; const bw = link ? c.measureText('Visit  ↗').width + 36 * z : 0;
     c.font = `700 ${Math.round(42 * z)}px ${FONT}`; const tw = (link ? x1 - bw - 20 : x1) - x0;
-    for (const line of wrap(c, s.title || s.project || l.label, tw).slice(0, 2)) { c.fillStyle = '#ffffff'; c.fillText(line, x0, y); y += 50 * z; }
+    for (const line of wrap(c, l.title || l.label, tw).slice(0, 2)) { c.fillStyle = '#ffffff'; c.fillText(line, x0, y); y += 50 * z; }
+    if (l.subtitle) { c.font = `600 ${Math.round(30 * z)}px ${FONT}`; c.fillStyle = '#cfeaf6'; for (const line of wrap(c, l.subtitle, x1 - x0).slice(0, 2)) { c.fillText(line, x0, y - 6); y += 40 * z; } }
     if (link) { c.font = `700 ${Math.round(24 * z)}px ${FONT}`; this.visitBox = { x: x1 - bw, y: PANEL.y + 22, w: bw, h: bh };
       round(c, this.visitBox.x, this.visitBox.y, bw, bh, bh / 2); c.fillStyle = this.hot === 'visit' ? col : rgba(col, 0.22); c.fill(); c.strokeStyle = col; c.lineWidth = 2; c.stroke();
       c.fillStyle = this.hot === 'visit' ? '#04121a' : '#e8fbff'; c.fillText('Visit  ↗', this.visitBox.x + 18 * z, this.visitBox.y + bh * 0.67); } else this.visitBox = null;
-    const meta = [s.dates || l.dates, s.madeWith || l.madeWith].filter(Boolean).join('   ·   ');
+    const meta = [l.dates, l.madeWith].filter(Boolean).join('   ·   ');
     if (meta) { c.font = `500 ${Math.round(25 * z)}px ${FONT}`; c.fillStyle = rgba(col, 0.95); for (const line of wrap(c, meta, x1 - x0)) { c.fillText(line, x0, y - 8); y += 34 * z; } }
     y += 6; c.fillStyle = rgba(col, 0.3); c.fillRect(x0, y - 18, x1 - x0, 2);
-    // the text, laid out once a slide, drawn from where it's scrolled to
+    // the write-up, laid out once a landmark, drawn from where it's scrolled to (its link headings noted where they show, for the pointer)
     const top = y, bottom = PANEL.y + PANEL.h - 18; this.textView = bottom - top;
-    const lines = this.lines && this.linesFor === s ? this.lines : (this.lines = layout(c, s.text || '', x1 - x0 - 14, z), this.linesFor = s, this.lines);
-    this.textH = lines.length ? lines[lines.length - 1].y + 40 * z : 0;
+    const lines = this.lines && this.linesFor === l ? this.lines : (this.lines = layout(c, l.text || '', x1 - x0 - 14, z), this.linesFor = l, this.lines);
+    this.textH = lines.length ? lines[lines.length - 1].y + 40 * z : 0; this.textLinks = [];
     c.save(); c.beginPath(); c.rect(PANEL.x, top - 8, PANEL.w, bottom - top + 8); c.clip();
-    c.font = `400 ${Math.round(30 * z)}px ${FONT}`; c.fillStyle = '#d6e6ee';
-    for (const ln of lines) { const ly = top + 22 * z + ln.y - this.scroll; if (ly < top - 60 || ly > bottom + 60) continue; if (ln.dot) { c.beginPath(); c.arc(x0 + 8, ly - 10, 5, 0, Math.PI * 2); c.fillStyle = col; c.fill(); c.fillStyle = '#d6e6ee'; } c.fillText(ln.t, x0 + ln.x, ly); }
+    for (const ln of lines) { const ly = top + 22 * z + ln.y - this.scroll; if (ly < top - 60 || ly > bottom + 60) continue;
+      c.font = ln.font; const hot = ln.url && this.hot === 'link:' + ln.url;
+      if (ln.dot) { c.beginPath(); c.arc(x0 + 8, ly - 10, 5, 0, Math.PI * 2); c.fillStyle = col; c.fill(); }
+      c.fillStyle = ln.kind === 'h1' ? '#ffffff' : ln.kind === 'h2' ? col : ln.kind === 'meta' ? rgba(col, 0.85) : '#d6e6ee'; if (hot) c.fillStyle = '#ffffff';
+      c.fillText(ln.t, x0 + ln.x, ly);
+      if (ln.url) { const w = c.measureText(ln.t).width; if (hot) c.fillRect(x0 + ln.x, ly + 6, w, 2);
+        const y0 = Math.max(ly - ln.size, top - 8), y1 = Math.min(ly + ln.size * 0.35, bottom);   // (only the part that shows can be clicked)
+        if (ly > top && ly - ln.size * 0.75 < bottom && y1 > y0) this.textLinks.push({ x: x0 + ln.x - 6, y: y0, w: w + 12, h: y1 - y0, url: ln.url }); } }
     c.restore();
     // more below (or above): a fade and a thin bar
     if (this.textH > this.textView) {
@@ -300,15 +313,26 @@ function wrap(c, text, w) {
   for (const word of String(text).split(/\s+/)) { if (!word) continue; const t = line ? line + ' ' + word : word; if (c.measureText(t).width > w && line) { out.push(line); line = word; } else line = t; }
   if (line) out.push(line); return out;
 }
-// the body text in lines: paragraphs (a blank line between), and lines starting "- " or "• " as a list with a dot
+// the write-up in lines: paragraphs (a blank line between); '# ' and '## ' headings (ending ' [url]': a link), '> ' a line of
+// when and with what, '- ' or '• ' a list with a dot. Each line keeps its kind, font and size for drawing
+const KIND = { h1: [700, 36, 48, 18, 4], h2: [600, 31, 42, 6, 4], meta: [500, 25, 34, 0, 12], body: [400, 30, 42, 0, 20] };   // weight, size, line height, room above, room after its paragraph
 function layout(c, text, w, z = 1) {
-  c.font = `400 ${Math.round(30 * z)}px ${FONT}`; const out = []; let y = 0;
+  const out = []; let y = 0;
   for (const para of String(text).split(/\n\s*\n/)) {
+    let kind = 'body';
     for (const raw of para.split('\n')) {
-      const dot = /^\s*[-•]\s+/.test(raw), body = raw.replace(/^\s*[-•]\s+/, ''), indent = dot ? 28 : 0;
-      wrap(c, body, w - indent).forEach((t, i) => { out.push({ t, x: indent, y, dot: dot && i === 0 }); y += 42 * z; });
+      kind = /^#\s/.test(raw) ? 'h1' : /^##\s/.test(raw) ? 'h2' : /^>\s/.test(raw) ? 'meta' : 'body';
+      let body = raw.replace(/^(#{1,2}|>)\s+/, ''), url = null;
+      if (kind === 'h1' || kind === 'h2') { const m = body.match(/\s*\[(\S+)\]\s*$/); if (m) { url = m[1]; body = body.slice(0, m.index) + '  ↗'; } }
+      const dot = kind === 'body' && /^\s*[-•]\s+/.test(body); if (dot) body = body.replace(/^\s*[-•]\s+/, '');
+      const [wt, sz, lh, above] = KIND[kind], size = Math.round(sz * z), font = `${wt} ${size}px ${FONT}`, indent = dot ? 28 : 0;
+      if (out.length) y += above * z;
+      c.font = font;
+      wrap(c, body, w - indent).forEach((t, i) => { out.push({ t, x: indent, y, dot: dot && i === 0, kind, font, size, url }); y += lh * z; });
     }
-    y += 20 * z;
+    y += KIND[kind][4] * z;
   }
   return out;
 }
+// one line cut to a width, with an ellipsis if it had to be
+function fit(c, text, w) { if (c.measureText(text).width <= w) return text; let t = text; while (t.length > 1 && c.measureText(t + '…').width > w) t = t.slice(0, -1); return t.trimEnd() + '…'; }

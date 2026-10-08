@@ -321,7 +321,7 @@ function loadRoom(name) {
   placeSitter();
   $('boot')?.remove();
   bootProgress('cabin', 1); loadSitter(); loadStation();
-  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getProps: () => PROPS, total, getHangarSet: () => hangarSet, getValley: () => valley, getTownCam: () => townCam, getTownWarm: () => townWarm, getWarm: () => WARM, TOWNTOUR, tourStart, tourStop, MAP_HANDOFF, hangarShipPos, getMap: () => mapSet, getTown: () => town, TOWN_INPUT, getStorm: () => STORM, isTownFailed: () => townFailed });
+  if (Q.has('probe')) Object.assign(window, { THREE, scene, camera, controls, renderer, room, earth, post, chairPivot, windows, frame, loadRoom, build, SITTER, placeSitter, getSitter: () => sitter, SEQ, KEYS, ACTS, PARTS, SCREENS, seek, faceCamera, term, BOOT, startPullBack, getStation: () => station, getHangar: () => ({ hangarAt, bayAt, hangarMouth }), playIntro, activateIntro, setLight, holos, getWave: () => waveAction, RESUME, FLY, HANGAR, SCREEN_FIT, applyScreenFit, CHAIR, HELMET, applyHelmetFit, MAPFIT, applyMapFit, MAP, TOUR, FLYBYS, getProps: () => PROPS, total, getHangarSet: () => hangarSet, getValley: () => valley, getTownCam: () => townCam, getTownWarm: () => townWarm, getWarm: () => WARM, TOWNTOUR, tourStart, tourStop, MAP_HANDOFF, hangarShipPos, getMap: () => mapSet, getTown: () => town, TOWN_INPUT, getStorm: () => STORM, isTownFailed: () => townFailed, TOWN_VIEW });
   }, (e) => { const pct = $('pct'); if (pct && e.total) pct.textContent = Math.round(e.loaded / e.total * 100) + '%'; if (e.total) bootProgress('cabin', e.loaded / e.total); },
      (e) => { console.error(e); const boot = $('boot'); if (boot) boot.textContent = 'LOAD FAILED — ' + e.message; });
 }
@@ -572,10 +572,11 @@ const KEYS = [
   { t: 51.5,  set: 'map', cam: { at: 'chase', back: 40, up: 12, side: 0 },  look: 'ship' },
   { t: 52.09, set: 'map', cam: { at: 'chase', back: 42, up: 14, side: -6 }, look: 'ship' },
   // THE TOWN. Out of the white: the valley, the fighter coming down through the clouds into its open west end, the camera
-  // high behind it. From the last key the flight is live - tap or click where to go, or WASD - and the landmarks are the
-  // projects (hover or tap one for its name, click it for its hologram).
+  // high behind it, swinging round to the town's own view (TOWN_VIEW: high, looking north, the angle fixed). From the last
+  // key the flight is live - tap or click where to go, or WASD - and the landmarks are the projects (hover or tap one for
+  // its name, click it for its hologram).
   { t: 52.1, set: 'town', cam: { at: 'follow', back: 120, up: 90 }, look: 'jet' },
-  { t: 55.59, set: 'town', cam: { at: 'follow', back: 38, up: 20 },  look: 'jet' },
+  { t: 55.59, set: 'town', cam: { at: 'view' }, look: 'jetAt' },
 ];
 const ACTS = { wave: 1.3, stand: 2.7, walk: 4.2, walkSpeed: 1.1, walkDir: 75 };   // Jacob's quicker start (2026-09-27)   // seconds; m/s; degrees from +z toward +x
 // in the hangar: when he starts walking in, where from (metres beside the fighter's spot, the
@@ -713,53 +714,56 @@ function stepTown(T, a, b, u, set = 'town') {
     town.poseAt(T - t0, total() - t0); town.liveFrom = false; tourStop(false); tourBar(); }
   else { town.poseAt(total() - t0, total() - t0); town.liveFrom = true; TOWNTOUR.startAt = performance.now() + 1500; }   // however it got here (a jump to the end, too), the live flight starts where the arrival ends
   { const k = T - t0; town.setCloud(k < 0.35 ? 1 - 0.6 * THREE.MathUtils.smoothstep(k, 0, 0.35) : 0.4 * (1 - THREE.MathUtils.smoothstep(k, 0.35, 2.4))); }   // (white at the cut, wisps a third of a second on, gone by two and a half)
-  camera.position.copy(cameraAt(T)).add(TOWN_AT);
-  controls.target.copy(lookPoint(a.look, set).lerp(lookPoint(b.look, set), u)); camera.lookAt(controls.target);
+  const e = 1 - (1 - u) * (1 - u);                                   // (eased out like the fighter's own arrival: the camera's swing into the town's view comes to rest with it, so the live flight takes over without a jolt)
+  camera.position.copy(cameraAt(a.t + e * (b.t - a.t))).add(TOWN_AT);
+  controls.target.copy(lookPoint(a.look, set).lerp(lookPoint(b.look, set), e)); camera.lookAt(controls.target);
   syncTownCam(); town.faceClouds(townCam);
   post.focus = camera.position.distanceTo(controls.target);
   for (const h of holos) h.fill = 0;
   showTime();
 }
-// the live flight, once the timeline has run out: the fighter goes where it is sent and the
-// camera follows it smoothly
-const FOLLOW = { back: 38, up: 20, ahead: 30 };
+// the live flight, once the timeline has run out: the fighter goes where it is sent and the camera follows it at one fixed
+// angle, as RMRF's does: high, looking north (`dist` m from the fighter, `pitch` radians down, `yaw` round from the south),
+// never turning with it, so a tap on the ground always means the same direction on screen
+const TOWN_VIEW = { dist: 70, pitch: 0.72, yaw: 0 };
+const townView = () => { const { dist, pitch, yaw } = TOWN_VIEW; return new THREE.Vector3(dist * Math.cos(pitch) * Math.sin(yaw), dist * Math.sin(pitch), dist * Math.cos(pitch) * Math.cos(yaw)); };
 function liveTown(dt) {
   if (!town || currentSet !== 'town') return;
   town.update(dt, TOWN_INPUT);
   const sc = valley.SHOW.sc;
   if (!(sc && (sc.gliding || sc.isOpen))) {                // (a hologram open, or its camera on the way: the camera is its)
-    const f = town.forward(), want = town.state.pos.clone().addScaledVector(f, -FOLLOW.back).add(new THREE.Vector3(0, FOLLOW.up, 0));
-    want.y = Math.max(want.y, town.groundAt(want.x, want.z) + 6);   // (never into a hillside behind it)
-    townCam.position.lerp(want, Math.min(1, dt * 2.5));
-    townControls.target.lerp(town.lookAhead(FOLLOW.ahead), Math.min(1, dt * 4)); townCam.lookAt(townControls.target);
+    const want = town.state.pos.clone().add(townView()), k = Math.min(1, dt * 3);
+    want.y = Math.max(want.y, town.groundAt(want.x, want.z) + 6);   // (never into a hillside)
+    townCam.position.lerp(want, k); townControls.target.lerp(town.state.pos, k); townCam.lookAt(townControls.target);   // (both eased alike: the angle holds while it moves)
   }
   town.faceClouds(townCam);
 }
-// THE TOUR: a little after the fighter has arrived, it flies to each landmark in turn (in from the side the landmark faces,
-// so its hologram faces the camera; the globe with the observatory behind it; Montana's flowers from the south, so the
-// state reads the right way up) and opens its hologram for a while, then flies on. Any touch, click, scroll or key hands
-// the controls back at once (an open hologram stays, still: a tap off it closes it); the bar at the bottom says where the
-// tour is, and offers it again (a scroll still runs the film: back, it leaves the town, and the tour starts over when the
-// arrival comes round again). `item`: the layout's own building or prop (else the landmark's first); `d`: how far out
-// the fighter stops; `side`: the way from the landmark to the viewer, if not the way it faces
-const TOWNTOUR = { on: false, user: false, done: false, i: -1, phase: 'idle', t: 0, leg: 0, A: null, B: null, target: null, startAt: 0, dwell: 10, shown: '', shownCur: false,
+// THE TOUR: a little after the fighter has arrived, it flies straight to each landmark in turn, stops beside it (to the
+// side as the camera sees it, the side it came from, so it never stands between the camera and the hologram), opens its
+// hologram and waits while its pictures go by (each picture's few seconds, all of them), then flies on. Any touch, click,
+// scroll or key hands the controls back at once (an open hologram stays, still: a tap off it closes it); the bar at the
+// bottom says where the tour is, and offers it again (a scroll still runs the film: back, it leaves the town, and the tour
+// starts over when the arrival comes round again). `item`: the layout's own building or prop (else the landmark's first);
+// `d`: how far beside it the fighter stops
+const TOWNTOUR = { on: false, user: false, done: false, i: -1, phase: 'idle', t: 0, P: null, target: null, startAt: 0, dwell: 10, cruise: 28, shown: '', shownCur: false,
   stops: [
-    { id: 'rmrf', item: 'imurp4z641c', d: 52 },                         // the hangar, from its open front (the Lurcher in its door)
-    { id: 'subnet', item: 'obelisk1', d: 26 },                          // the obelisk, from the face its message starts on
-    { id: 'math', item: 'imurp4z6311', d: 50 },                         // the school, from the street it faces
-    { id: 'labs', item: 'imurp4z63u', d: 26 },                          // an easel on the plaza
-    { id: 'portfolio', item: 'imurp4z632', d: 58 },                     // the town hall, from the plaza
-    { id: 'valehex', item: 'valehex1', d: 30, side: [0.71, 0.71] },     // the globe, the observatory behind it
-    { id: 'montana', item: 'montana1', d: 52, side: [0, 1] },           // the outline in flowers, from the south
-    { id: 'shipwrecked', item: 'raft1', d: 38, side: [0, -1] },         // the raft on the pond, from the town's shore
+    { id: 'rmrf', item: 'imurp4z641c', d: 52 },                         // the hangar (the Lurcher in its door)
+    { id: 'subnet', item: 'obelisk1', d: 30 },                          // the obelisk
+    { id: 'math', item: 'imurp4z6311', d: 50 },                         // the school
+    { id: 'labs', item: 'imurp4z63u', d: 30 },                          // an easel on the plaza
+    { id: 'portfolio', item: 'imurp4z632', d: 58 },                     // the town hall
+    { id: 'valehex', item: 'valehex1', d: 34 },                         // the globe by the observatory
+    { id: 'montana', item: 'montana1', d: 52 },                         // the outline in flowers (read the right way up: the view looks north)
+    { id: 'shipwrecked', item: 'raft1', d: 40 },                        // the raft on the pond
   ] };
-// where to stop for a landmark: A, well out; then B, in front of it (so the fighter arrives facing it)
+// where to stop for a landmark: beside it, across the camera's view, on the side the fighter is coming from
 function tourAim(stop) {
   const T = TOWNTOUR, all = valley.SHOW.sc.targets(), tg = all.find((t) => t.item && t.item.id === stop.item) || all.find((t) => t.id === stop.id);
   if (!tg || !tg.box) return false;
-  const c = tg.box.getCenter(new THREE.Vector3()), a = ((tg.item && tg.item.rot) || 0) * Math.PI / 180;
-  const s = stop.side ? new THREE.Vector3(stop.side[0], 0, stop.side[1]).normalize() : new THREE.Vector3(Math.sin(a), 0, Math.cos(a));   // (a building's front: its own +z, turned with it)
-  T.target = tg; T.A = c.clone().addScaledVector(s, stop.d + 45).setY(0); T.B = c.clone().addScaledVector(s, stop.d).setY(0);
+  const c = tg.box.getCenter(new THREE.Vector3()), across = new THREE.Vector3(Math.cos(TOWN_VIEW.yaw), 0, -Math.sin(TOWN_VIEW.yaw));   // (square to the way the camera looks)
+  const side = Math.sign(across.dot(town.state.pos.clone().sub(c))) || 1;
+  const fit = Math.min(1, townCam.aspect / (16 / 9));                 // (a phone held upright sees a narrow strip across: it stops that much closer, so the landmark stays in view)
+  T.target = tg; T.P = c.addScaledVector(across, side * stop.d * fit).setY(0);
   return true;
 }
 function tourStart(from = 0) {
@@ -771,13 +775,13 @@ function tourNext() {
   const T = TOWNTOUR; T.i++;
   while (T.i < T.stops.length && !tourAim(T.stops[T.i])) T.i++;     // (a landmark that isn't there: passed over)
   if (T.i >= T.stops.length) { T.on = false; T.done = true; T.i = -1; TOWN_INPUT.dest = null; TOWN_INPUT.cruise = 0; tourBar(); return; }
-  T.phase = 'fly'; T.leg = 0; T.t = 0; T.shownCur = false; TOWN_INPUT.dest = T.A.clone(); TOWN_INPUT.cruise = 24; TOWN_INPUT.holding = false; tourBar();
+  T.phase = 'fly'; T.t = 0; T.shownCur = false; TOWN_INPUT.dest = T.P.clone(); TOWN_INPUT.cruise = T.cruise; TOWN_INPUT.holding = false; tourBar();
 }
 function tourStop(byUser = true) {
   const T = TOWNTOUR; if (!T.on) return;
   T.on = false; if (byUser) T.user = true;
   TOWN_INPUT.dest = null; TOWN_INPUT.cruise = 0;
-  const sc = valley && valley.SHOW.sc; if (sc && (sc.isOpen || sc.gliding)) { sc.touched(); sc.back = null; }   // (it stays, the slides still; closed later, the camera goes back to the fighter)
+  const sc = valley && valley.SHOW.sc; if (sc && (sc.isOpen || sc.gliding)) sc.back = null;   // (it stays open, its pictures still moving unless the visitor pressed one; closed later, the camera goes back to the fighter)
   tourBar();
 }
 function tourStep(dt) {
@@ -785,10 +789,9 @@ function tourStep(dt) {
   if (!T.on) { if (T.startAt && performance.now() > T.startAt && !T.user && valley && valley.SHOW.sc) { T.startAt = 0; tourStart(0); } tourBar(); return; }
   if (!liveInTown() || !valley.SHOW.sc) { tourStop(false); return; }
   const sc = valley.SHOW.sc, p = town.state.pos; T.t += dt;
-  if (T.phase === 'fly') {   // (30 s a stretch at most: held up somewhere, on with the next)
-    if (T.leg === 0 && (Math.hypot(p.x - T.A.x, p.z - T.A.z) < 25 || T.t > 30)) { T.leg = 1; T.t = 0; TOWN_INPUT.dest = T.B.clone(); }   // (on into the last stretch without stopping)
-    else if (T.leg === 1 && ((!TOWN_INPUT.dest && town.state.speed < 1.5) || T.t > 30)) { T.phase = 'settle'; T.t = 0; }
-  } else if (T.phase === 'settle') { if (T.t > 0.8) { sc.present(T.stops[T.i].id, T.target); T.phase = 'show'; T.t = 0; T.shownCur = true; } }
+  if (T.phase === 'fly') { if ((!TOWN_INPUT.dest && town.state.speed < 1.5) || T.t > 45) { T.phase = 'settle'; T.t = 0; } }   // (45 s at most: held up somewhere, on with it)
+  else if (T.phase === 'settle') { if (T.t > 0.8) { const id = T.stops[T.i].id, l = sc.byId.get(id), n = l && l.pictures ? l.pictures.length : 1;
+    sc.present(id, T.target); T.dwell = Math.max(7, 0.8 + n * (sc.every || 4)); T.phase = 'show'; T.t = 0; T.shownCur = true; } }   // (long enough for every picture: the opening, then each one's turn, closing just before the first comes round again)
   else if (T.phase === 'show') { if (T.t > T.dwell) { sc.close(); T.phase = 'back'; T.t = 0; } }
   else if (T.phase === 'back') { if (!sc.gliding && T.t > 1.2) tourNext(); }
   tourBar();
@@ -1204,6 +1207,7 @@ const lookPoint = (l, set) => {
   if (l === 'ship') return set === 'map' ? (mapSet ? mapSet.ship.getWorldPosition(new THREE.Vector3()) : MAP_AT.clone())
                            : hangarSet ? hangarSet.ship.getWorldPosition(new THREE.Vector3()) : HANGAR_AT.clone();
   if (l === 'jet') return town ? town.lookAhead(26).add(TOWN_AT) : TOWN_AT.clone();
+  if (l === 'jetAt') return town ? town.state.pos.clone().add(TOWN_AT) : TOWN_AT.clone();
   if (l === 'earth' && set === 'hangar' && hangarSet && hangarSet.earthOut) return hangarSet.earthOut.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 2600, 0));   // a little above the photo's middle, so the fighter climbing away stays in frame
   if (l === 'cockpit') return hangarSet ? hangarSet.ship.localToWorld(hangarSet.seat.clone().add(new THREE.Vector3(0, 0.7, 0))) : HANGAR_AT.clone();
   const p = new THREE.Vector3(...l); return set === 'station' ? p.add(STATION_AT) : set === 'hangar' ? p.add(HANGAR_AT) : set === 'map' ? p.add(MAP_AT) : set === 'town' ? p.add(TOWN_AT) : p;
@@ -1230,6 +1234,7 @@ function camOf(key) {
     if (!town) return new THREE.Vector3();
     return town.state.pos.clone().addScaledVector(town.forward(), -(c.back || 0)).add(new THREE.Vector3(0, c.up || 0, 0));
   }
+  if (setOf(key) === 'town' && c.at === 'view') return town ? town.state.pos.clone().add(townView()) : new THREE.Vector3();   // (the live flight's own view of the fighter)
   if (setOf(key) === 'map' && c.at === 'chase') {   // behind the fighter over the map, along the way it is going
     if (!mapSet) return new THREE.Vector3();
     const dir = new THREE.Vector3(1, 0, 0).applyQuaternion(mapSet.ship.quaternion), right = dir.clone().cross(new THREE.Vector3(0, 0, 1)).normalize();
