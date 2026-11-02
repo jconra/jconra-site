@@ -126,6 +126,7 @@ export const FOREST_SPECIES = [
   { name: 'bush',  file: 'bush',  height: 5,  weight: 0.5, soften: 0.5 },
 ];
 
+const FOREST_CLOSE = 40;   // m round the camera where a plant is whole whichever way it looks (a page's tiers may set `close`; 0 turns it off)
 export class Forest {
   // `clear(x, z)` says whether a spot is kept free of trees (the town); `light` is the weak-GPU mode
   // `species`: a list like FOREST_SPECIES; an entry may bring its own `root` (an Object3D, already
@@ -134,9 +135,9 @@ export class Forest {
   // yaw, tint (optional THREE.Color) } to plant instead of the endless tiles; `heightAt(x, z)` stands them on uneven ground.
   constructor(renderer, scene, { base = '/models/trees/', tile = 420, tiles = 7, perTile = 90, imposterAt = 140, band = 40, ahead = 0.75,
                                  grid = 12, cell = 192, light = false, detail = 'coarse', clear = null, sunDir = new THREE.Vector3(0.5, 1, 0.3), shadows = false,
-                                 species = null, fixed = null, heightAt = null, nearCap = 400, wind = false, spread = 0, shadowEdge = null, lamps = null } = {}) {
+                                 species = null, fixed = null, heightAt = null, nearCap = 400, close = FOREST_CLOSE, wind = false, spread = 0, shadowEdge = null, lamps = null } = {}) {
     this.wind = wind;                   // sway in the shared breeze (src/objects/wind.js); a species' `sway` (0..1, default 1) says how much
-    Object.assign(this, { renderer, scene, base, tile, tiles, perTile, imposterAt: light ? 0 : imposterAt, band, ahead, spread, grid: light ? 8 : grid, cell, detail, clear, sunDir, shadows: shadows && !light, light, fixed, heightAt, nearCap , lamps });
+    Object.assign(this, { renderer, scene, base, tile, tiles, perTile, imposterAt: light ? 0 : imposterAt, band, ahead, spread, grid: light ? 8 : grid, cell, detail, clear, sunDir, shadows: shadows && !light, light, fixed, heightAt, nearCap, close, lamps });
     this.group = new THREE.Group(); scene.add(this.group);
     this.species = (species || FOREST_SPECIES).map(s => ({ ...s }));
     this.tilesLaid = new Map();          // "tx,tz" -> [{ pos, yaw, scale, tint, sp }]
@@ -162,7 +163,15 @@ export class Forest {
       const root = sp.root; root.updateMatrixWorld(true);
       if ((sp.leafScale || sp.leafCopies) && !root.userData.leavesGrown) { fillLeaves(root, sp.leafScale || 1, sp.leafCopies || 0); root.userData.leavesGrown = true; }
       const box = new THREE.Box3().setFromObject(root), size = box.getSize(new THREE.Vector3());
-      sp.unit = sp.height / size.y; sp.box0 = box.min.y; sp.boxH = size.y; sp.baseY = box.min.y + (sp.sink || 0) * size.y; sp.root = root;   // (sink: that share of its height under the ground)
+      // its foot: the lowest point of the trunk and branches. Leaf cards (grown out by fillLeaves) can droop below the trunk's
+      // foot, and a tree stood on those floated (the ash: over half a metre up). A plant all of leaves keeps its box's bottom.
+      // footR: how far out the trunk reaches there (model units), so the ground can be read round it (heightAt's third word)
+      let foot = Infinity; const part = new THREE.Box3(), woody = [];
+      root.traverse(o => { if (o.isMesh && !Array.isArray(o.material) && !(o.material.alphaTest > 0 || o.material.transparent || /lea[fv]/i.test(o.material.name || ''))) { woody.push(o); foot = Math.min(foot, part.setFromObject(o).min.y); } });
+      const low = Number.isFinite(foot) ? Math.max(box.min.y, foot) : box.min.y;
+      sp.footR = 0;
+      if (Number.isFinite(foot)) { const v = new THREE.Vector3(); for (const o of woody) { const P = o.geometry.attributes.position; for (let i = 0; i < P.count; i++) { v.fromBufferAttribute(P, i).applyMatrix4(o.matrixWorld); if (v.y < foot + size.y * 0.01) sp.footR = Math.max(sp.footR, Math.hypot(v.x, v.z)); } } }
+      sp.unit = sp.height / size.y; sp.box0 = low; sp.boxH = size.y; sp.baseY = low + (sp.sink || 0) * size.y; sp.root = root;   // (sink: that share of its height under the ground)
       const shapeKey = sp.shape ? JSON.stringify(sp.shape) : '';          // (a species handed on to a new forest is already shaped)
       if (sp.shape && root.userData.shapedWith !== shapeKey) { sp.shapeInfo = shapeFoliage(root, sp.unit, sp.shape); root.userData.shapedWith = shapeKey; }
       root.traverse(o => { if (o.isMesh && !Array.isArray(o.material)) { o.material.side = THREE.DoubleSide; if (o.material.map) o.material.map.anisotropy = 4; if (o.material.transparent) { o.material.alphaTest = 0.5; o.material.transparent = false; } } });
@@ -213,7 +222,7 @@ export class Forest {
       let pick = r() * total, sp = this.species[0]; for (const s of this.species) { pick -= s.weight; if (pick <= 0) { sp = s; break; } }
       const yaw = r() * Math.PI * 2, scale = 0.7 + r() * 0.6, tint = new THREE.Color().setHSL(0.26 + r() * 0.08, 0.35 + r() * 0.25, 0.62 + r() * 0.18);
       if (this.clear && this.clear(x, z)) continue;
-      out.push({ pos: new THREE.Vector3(x, this.heightAt ? this.heightAt(x, z) : 0, z), yaw, scale, tint, sp });
+      out.push({ pos: new THREE.Vector3(x, this.heightAt ? this.heightAt(x, z, (sp.footR || 0) * scale * sp.unit) : 0, z), yaw, scale, tint, sp });
     }
     return out;
   }
@@ -239,7 +248,8 @@ export class Forest {
   }
   layOne(f, i) {
     const r = rnd(i * 2654435761 + 7), sp = this.species[f.sp];
-    return { pos: new THREE.Vector3(f.x, this.heightAt ? this.heightAt(f.x, f.z) : 0, f.z), yaw: f.yaw ?? r() * Math.PI * 2, scale: f.scale ?? 0.7 + r() * 0.6,
+    const yaw = f.yaw ?? r() * Math.PI * 2, scale = f.scale ?? 0.7 + r() * 0.6;   // (heightAt's third word: how far out the trunk's foot reaches)
+    return { pos: new THREE.Vector3(f.x, this.heightAt ? this.heightAt(f.x, f.z, (sp.footR || 0) * scale * sp.unit) : 0, f.z), yaw, scale,
       tint: f.tint ? f.tint.clone() : sp.tint === false ? new THREE.Color(1, 1, 1).multiplyScalar(0.85 + r() * 0.3) : new THREE.Color().setHSL(0.26 + r() * 0.08, 0.35 + r() * 0.25, 0.62 + r() * 0.18), sp };
   }
   growDraws(cap) {
@@ -369,6 +379,8 @@ export class Forest {
     // SPREAD: each tree switches at its own distance, D * (1 - spread / 2 .. 1 + spread / 2), so the change
     // comes a tree at a time instead of as one line across the wood
     const S = THREE.MathUtils.clamp(this.spread || 0, 0, 1.5);
+    // (nearK: at the close distance even the earliest-changing plant still counts as inside its crossfade, so it's whole)
+    const eye = camera.position, C = Math.min(this.close, D * 0.25), nearK = C > 0 ? Math.max(1, (D * (1 - S / 2) - B) / C) : 0;
     const reach = D * (1 + S / 2) + B, reach2 = reach * reach, cx = camP.x, cy = camP.y, cz = camP.z;
     for (const b of this.built) {
       const { sp, imposter, meshes, trees } = b, iFade = imposter.geometry.attributes.iFade, aFade = iFade.array;
@@ -381,14 +393,22 @@ export class Forest {
       for (let k = 0; k < trees.length; k++) { const t = trees[k], p = t.pos, dx = p.x - cx, dy = p.y - cy, dz = p.z - cz, d2 = dx * dx + dy * dy + dz * dz;
         if (d2 >= reach2) continue;
         if (t.sw === undefined) t.sw = switchHash(p.x, p.z);              // (0..1, fixed by where the tree stands)
-        const Dk = D * (1 + S * (t.sw - 0.5)), d = Math.sqrt(d2);
-        if (d < Dk + B) cand.push([k, d, Dk]); }
+        const Dk = D * (1 + S * (t.sw - 0.5));
+        // how far it counts as being: from the circle pushed ahead of the view, but close to the camera itself, whichever way
+        // it looks, it counts as well inside (a tree at your elbow was out in the crossfade, or beaten to a slot). Smooth, so
+        // turning hands trees over one by one, at each one's own distance, as moving does.
+        const rx = p.x - eye.x, ry = p.y - eye.y, rz = p.z - eye.z, dCam = Math.sqrt(rx * rx + ry * ry + rz * rz), d = nearK > 0 ? Math.min(Math.sqrt(d2), dCam * nearK) : Math.sqrt(d2);
+        if (d < Dk + B) cand.push([k, d, Dk, dCam - 0.4 * (rx * fwd.x + rz * fwd.z)]); }
       const cap = meshes[0].instanceMatrix.count;
-      if (cand.length > cap) cand.sort((p, q) => (p[1] - p[2]) - (q[1] - q[2]));   // more than fit: the deepest inside their own distance win (past the cap the imposter stays whole)
+      if (cand.length > cap) cand.sort((p, q) => p[3] - q[3]);   // more than fit: the nearest the camera win, those ahead over those behind (past the cap the imposter stays whole)
       const n = Math.min(cap, cand.length);
+      // over the cap, the last slots ease out by their place in the line (as wide as the overflow, up to a fifth of the slots), so
+      // a tree losing its slot has already gone to its imposter: flying over a thick wood, whole trees were snapping (30 in a frame)
+      const ease = Math.min(cap * 0.2, cand.length - cap);
       for (let i = 0; i < n; i++) {
         const [k, d, Dk] = cand[i], t = trees[k];
-        const f = B > 0 ? THREE.MathUtils.clamp((Dk + B - d) / (2 * B), 0, 1) : d < Dk ? 1 : 0;
+        let f = B > 0 ? THREE.MathUtils.clamp((Dk + B - d) / (2 * B), 0, 1) : d < Dk ? 1 : 0;
+        if (ease > 0) f = Math.min(f, (n - i) / (ease + 1));
         aFade[k] = 1 - f; b.near.push(k); if (k < lo) lo = k; if (k > hi) hi = k;
         tmpQ.setFromAxisAngle(Y, t.yaw); tmpS.setScalar(t.scale * sp.unit); tmpP.copy(t.pos); tmpP.y -= sp.baseY * t.scale * sp.unit; tmpM.compose(tmpP, tmpQ, tmpS);
         for (const m of meshes) { m.setMatrixAt(i, tmpM.clone().multiply(m.userData.local)); m.userData.fade.array[i] = f; m.setColorAt(i, t.tint); }

@@ -15,6 +15,7 @@ import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometr
 import { makeValehexGlobe } from './valehexGlobe.js';
 import { makeStateMap } from './stateMap.js';
 import { makeObelisk } from './obelisk.js';
+import { signpostParts, signTexture, boardsAt } from './signpost.js';
 
 // footprint is [width along x, depth along z] in metres. The signpost's is its post and the stones
 // round it: it turns about the post, and its arrows reach out 0.8 m above head height.
@@ -62,6 +63,7 @@ function materials() {
     glow: new THREE.MeshStandardMaterial({ color: 0x8a6a40, emissive: 0xffcf80, emissiveIntensity: 1.5, roughness: 0.4 }),
     paint: new THREE.MeshStandardMaterial({ map: paintingTexture(), roughness: 0.92 }),
     bloom: new THREE.MeshStandardMaterial({ map: bloomTexture(), roughness: 0.95 }),
+    sign: new THREE.MeshStandardMaterial({ map: signTexture(), roughness: 0.96 }),
   };
   return MAT;
 }
@@ -207,7 +209,7 @@ function blob(r) {
 // darken towards the ground (a painted-in contact shadow); k = 1 above 30 cm
 const ao = (y) => { const t = Math.min(1, Math.max(0, y / 0.3)); return 0.74 + 0.26 * t * t * (3 - 2 * t); };
 
-const TEXTURED = new Set(['paint', 'bloom']);   // materials whose parts keep their uvs
+const TEXTURED = new Set(['paint', 'bloom', 'sign']);   // materials whose parts keep their uvs
 
 // Collects parts per material; `build()` merges each material's parts into one geometry.
 class Kit {
@@ -443,34 +445,8 @@ function stall(k) {
   });
 }
 
-// Signpost: a square post with a pyramid cap, three painted arrow boards pointing different ways
-// (dark strokes standing in for the lettering), and a few stones and tufts round its foot.
-function signpost(k) {
-  k.add('matte', place(chamferBox(0.11, 2.2, 0.11, 0.015), [0, 1.1, 0]), C.woodDark);
-  k.add('matte', place(new THREE.ConeGeometry(0.095, 0.12, 4), [0, 2.26, 0], [0, Math.PI / 4, 0]), C.woodDark);
-  const shape = new THREE.Shape(), AL = 0.78, AH = 0.17, TIP = 0.13;
-  shape.moveTo(-0.07, -AH / 2); shape.lineTo(AL - TIP, -AH / 2); shape.lineTo(AL, 0); shape.lineTo(AL - TIP, AH / 2); shape.lineTo(-0.07, AH / 2); shape.closePath();
-  const DEPTH = 0.03, BV = 0.007;
-  const arrows = [[1.98, -0.25, 0x7aa886], [1.76, Math.PI + 0.3, 0xe0b04a], [1.54, 0.5, 0xc9694a]];
-  for (const [y, ang, colour] of arrows) {
-    const q = new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), ang);
-    const g = new THREE.ExtrudeGeometry(shape, { depth: DEPTH, bevelEnabled: true, bevelThickness: BV, bevelSize: BV, bevelSegments: 1, curveSegments: 1 });
-    g.translate(0, 0, -DEPTH / 2);
-    k.add('matte', place(g, [0, y, 0], q), colour, { shade: false });
-    // "lettering" on both faces
-    for (const side of [-1, 1]) for (const [lx, ly, lw] of [[0.29, 0.03, 0.34], [0.25, -0.03, 0.26]]) {
-      const s = place(new THREE.BoxGeometry(lw, 0.024, 0.004), [lx, ly, side * (DEPTH / 2 + BV + 0.001)]);
-      k.add('matte', place(s, [0, y, 0], q), 0x3a2a1e, { shade: false });
-    }
-  }
-  // stones and grass round the foot
-  [[0.13, 0.07, 0.12], [-0.12, 0.1, 0.1], [0.02, -0.14, 0.13]].forEach(([x, z, r]) =>
-    k.add('matte', place(new THREE.DodecahedronGeometry(r, 0), [x, r * 0.35, z], [k.r() * 3, k.r() * 3, 0], [1.2, 0.6, 1]), k.tone(C.stone, 0.08)));
-  for (let i = 0; i < 7; i++) {
-    const a = i * 0.9 + k.r() * 0.5, d = 0.1 + k.r() * 0.12, h = 0.08 + k.r() * 0.08;
-    k.add('matte', place(new THREE.ConeGeometry(0.035, h, 4), [Math.cos(a) * d, h / 2, Math.sin(a) * d], [(k.r() - 0.5) * 0.4, k.r(), (k.r() - 0.5) * 0.4]), k.tone(C.leaf, 0.1), { shade: false });
-  }
-}
+// Signpost: the western one (signpost.js), its boards pointing at the town's places from where this post stands
+function signpost(k, at) { for (const p of signpostParts(at ? boardsAt(at.x, at.z, at.rot) : undefined, k.r)) k.add(p.mat, p.geo, p.colour, { shade: p.mat === 'matte' }); }
 
 // Flower bed: a ring of cream cobbles round a disc of soil, a low dome of foliage thick with
 // drifts of flowers (each colour in its own patch, as a gardener plants them) - painted on, with
@@ -515,21 +491,23 @@ function dock(k) {
 const BUILDERS = { bench, easel, lamp, planter, picnicTable, stall, signpost, flowerBed, dock };
 const CACHE = new Map();
 
-// A new Group for the prop: meshes sharing the cached geometry and materials.
-export function makeProp(kind) {
+// A new Group for the prop: meshes sharing the cached geometry and materials. `at` ({ x, z, rot }, optional): where it stands,
+// for a prop that cares (a signpost's boards point at places)
+export function makeProp(kind, at = null) {
   if (kind === 'valehexGlobe') return makeValehexGlobe();
   if (kind === 'stateMap') return makeStateMap();
   if (kind === 'obelisk') return makeObelisk();
   const make = BUILDERS[kind];
   if (!make) throw new Error(`townProps: no prop called "${kind}"`);
   const M = materials();
-  if (!CACHE.has(kind)) {
+  const key = kind === 'signpost' && at ? `signpost@${at.x},${at.z},${at.rot}` : kind;
+  if (!CACHE.has(key)) {
     const k = new Kit(Object.keys(BUILDERS).indexOf(kind) * 131 + 17);
-    make(k);
-    CACHE.set(kind, k.build({ centre: kind !== 'signpost' }));   // a signpost turns about its post
+    make(k, at);
+    CACHE.set(key, k.build({ centre: kind !== 'signpost' }));   // a signpost turns about its post
   }
   const group = new THREE.Group(); group.name = kind; group.userData.kind = kind;
-  for (const { mat, geo } of CACHE.get(kind)) {
+  for (const { mat, geo } of CACHE.get(key)) {
     const m = new THREE.Mesh(geo, M[mat]); m.castShadow = true; m.receiveShadow = true; m.name = `${kind}:${mat}`;
     group.add(m);
   }

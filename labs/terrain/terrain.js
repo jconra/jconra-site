@@ -286,7 +286,7 @@ for (const [id, key] of [['gullyStr', 'gullyStr'], ['fanStr', 'fanStr'], ['strat
 for (const [id, key] of [['lushTint', 'lushTint'], ['dampTint', 'dampTint'], ['slopeTint', 'slopeTint']]) { const el = $(id); el.value = '#' + U[key].value.clone().convertLinearToSRGB().getHexString(); el.addEventListener('input', () => { U[key].value.set(el.value).convertSRGBToLinear(); calmCover(); }); }
 { const el = $('strataSize'), go = () => { U.strataSize.value = +el.value; $('strataSizeOut').textContent = (+el.value).toFixed(1) + ' m'; }; el.value = U.strataSize.value; el.addEventListener('input', go); go(); }
 // ── the forest's settings: distances apply at once, the atlas and leaf detail re-bake ──
-for (const [id, key, fmt, live] of [['fImp', 'imposterAt', v => v + ' m', true], ['fBand', 'band', v => v + ' m', true], ['fAhead', 'ahead', v => Math.round(v * 100) + '% ahead', true], ['fSpread', 'spread', v => '± ' + Math.round(v * 50) + '%', true], ['fGrid', 'grid', v => v + ' × ' + v, false], ['fCell', 'cell', v => v + ' px', false]]) {
+for (const [id, key, fmt, live] of [['fImp', 'imposterAt', v => v + ' m', true], ['fBand', 'band', v => v + ' m', true], ['fClose', 'close', v => v + ' m', true], ['fAhead', 'ahead', v => Math.round(v * 100) + '% ahead', true], ['fSpread', 'spread', v => '± ' + Math.round(v * 50) + '%', true], ['fGrid', 'grid', v => v + ' × ' + v, false], ['fCell', 'cell', v => v + ' px', false]]) {
   const el = $(id); el.value = FOREST[key]; $(id + 'Out').textContent = fmt(+el.value);
   el.addEventListener('input', () => { $(id + 'Out').textContent = fmt(+el.value); if (live) { FOREST[key] = +el.value; if (V.treeForest) { V.treeForest[key] = FOREST[key]; V.treeForest.assignDirty = true; } } });
   if (!live) el.addEventListener('change', () => { FOREST[key] = +el.value; FOREST.rebake = true; placeTrees(); atlasInfo(); });
@@ -373,7 +373,7 @@ function applyTier(tier) {
   const T = TIER_SET[tier]; renderer.setPixelRatio(Math.min(devicePixelRatio, T.ratio)); renderer.setSize(innerWidth, innerHeight); renderer.getDrawingBufferSize(U.res.value);
   const set = (id, v) => { const el = $(id); if (!el) return; if (el.type === 'checkbox') { if (el.checked !== v) { el.checked = v; el.dispatchEvent(new Event('change')); } } else if (String(el.value) !== String(v)) { el.value = v; el.dispatchEvent(new Event('input')); el.dispatchEvent(new Event('change')); } };
   for (const [id, v] of Object.entries(T.checks)) set(id, v);
-  for (const [id, k] of [['fImp', 'imposterAt'], ['fBand', 'band'], ['fGrid', 'grid'], ['fCell', 'cell'], ['fDetail', 'detail']]) set(id, T.forest[k]);
+  for (const [id, k] of [['fImp', 'imposterAt'], ['fBand', 'band'], ['fClose', 'close'], ['fGrid', 'grid'], ['fCell', 'cell'], ['fDetail', 'detail']]) set(id, T.forest[k]);
   for (const [id, k] of [['coverNear', 'near'], ['coverRadius', 'radius'], ['coverCount', 'count']]) set(id, T.cover[k]);
   set('stampFar', T.u.stampFar);
   set('folkCount', T.people);

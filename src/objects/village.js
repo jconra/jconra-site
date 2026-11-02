@@ -209,7 +209,7 @@ export class Village {
     if (it.type === 'model') loadModel(it.kind, this.lo).then(m => { if (this.objs.get(it.id) !== o) return;
       const A = TOWN_ASSETS[it.kind], inner = new THREE.Group(), body = m.scene.clone(true);
       body.position.set(-m.centre.x, -m.minY, -m.centre.z); inner.add(body); inner.rotation.y = FRONT_YAW[A.front] || 0; o.inner = inner; group.add(inner); this.place(o); this.onLoaded && this.onLoaded(); });
-    else if (it.type === 'prop') { o.inner = makeProp(it.kind); group.add(o.inner); }
+    else if (it.type === 'prop') { o.inner = makeProp(it.kind, it); group.add(o.inner); }
     this.group.add(group); this.objs.set(it.id, o);
     return o;
   }
