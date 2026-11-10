@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Allowance Calculator</title>
+<style>
+	:root {
+		--bg: #f4f4f1;
+		--card: #ffffff;
+		--text: #1d1d1b;
+		--muted: #6b6b66;
+		--line: #e2e2dc;
+		--accent: #2f7d4f;
+	}
+	@media (prefers-color-scheme: dark) {
+		:root {
+			--bg: #1a1a19;
+			--card: #242422;
+			--text: #ecece8;
+			--muted: #9d9d97;
+			--line: #3a3a37;
+			--accent: #6cc28f;
+		}
+	}
+	* { box-sizing: border-box; }
+	body {
+		margin: 0;
+		background: var(--bg);
+		color: var(--text);
+		font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+	}
+	main { max-width: 640px; margin: 0 auto; padding: 32px 16px 48px; }
+	h1 { font-size: 1.5rem; margin: 0 0 4px; }
+	.sub { color: var(--muted); margin: 0 0 24px; }
+	.card {
+		background: var(--card);
+		border: 1px solid var(--line);
+		border-radius: 12px;
+		padding: 20px;
+		margin-bottom: 16px;
+	}
+	.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+	.fields .wide { grid-column: 1 / -1; }
+	label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; }
+	.input { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+	.input span { padding: 0 0 0 10px; color: var(--muted); }
+	.input span.after { padding: 0 10px 0 0; }
+	input {
+		width: 100%;
+		min-width: 0;
+		border: 0;
+		background: transparent;
+		color: var(--text);
+		font: inherit;
+		padding: 10px;
+		outline: none;
+	}
+	.input:focus-within { border-color: var(--accent); }
+	#start { font-size: 1.25rem; }
+	.result { text-align: center; }
+	.result .label { color: var(--muted); font-size: 0.9rem; }
+	.result .total { font-size: 2.4rem; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+	.result .gain { color: var(--muted); font-size: 0.9rem; }
+	table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+	th, td { padding: 8px 6px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+	th:first-child, td:first-child { text-align: left; }
+	th { font-size: 0.8rem; font-weight: 600; color: var(--muted); }
+	tr:last-child td { border-bottom: 0; }
+	td.end { font-weight: 600; }
+	.table-wrap { overflow-x: auto; }
+	.note { color: var(--muted); font-size: 0.8rem; margin: 12px 0 0; }
+	@media (max-width: 420px) {
+		.fields { grid-template-columns: 1fr; }
+		th, td { padding: 8px 4px; font-size: 0.85rem; }
+	}
+</style>
+</head>
+<body>
+<main>
+	<h1>Allowance Calculator</h1>
+	<p class="sub">One quarter: each month the allowance goes in, then interest is added. The bonus goes in on the last month, before interest.</p>
+
+	<div class="card">
+		<div class="fields">
+			<div class="wide">
+				<label for="start">Starting amount</label>
+				<div class="input"><span>$</span><input id="start" type="number" inputmode="decimal" step="0.01" min="0" value="0" autofocus></div>
+			</div>
+			<div>
+				<label for="allowance">Allowance each month</label>
+				<div class="input"><span>$</span><input id="allowance" type="number" inputmode="decimal" step="0.01" min="0" value="120"></div>
+			</div>
+			<div>
+				<label for="rate">Interest each month</label>
+				<div class="input"><input id="rate" type="number" inputmode="decimal" step="0.1" min="0" value="12"><span class="after">%</span></div>
+			</div>
+			<div class="wide">
+				<label for="bonus">Bonus (month 3)</label>
+				<div class="input"><span>$</span><input id="bonus" type="number" inputmode="decimal" step="0.01" min="0" value="100"></div>
+			</div>
+		</div>
+	</div>
+
+	<div class="card result">
+		<div class="label">End of quarter</div>
+		<div class="total" id="total">$0.00</div>
+		<div class="gain" id="gain"></div>
+	</div>
+
+	<div class="card">
+		<div class="table-wrap">
+			<table>
+				<thead>
+					<tr><th>Month</th><th>Start</th><th>+ Allowance</th><th>+ Bonus</th><th>+ Interest</th><th>End</th></tr>
+				</thead>
+				<tbody id="rows"></tbody>
+			</table>
+		</div>
+		<p class="note">Interest is rounded to the cent each month, the way a bank would.</p>
+	</div>
+</main>
+
+<script>
+	// Work in whole cents so the sums never pick up floating-point dust.
+	function cents(id) {
+		var n = parseFloat(document.getElementById(id).value);
+		return isNaN(n) ? 0 : Math.round(n * 100);
+	}
+
+	function money(c) {
+		var sign = c < 0 ? "-" : "";
+		return sign + "$" + (Math.abs(c) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+	}
+
+	// Each month: add the allowance, add the bonus if it is the last month, then add interest on the new balance.
+	function quarter(start, allowance, bonus, ratePercent, months) {
+		var balance = start;
+		var steps = [];
+		for (var m = 1; m <= months; m++) {
+			var before = balance;
+			var thisBonus = m === months ? bonus : 0;
+			balance += allowance + thisBonus;
+			var interest = Math.round(balance * ratePercent / 100);
+			balance += interest;
+			steps.push({ month: m, start: before, allowance: allowance, bonus: thisBonus, interest: interest, end: balance });
+		}
+		return steps;
+	}
+
+	function update() {
+		var start = cents("start");
+		var rate = parseFloat(document.getElementById("rate").value) || 0;
+		var steps = quarter(start, cents("allowance"), cents("bonus"), rate, 3);
+
+		var html = "";
+		var interestTotal = 0;
+		steps.forEach(function (s) {
+			interestTotal += s.interest;
+			html += "<tr><td>" + s.month + "</td><td>" + money(s.start) + "</td><td>" + money(s.allowance) +
+				"</td><td>" + (s.bonus ? money(s.bonus) : "—") + "</td><td>" + money(s.interest) +
+				"</td><td class=\"end\">" + money(s.end) + "</td></tr>";
+		});
+		document.getElementById("rows").innerHTML = html;
+
+		var end = steps[steps.length - 1].end;
+		document.getElementById("total").textContent = money(end);
+		document.getElementById("gain").textContent = "Up " + money(end - start) + ", of which " + money(interestTotal) + " is interest";
+	}
+
+	document.querySelectorAll("input").forEach(function (el) { el.addEventListener("input", update); });
+	update();
+</script>
+</body>
+</html>
