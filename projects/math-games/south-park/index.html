@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<style>
+body {background-color:#69b5d5;}
+svg {position:fixed; top:0px; left:0px; z-index:10;}
+#msg {position:fixed; width:100%; z-index:8200; font-family: 'Comic Sans MS'; font-size: 50px; border-radius:10px;}
+.text {position:fixed; top:5px; right:150px; color:yellow; z-index:9; font-family:'Comic Sans MS'; font-size:20px; z-index:999;}
+#vBar {top:5px; right:220px; z-index:1000;
+  position: fixed;
+  transform: scale(2.5);
+  transform-origin: 0 0;
+}
+</style>
+</head>
+<body style="margin:0px; overflow:hidden;" onload="init()">
+<div id="msg"></div>
+<div id="vol" class="text" style="right:30px; top:50px;">Volume</div>
+<input type="range" id="vBar" min="0" max="0.2" step="0.01" value="0.05"/>
+<div id="score" class="text" style="left:20px;">Score: 0</div>
+<div id="bonusscore" class="text" style="left:45%; color:blue;">Bonus: 200</div>
+<svg width="100%" height="100%" style="z-index:0;">
+  <rect x="0" y="50%" width="100%" height="50%" fill="white">
+</svg>
+<script>
+let w = window.innerWidth;
+let h = window.innerHeight;
+const BOX = 100;
+const svgNS = "http://www.w3.org/2000/svg";
+const characters = [];
+const dirtySnow = [];
+const mouse = {x:0, y:0};
+const start = (new Date()).getTime();
+const msg = {text:"", clear:9999999999999};
+const keys = [];
+const answers = [];
+const NUM_OF_ANSWERS = 5;
+const SPEED = 10;
+const BPM = 0.5
+let lastScheduled = -1;
+let audioCtx;
+let volume = 0.05;
+let ufo, beam = undefined;
+let selected = -1;
+let snow = undefined;
+let gameStep = 0;
+let bonusScore = 200;
+let score = 0;
+
+function animate() {
+  if (bonusScore > 0) {
+    if (answers.length > 0 && beam == undefined) bonusScore -= 0.5;
+    document.getElementById("bonusscore").innerHTML = "Bonus: " + Math.floor(bonusScore);
+  } else document.getElementById("bonusscore").innerHTML = "";
+  processCharacterMovement();
+  processGameActions();
+  if (audioCtx && volume > 0) playSong();
+  requestAnimationFrame(animate);
+}
+
+function processGameActions() {
+  if (msg.text.length == 0) {
+    if (gameStep == 0 && selected == -1)
+      sendMessage({y:50, text:"Pick Your Character", len:99000, size:70, color:"yellow"});
+    else if (gameStep == 1)
+      sendMessage({x:w/2,y:70,text:"Do you see any intelligent life?",len:1500,size:30,color:'black'});
+    else if (gameStep == 2)
+      sendMessage({x:w/2-400,y:70,text:"I don't see any.",len:1000,size:30,color:'black'});
+    else if (gameStep == 3)
+      sendMessage({x:w/2,y:70,text:"Mark this world for destruction.",len:1500,size:30,color:'black'});
+    else if (gameStep == 4)
+      sendMessage({x:w/2-400,y:70,text:"Wait. I will test these creatures.",len:1500,size:30,color:'black'});
+    else if (gameStep == 5)
+      createQuestions();
+    else if (gameStep == 6)
+      sendMessage({x:w/2-200,y:70,text:"This human is showing signs of intelligence.",len:2000,size:30,color:'black'});
+    else if (gameStep == 7)
+      sendMessage({x:w/2-400,y:70,text:"I will give them more questions",len:2000,size:30,color:'black'});
+    else if (gameStep == 8)
+      createQuestions();
+    if (ufo.z > 0.5) gameStep += 1;
+  }
+  moveUFO();
+  if (msg.text.length > 0 && (new Date()).getTime() > msg.clear) sendMessage({});
+}
+
+function createQuestions() {
+  const colors = shuffleArray(["red", "purple", "magenta", "blue", "orange"]);
+  for (answer of answers) removeAnswer();
+  const tempNums = [];
+  while (tempNums.length < NUM_OF_ANSWERS) {
+    const n1 = rn(2,9);
+    const n2 = rn(2,9);
+    if (tempNums.indexOf(n1*n2) == -1) {
+      let index = answers.length;
+      tempNums.push(n1*n2);
+      answers.push(createAnswer(n1*n2, n1+" x "+n2, colors[index%colors.length]));
+    }
+  }
+  sendMessage({x:20,y:20,text:answers[0].text,size:60});
+}
+
+//Returns a potential answer location (not hidden by trees or other numbers). It checks to
+//Make sure the character is not standing on one and gets it wrong right away.
+function getLocation() {
+  let count = 0;
+  const svgs = document.querySelectorAll('svg');
+  while (count++ < 1000) {
+    let x = 50 + Math.floor(Math.random() * (w-100));
+    let z = 0.7 + Math.random()* 0.8;
+    let s = 150 * z;
+    if (isPointUnderSVG(x, z * 1000, s, svgs) == false) return [x, z];
+  }
+  console.log(count);
+  return [w / 6 * answers.length, 1];
+}
+
+//This checks a random point by looping through the list of trees and checking thier
+//bounding rectangle to see if it is covered by the tree. If not then it can be used
+function isPointUnderSVG(x, z, s, svgs) {
+  for (let i = 0; i < svgs.length; i++) {
+	  if (svgs[i].id == "dirtysnow") continue;
+    let b = svgs[i].children[0].getBoundingClientRect();
+    //If spot is not in the same x coordinates it is good, so continue to the next
+    if (b.x > (x + s/2) || (b.x + b.width) < (x - s/2)) continue
+		//If the svg is another number (and has show x-overlap) it is no good
+    if (svgs[i].id == 'num') return true;
+      //If spot is behind the tree (this allows the point to be in front of trees)
+    if (z - 50 < svgs[i].style["z-index"]) return true;
+  }
+  return false;
+}
+
+function createAnswer(n, text, color) {
+  const loc = getLocation();
+  const num = new SVG3d({'num':[]}, loc[0], 0, loc[1], 150, 150);
+  num.svg.innerHTML='<text x="50" y="100" text-anchor="middle" dominant-baseline="middle" fill="'+color+'" font-family="Comic Sans MS" font-size="100" style="cursor: pointer">'+n+'</text>';
+  num.update();
+  num.value = n;
+  num.text = text;
+  return num;
+}
+
+function removeAnswer() {
+  removeSVG(answers[0].svg);
+  answers.splice(0,1);
+}
+
+function removeSVG(svg) {svg.parentElement.removeChild(svg);}
+
+function shuffleArray(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    array.push(array.splice(Math.floor(Math.random()*array.length),1)[0])
+  }
+  return array;
+}
+
+function sendMessage(options) {
+  const msgBox = document.getElementById('msg');
+  if ('x' in options) {
+    msgBox.style['left'] = options.x+'px';
+    msgBox.style['text-align'] = 'left';
+  } else {
+    msgBox.style['left'] = '0px';
+    msgBox.style['text-align'] = 'center';
+  }
+  if ('y' in options) msgBox.style['top'] = options.y+'px';
+  msgBox.innerHTML = msg.text = ('text' in options)? options.text:"";
+  msg.clear = (new Date()).getTime() + (('len' in options)? options.len : 9999999);
+  if ('size' in options) msgBox.style['font-size'] = options.size + 'px';
+  if ('color' in options) msgBox.style['color'] = options.color;
+  if ('back' in options) msgBox.style['background-color'] = options.back;
+  else msgBox.style['background-color'] = 'transparent';
+  msgBox.style['width'] = ('width' in options)? options.width+"px":"100%";
+}
+
+function characterPicked(n) {
+  for (let i=0; i<characters.length; i++) {
+    characters[i].speed = 15;
+    if (i != n) {
+      const newX = (characters[i].x < w/2)? -200 : w + 200;
+      characters[i].goal = {x:newX, z:0.68};
+    }
+  }
+  selected = n;
+  if (gameStep == 0) sendMessage({});
+}
+
+function processCharacterMovement() {
+  for (let i=0; i<characters.length; i++) {
+    const c = characters[i];
+    if (i == selected) {
+      const answer = isOnAnswer(c)
+      if (answer) characterOnAnswer(c, answer);
+      else characterNotOnAnswer(c);
+    }
+    c.process();
+  }
+  
+  if (keys.length > 0 && selected > -1 && characters[selected].enabled) {
+    let c = characters[selected];
+    if (keys.indexOf('w') > -1) {if (c.z > 0.5) c.z -= c.speed/2000;}
+    if (keys.indexOf('a') > -1) {if (c.x > 0) c.x -= c.speed/2;}
+    if (keys.indexOf('s') > -1) {if (c.z < 1.5) c.z += c.speed/2000;}
+    if (keys.indexOf('d') > -1) {if (c.x < w) c.x += c.speed/2;}
+    c.goal = {x:c.x, y:c.y, z:c.z};
+		c.svg.setAttribute('transform', "rotate("+((c.counter/2)%3 - 1)+",0,0)");
+    c.update();
+    if (Math.random() > 0.8) dropDirtySnow(c);
+  }
+}
+
+function dropDirtySnow(c) {
+  const rand = Math.floor(230 + Math.random()*20);
+  const color = 'rgba('+ rand + ',' + rand + ',' + rand + ', 0.3'
+  const x = c.x + Math.random()*30-15;
+  const y = 320 * c.z - 90;
+  dirtySnow.push(new SVG3d({'dirtysnow':[color]}, x, y, c.z - 0.05, 300, 300));
+}
+
+function characterOnAnswer(c, answer) {
+  characters[selected].frown();
+  if (c.parts[2][0].indexOf('body') > -1) {
+    c.parts[2][0] = (c.parts[2][0].indexOf('fat') == 0)? "fatarmsup":"armsup";
+    c.draw();
+    answer.y -= 150 * answer.z;
+    answer.update();
+  } else {
+    if (beam == undefined)
+      beam = new SVG3d({'beam':[]}, ufo.x, ufo.y-32, ufo.z-0.002, 300, h*0.5);
+    if (distance({x:c.x, y:c.z*1000},{x:ufo.x,y:ufo.z*1000}) < 50) {
+      checkAnswer(answer);
+		}
+  }
+}
+
+function characterNotOnAnswer(c) {
+  if (c.parts[2][0].indexOf('armsup') > -1) {
+    c.parts[2][0] = (c.parts[2][0].indexOf('fat') == 0)? "fatbody":"body";
+    c.draw();
+    for (let ans of answers) {
+      ans.y = 0;
+      ans.update();
+    }
+    if (beam) removeBeam();
+  }
+}
+
+function removeBeam() {
+  removeSVG(beam.svg);
+  beam = undefined;
+}
+
+function isOnAnswer(c) {
+  if (distance({x:c.x, y:c.z*1000}, {x:c.goal.x, y:c.goal.z*1000}) > 50) return false;
+  for (let answer of answers) {
+    if (distance({x:c.x, y:c.z*1000},{x:answer.x,y:answer.z*1000}) < 50)
+      return answer;
+  }
+  return false;
+}
+
+function checkAnswer(answer) {
+  const question = msg.text.split(" x ");
+  const rightAns = question[0] * question[1];
+  const ufo_bottom = ufo.svg.style['height'].split("px")[0] * 0.25 + 100;
+  //If the correct answer is picked it is raised to the ufo. Then it is removed and a
+  //new question will be asked. If it is the last one, new questions are generated
+  if (answer.value == rightAns) {
+    answer.y -= 10;
+		const answer_top = answer.svg.style['top'].split('px')[0];
+    if (answer_top < ufo_bottom) {
+      characters[selected].smile();
+      score += 50 + bonusScore;
+      bonusScore = 200;
+      document.getElementById("score").innerHTML = "Score: " + Math.floor(score);
+      removeAnswer();
+      removeBeam(); 
+      if (answers.length > 0)
+        sendMessage({x:20,y:20,text:answers[0].text,size:60});
+      else {
+        gameStep = 6;
+        sendMessage({});
+      }
+    }
+    answer.update();
+  }
+  //If the wrong answer is picked the character is disabled so they can't escape the beam
+  //The character will be raised and rotated. Once they are high enough they are removed
+  //Then the other characters will return so they can be selected.
+  else {
+    const c = characters[selected];
+    c.frown();
+    c.y -= 10;
+    c.enabled = false;
+		const c_height = characters[selected].svg.style['height'].split("px")[0];
+    c.svg.setAttribute('transform', "rotate("+(c.counter*10)%360+",0,"+(c_height*0.2)+")");
+		const c_top = c.svg.style['top'].split('px')[0];
+    if (c_top < ufo_bottom) {
+      removeBeam();
+      removeSVG(c.svg);
+      characters.splice(selected, 1);
+      selected = -1;
+      if (characters.length == 0) gameStep = 9;
+      for (let i=0; i<characters.length; i++) {
+        const space = w/characters.length;
+        characters[i].goal = {x:(i+1)*space-space/2, z:1};
+        characters[i].speed = 30;
+      }
+    }
+  }
+}
+
+function moveUFO() {
+  if (selected > -1 && beam) {
+    const c = characters[selected];
+    ufo.x += (c.x - ufo.x) * 0.05;
+    ufo.z += (c.z - ufo.z) * 0.05;
+  } else {
+	  ufo.x += (w/2 - ufo.x) * 0.01;
+		ufo.z += (0.8 - ufo.z) * 0.01;
+	}
+  const width = ufo.width * Math.pow(ufo.z, 1.3);
+  const height = ufo.height * Math.pow(ufo.z, 1.3);
+	ufo.svg.style['left'] = ufo.x - width/2 + 'px';
+	ufo.svg.style['top'] = '100px';
+	ufo.svg.style['width'] = width + 'px';
+	ufo.svg.style['height'] = height + 'px';
+	ufo.svg.style['z-index'] = Math.floor(ufo.z * 1000);
+	
+	if (beam) {
+	  beam.svg.style['left'] = ufo.x - width/4 + 'px';
+    beam.svg.style['top'] = (100 + height * 0.25) + 'px';
+		beam.svg.style['width'] = width/2 + 'px';
+		beam.svg.style['height'] = ufo.z * 800 + 'px';
+		beam.svg.style['z-index'] = Math.floor(ufo.z * 1000 - 1);
+	}
+}
+
+window.addEventListener('resize', function () {
+  w = window.innerWidth;
+  h = window.innerHeight;
+  const svgs = document.querySelectorAll('svg');
+  svgs.forEach(svg => {
+    if (svg.parentNode) {
+      if (svg.id == "mountain" || svg.id == "tree" || svg.id == "farTrees")
+        svg.parentNode.removeChild(svg);
+    }
+  });
+  createBackground();
+  ufo.goal.x = w/2;
+});
+
+function init() {
+  vBar.addEventListener("input", function() {
+    volume = Number(document.getElementById("vBar").value);
+  });
+  createBackground();
+  createCharacters();
+  createUFO();
+  animate();
+}
+
+function createCharacters() {
+  characters.push(new Character({x:0, name:'stan', 'parts':{'legs':['#353f84'], 'feet':[],  'body':['#924531','#b0171c','#900000'], 'buttons1':[], 'collar':['#b0171c'], 'head':['#f9d6ae'], 'eyes':[], 'frown':[], 'stanhat':['#353f84', '#b0171c', '#900000']}}));
+  
+  characters.push(new Character({x:170, name:'kyle', 'parts':{'legs':['#186757'], 'feet':[], 'body':['#df5f24','#128c58','#027c48'], 'pockets':[], 'collar':['#0e875a'], 'head':['#f9d6ae'], 'eyes':[], 'frown':[], 'kylehat':['#66b564', '#0e875a']}}));
+  
+  characters.push(new Character({x:370, width:200, name:'eric', 'parts':{'fatlegs':['#72382c'], 'fatfeet':[], 'fatbody':['#ca2f35','#eac91e'], 'buttons2':[], 'head':['#f9d6ae'], 'eyes':[], 'frown':[], 'erichat':['#53b2c8', '#f3cd20']}}));
+  
+  characters.push(new Character({x:570, name:'kenny', 'parts':{'legs':['#e05f24'], 'feet':[], 'body':['#e05f24','#582919','#380900'], 'head':['#f9d6ae'], 'eyes':[], 'frown':[], 'kennyhat':['#582919', '#e05f24']}}));
+  
+  characters.push(new Character({x:740, name:'butters', 'parts':{'legs':['#175536'], 'feet':[], 'body':['#32dbbd','#f9d6ae','#d9b69e'],'head':['#f9d6ae'], 'eyes':[], 'frown':[], 'buttershat':['#f1f42e']}}));
+}
+
+function createBackground() {
+  createMountains();
+  createTrees();
+  createFarTrees();
+}
+
+function createUFO() {
+  ufo = new SVG3d({'ufo':[]}, w/2, -75, 0.3, 700, 800);
+  ufo.speed = 20;
+  ufo.goal.z = 0.6;
+}
+
+function createMountains() {
+  for (let x = 0; x < w + 150; x += 200 + Math.random() * 100) {
+    let z = Math.random() * 0.03 + 0.1;
+    let darken = (0.13-z) * 1000;
+		let width = 8000 + darken * 500;
+		let height = 4000 + darken * 100;
+    let color = "rgb("+(9 + Math.floor(Math.random()*20 - darken)) + ","+
+                       (85 + Math.floor(Math.random()*20 - darken)) + ","+
+                       (73 + Math.floor(Math.random()*20 - darken)) + ")";
+    new SVG3d({'mountain':[color]}, x, 0, z, width, height);
+  }
+}
+
+function createTrees() {
+  for (let x = 0; x < w + 150; x += 100 + Math.random() * 50) {
+    let z = Math.pow(1 - Math.random() * 0.8, 1.3);
+    let darken = (1-z) * 100;
+    let color = "rgb("+(9 + Math.floor(Math.random()*20 - darken)) + ","+
+                       (130 + Math.floor(Math.random()*20 - darken)) + ","+
+                       (73 + Math.floor(Math.random()*20 - darken)) + ")";
+    new SVG3d({'tree':[color]}, x, 0, z, 250, 600);
+  }
+}
+
+function createFarTrees() {
+  for (let x = 0; x < w + 150; x += 100 + Math.random() * 100) {
+    new SVG3d({'farTrees':[]}, x, 0, 0.15, 8000, 2000);
+  }
+}
+
+class SVG3d{
+  constructor(parts, x, y, z, width, height) {
+    this.parts = Object.entries(parts);
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    this.width = width;
+    this.height = height;
+    this.counter = rn(1,20);
+    this.speed = SPEED / w;
+    this.goal = {x:x, y:y, z:z};
+    this.svg = document.createElementNS(svgNS, "svg");
+    this.svg.setAttribute("viewBox", "0 0 "+BOX+" "+BOX*2);
+    document.body.appendChild(this.svg);
+    if (this.width != this.height)
+      this.svg.setAttribute('preserveAspectRatio', 'none');
+    this.draw();
+    this.update();
+  }
+  
+  draw() {
+    this.svg.innerHTML = '';
+    for (let i=0; i<this.parts.length; i++) {
+      let partSVG = svgLib[this.parts[i][0]];
+      for (let j=0; j<this.parts[i][1].length; j++) {
+        partSVG = partSVG.replaceAll("color"+j,this.parts[i][1][j]);
+      }
+      this.svg.innerHTML += partSVG;
+      this.svg.id = this.parts[i][0];
+    }
+  }
+  
+  update() {
+    if (distance({x:this.x, y:this.z*1000}, {x:this.goal.x, y:this.goal.z*1000}) > this.speed)
+      this.move();
+    const width = this.width * Math.pow(this.z, 1.5);
+    const height = this.height * Math.pow(this.z, 1.5);
+    this.svg.style.top = (h/2 - height + this.z * h * 0.3 + this.y)+ "px";
+    this.svg.style.left = (this.x - width/2) + "px";
+    this.svg.style.width =  width + "px";
+    this.svg.style.height = height + "px";
+    this.svg.style['z-index'] = Math.floor(this.z * 1000); 
+  }
+  
+  move() {
+    if (Math.random() > 0.8) dropDirtySnow(this);
+    this.svg.setAttribute('transform', "rotate("+((this.counter/4)%3 - 1)+",0,0)");
+    if (this.goal.x > this.x + this.speed/4) this.x += this.speed/2;
+    else if (this.goal.x < this.x - this.speed/4) this.x -= this.speed/2;
+    if (this.goal.z > this.z + 0.005) this.z += this.speed/4000;
+    else if (this.goal.z < this.z - 0.005) this.z -= this.speed/4000;
+  }
+}
+
+class Character extends SVG3d {
+  constructor(data) {
+    super(data.parts, w/2 - 370 + data.x, 0, 1.1, ('width' in data)? data.width:150, 300);
+    this.svg.id = data.name + "-" + characters.length;
+    this.enabled = true;
+  }
+  
+  //Process is to tick character animation and change the mouth depending on mouse distance
+  process() {
+    this.counter += 1;
+    this.y += Math.sin(this.counter/5) * h * 0.0001;
+    if (selected == -1) this.changeMouthOnMouseHover();
+    this.update();
+  }
+  
+  changeMouthOnMouseHover() {
+    const mPos = this.parts.length - 2;
+    if (distance({x:this.x, y:window.innerHeight * 0.75}, mouse) < 90) {
+      if (this.parts[mPos][0] == 'frown') {
+        this.smile();
+      }      
+    } else if (this.parts[mPos][0] == 'grin') {
+      this.frown();
+    }
+  }
+  
+  smile() {
+    this.parts[this.parts.length - 2][0] = 'grin';
+    this.draw();
+  }
+  
+  frown() {
+    this.parts[this.parts.length - 2][0] = 'frown';
+    this.draw();
+  }
+}
+
+document.addEventListener('mousedown', function(event) {
+  if (audioCtx == undefined) audioCtx = new AudioContext();
+});
+
+document.addEventListener('mouseup', function(event) {
+  if (selected == -1) {
+    for (let i=0; i<characters.length; i++) {
+     if (characters[i].svg === event.target.parentElement)
+       characterPicked(i);
+    }
+  } else if (event.target.nodeName == "text") {
+    for (let i=0; i<answers.length; i++) {
+      if (answers[i].value == event.target.innerHTML) {
+        characters[selected].goal = {x:answers[i].x, y:0, z:answers[i].z};
+      }
+    }
+  }
+});
+
+
+document.addEventListener('mousemove', function(event) {
+  mouse.x = event.clientX;
+  mouse.y = event.clientY;
+});
+
+document.addEventListener('keydown', function(event) {
+  if (keys.indexOf(event.key) < 0) {
+    keys.push(event.key);
+    playFootSteps();
+  }
+});
+
+document.addEventListener('keyup', function(event) {
+  keys.splice(keys.indexOf(event.key),1);
+});
+
+function rn(min,max){return Math.floor(Math.random()*(max-min+1)+min)}
+
+function distance(p1, p2) {
+  return Math.sqrt(Math.pow(p1.x-p2.x, 2) + Math.pow(p1.y-p2.y, 2));
+}
+
+//Library with the SVG images to be used in the scene
+const svgLib = {
+  head:'<circle cx="50" cy="120" r="35" fill="color0"></circle>',
+  body:'<path d="M 33 148 C 41 158 60 158 66 147 C 76 155 80 160 82 174 L 73 175 L 73 183 C 61 189 39 189 27 183 L 27 175 L 18 174 C 20 160 24 154 33 148" fill="color0"></path><path d="M 73 175 L 71 165 M 27 175 L 29 165" stroke="#000000" stroke-width="0.3"></path><path d="M 50 154 L 50 188" stroke="#000000" stroke-width="0.8"></path><circle cx="22" cy="177" r="5" fill="color1"></circle><circle cx="78" cy="177" r="5" fill="color1"></circle><circle cx="25" cy="175" r="1.7" stroke="color2" stroke-width="0.5" fill="color1"></circle><circle cx="75" cy="175" r="1.7" stroke="color2" stroke-width="0.5" fill="color1"></circle>',
+  fatbody:'<path d="M 93 157 C 86 156 91 147 72 133 C 63 154 41 162 28 133 C 14 136 10 154 4 157 L 11 182 C 24 190 30 191 40 191 C 44 191 47 192 51 191 C 64 193 67 188 72 189 C 85 186 89 189 93 184 C 96 182 97 166 93 157" fill="color0"></path><path d="M 50 152 C 58 181 49 177 53 191" stroke="#000000" stroke-width="0.6" fill="none"></path><path d="M 51 186 L 51 188" stroke="#000000" stroke-width="0.8" fill="none"></path><path d="M 9 155 C 0 155 0 170 8 172 C 14 173 19 172 22 171 C 28 169 16 159 9 155" stroke="none" stroke-width="0.5" fill="color1"></path><path d="M 96 174 C 103 171 93 157 93 157 L 84 159 C 81 162 70 176 83 172 C 87 171 92 180 96 174" stroke="none" stroke-width="0.5" fill="color1"></path>',
+  armsup:'<path d="M 34 147 C 40 158 60 158 66 147 C 75 141 79 135 81 123 L 91 123 C 91 146 71 153 71 165 L 73 183 C 61 189 39 189 27 183 L 29 165 C 29 153 9 146 11 123 L 20 123 C 21 135 25 141 34 147" fill="color0"></path><path d="M 50 154 L 50 188" stroke="#000000" stroke-width="0.8"></path><circle cx="12" cy="127" r="5" fill="color1"></circle><circle cx="88" cy="127" r="5" fill="color1"></circle><circle cx="15" cy="118" r="1.7" stroke="color2" stroke-width="0.5" fill="color1"></circle><circle cx="85" cy="118" r="1.7" stroke="color2" stroke-width="0.5" fill="color1"></circle>',
+  fatarmsup:'<path d="M 82 111 C 80 116 80 125 72 133 C 63 154 41 162 28 133 C 26 129 24 116 23 108 L 9 121 C 5 135 13 180 13 184 C 44 191 47 192 51 191 C 64 193 67 188 80 190 C 88 188 88 183 84 170 C 84 161 99 125 95 116" fill="color0"></path><path d="M 50 152 C 58 181 49 177 53 191" stroke="#000000" stroke-width="0.6" fill="none"></path><path d="M 51 186 L 51 188" stroke="#000000" stroke-width="0.8" fill="none"></path><path d="M 51 186 L 51 188" stroke="#000000" stroke-width="0.8" fill="none"></path><path d="M 9 121 C 0 121 0 106 8 104 C 14 103 19 104 22 105 C 28 107 16 117 9 121" stroke="none" stroke-width="0.5" fill="color1"></path><path d="M 96 104 C 103 107 93 121 93 121 L 84 119 C 81 116 70 102 83 106 C 87 107 92 98 96 104" stroke="none" stroke-width="0.5" fill="color1"></path>',
+  collar:'<path d="M 32 147 C 40 156 60 156 67 147 L 73 152 C 60 163 40 163 27 152" fill="color0"></path>',
+  buttons1:'<circle cx="48" cy="165" r="1" fill="#000000"></circle><circle cx="48" cy="172" r="1" fill="#000000"></circle><circle cx="48" cy="179" r="1" fill="#000000"></circle>',
+  buttons2:'<path d="M 49 158 L 49 160" stroke="#000000" stroke-width="1" fill="none"></path><path d="M 52 172 L 52 174" stroke="#000000" stroke-width="1" fill="none"></path><path d="M 51 188 L 51 190" stroke="#000000" stroke-width="1" fill="none"></path>',
+  pockets:'<path d="M 50 155 L 50 188 M 55 163 L 55 175 L 65 175 L 65 163 L 60 167 L 55 163 L 65 163 M 45 163 L 45 175 L 35 175 L 35 163 L 40 167 L 45 163 L 35 163" stroke="#000000" stroke-width="0.4" fill="none"></path>',
+  legs:'<path d="M 30 182 L 70 182 L 70 200 L 30 200" fill="color0"></path>',
+  fatlegs:'<path d="M 13 182 L 87 182 L 80 200 L 20 200" fill="color0"></path>',
+  feet:'<path d="M 30 200 C 37 195 43 195 50 200 C 57 195 63 195 70 200" fill="#000000"></path>',
+  fatfeet:'<path d="M 25 200 C 30 195 43 195 50 200 C 57 195 70 195 75 200" fill="#000000"></path>',
+  stanhat:'<path d="M 15 108 C 20 68 80 68 85 110" fill="color0"></path><path d="M 14 117 C 40 107 60 107 86 117 L 86 109 C 60 100 40 100 14 108" fill="color1"></path><path d="M 59 83 L 51 82 L 58 86 L 57 87 L 50 82 L 55 88 L 54 89 L 50 83 L 46 88 L 45 87 L 49 82 L 44 86 L 43 85 L 48 82 L 42 83 L 42 82 L 48 81 L 42 80 L 42 79 L 50 81 L 43.1 77 L 44.3 76 L 48.8 79 L 46.3 74 L 47.8 74 L 50 79 L 53 73 L 54 74 L 51.1 79 L 56 75 L 57 76 L 51.8 80 L 58 78 L 59 79 L 51.8 81 L 59 82 L 59 83" stroke="color1" stroke-width="0.5" fill="color2"></path><path d="M 50 73 L 49 89 L 50 89 L 51.4 73 L 50.1 73" stroke="color3" stroke-width="0.5" fill="color2"></path>',
+  kylehat:'<path d="M 50 81 C 93 81 83 79 85 107 L 16 107 C 17 79 7 81 50 81" fill="color0"></path><path d="M 78 119 C 90 143 97 131 90 116 C 84 99 71 102 78 119 M 22 119 C 10 143 3 131 10 116 C 16 99 29 102 22 119" stroke="color2" stroke-width="0.2" fill="color0"></path><path d="M 20 113 C 46 108 54 108 80 113 L 80 93 L 20 93" fill="color1"></path>',
+  erichat:'<path d="M 14 117 C 20 69 76 70 85 111 C 61 102 36 102 14 117" fill="color0"></path><path d="M 14 120 C 44 102 67 107 85 113 L 85 110 C 58 101 43 101 14 116" fill="color1"></path><path d="M 42 80 C 45 77 56 77 58 81 C 61 83 58 84 56 83 C 55 84 53 85 51 82 C 50 81 44 85 46 81 C 44 83 38 84 42 80" fill="color1"></path><path d="M 24 136 C 39 155 67 154 78 133" stroke="#000000" stroke-width="0.1" fill="none"></path><path d="M 47 147 C 51 148 55 147 58 147" stroke="#000000" stroke-width="0.2" fill="none"></path>',
+  kennyhat:'<path d="M 50 139 C 72 127 72 107 50 95 C 90 87 90 147 50 139 C 28 127 28 107 50 95 C 10 87 10 147 50 139" fill="color0"></path><path d="M 50 139 C 88 140 83 94 50 95 L 50 82 C 95 82 99 153 50 156 C 1 153 5 82 50 82 L 50 95 C 17 94 12 140 50 139" fill="color1"></path><path d="M 50 144 C 81 144 96 101 50 95 C 5 101 19 145 50 144" stroke="color0" stroke-width="0.3" fill="none"></path><path d="M 54 149 C 51 148 53 141 50 139" stroke="color0" stroke-width="0.5" fill="none"></path><path d="M 48 147 C 50 144 48 141 50 139" stroke="color0" stroke-width="0.5" fill="none"></path>',
+  buttershat:'<path d="M 34 75 C 43 75 49 75 51 81 L 69 74 L 60 81 C 67 82 70.6 86 77 91 L 64 88 L 74 101 L 51 91 L 34 103 L 39 89 L 20 93 C 32 87 32 80 42 81 C 42 78 36.6 77 34 75" stroke="none" stroke-width="0.5" fill="color0"></path>',
+  eyes:'<path d="M 65 128 C 55 135 44 115 54 111 C 66 106 71 125 65 128 M 35 128 C 45 135 56 115 46 111 C 34 106 29 125 35 128" fill="#fefefe"></path><circle cx="45" cy="119" r="1.2" fill="#000000"></circle><circle cx="55" cy="119" r="1.2" fill="#000000"></circle>',
+  grin:'<path d="M 40 139 C 41 138 58 138 59 139 C 54 143 52 142 50 145" fill="#000000"></path><path d="M 42 139 C 44 142 52 144 57 139" fill="#f5f5f5"></path><path d="M 45 141 L 45 139 M 49 142 L 49 139 M 52 142 L 53 139 M 48 143 L 56 141 L 44 141" stroke="#000000" stroke-width="0.5"></path>',
+  frown:'<path d="M 42 139 C 48 136 52 137 58 140" stroke="#000000" stroke-width="0.5" fill="none"></path>',
+  dirtysnow: '<path d="M 22 50 C 21 60 77 59 77 50 C 79 41 23 41 22 50" fill="color0"></path>',
+  mountain:'<path d="M 0 200 C 47 0 56 0 100 200" fill="color0"></path><path d="M 28 87 C 50 29 50 8 73 87 L 74 96 L 70 87 L 71 96 C 67 96 63 83 60 79 C 55 104 54 92 51 75 C 46.6 76 42 100 38 79 C 35 92 31 96 28 87" fill="#f3f1f1"></path>',
+  tree:'<path d="M 53 0 C 48 9 48 23 48 29 L 44 37 L 48 43 C 42 46 40 49 38 54 L 38 57 L 36 60 L 34 69 L 38 66 L 40 71 L 38 74 L 40 74 L 38 83 L 36 86 L 34 91 L 29 97 L 27 97 L 27 103 L 25 106 L 27 106 L 25 109 L 29 111 L 17 129 L 19 131 L 17 134 L 21 134 L 17 140 L 17 143 L 21 143 L 13 151 L 15 154 L 11 157 L 4 169 L 4 180 L 0 189 L 4 191 L 8 191 L 6 197 L 11 197 L 13 194 L 15 197 L 13 200 L 23 197 L 27 200 L 29 197 L 34 200 L 36 194 L 38 197 L 44 197 L 46 200 L 48 200 L 50 197 L 50 194 L 55 194 L 55 197 L 59 200 L 61 197 L 65 197 L 67 197 L 69 200 L 71 191 L 76 191 L 76 197 L 80 191 L 82 194 L 86 191 L 88 197 L 92 191 L 97 191 L 97 186 L 99 183 L 97 177 L 97 171 L 90 157 L 92 154 L 95 157 L 95 153 L 95 150 L 90 146 L 86 137 L 86 134 L 82 130 L 86 130 L 86 127 L 86 127 L 84 121 L 80 120 L 76 111 L 74 106 L 76 104 L 76 101 L 78 100 L 76 97 L 74 97 L 76 91 L 74 93 L 69 89 L 65 86 L 65 80 L 63 73 L 63 70 L 65 74 L 67 70 L 69 71 L 67 66 L 65 60 L 63 57 L 63 53 L 57 47 L 57 40 L 57 41 L 59 40 L 59 37 L 61 37 L 57 30 L 59 29 L 57 24 L 57 21 C 53 14 50 9 53 0" fill="color0"></path><path d="M 55 37 L 57 40 C 57 43 57 43 59 46 L 63 51 L 63 57 L 59 54 L 55 54 L 55 60 C 55 66 53 66 53 60 C 50 63 46 63 48 59 C 42 63 46 54 44 51 C 42 57 40 57 38 54 L 40 49 L 42 46 L 46 40 C 48 34 53 37 55 37" fill="#e0e0e0"></path><path d="M 48 89 C 50 97 42 100 40 91 C 40 100 36 100 29 97 L 34 90 L 36 84 L 38 81 L 40 74 L 42 73 L 44 77 L 46 73 L 46 79 L 48 76 L 50 81 L 53 77 L 55 80 L 57 74 L 59 77 L 59 74 L 63 74 L 65 79 L 65 86 L 71 91 C 69 94 67 97 63 90 C 61 111 59 100 57 93 L 55 94 L 53 91 L 50 91" fill="#e0e0e0"></path><path d="M 59 120 C 63 137 71 131 69 117 C 76 131 76 126 78 120 L 82 121 L 84 120 L 76 111 L 74 106 L 74 103 L 71 104 L 69 100 L 67 104 L 67 101 L 61 99 L 59 99 C 59 106 55 109 53 110 L 50 107 L 46 116 L 44 114 L 44 109 L 40 111 L 40 114 L 38 111 L 36 116 L 36 111 L 34 110 L 34 106 L 29 109 L 29 111 L 19 124 C 23 131 25 129 27 123 C 27 129 29 126 32 123 C 29 143 38 131 40 126 C 40 131 44 129 46 126 C 48 140 55 121 59 120" fill="#e0e0e0"></path><path d="M 38 151 C 36 166 42 163 44 143 C 46 149 48 151 48 144 C 50 149 50 149 53 146 C 55 151 55 151 59 147 C 61 157 65 154 69 149 C 69 154 71 151 71 149 C 74 151 74 151 76 149 C 76 151 80 154 78 147 C 80 149 82 154 82 144 C 86 151 90 149 92 144 L 86 137 L 82 139 L 76 130 L 69 126 L 67 131 L 74 136 L 74 140 L 69 141 L 67 136 L 67 139 L 65 136 L 65 139 L 63 136 L 61 133 L 59 136 L 57 130 L 57 129 L 53 133 L 55 124 L 42 123 L 46 133 L 42 133 L 42 140 L 40 137 L 40 140 L 38 137 L 36 141 L 36 140 L 34 143 L 32 137 L 34 131 L 32 127 L 25 133 L 25 136 L 23 133 L 21 134 L 17 139 L 21 143 L 15 149 L 15 153 L 19 149 C 19 160 23 154 27 149 C 23 169 29 157 34 150 C 34 160 36 151 38 151" fill="#e0e0e0"></path><path d="M 53 169 C 59 183 65 186 65 174 C 67 186 69 177 69 174 C 71 189 74 180 74 174 C 76 177 78 174 78 171 C 80 177 84 180 88 174 C 90 191 90 171 92 169 L 97 171 L 90 157 L 90 161 L 88 159 L 82 157 L 82 161 L 80 164 L 78 159 L 76 163 L 74 159 L 74 163 L 71 157 C 67 163 63 163 67 149 L 61 150 C 65 157 63 163 61 163 L 61 160 L 59 161 L 57 156 L 55 163 L 53 159 C 53 166 48 169 44 164 L 42 169 L 42 164 C 38 169 38 169 36 161 L 34 164 L 32 167 L 32 163 L 29 164 L 27 160 L 25 161 L 23 167 L 21 160 L 19 164 L 19 163 L 15 164 L 15 161 L 13 163 L 13 160 L 11 159 L 4 169 L 4 179 L 6 179 L 8 174 C 8 183 11 180 13 174 C 13 189 17 186 17 177 C 17 197 21 183 21 179 C 23 186 25 183 27 176 L 29 176 C 29 191 38 183 38 177 L 38 180 L 40 177 C 44 191 48 177 48 171 C 50 180 53 174 55 171" fill="#e0e0e0"></path>',
+  farTrees:'<path d="M 92 200 L 11 200 L 19 40 L 21 190 L 25 120 L 26 190 L 29 140 L 31 180 L 34 50 L 37 170 L 40 90 L 43 150 L 48 80 L 50 150 L 54 30 L 59 160 L 65 70 L 69 160 L 72 90 L 75 150 L 81 0 L 83 150 L 87 70" fill="#081a13"></path>',
+  ufo:'<path d="M 29 38 C 40 47 60 47 70 38 C 55 16 45 16 29 38" fill="#5bd4ec"></path><path d="M 44 25 C 35 25 44 39 44 39 C 44 39 53 25 44 25 M 43 36 L 37 45 L 39 44 L 43 38 L 43 46 L 45 46 L 45 38 L 49 46 L 50 46 L 46 36" fill="#ffffff"></path><path d="M 43 34 C 41 32 40 29 41 28 C 43 28 45 33 43 34 M 47 28 C 48 30 46 34 45 34 C 43 32 45 29 47 28" fill="#000000"></path><path d="M 56 25 C 65 25 56 39 56 39 C 56 39 47 25 56 25 M 57 36 L 62 44 L 61 44 L 57 39 L 57 46 L 56 46 L 55 39 L 51 46 L 50 46 L 55 36" fill="#ffffff"></path><path d="M 57 34 C 59 32 60 29 59 28 C 57 28 55 33 57 34 M 53 28 C 52 30 54 34 55 34 C 57 32 55 29 53 28" fill="#000000"></path><path d="M 3 50 C 48 65 52 65 97 50" fill="#378b68"></path><path d="M 97 50 C 90 42 80 38 70 38 C 60 46 40 46 30 38 C 20 38 10 42 3 50" fill="#4dc792"></path><path d="M 39 60 C 45 64 55 64 61 60" fill="#733380"></path><path d="M 69 50 C 48 63 27 70 86 50" fill="#733380"></path><path d="M 45 50 C 46 67 52 67 55 50" stroke="none" stroke-width="0.5" fill="#733380"></path><path d="M 14 50 C 64 68 57 66 30 50" fill="#733380"></path>',
+  beam:'<path d="M 30 162 C 35 180 65 180 70 162 L 55 14 L 45 14" stroke="none" stroke-width="0.5" fill="rgba(255,255,255,0.5)"></path>',
+  num:'<text></text>'
+}
+
+//   SSSSS    OOOO     U     U   NN    N   DDD       SSSSSS
+//  S        O    O    U     U   N  N  N   D   D    S
+//   SSSS    O    O    U     U   N   N N   D    D    SSSSS
+//       S   O    O    U     U   N    NN   D   D          S
+//  SSSSS     OOOO      UUUUU    N     N   DDDD     SSSSSS
+//                                                  
+//Creates and repeats a footstep noise
+function playFootSteps() {
+  if (keys.length != 1 || volume == 0) return;
+  const bufferSize = audioCtx.sampleRate * 0.2;
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  
+  for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+  }
+  
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+  
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 2000;
+  filter.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.2);
+  
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(volume*10, audioCtx.currentTime + 0.1);
+  gain.gain.exponentialRampToValueAtTime(0.2, audioCtx.currentTime + 0.2);
+  
+  noise.connect(filter);
+  filter.connect(gain);
+  gain.connect(audioCtx.destination);
+  noise.start(audioCtx.currentTime);
+  setTimeout(playFootSteps, 300);
+}
+
+//playSong will get called each frame and schedule notes to be played for the next
+//second. If it finds notes to play, it will call pluck and bass to schedule them.
+function playSong() {
+  const time = audioCtx.currentTime%(64*BPM);
+  const second = Math.floor(time)
+  if (second == lastScheduled) return;
+  lastScheduled = second;
+  for (let s of song) {
+    if (Math.floor(s.time*BPM) != second) continue;
+    let time = audioCtx.currentTime+s.time*BPM-second+1;
+    if (s.sound == 1) pluck(time, s.note, s.length*BPM);
+    else bass(time, s.note, s.length*BPM);
+  }
+  
+}
+
+//Creates a plucky sound with a sawtooth oscillator
+function pluck(time, frequency, length) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  
+  osc.type = 'sawtooth';
+  osc.frequency.value = frequency;
+  
+  gain.gain.setValueAtTime(0, time);
+  gain.gain.linearRampToValueAtTime(volume, time + length * 0.05);
+  gain.gain.exponentialRampToValueAtTime(0.01, time + length);
+  
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 1000;
+  
+  osc.connect(gain);
+  gain.connect(filter);
+  filter.connect(audioCtx.destination);
+  
+  osc.start(time);
+  osc.stop(time + length);
+}
+
+//creates a bassy sound with a sine oscillator
+function bass(time, frequency, length) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  
+  osc.type = 'sine';
+  osc.frequency.value = frequency;
+  
+  gain.gain.setValueAtTime(0, time);
+  gain.gain.linearRampToValueAtTime(volume + 0.2, time + length * 0.1);
+  gain.gain.linearRampToValueAtTime(volume + 0.05, time + length * 0.33);
+  gain.gain.linearRampToValueAtTime(volume + 0.05, time + length * 0.66);
+  gain.gain.linearRampToValueAtTime(0.001, time + length);
+  
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  
+  osc.start(time);
+  osc.stop(time + length);
+}
+
+//Song data that sounds somewhat South Parkish. It will get read by playSong on repeat
+const song = [{"time":0,"length":0.5,"note":185,"sound":0},{"time":0,"length":0.25,"note":1047,"sound":1},{"time":0.25,"length":0.25,"note":1047,"sound":1},{"time":0.5,"length":0.5,"note":220,"sound":0},{"time":0.5,"length":0.5,"note":1047,"sound":1},{"time":1,"length":0.25,"note":277,"sound":0},{"time":1,"length":0.5,"note":1047,"sound":1},{"time":1.5,"length":0.5,"note":1047,"sound":1},{"time":2,"length":0.5,"note":185,"sound":0},{"time":2,"length":0.25,"note":1047,"sound":1},{"time":2.25,"length":0.25,"note":1047,"sound":1},{"time":2.5,"length":0.5,"note":220,"sound":0},{"time":2.5,"length":0.5,"note":1109,"sound":1},{"time":3,"length":0.25,"note":277,"sound":0},{"time":3,"length":0.5,"note":740,"sound":1},{"time":3.5,"length":0.5,"note":880,"sound":1},{"time":4,"length":0.5,"note":185,"sound":0},{"time":4,"length":0.25,"note":880,"sound":1},{"time":4.25,"length":0.25,"note":880,"sound":1},{"time":4.5,"length":0.5,"note":220,"sound":0},{"time":4.5,"length":0.5,"note":880,"sound":1},{"time":5,"length":0.25,"note":277,"sound":0},{"time":5,"length":0.25,"note":831,"sound":1},{"time":5.25,"length":0.25,"note":277,"sound":0},{"time":5.25,"length":0.25,"note":831,"sound":1},{"time":5.5,"length":0.25,"note":277,"sound":0},{"time":5.5,"length":0.5,"note":831,"sound":1},{"time":5.75,"length":0.25,"note":220,"sound":0},{"time":6,"length":0.5,"note":185,"sound":0},{"time":6,"length":1,"note":740,"sound":1},{"time":6.5,"length":0.5,"note":220,"sound":0},{"time":7,"length":0.5,"note":277,"sound":0},{"time":7.5,"length":0.25,"note":331,"sound":0},{"time":7.75,"length":0.25,"note":349,"sound":0},{"time":8,"length":0.5,"note":370,"sound":0},{"time":8,"length":0.5,"note":659,"sound":1},{"time":8.5,"length":0.5,"note":185,"sound":0},{"time":8.5,"length":0.5,"note":740,"sound":1},{"time":9,"length":0.5,"note":277,"sound":0},{"time":9,"length":0.5,"note":740,"sound":1},{"time":9.5,"length":0.5,"note":185,"sound":0},{"time":9.5,"length":0.25,"note":740,"sound":1},{"time":9.75,"length":0.5,"note":659,"sound":1},{"time":10,"length":0.5,"note":370,"sound":0},{"time":10.25,"length":0.5,"note":740,"sound":1},{"time":10.5,"length":0.5,"note":185,"sound":0},{"time":11,"length":0.5,"note":277,"sound":0},{"time":11,"length":0.5,"note":740,"sound":1},{"time":11.5,"length":0.5,"note":185,"sound":0},{"time":11.5,"length":0.5,"note":740,"sound":1},{"time":12,"length":0.5,"note":370,"sound":0},{"time":12,"length":0.5,"note":880,"sound":1},{"time":12.5,"length":0.5,"note":185,"sound":0},{"time":12.5,"length":0.5,"note":880,"sound":1},{"time":13,"length":0.5,"note":277,"sound":0},{"time":13,"length":0.25,"note":740,"sound":1},{"time":13.25,"length":0.5,"note":740,"sound":1},{"time":13.5,"length":0.5,"note":185,"sound":0},{"time":13.75,"length":0.25,"note":880,"sound":1},{"time":14,"length":0.5,"note":370,"sound":0},{"time":14,"length":1,"note":880,"sound":1},{"time":14.5,"length":0.5,"note":185,"sound":0},{"time":15,"length":0.5,"note":370,"sound":0},{"time":15.5,"length":0.5,"note":185,"sound":0},{"time":16,"length":0.5,"note":220,"sound":0},{"time":16,"length":0.5,"note":740,"sound":1},{"time":16.5,"length":0.5,"note":220,"sound":0},{"time":16.5,"length":0.5,"note":740,"sound":1},{"time":17,"length":1,"note":220,"sound":0},{"time":17,"length":0.5,"note":740,"sound":1},{"time":17.5,"length":0.5,"note":740,"sound":1},{"time":18,"length":0.5,"note":262,"sound":0},{"time":18,"length":0.5,"note":880,"sound":1},{"time":18,"length":0.5,"note":880,"sound":1},{"time":18.5,"length":0.5,"note":262,"sound":0},{"time":18.5,"length":0.5,"note":880,"sound":1},{"time":19,"length":1,"note":262,"sound":0},{"time":19,"length":1,"note":880,"sound":1},{"time":20,"length":0.5,"note":220,"sound":0},{"time":20,"length":0.5,"note":740,"sound":1},{"time":20.5,"length":0.5,"note":220,"sound":0},{"time":20.5,"length":0.5,"note":740,"sound":1},{"time":21,"length":1,"note":220,"sound":0},{"time":21,"length":0.5,"note":740,"sound":1},{"time":21.5,"length":0.25,"note":740,"sound":1},{"time":21.75,"length":0.25,"note":880,"sound":1},{"time":22,"length":0.5,"note":262,"sound":0},{"time":22,"length":0.5,"note":880,"sound":1},{"time":22.5,"length":0.5,"note":262,"sound":0},{"time":22.5,"length":0.5,"note":880,"sound":1},{"time":23,"length":1,"note":262,"sound":0},{"time":23,"length":0.5,"note":880,"sound":1},{"time":23.5,"length":0.5,"note":880,"sound":1},{"time":24,"length":0.5,"note":370,"sound":0},{"time":24,"length":0.5,"note":659,"sound":1},{"time":24.5,"length":0.5,"note":185,"sound":0},{"time":24.5,"length":0.5,"note":740,"sound":1},{"time":25,"length":0.5,"note":277,"sound":0},{"time":25,"length":0.5,"note":740,"sound":1},{"time":25.5,"length":0.5,"note":185,"sound":0},{"time":25.5,"length":0.25,"note":740,"sound":1},{"time":25.75,"length":0.5,"note":831,"sound":1},{"time":26,"length":0.5,"note":370,"sound":0},{"time":26.25,"length":0.5,"note":740,"sound":1},{"time":26.5,"length":0.5,"note":185,"sound":0},{"time":27,"length":0.5,"note":277,"sound":0},{"time":27,"length":0.5,"note":740,"sound":1},{"time":27.5,"length":0.5,"note":185,"sound":0},{"time":27.5,"length":0.5,"note":740,"sound":1},{"time":28,"length":0.5,"note":370,"sound":0},{"time":28,"length":0.5,"note":740,"sound":1},{"time":28.5,"length":0.5,"note":185,"sound":0},{"time":28.5,"length":0.5,"note":659,"sound":1},{"time":29,"length":0.5,"note":277,"sound":0},{"time":29,"length":0.5,"note":880,"sound":1},{"time":29.5,"length":0.5,"note":185,"sound":0},{"time":29.5,"length":0.25,"note":740,"sound":1},{"time":29.75,"length":0.5,"note":740,"sound":1},{"time":30,"length":0.5,"note":370,"sound":0},{"time":30.5,"length":0.5,"note":185,"sound":0},{"time":31,"length":0.5,"note":370,"sound":0},{"time":31.5,"length":0.5,"note":185,"sound":0},{"time":32,"length":0.5,"note":880,"sound":1},{"time":32.5,"length":0.5,"note":220,"sound":0},{"time":32.5,"length":0.5,"note":880,"sound":1},{"time":33,"length":0.5,"note":880,"sound":1},{"time":33.5,"length":0.5,"note":220,"sound":0},{"time":33.5,"length":0.5,"note":880,"sound":1},{"time":34,"length":0.5,"note":1047,"sound":1},{"time":34.5,"length":0.5,"note":262,"sound":0},{"time":34.5,"length":0.5,"note":1047,"sound":1},{"time":35,"length":1,"note":1047,"sound":1},{"time":35.5,"length":0.5,"note":262,"sound":0},{"time":36,"length":0.5,"note":880,"sound":1},{"time":36.5,"length":0.5,"note":220,"sound":0},{"time":36.5,"length":0.5,"note":880,"sound":1},{"time":37,"length":0.5,"note":880,"sound":1},{"time":37.5,"length":0.5,"note":220,"sound":0},{"time":37.5,"length":0.5,"note":880,"sound":1},{"time":38,"length":0.5,"note":1047,"sound":1},{"time":38.5,"length":0.5,"note":262,"sound":0},{"time":38.5,"length":0.5,"note":1047,"sound":1},{"time":39,"length":0.5,"note":1047,"sound":1},{"time":39.5,"length":0.5,"note":262,"sound":0},{"time":39.5,"length":0.5,"note":1047,"sound":1},{"time":40,"length":0.5,"note":370,"sound":0},{"time":40,"length":0.25,"note":659,"sound":1},{"time":40.25,"length":0.25,"note":659,"sound":1},{"time":40.5,"length":0.5,"note":185,"sound":0},{"time":40.5,"length":0.5,"note":740,"sound":1},{"time":41,"length":0.5,"note":277,"sound":0},{"time":41,"length":0.5,"note":740,"sound":1},{"time":41.5,"length":0.5,"note":185,"sound":0},{"time":41.5,"length":0.25,"note":659,"sound":1},{"time":41.75,"length":0.5,"note":880,"sound":1},{"time":42,"length":0.5,"note":370,"sound":0},{"time":42.25,"length":0.5,"note":740,"sound":1},{"time":42.5,"length":0.5,"note":185,"sound":0},{"time":43,"length":0.5,"note":277,"sound":0},{"time":43,"length":0.5,"note":740,"sound":1},{"time":43.5,"length":0.5,"note":185,"sound":0},{"time":43.5,"length":0.5,"note":740,"sound":1},{"time":44,"length":0.5,"note":370,"sound":0},{"time":44,"length":0.5,"note":880,"sound":1},{"time":44.5,"length":0.5,"note":185,"sound":0},{"time":44.5,"length":0.5,"note":880,"sound":1},{"time":45,"length":0.5,"note":277,"sound":0},{"time":45,"length":0.25,"note":740,"sound":1},{"time":45.25,"length":0.5,"note":740,"sound":1},{"time":45.5,"length":0.5,"note":185,"sound":0},{"time":45.75,"length":0.25,"note":880,"sound":1},{"time":46,"length":0.5,"note":370,"sound":0},{"time":46,"length":1,"note":880,"sound":1},{"time":46.5,"length":0.5,"note":185,"sound":0},{"time":47,"length":0.5,"note":370,"sound":0},{"time":47.5,"length":0.5,"note":185,"sound":0},{"time":48,"length":0.5,"note":220,"sound":0},{"time":48,"length":0.5,"note":880,"sound":1},{"time":48.5,"length":0.5,"note":220,"sound":0},{"time":48.5,"length":0.5,"note":880,"sound":1},{"time":49,"length":1,"note":220,"sound":0},{"time":49,"length":0.5,"note":880,"sound":1},{"time":49.5,"length":0.5,"note":880,"sound":1},{"time":50,"length":0.5,"note":262,"sound":0},{"time":50,"length":0.5,"note":1047,"sound":1},{"time":50.5,"length":0.5,"note":262,"sound":0},{"time":50.5,"length":0.5,"note":1047,"sound":1},{"time":51,"length":1,"note":262,"sound":0},{"time":51,"length":0.5,"note":1047,"sound":1},{"time":51.5,"length":0.5,"note":1047,"sound":1},{"time":52,"length":0.5,"note":220,"sound":0},{"time":52,"length":0.5,"note":880,"sound":1},{"time":52.5,"length":0.5,"note":220,"sound":0},{"time":52.5,"length":0.5,"note":880,"sound":1},{"time":53,"length":1,"note":220,"sound":0},{"time":53,"length":0.5,"note":880,"sound":1},{"time":53.5,"length":0.5,"note":880,"sound":1},{"time":54,"length":0.5,"note":262,"sound":0},{"time":54,"length":0.5,"note":1047,"sound":1},{"time":54.5,"length":0.5,"note":262,"sound":0},{"time":54.5,"length":0.5,"note":1047,"sound":1},{"time":55,"length":1,"note":262,"sound":0},{"time":55,"length":0.5,"note":1047,"sound":1},{"time":55.5,"length":0.5,"note":659,"sound":1},{"time":55.5,"length":0.5,"note":1047,"sound":1},{"time":56,"length":0.5,"note":370,"sound":0},{"time":56,"length":0.5,"note":659,"sound":1},{"time":56.5,"length":0.5,"note":185,"sound":0},{"time":56.5,"length":0.5,"note":740,"sound":1},{"time":57,"length":0.5,"note":277,"sound":0},{"time":57,"length":0.5,"note":740,"sound":1},{"time":57.5,"length":0.5,"note":185,"sound":0},{"time":57.5,"length":0.25,"note":740,"sound":1},{"time":57.75,"length":0.5,"note":880,"sound":1},{"time":58,"length":0.5,"note":370,"sound":0},{"time":58.25,"length":0.5,"note":740,"sound":1},{"time":58.5,"length":0.5,"note":185,"sound":0},{"time":59,"length":0.5,"note":277,"sound":0},{"time":59,"length":0.5,"note":740,"sound":1},{"time":59.5,"length":0.5,"note":185,"sound":0},{"time":59.5,"length":0.5,"note":740,"sound":1},{"time":60,"length":0.5,"note":370,"sound":0},{"time":60,"length":0.5,"note":740,"sound":1},{"time":60.5,"length":0.5,"note":185,"sound":0},{"time":60.5,"length":0.5,"note":659,"sound":1},{"time":61,"length":0.5,"note":277,"sound":0},{"time":61,"length":0.5,"note":880,"sound":1},{"time":61.5,"length":0.5,"note":185,"sound":0},{"time":61.5,"length":0.25,"note":740,"sound":1},{"time":61.75,"length":0.5,"note":740,"sound":1},{"time":62.25,"length":0.25,"note":740,"sound":1},{"time":62.5,"length":0.5,"note":185,"sound":0},{"time":63,"length":0.5,"note":277,"sound":0},{"time":63,"length":0.5,"note":370,"sound":0},{"time":63.5,"length":0.5,"note":185,"sound":0}];
+</script>
+</body>
+</html>
+

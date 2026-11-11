@@ -79,19 +79,11 @@
    "img": "shots/earth"
   },
   {
-   "id": "math-south-park",
-   "group": "math",
-   "name": "South Park Math",
-   "text": "Pick a South Park character and walk to the right answer. The UFO beams up the correct one; get it wrong and it takes you.",
-   "href": "https://math-games.jconra.com/south-park/",
-   "img": "shots/math-south-park"
-  },
-  {
    "id": "math-dino",
    "group": "math",
    "name": "Dino Math",
    "text": "Run around as a T-Rex and eat the correct numbers.",
-   "href": "https://math-games.jconra.com/dino-math/",
+   "href": "/projects/math-games/dino-math/",
    "img": "shots/math-dino"
   },
   {
@@ -99,7 +91,7 @@
    "group": "math",
    "name": "Lunar Lander Math",
    "text": "Land on the right answer without coming down too hard.",
-   "href": "https://math-games.jconra.com/lunar-lander/",
+   "href": "/projects/math-games/lunar-lander/",
    "img": "shots/math-lander"
   },
   {
@@ -107,7 +99,7 @@
    "group": "math",
    "name": "Snowboarding Math",
    "text": "Steer the snowboarder through the right equations and skip the wrong ones. Avoid the trees.",
-   "href": "https://math-games.jconra.com/snow-board/",
+   "href": "/projects/math-games/snow-board/",
    "img": "shots/math-snowboard"
   },
   {
@@ -115,7 +107,7 @@
    "group": "math",
    "name": "Math Murder",
    "text": "Kill the robot with the right answer on its face before it gets you.",
-   "href": "https://math-games.jconra.com/math-murder/",
+   "href": "/projects/math-games/math-murder/",
    "img": "shots/math-murder"
   },
   {

@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Lunar Lander Game</title>
+    <style>
+        * { touch-action: manipulation; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #0f0;
+            font-size: 18px;
+            text-shadow: 0 0 10px #0f0;
+            pointer-events: none;
+        }
+        #score-hud {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #0f0;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 10px #0f0;
+            pointer-events: none;
+        }
+        #question-hud {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ffff00;
+            font-size: 32px;
+            font-weight: bold;
+            text-shadow: 0 0 15px #ffff00;
+            text-align: center;
+        }
+        #feedback-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 64px;
+            font-weight: bold;
+            text-shadow: 0 0 20px currentColor;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        #start-menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #0f0;
+            font-size: 24px;
+        }
+        .start-button {
+            background: #0f0;
+            color: #000;
+            border: 3px solid #0f0;
+            padding: 15px 30px;
+            margin: 10px;
+            font-size: 20px;
+            font-family: monospace;
+            font-weight: bold;
+            cursor: pointer;
+            text-shadow: none;
+            box-shadow: 0 0 20px #0f0;
+        }
+        .start-button:hover {
+            background: #000;
+            color: #0f0;
+        }
+        .meter {
+            margin-bottom: 15px;
+        }
+        .meter-label {
+            margin-bottom: 5px;
+        }
+        .meter-bar-vertical {
+            width: 40px;
+            height: 200px;
+            border: 2px solid #0f0;
+            background: rgba(0, 0, 0, 0.5);
+            position: relative;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        .meter-fill-vertical {
+            width: 100%;
+            position: absolute;
+            transition: height 0.1s, background-color 0.3s, bottom 0.1s;
+        }
+        .meter-value-vertical {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        .center-line {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #fff;
+            z-index: 1;
+        }
+        #help-button {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background: #0f0;
+            color: #000;
+            border: 3px solid #0f0;
+            border-radius: 50%;
+            font-size: 32px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 0 20px #0f0;
+            z-index: 1000;
+        }
+        #help-button:hover {
+            background: #000;
+            color: #0f0;
+        }
+        #help-modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            max-width: 600px;
+            max-height: 80%;
+            background: rgba(0, 0, 0, 0.95);
+            border: 3px solid #0f0;
+            box-shadow: 0 0 30px #0f0;
+            padding: 30px;
+            color: #0f0;
+            font-size: 16px;
+            overflow-y: auto;
+            z-index: 2000;
+            display: none;
+        }
+        #help-modal h2 {
+            margin-top: 0;
+            color: #0f0;
+            text-shadow: 0 0 10px #0f0;
+        }
+        #help-modal h3 {
+            color: #0f0;
+            margin-top: 20px;
+        }
+        #help-modal ul {
+            margin: 10px 0;
+        }
+        .close-help {
+            float: right;
+            font-size: 28px;
+            cursor: pointer;
+            color: #ff0000;
+        }
+    </style>
+</head>
+<body>
+    <div id="start-menu">
+        <h1 style="margin-bottom: 30px;">LUNAR LANDER MATH</h1>
+        <div>Select Operation:</div>
+        <div style="margin-top: 20px;">
+            <button class="start-button" onclick="startGame('addition')">ADDITION</button>
+            <button class="start-button" onclick="startGame('subtraction')">SUBTRACTION</button>
+            <button class="start-button" onclick="startGame('multiplication')">MULTIPLICATION</button>
+            <button class="start-button" onclick="startGame('division')">DIVISION</button>
+            <button class="start-button" onclick="startGame('all')">ALL OPERATIONS</button>
+        </div>
+    </div>
+    <div id="question-hud" style="display: none;">
+        <div id="question-display"></div>
+    </div>
+    <div id="feedback-message"></div>
+    <div id="score-hud" style="display: none;">
+        <div id="score-value">SCORE: 0</div>
+        <div id="bonus-time" style="font-size: 18px; margin-top: 5px;">BONUS: 100</div>
+    </div>
+    <div id="hud" style="display: none;">
+        <div class="meter">
+            <div class="meter-label">VERTICAL SPEED</div>
+            <div class="meter-bar-vertical">
+                <div class="center-line"></div>
+                <div class="meter-fill-vertical" id="vsi-fill"></div>
+            </div>
+        </div>
+    </div>
+    <button id="help-button" onclick="toggleHelp(); event.stopPropagation();">?</button>
+    <div id="help-modal">
+        <span class="close-help" onclick="toggleHelp()">X</span>
+        <h2>LUNAR LANDER MATH</h2>
+        
+        <h3>Objective</h3>
+        <p>Land your lunar lander on the correct answer to math questions. The faster you land correctly, the higher your score!</p>
+        
+        <h3>Controls</h3>
+        <p><strong>Keyboard:</strong></p>
+        <ul>
+            <li><strong>Spacebar</strong> - Upward thrust (slows descent)</li>
+            <li><strong>W/A/S/D</strong> - Lateral thrust (forward/left/backward/right)</li>
+        </ul>
+        <p><strong>Mouse/Touch:</strong></p>
+        <ul>
+            <li><strong>Click/Touch and Hold</strong> - Activates thrusters</li>
+            <li><strong>Move</strong> - Tilt lander to control direction</li>
+        </ul>
+        
+        <h3>Scoring</h3>
+        <ul>
+            <li><strong>Base Points:</strong> 100 maximum per question</li>
+            <li><strong>Time Bonus:</strong> Decreases by 2 points/second (min 10)</li>
+            <li><strong>Hard Landing:</strong> -20 points if landing speed > 2</li>
+            <li><strong>Wrong Answer:</strong> 0 points, position resets</li>
+        </ul>
+        
+        <h3>Vertical Speed Indicator (Left Side)</h3>
+        <ul>
+            <li><strong style="color: #0f0;">Green</strong> - Safe landing speed</li>
+            <li><strong style="color: #ff8800;">Orange</strong> - Caution</li>
+            <li><strong style="color: #f00;">Red</strong> - Hard landing penalty</li>
+        </ul>
+        
+        <h3>Tips</h3>
+        <ul>
+            <li>Use spacebar for vertical control, WASD for positioning</li>
+            <li>Watch the VSI to ensure soft landings</li>
+            <li>Land with descent speed under 2 to avoid penalties</li>
+            <li>The bonus timer shows your current time bonus</li>
+        </ul>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <script>
+        // Simple hash function for pseudo-random noise
+        let seed = Math.random() * 10000;
+        
+        function hash(x, y) {
+            let h = Math.sin(x * 12.9898 + y * 78.233 + seed) * 43758.5453;
+            return h - Math.floor(h);
+        }
+        
+        // Smooth noise function
+        function noise(x, y) {
+            const ix = Math.floor(x);
+            const iy = Math.floor(y);
+            const fx = x - ix;
+            const fy = y - iy;
+            
+            const sx = fx * fx * (3 - 2 * fx);
+            const sy = fy * fy * (3 - 2 * fy);
+            
+            const a = hash(ix, iy);
+            const b = hash(ix + 1, iy);
+            const c = hash(ix, iy + 1);
+            const d = hash(ix + 1, iy + 1);
+            
+            return a * (1 - sx) * (1 - sy) +
+                   b * sx * (1 - sy) +
+                   c * (1 - sx) * sy +
+                   d * sx * sy;
+        }
+        
+        // Ridged noise (for mountains)
+        function ridgedNoise(x, y, octaves) {
+            let value = 0;
+            let amplitude = 1;
+            let frequency = 1;
+            let maxValue = 0;
+            
+            for (let i = 0; i < octaves; i++) {
+                let n = noise(x * frequency, y * frequency);
+                n = 1 - Math.abs(n * 2 - 1);
+                value += n * amplitude;
+                maxValue += amplitude;
+                amplitude *= 0.5;
+                frequency *= 2;
+            }
+            
+            return value / maxValue;
+        }
+        
+        // Get height using ridged noise
+        function getHeight(wx, wy) {
+            const r = ridgedNoise(wx * 0.005, wy * 0.005, 6);
+            return (r - 0.5) * 100;
+        }
+        
+        // Initialize Three.js
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 5000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+        
+        // Locked parameters
+        const planeWidth = 2250;
+        const planeHeight = 1100;
+        const trapezoidFactor = 0.3;
+        const curveStrength = 5;
+        const moonRadius = 1737;
+        
+        const craterParams = {
+            numCraters: 30,
+            craterMinSize: 30,
+            craterMaxSize: 80,
+            craterDepth: 15,
+            craterRimHeight: 3.5,
+            bowlPower: 2,
+            rimStart: 0.9,
+            rimFalloff: 0.3,
+            craterNoise: 0.05
+        };
+        
+        let moonSurface;
+        let craters = [];
+        let answerCraters = []; // Craters with answers
+        let answerPadOffset = -8; // Y offset for landing pads
+        
+        let frames = 0;
+        let startTime = Date.now();
+
+        // Math game setup
+        let currentQuestion = null;
+        let score = 0;
+        let gameStarted = false;
+        let selectedOperation = 'addition';
+        let answerSubmitted = false;
+        let questionStartTime = 0;
+        
+        function generateQuestion() {
+            let num1, num2, answer, question;
+            let operation = selectedOperation;
+            
+            if (operation === 'all') {
+                const ops = ['addition', 'subtraction', 'multiplication', 'division'];
+                operation = ops[Math.floor(Math.random() * ops.length)];
+            }
+            
+            switch(operation) {
+                case 'addition':
+                    num1 = Math.floor(Math.random() * 20) + 1;
+                    num2 = Math.floor(Math.random() * 20) + 1;
+                    answer = num1 + num2;
+                    question = `${num1} + ${num2}`;
+                    break;
+                case 'subtraction':
+                    num1 = Math.floor(Math.random() * 30) + 10;
+                    num2 = Math.floor(Math.random() * num1) + 1;
+                    answer = num1 - num2;
+                    question = `${num1} - ${num2}`;
+                    break;
+                case 'multiplication':
+                    num1 = Math.floor(Math.random() * 12) + 1;
+                    num2 = Math.floor(Math.random() * 12) + 1;
+                    answer = num1 * num2;
+                    question = `${num1} x ${num2}`;
+                    break;
+                case 'division':
+                    num2 = Math.floor(Math.random() * 12) + 1;
+                    answer = Math.floor(Math.random() * 12) + 1;
+                    num1 = num2 * answer;
+                    question = `${num1} / ${num2}`;
+                    break;
+            }
+            
+            return { question, answer };
+        }
+        
+        function generateAnswers(correctAnswer) {
+            const answers = new Set([correctAnswer]);
+            while (answers.size < 5) {
+                const offset = Math.floor(Math.random() * 10) - 5;
+                const wrongAnswer = correctAnswer + offset;
+                if (wrongAnswer > 0 && wrongAnswer !== correctAnswer) {
+                    answers.add(wrongAnswer);
+                }
+            }
+            return Array.from(answers).sort(() => Math.random() - 0.5);
+        }
+        
+        // Start game with selected operation
+        window.startGame = function(operation) {
+            selectedOperation = operation;
+            gameStarted = true;
+            document.getElementById('start-menu').style.display = 'none';
+            document.getElementById('hud').style.display = 'block';
+            document.getElementById('question-hud').style.display = 'block';
+            document.getElementById('score-hud').style.display = 'block';
+            startNewQuestion();
+        };
+        
+        window.toggleHelp = function() {
+            const modal = document.getElementById('help-modal');
+            modal.style.display = modal.style.display === 'none' ? 'block' : 'none';
+            return false;
+        };
+        
+        // Generate craters from seed
+        function generateCraters() {
+            craters = [];
+            answerCraters = [];
+            let attempts = 0;
+            const maxAttempts = craterParams.numCraters * 100;
+            
+            // First, generate 5 answer craters in visible area (hardcoded positions)
+            const answerPositions = [
+                { x: 0, y: 100 },       // Center front
+                { x: -150, y: 0 },      // Left front
+                { x: 150, y: 0 },       // Right front
+                { x: -200, y: 300 },    // Left back
+                { x: 200, y: 300 }      // Right back
+            ];
+            
+            for (let i = 0; i < 5; i++) {
+                const crater = {
+                    x: answerPositions[i].x,
+                    y: answerPositions[i].y,
+                    radius: 60,
+                    depth: craterParams.craterDepth,
+                    isAnswer: true,
+                    answer: null
+                };
+                craters.push(crater);
+                answerCraters.push(crater);
+            }
+            
+            // Generate remaining decorative craters
+            while (craters.length < craterParams.numCraters && attempts < maxAttempts) {
+                const newCrater = {
+                    x: (hash(attempts, seed) - 0.5) * planeWidth * 0.8,
+                    y: (hash(attempts + 100, seed) - 0.5) * planeHeight * 0.8,
+                    radius: craterParams.craterMinSize + hash(attempts + 200, seed) * (craterParams.craterMaxSize - craterParams.craterMinSize),
+                    depth: craterParams.craterDepth * (0.7 + hash(attempts + 300, seed) * 0.6),
+                    isAnswer: false
+                };
+                
+                // Check if it overlaps with existing craters
+                let overlaps = false;
+                for (let c of craters) {
+                    const dx = newCrater.x - c.x;
+                    const dy = newCrater.y - c.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    const minDist = (newCrater.radius + c.radius) * (1 + craterParams.rimFalloff) * 1.1;
+                    
+                    if (dist < minDist) {
+                        overlaps = true;
+                        break;
+                    }
+                }
+                
+                if (!overlaps) {
+                    craters.push(newCrater);
+                }
+                
+                attempts++;
+            }
+        }
+        
+        function generateTerrain() {
+            if (moonSurface) {
+                scene.remove(moonSurface);
+            }
+            
+            // Create terrain
+            const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight, 400, 400);
+            const positions = geometry.attributes.position;
+            
+            for (let i = 0; i < positions.count; i++) {
+                let x = positions.getX(i);
+                let y = positions.getY(i);
+                let z = positions.getZ(i);
+                
+                // Trapezoid shape
+                const normalizedY = 1 - (y + planeHeight/2) / planeHeight;
+                const trapFactor = trapezoidFactor + normalizedY * (1 - trapezoidFactor);
+                x *= trapFactor;
+                
+                // Horizon curve
+                if (y < 0) {
+                    const distFactor = Math.abs(y) / 1000;
+                    const curvature = -(x * x * distFactor * curveStrength) / 10000;
+                    z += curvature;
+                }
+                
+                // Terrain noise
+                const terrainHeight = getHeight(x, y);
+                z += terrainHeight;
+                
+                // Add craters
+                for (let c = craters.length - 1; c >= 0; c--) {
+                    const crater = craters[c];
+                    const dx = x - crater.x;
+                    const dy = y - crater.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    
+                    if (dist < crater.radius * (1 + craterParams.rimFalloff)) {
+                        const originalZ = z;
+                        
+                        let factor = dist / crater.radius;
+                        
+                        // Add noise to crater edge
+                        if (craterParams.craterNoise > 0) {
+                            const angle = Math.atan2(dy, dx);
+                            const noiseVal = (hash(crater.x + angle * 100, crater.y) - 0.5) * craterParams.craterNoise;
+                            factor = factor * (1 + noiseVal);
+                        }
+                        
+                        if (factor <= 1) {
+                            const bowlDepth = (1 - Math.pow(factor, craterParams.bowlPower)) * crater.depth;
+                            const rimHeight = factor > craterParams.rimStart ? 
+                                Math.pow((factor - craterParams.rimStart) / (1 - craterParams.rimStart), 2) * craterParams.craterRimHeight : 0;
+                            
+                            z = z - terrainHeight - bowlDepth + rimHeight;
+                        } else {
+                            const falloffFactor = (factor - 1) / craterParams.rimFalloff;
+                            const rimHeight = Math.pow(1 - falloffFactor, 2) * craterParams.craterRimHeight;
+                            const craterZ = z - terrainHeight + rimHeight;
+                            z = originalZ * falloffFactor + craterZ * (1 - falloffFactor);
+                        }
+                        
+                        break;
+                    }
+                }
+                
+                positions.setXYZ(i, x, y, z);
+            }
+            
+            geometry.computeVertexNormals();
+            
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xa39a86,
+                roughness: 0.98,
+                metalness: 0.02,
+            });
+            
+            moonSurface = new THREE.Mesh(geometry, material);
+            moonSurface.rotation.x = -Math.PI / 2;
+            moonSurface.receiveShadow = true;
+            scene.add(moonSurface);
+            
+            // Add landing pads with numbers to answer craters
+            for (let crater of answerCraters) {
+                if (crater.landingPad) {
+                    scene.remove(crater.landingPad);
+                }
+                
+                if (crater.answer !== null) {
+                    // Create canvas with number
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 512;
+                    canvas.height = 512;
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Flip horizontally
+                    ctx.translate(canvas.width, 0);
+                    ctx.scale(-1, 1);
+                    
+                    // Yellow outer circle
+                    ctx.fillStyle = '#ffff00';
+                    ctx.beginPath();
+                    ctx.arc(256, 256, 240, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Black ring
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = 20;
+                    ctx.beginPath();
+                    ctx.arc(256, 256, 240, 0, Math.PI * 2);
+                    ctx.stroke();
+                    
+                    // Grey concrete center
+                    ctx.fillStyle = '#4a4a4a';
+                    ctx.beginPath();
+                    ctx.arc(256, 256, 200, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Number in center
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 280px monospace';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(crater.answer.toString(), 256, 256);
+                    
+                    // Create flat circular mesh at crater location
+                    const texture = new THREE.CanvasTexture(canvas);
+                    const padGeometry = new THREE.CircleGeometry(crater.radius * 0.7, 32);
+                    const padMaterial = new THREE.MeshStandardMaterial({ 
+                        map: texture,
+                        roughness: 0.8,
+                        metalness: 0.1,
+                        side: THREE.DoubleSide
+                    });
+                    const pad = new THREE.Mesh(padGeometry, padMaterial);
+                    pad.rotation.x = Math.PI / 2;
+                    pad.position.set(crater.x, answerPadOffset, -crater.y);
+                    pad.receiveShadow = true;
+                    crater.landingPad = pad;
+                    scene.add(pad);
+                }
+            }
+        }
+        
+        // Camera position (upside down but works)
+        camera.position.set(0, 300, -450);
+        camera.rotation.set(-2.29, 0, -3.11);
+        
+        // Lighting
+        const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        sunLight.position.set(0, 1, 1);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 512;
+        sunLight.shadow.mapSize.height = 512;
+        sunLight.shadow.camera.left = -100;
+        sunLight.shadow.camera.right = 100;
+        sunLight.shadow.camera.top = 100;
+        sunLight.shadow.camera.bottom = -100;
+        sunLight.shadow.camera.near = 0.5;
+        sunLight.shadow.camera.far = 2000;
+        scene.add(sunLight);
+        
+        const ambientLight = new THREE.AmbientLight(0x333333);
+        scene.add(ambientLight);
+        
+        // Star parameters
+        const starParams = {
+            xRange: 10000,
+            yRange: 3000,
+            zMin: 400,
+            zMax: 1300,
+            regenerate: function() {
+                scene.remove(stars);
+                generateStars();
+            }
+        };
+        
+        let stars;
+        
+        function generateStars() {
+            const starGeometry = new THREE.BufferGeometry();
+            const starVertices = [];
+            for (let i = 0; i < 1000; i++) {
+                const x = (Math.random() - 0.5) * starParams.xRange;
+                const y = (Math.random() - 0.5) * starParams.yRange;
+                const z = Math.random() * (starParams.zMax - starParams.zMin) + starParams.zMin;
+                starVertices.push(x, y, z);
+            }
+            starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+            const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 2 });
+            stars = new THREE.Points(starGeometry, starMaterial);
+            scene.add(stars);
+        }
+        
+        generateStars();
+        
+        // Initialize
+        generateCraters();
+        generateTerrain();
+        
+        // Flame control and tilting
+        let flamesActive = false;
+        let mouseX = 0;
+        let mouseY = 0;
+        const maxTilt = 0.3; // Maximum tilt in radians
+        
+        // Keyboard controls
+        const keys = {};
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            keys[key] = true;
+            
+            if (key === 'w' || key === 'a' || key === 's' || key === 'd' || key === ' ') {
+                if (!physicsStarted && gameStarted) physicsStarted = true;
+                if (gameStarted) setFlames(true);
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            keys[key] = false;
+            // Turn off flames only if no WASD or space is pressed
+            if (!keys['w'] && !keys['a'] && !keys['s'] && !keys['d'] && !keys[' ']) {
+                setFlames(false);
+            }
+        });
+        
+        function setFlames(active) {
+            flamesActive = active;
+            lander.traverse((child) => {
+                if (child.userData.isFlame) {
+                    child.visible = active;
+                }
+            });
+        }
+        
+        function updateMousePosition(clientX, clientY) {
+            // Convert to normalized coordinates (-1 to 1)
+            mouseX = (clientX / window.innerWidth) * 2 - 1;
+            mouseY = -(clientY / window.innerHeight) * 2 + 1;
+        }
+        
+        // Mouse events
+        window.addEventListener('mousedown', (e) => {
+            setFlames(true);
+            updateMousePosition(e.clientX, e.clientY);
+        });
+        
+        window.addEventListener('mousemove', (e) => {
+            if (flamesActive) {
+                updateMousePosition(e.clientX, e.clientY);
+            }
+        });
+        
+        window.addEventListener('mouseup', () => {
+            setFlames(false);
+        });
+        
+        // Touch events
+        window.addEventListener('touchstart', (e) => {
+            setFlames(true);
+            if (e.touches.length > 0) {
+                updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        });
+        
+        window.addEventListener('touchmove', (e) => {
+            if (flamesActive && e.touches.length > 0) {
+                updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        });
+        
+        window.addEventListener('touchend', () => {
+            setFlames(false);
+        });
+
+        window.addEventListener('dblclick', (event) => {
+            event.preventDefault();
+        }, { passive: false });
+        
+        // Create lander
+        let lander = createLander();
+        lander.position.set(0, 260, -400);
+        lander.scale.set(0.5, 0.5, 0.5);
+        lander.castShadow = true;
+        lander.traverse((child) => {
+            if (child.isMesh) {
+                child.castShadow = true;
+            }
+        });
+        scene.add(lander);
+        
+        function createLander() {
+            const lander = new THREE.Group();
+            
+            // Create canvas texture for body
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            
+            // Background - dark blue
+            ctx.fillStyle = '#1a2a4a';
+            ctx.fillRect(0, 0, 512, 512);
+            
+            // Draw 4 faces (one per side of pyramid)
+            for (let i = 0; i < 4; i++) {
+                const x = (i % 2) * 256;
+                const y = Math.floor(i / 2) * 256;
+                
+                // Panel lines - light gray
+                ctx.strokeStyle = '#c0c0c0';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(x + 10, y + 10, 236, 236);
+                ctx.strokeRect(x + 30, y + 30, 196, 196);
+                
+                // Equipment boxes - lighter
+                ctx.fillStyle = '#5a6a8a';
+                ctx.fillRect(x + 50, y + 50, 40, 40);
+                ctx.fillRect(x + 166, y + 50, 40, 40);
+                
+                // Box details - light
+                ctx.strokeStyle = '#a0a0a0';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x + 50, y + 50, 40, 40);
+                ctx.strokeRect(x + 166, y + 50, 40, 40);
+            }
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            
+            // Pyramid body with texture
+            const bodyGeometry = new THREE.CylinderGeometry(4, 12, 16, 4);
+            const bodyMaterial = new THREE.MeshBasicMaterial({ 
+                map: texture
+            });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            lander.add(body);
+            
+            // Top antenna
+            const antennaGeometry = new THREE.BoxGeometry(2, 10, 0.5);
+            const antennaMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x888888
+            });
+            const antenna = new THREE.Mesh(antennaGeometry, antennaMaterial);
+            antenna.position.y = 13;
+            lander.add(antenna);
+            
+            // Antenna dish
+            const dishGeometry = new THREE.ConeGeometry(2, 1.5, 8);
+            const dish = new THREE.Mesh(dishGeometry, new THREE.MeshBasicMaterial({ color: 0x666666 }));
+            dish.position.y = 18.5;
+            dish.rotation.x = Math.PI;
+            lander.add(dish);
+            
+            // 4 legs with box geometry
+            const legMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x3a4a6a
+            });
+            
+            const legAngles = [0, Math.PI / 2, Math.PI, Math.PI * 1.5];
+            
+            // Blinking light geometry
+            const lightGeometry = new THREE.SphereGeometry(0.8, 8, 8);
+            const redLightMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            
+            for (let i = 0; i < 4; i++) {
+                const angle = legAngles[i];
+                const legGroup = new THREE.Group();
+                
+                // Main strut (box)
+                const strutGeometry = new THREE.BoxGeometry(3, 20, 3);
+                const strut = new THREE.Mesh(strutGeometry, legMaterial);
+                strut.position.set(0, -10, 0);
+                strut.rotation.z = Math.PI / 5;
+                legGroup.add(strut);
+                
+                // Foot pad
+                const padGeometry = new THREE.CylinderGeometry(3, 3, 1, 16);
+                const padMaterial = new THREE.MeshBasicMaterial({ color: 0x666666 });
+                const pad = new THREE.Mesh(padGeometry, padMaterial);
+                pad.position.set(7, -20, 0);
+                legGroup.add(pad);
+                
+                // Blinking light on top of foot
+                const light = new THREE.Mesh(lightGeometry, redLightMaterial);
+                light.position.set(7, -19, 0);
+                light.userData.isLight = true;
+                light.userData.blinkSpeed = 1000; // All synchronized
+                legGroup.add(light);
+                
+                // Massive jet flame (hidden by default)
+                const flameGeometry = new THREE.ConeGeometry(2.5, 20, 8);
+                const flameMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0x4488ff,
+                    transparent: true,
+                    opacity: 0.7
+                });
+                const flame = new THREE.Mesh(flameGeometry, flameMaterial);
+                flame.position.set(7, -30, 0);
+                flame.rotation.x = Math.PI;
+                flame.visible = false;
+                flame.userData.isFlame = true;
+                legGroup.add(flame);
+                
+                // Middle flame layer - white hot
+                const midFlameGeometry = new THREE.ConeGeometry(1.8, 16, 8);
+                const midFlameMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0xaaddff,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const midFlame = new THREE.Mesh(midFlameGeometry, midFlameMaterial);
+                midFlame.position.set(7, -28, 0);
+                midFlame.rotation.x = Math.PI;
+                midFlame.visible = false;
+                midFlame.userData.isFlame = true;
+                legGroup.add(midFlame);
+                
+                // Inner core - bright white
+                const coreGeometry = new THREE.ConeGeometry(1.2, 12, 8);
+                const coreMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0xffffff,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                const core = new THREE.Mesh(coreGeometry, coreMaterial);
+                core.position.set(7, -26, 0);
+                core.rotation.x = Math.PI;
+                core.visible = false;
+                core.userData.isFlame = true;
+                legGroup.add(core);
+                
+                // Position leg - swap positions for legs 1 and 3
+                const posAngle = (i === 1 || i === 3) ? angle + Math.PI : angle;
+                legGroup.position.set(Math.cos(posAngle) * 10, -8, Math.sin(posAngle) * 10);
+                legGroup.rotation.y = angle;
+                lander.add(legGroup);
+            }
+            
+            return lander;
+        }
+        
+        // Lander physics
+        let landerVelocity = new THREE.Vector3(0, 0, 0);
+        const gravity = -0.2;
+        const thrustPower = 0.25;
+        let physicsStarted = false;
+        let altitude = 0;
+        
+        function setFlames(active) {
+            if (!physicsStarted && active) {
+                physicsStarted = true;
+            }
+            flamesActive = active;
+            lander.traverse((child) => {
+                if (child.userData.isFlame) {
+                    child.visible = active;
+                }
+            });
+        }
+        
+        // Get terrain height at lander position using raycasting
+        function getTerrainHeightAtLander() {
+            const raycaster = new THREE.Raycaster();
+            const origin = new THREE.Vector3(lander.position.x, 1000, lander.position.z);
+            const direction = new THREE.Vector3(0, -1, 0);
+            
+            raycaster.set(origin, direction);
+            
+            // Check landing pads first
+            for (let crater of answerCraters) {
+                if (crater.landingPad) {
+                    const padIntersects = raycaster.intersectObject(crater.landingPad);
+                    if (padIntersects.length > 0) {
+                        return padIntersects[0].point.y;
+                    }
+                }
+            }
+            
+            // Fall back to terrain
+            const intersects = raycaster.intersectObject(moonSurface);
+            if (intersects.length > 0) {
+                return intersects[0].point.y;
+            }
+            
+            return 0;
+        }
+        
+        // Check which crater the lander is over
+        function getCraterAtLander() {
+            const landerX = lander.position.x;
+            const landerZ = -lander.position.z;
+            
+            for (let crater of answerCraters) {
+                const dx = landerX - crater.x;
+                const dy = landerZ - crater.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                
+                if (dist < crater.radius) {
+                    return crater;
+                }
+            }
+            
+            return null;
+        }
+        
+        function resetLanderPosition() {
+            lander.position.set(0, 260, -400);
+            landerVelocity.set(0, 0, 0);
+            physicsStarted = false;
+            camera.position.set(0, 300, -450);
+            camera.rotation.set(-2.29, 0, -3.11);
+        }
+        
+        // Start a new question
+        function startNewQuestion() {
+            answerSubmitted = false;
+            questionStartTime = Date.now();
+            currentQuestion = generateQuestion();
+            const answers = generateAnswers(currentQuestion.answer);
+            
+            // Assign answers to craters
+            for (let i = 0; i < answerCraters.length; i++) {
+                answerCraters[i].answer = answers[i];
+            }
+            
+            // Update question display
+            updateQuestionDisplay();
+            
+            // Regenerate terrain to show new answers
+            generateTerrain();
+            
+            resetLanderPosition();
+        }
+        
+        function updateQuestionDisplay() {
+            const questionEl = document.getElementById('question-display');
+            const scoreEl = document.getElementById('score-value');
+            
+            if (currentQuestion) {
+                questionEl.textContent = currentQuestion.question + ' = ?';
+            }
+            
+            scoreEl.textContent = `SCORE: ${score}`;
+        }
+        
+        function showFeedback(message, color, size=64) {
+            const feedbackEl = document.getElementById('feedback-message');
+            feedbackEl.textContent = message;
+            feedbackEl.style.color = color;
+            feedbackEl.style['font-size'] = size+'px';
+            feedbackEl.style.opacity = '1';
+            setTimeout(() => {
+                feedbackEl.style.opacity = '0';
+            }, 2000);
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            frames++;
+            let fps = frames / ((Date.now() - startTime) / 1000);
+            
+            // Update bonus time display
+            if (gameStarted && currentQuestion && !answerSubmitted) {
+                const timeElapsed = (Date.now() - questionStartTime) / 1000;
+                const bonusPoints = Math.max(0, Math.round(100 - timeElapsed * 2));
+                document.getElementById('bonus-time').textContent = `BONUS: ${bonusPoints}`;
+            }
+            
+            // Handle keyboard input for tilt
+            let keyboardX = 0;
+            let keyboardY = 0;
+            const usingKeyboard = keys['w'] || keys['a'] || keys['s'] || keys['d'] || keys[' '];
+            
+            if (keys['a']) keyboardX = -1;  // Left
+            if (keys['d']) keyboardX = 1;   // Right
+            if (keys['s']) keyboardY = -1;  // Closer (backward)
+            if (keys['w']) keyboardY = 1;   // Away (forward)
+            
+            // Use keyboard input if active, otherwise use mouse
+            const inputX = usingKeyboard ? keyboardX : mouseX;
+            const inputY = usingKeyboard ? keyboardY : mouseY;
+            
+            let fpsScaler = fps / 12; 
+            // Tilt lander based on input when flames active
+            if (flamesActive) {
+                // Tilt left/right based on input
+                lander.rotation.z = inputX * maxTilt;
+                // Tilt forward/back based on input
+                lander.rotation.x = inputY * maxTilt;
+                
+                // Apply thrust
+                if (usingKeyboard) {
+                    // Spacebar: upward thrust only
+                    if (keys[' ']) landerVelocity.y += thrustPower / fpsScaler;
+                    // WASD: lateral thrust only
+                    landerVelocity.x -= inputX * thrustPower / fpsScaler;
+                    landerVelocity.z += inputY * thrustPower / fpsScaler;
+                } else {
+                    // Mouse: upward + lateral thrust
+                    let powerSplit = Math.max(Math.abs(inputX), Math.abs(inputY)) + 0.5;
+                    landerVelocity.y += thrustPower / fpsScaler * (( 0.5 - powerSplit) + 1.5);
+                    landerVelocity.x -= inputX * thrustPower * 0.5 / fpsScaler * powerSplit;
+                    landerVelocity.z += inputY * thrustPower * 0.5 / fpsScaler * powerSplit;
+                }
+            } else {
+                // Smoothly return to neutral position
+                lander.rotation.z *= 0.9;
+                lander.rotation.x *= 0.9;
+            }
+            
+            // Update HUD
+            const vsi = landerVelocity.y;
+            const vsiAbs = Math.abs(vsi);
+            const vsiFill = document.getElementById('vsi-fill');
+            
+            // VSI color based on descent rate
+            let vsiColor = '#0f0'; // Green
+            if (vsi < 0) { // Descending
+                if (vsiAbs > 1.5) vsiColor = '#f00'; // Red - will crash
+                else if (vsiAbs > 0.75) vsiColor = '#ff8800'; // Orange - warning
+            }
+            
+            // VSI bar extends from center up (positive) or down (negative)
+            const vsiHeight = Math.min(50, vsiAbs * 30); // Max 50% of bar height
+            vsiFill.style.background = vsiColor;
+            vsiFill.style.height = vsiHeight + '%';
+            if (vsi >= 0) {
+                // Ascending - bar extends upward from center
+                vsiFill.style.bottom = '50%';
+            } else {
+                // Descending - bar extends downward from center
+                vsiFill.style.bottom = (50 - vsiHeight) + '%';
+            }
+            
+            // Update lander position
+            if (physicsStarted) {
+
+                lander.position.add(landerVelocity);
+                
+                sunLight.position.set(
+                    lander.position.x - 10,
+                    lander.position.y + 20,
+                    lander.position.z + 10
+                );
+                
+                sunLight.target.position.copy(lander.position);
+                sunLight.target.updateMatrixWorld();
+                
+                // Smoothly follow lander with camera (relative offset)
+                const targetCameraY = lander.position.y + 30;
+                const targetCameraZ = lander.position.z - 30;
+                
+                camera.position.x = lander.position.x;
+                camera.position.y += (targetCameraY - camera.position.y) * 0.05;
+                camera.position.z += (targetCameraZ - camera.position.z) * 0.05;
+                
+                camera.lookAt(lander.position);
+                
+                // Check collision with terrain
+                const terrainHeight = getTerrainHeightAtLander();
+                const landerBottomY = lander.position.y - 15; // Approximate leg length
+                altitude = landerBottomY - terrainHeight;
+                
+                if (altitude > 0) landerVelocity.y += gravity / fpsScaler;
+                else {
+                    const landingSpeed = Math.abs(landerVelocity.y);
+                    const hardLanding = landingSpeed > 1.5;
+                    
+                    lander.position.y = terrainHeight + 15;
+                    landerVelocity.y = 0;
+
+                    
+                    // Check if landed on correct answer
+                    const crater = getCraterAtLander();
+                    if (crater && crater.isAnswer && crater.answer !== null && !answerSubmitted) {
+                        answerSubmitted = true;
+                        
+                        if (crater.answer === currentQuestion.answer) {
+                            const timeElapsed = (Date.now() - questionStartTime) / 1000;
+                            let points = Math.max(10, Math.round(100 - timeElapsed * 2));
+                            
+                            if (hardLanding) {
+                                const penalty = 20;
+                                points = Math.max(0, points - penalty);
+                                showFeedback(`CORRECT! +${points} (Hard Landing -${penalty})`, '#ff8800', 40);
+                            } else {
+                                showFeedback(`CORRECT! +${points}`, '#0c0');
+                            }
+                            
+                            score += points;
+                            crater.landingPad.material.color.setHex(0x00ff00);
+                            updateQuestionDisplay();
+                            setTimeout(() => startNewQuestion(), 2000);
+                        } else {
+                            showFeedback('WRONG!', '#ff0000');
+                            crater.landingPad.material.color.setHex(0xff0000);
+                            setTimeout(() => {
+                                crater.landingPad.material.color.setHex(0xffff00);
+                                answerSubmitted = false;
+                                resetLanderPosition();
+                            }, 2000);
+                        }
+                    }
+                }
+                
+                // Apply drag (more friction on ground)
+                if (altitude <= 0) {
+                    landerVelocity.x *= 0.85;
+                    landerVelocity.z *= 0.85;
+                } else {
+                    landerVelocity.multiplyScalar(0.98);
+                }
+            }
+            
+            // Blink lights
+            const time = Date.now();
+            lander.traverse((child) => {
+                if (child.userData.isLight) {
+                    const blink = Math.floor(time / child.userData.blinkSpeed) % 2;
+                    child.visible = blink === 0;
+                }
+                // Animate flames
+                if (child.userData.isFlame && child.visible) {
+                    child.scale.y = 0.8 + Math.sin(time * 0.01) * 0.2;
+                }
+            });
+            
+            renderer.render(scene, camera);
+        }
+        
+        animate();
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

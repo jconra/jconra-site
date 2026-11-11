@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Snowboard Math Game</title>
+  <style>
+    body { margin: 0;  overflow: hidden;}
+  </style>
+</head>
+<body onload="init()">
+<canvas id="game"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const w = canvas.width = window.innerWidth;
+const h = canvas.height = window.innerHeight;
+ctx.textAlign = 'center';
+
+let player = { x: w/2, y: h/2, vx: 0, vy: 0, size: 50};
+let colors = { board: "#25b371", pants: "blue", chest: "#5861c7", arms:"#7b8bc9", head: "#d4a76c", hat: "#167a4b" , hat2: "#21b56f"};
+let mouse = {x:w, y:h/2};
+let answers = [];
+let snow = [];
+let trees = [];
+let score = 0;
+let crash = Date.now();
+let speed = 0;
+let slope = {x:0, y:0, vx:0, vy:0};
+const SNOWNUM = 1000;
+
+function init() {
+  for (let i=0; i<SNOWNUM; i++) {
+    snow.push({x:rn(-100,w+100), y:rn(1,h*2), r:rn(2,5), c:rn(1,15)});
+  }
+  for (let i=0; i<10; i++) {
+    trees.push({x:rn(-100,w+100), y:rn(1,h*2), r:rn(50,120), c:rn(1,15)});
+  }
+  for (let i=3; i<8; i++) {
+    answers.push(generate_answer(i * h/5));
+  }
+  gameLoop();
+}
+
+function generate_answer(n) {
+  let spot = findClearSpot(n);
+	let a = rn(2,9);
+	let b = rn(2,9);
+	if (Math.random() < 0.5)
+		 return {x:spot.x, y:spot.y, question:a+" x "+b+" = "+a*b, correct:true, color:"black"};
+	else {
+		let wrongA = rn(2,7);
+		if (wrongA == a) wrongA++;
+		return {x:spot.x, y:spot.y, question:a+" x "+b+" = "+wrongA*b, correct:false, color:"black"};
+	}
+}
+
+function findClearSpot(n) {
+  let c = 0;
+  while (c++ < 1000) {
+    let x = rn(150, w-150) + slope.x;
+    let y = n + slope.y;
+		if (isClear(x, y)) return {x:x, y:y};
+	}
+	console.log("Couldn't find Location");
+	return {x:0, y:0};
+}
+
+function isClear(x, y) {
+  for (let i=0; i<trees.length; i++) {
+    let tree = {x:trees[i].x, y:trees[i].y + trees[i].r * 0.6};
+    if (distance({x:x, y:y}, tree) < trees[i].r * 2) return false;
+  }
+  for (let i=0; i<answers.length; i++) {
+    let answer = {x:answers[i].x, y:answers[i].y};
+    if (distance({x:x, y:y}, answer) < 200) return false;
+  }
+  return true;
+}
+
+function drawSnowboarder(x, y, size) {
+  const angle = Math.atan2( mouse.x - w/2, mouse.y - h/2 );
+  const p = Math.abs(Math.cos(angle)) * 0.66 + 0.33;
+  const v1 = {x: Math.sin(angle) * size,
+              y: Math.cos(angle) * size * (1.666 - p)
+  }
+  //Draw Board
+  line(x + v1.x, y + v1.y, x - v1.x, y - v1.y, size * p * 0.5, colors.board)
+
+  const rboot = getPoint(x, y, v1, 0.3, 0, 0.3, 0.05, size);
+  const lboot = getPoint(x, y, v1, -0.3, 0, -0.3, 0.05, size);
+  const rleg = getPoint(x, y, v1, 0.3, 0, 0.2, 0.6, size);
+  const lleg = getPoint(x, y, v1, -0.3, 0, -0.2, 0.6, size);
+  const chest = getPoint(x, y, v1, 0, 0.7, 0, 1.2, size);
+  const rarm = getPoint(x, y, v1, 0.2, 1.2, 0.4, 0.7, size);
+  const larm = getPoint(x, y, v1, -0.2, 1.2, -0.4, 0.7, size);
+  const head = getPoint(x, y, v1, 0, 1.5, 0, 1.6, size);
+  const hat = getPoint(x, y, v1, 0, 1.7, 0, 1.7, size);
+  const hat2 = getPoint(x, y, v1, 0, 1.8, 0, 1.85, size);
+
+  //Draw Legs
+  line(rboot.x1, rboot.y1, rboot.x2, rboot.y2, size * 0.25, "black");
+  line(lboot.x1, lboot.y1, lboot.x2, lboot.y2, size * 0.25, "black");
+  line(rleg.x1, rleg.y1, rleg.x2, rleg.y2, size * 0.2, colors.pants);
+  line(lleg.x1, lleg.y1, lleg.x2, lleg.y2, size * 0.2, colors.pants);
+
+  //Draw Back Arm
+  if (Math.abs(angle) > Math.PI / 2) 
+    line(rarm.x1, rarm.y1, rarm.x2, rarm.y2, size * 0.2, colors.arms);
+  else line(larm.x1, larm.y1, larm.x2, larm.y2, size * 0.2, colors.arms);
+
+  //Draw Chest
+  line(chest.x1, chest.y1, chest.x2, chest.y2, size * 0.5, colors.chest);
+
+  //Draw Front Arm
+  if (Math.abs(angle) > Math.PI / 2) 
+    line(larm.x1, larm.y1, larm.x2, larm.y2, size * 0.2, colors.arms);
+  else line(rarm.x1, rarm.y1, rarm.x2, rarm.y2, size * 0.2, colors.arms);
+
+  //Draw Head
+  line(head.x1, head.y1, head.x2, head.y2, size * 0.3, colors.head);
+  line(hat.x1, hat.y1, hat.x2, hat.y2, size * 0.35, colors.hat);
+  line(hat2.x1, hat2.y1, hat2.x2, hat2.y2, size * 0.25, colors.hat2);
+}
+
+function getPoint(x, y, v, out1, h1, out2, h2, size) {
+  const modify = (crash > Date.now())? -0.5 : 1;
+  return {x1: x + v.x * out1, y1: y + v.y * out1 - h1 * size * modify, 
+          x2: x + v.x * out2, y2: y + v.y * out2 - h2 * size * modify}
+}
+
+function line(x1, y1, x2, y2, width, color) {
+  ctx.lineCap = "round";
+  ctx.lineWidth = width;
+  ctx.strokeStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+}
+
+function circle(x, y, radius, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI*2);
+  ctx.fill();
+}
+
+function drawSnow() {
+  for (let i=snow.length-1; i>=0; i--) {
+    let color = "rgb("+(255-snow[i].c)+","+(255-snow[i].c)+","+(255-snow[i].c)+")";
+    circle(snow[i].x - slope.x, snow[i].y - slope.y, snow[i].r, color);
+    if (i < SNOWNUM) checkBounds(snow[i]);
+    else {
+      snow[i].x -= snow[i].v/10;
+      snow[i].v *= 0.9;
+      if (snow[i].y < slope.y - 200) snow.splice(i,1);
+    }
+  }
+}
+
+function shootSnow(vector) {
+  let spot = {x: player.x + slope.x - vector/10 + rn(-20, 20), y: player.y + rn(-10, 20) + slope.y};
+  snow.push({x:spot.x, y:spot.y, r:rn(2,10), c:rn(1,25), v:vector/3});
+}
+
+function processTrees() {
+  for (let i=0; i<trees.length; i++) {
+    let x = trees[i].x - slope.x;
+    let y = trees[i].y - slope.y - trees[i].r;
+    drawTree(x, y, trees[i].r, i)
+    if (distance(player, {x:x, y:y}) < trees[i].r * 0.5) {
+      crash = Date.now() + 1000;
+      player.y += 10;
+    }
+    if (y < -100) {
+		  let spot = findClearSpot(h * 1.5);
+			trees[i].x = spot.x;
+			trees[i].y = spot.y;
+		}
+  }
+}
+
+function drawTree(x, y, r, n) {
+  branch(x, y-80, r, "rgba(0,100,0)")
+  branch(x, y-90, r*0.9, "rgba(0,105,0)")  
+  branch(x, y-100, r*0.8, "rgba(0,110,0)")  
+  branch(x, y-120, r*0.7, "rgba(0,115,0)")  
+  branch(x, y-130, r*0.6, "rgba(0,120,0)")
+  branch(x, y-140, r*0.5, "rgba(0,125,0)")
+}
+
+function branch(x, y, r, c) {
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.quadraticCurveTo(x, y+r*0.66, x+r*0.66, y+r);
+  ctx.quadraticCurveTo(x, y+r*1.33, x-r*0.66, y+r);
+  ctx.quadraticCurveTo(x, y+r*0.66, x, y);
+  ctx.fillStyle = c;
+  ctx.fill();
+	ctx.beginPath();
+  let sX = x + (Math.sin(r*100)*100 % r/3) - r/6;
+	ctx.moveTo(sX, y+r * 0.95);
+  ctx.quadraticCurveTo(sX + r * 0.5, y+r, sX, y+r * 1.05);
+  ctx.quadraticCurveTo(sX - r * 0.5, y+r, sX, y+r * 0.95);
+  ctx.fillStyle = "rgb(245,245,245)";
+  ctx.fill();
+}
+
+function processAnswers() {
+  ctx.font = '30px Arial';
+  for (let i=0; i<answers.length; i++) {
+      ctx.fillStyle = answers[i].color;
+    ctx.fillText(answers[i].question, answers[i].x - slope.x, answers[i].y - slope.y);
+    if (answers[i].color == "black") {
+      if (answers[i].y < slope.y + 100) {
+        if (answers[i].correct == false) {
+				  score += 50;
+					answers[i].question = "Good Job +50";
+        } else {
+				  score -= 50;
+					answers[i].question = "You Missed This -50";
+				}
+				answers[i].color = "orange";
+      }
+      if (distance(player, {x:answers[i].x - slope.x, y:answers[i].y - slope.y}) < 80) 
+        checkAnswer(i);
+    }
+	  if (answers[i].y < slope.y - 30)
+      answers.splice(i, 1, generate_answer(h));
+  }
+}
+
+function checkAnswer(n) {
+  if (answers[n].correct) {
+    answers[n].color = "green";
+    score += 50;
+   } else {
+    answers[n].color = "red";
+    crash = Date.now() + 3000;
+		score -= 50;
+  }
+}
+
+function checkBounds(obj) {
+    if (obj.y < slope.y - 200) obj.y += h + 500;
+    if (obj.x < slope.x-100) obj.x += w+200;
+    else if (obj.x > slope.x + w + 100) obj.x -= w+200;
+}
+
+function draw() {
+  ctx.fillStyle = "white";
+  ctx.fillRect(0, 0, w, h);
+  drawSnow();
+	ctx.fillStyle = "blue";
+	ctx.fillText( "Only grab correct equations", w/2, 200 - slope.y);
+  drawSnowboarder(player.x, player.y, player.size);
+  processTrees();
+  processAnswers();
+  ctx.fillStyle = "black";
+  ctx.fillText("Score: "+Math.floor(score), w/2, 40);
+}
+
+function update() {
+  if (crash > Date.now()) return;
+
+  //const max = (mouse.y > player.y)? 0.03:0.002
+	if (mouse.y < player.y && speed > 0) speed -= 0.0005;
+  const x_dist = (mouse.x - player.x);
+  speed = Math.min(0.03, speed + 0.0000005 * Math.abs(x_dist));
+  player.y += (mouse.y - player.y) * speed;
+  player.x += x_dist * speed;
+  
+  if (Math.abs(x_dist) > 100 && speed > 0.01) shootSnow(x_dist);
+  
+  if (player.y > h/2) {
+    slope.y += player.y - h/2;
+    player.y = h/2;
+  }
+  if (player.x > w * 0.7) {
+    slope.x += player.x - w * 0.7;
+    player.x = w * 0.7;
+  } else if (player.x < w * 0.3) {
+    slope.x += player.x - w * 0.3;
+    player.x = w * 0.3;
+  }
+}
+
+function distance(p1, p2) {
+  return Math.sqrt(Math.pow(p1.x-p2.x, 2) + Math.pow(p1.y-p2.y, 2));
+}
+
+function gameLoop() {
+  draw();
+  update();
+  requestAnimationFrame(gameLoop);
+}
+
+function rn(min, max) {
+  return Math.floor(min+Math.random()*(max-min+1));
+}
+
+window.addEventListener('mousemove', (e) => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+});
+
+window.addEventListener('touchmove', (e) => {
+  mouse.x = e.touches[0].clientX;
+  mouse.y = e.touches[0].clientY;
+});
+</script>
+</body>
+</html>

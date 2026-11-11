@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Math Murderer</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<style>
+div {position:fixed; top:0px; color:white; font-size:40px;}
+body {margin:0px; overflow:hidden; cursor:none;}
+</style>
+</head>
+<body>
+<canvas id="fg" style="position:fixed; width:100%; height:100%; z-index:5"/>
+<script type="importmap">
+  {"imports": {"three": "https://unpkg.com/three@0.153.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'https://unpkg.com/three@0.153.0/examples/jsm/loaders/GLTFLoader.js';
+
+//ADJUSTABLE CONSTANTS
+const ROBOT_SPEED = 100;
+const ROBOT_ATTACK_SPEED = 150;
+const PLAYER_SPEED = 500;
+const PLAYER_TURN_SPEED = 2;
+const GUN_VOLUME = 2;
+const ROBOT_DAMAGE = 40;
+const PLAYER_DAMAGE = 20;
+const NUMBER_OF_ROBOTS = 6;
+
+let clock = new THREE.Clock();
+let bonus = 100;
+let frames = 0;
+let robots = [];
+let keys = [];
+let blood = [];
+let question = {text:"",answer:-1};
+let message = {text:"",color:"",size:1,time:0}
+let angle = 0;
+let score = 0;
+let health = 100;
+let mouse = {x:0, y:0};
+let touch = false;
+let time = (new Date().getTime());
+const gun = new THREE.Group();
+const gltfLoader = new GLTFLoader();
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+const audioCtx = new AudioContext();
+
+//this creates a foreground canvas for the User Interface
+let fg = document.getElementById("fg");
+fg.x = fg.getContext("2d");
+fg.width = window.innerWidth;
+fg.height = window.innerHeight;
+fg.addEventListener("click", function (event) {event.preventDefault()});
+
+//This canvas generator is used for textures for the robot faces
+function get_canvas(number) {
+  let can = document.createElement("canvas");
+  can.x = can.getContext("2d");
+  can.width = 128;
+  can.height = 128;
+  drawNumber(can.x, number);
+  return can;
+}
+
+function drawNumber(ctx, n) {
+  ctx.fillStyle = "rgb(0,0,0)";
+  ctx.fillRect(0,0,128,128);
+  ctx.font = "100px Arial";
+  ctx.fillStyle = "rgb(255,255,255)";
+  let width = ctx.measureText(n).width
+  ctx.fillText(n, 64 - width/2, 96);
+}
+
+//scene
+let scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000)
+camera.position.set(0, 150, -500); 
+camera.lookAt(0, 150, 0);
+const renderer = new THREE.WebGLRenderer({antialias: true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+//basic directional light - This is a flashlight
+const dirLight = new THREE.SpotLight( 0xffffff, 0.4, 4000, 0.5, 0.99, 5);
+dirLight.position.set( 0, 150, -500);
+dirLight.target.position.set(0,150,0);
+scene.add( dirLight );
+scene.add( dirLight.target );
+
+//floor
+const floor = new THREE.Mesh( new THREE.PlaneGeometry(10000, 10000, 1), new THREE.MeshPhongMaterial( {color: 0x00ff00}));
+floor.rotateX(-90*Math.PI/180);
+scene.add( floor );
+
+//walls - Creates a brick texture with a canvas and draws walls around the scene
+let fc = document.createElement("canvas");
+fc.x = fc.getContext("2d");
+fc.width = 128;
+fc.height = 64;
+fc.x.fillStyle = "rgb(255,255,255)";
+fc.x.fillRect(0,0,128,64);
+fc.x.fillStyle = "rgb(123,40,20)";
+fc.x.fillRect(5,5,118,27);
+fc.x.fillRect(0,37,59,27);
+fc.x.fillRect(69,37,59,27);
+fc.texture = new THREE.CanvasTexture(fc);
+fc.texture.wrapS = fc.texture.wrapT = THREE.RepeatWrapping;
+const wall = new THREE.Mesh( new THREE.PlaneGeometry(4000, 400, 1), new THREE.MeshPhongMaterial( {map:fc.texture}));
+wall.material.map.repeat.set(160,16);
+wall.position.set(0,150,-2000);
+scene.add( wall.clone() );
+wall.rotateY(90*Math.PI/180);
+wall.position.set(-2000,150,0);
+scene.add( wall.clone() );
+wall.rotateY(90*Math.PI/180);
+wall.position.set(0,150,2000);
+scene.add( wall.clone() );
+wall.rotateY(90*Math.PI/180);
+wall.position.set(2000,150,0);
+scene.add( wall );
+
+//decorations
+gltfLoader.load( './models/naturePack.glb', function (gltf) {
+  for(let i=0; i<20; i++) dTree(gltf.scene.children[5].clone());
+  for(let i=0; i<20; i++) pTree(gltf.scene.children[2].clone());
+  for(let i=0; i<1000; i++) bush(gltf.scene.children[18].clone());
+  for(let i=0; i<100; i++) flower(gltf.scene.children[23].clone());
+});
+
+function dTree(tree) {
+  let pos = outerPosition(1000, 1500);
+  tree.scale.set(20,50,20);
+  tree.rotation.y = rn(1,360)/180*Math.PI;
+  tree.position.set(pos[0],80,pos[1]);
+  tree.children[0].material = new THREE.MeshPhongMaterial( {color: 0x994411} );
+  scene.add( tree ); 
+}
+
+function pTree(tree) {
+  let pos = outerPosition(1500, 1800);
+  tree.scale.set(50,80,50);
+  tree.rotation.y = rn(1,360)/180*Math.PI;
+  tree.position.set(pos[0],160,pos[1]);
+  tree.children[0].material = new THREE.MeshPhongMaterial( {color: 0x114411} );
+  tree.children[1].material = new THREE.MeshPhongMaterial( {color: 0x773300} );
+  scene.add( tree ); 
+}
+
+function bush(tree) {
+  let pos = outerPosition(0, 1500);
+  tree.scale.set(5,10,5);
+  tree.rotation.y = rn(1,360)/180*Math.PI;
+  tree.position.set(pos[0],20,pos[1]);
+  tree.material = new THREE.MeshPhongMaterial( {color: 0x22aa11} );
+  scene.add( tree ); 
+}
+
+function flower(tree) {
+  let pos = outerPosition(20, 1500);
+  tree.scale.set(5,15,5);
+  tree.rotation.y = rn(1,360)/180*Math.PI;
+  tree.position.set(pos[0],40,pos[1]);
+  tree.children[0].material = new THREE.MeshPhongMaterial( {color: 0x66ff88} );
+  tree.children[1].material = new THREE.MeshPhongMaterial( {color: 0xff7722} );
+  scene.add( tree ); 
+}
+
+function rn(min, max) { return Math.floor(Math.random()*(max-min+1))+min }
+
+//Generates points along the perimeter of a square (used to place trees by wall)
+function outerPosition(min,max) {
+  let n = [rn(min,max)*((rn(0,1)-0.5)*2),rn(-max,max)];
+  return (rn(1,2) == 1)? [n[1],n[0]]:[n[0],n[1]];
+}
+
+function getGun() {
+  gltfLoader.load( './models/m14_rifle.glb', function (gltf) {
+    gun.add( gltf.scene );
+  });
+}
+getGun();
+scene.add(gun);
+
+//Robot Creation - Loads a gltf model and assigns all the attributes
+function newRobot(number) {
+  gltfLoader.load( './models/robot.glb', function (gltf) {
+    let character = new THREE.Group();
+    character.add(gltf.scene);
+    character.status = "work";
+    character.health = 100;
+    character.target = newTarget();
+    character.headSwivel = false;
+    character.mixer = new THREE.AnimationMixer( character );
+    character.mixer.clipAction(THREE.AnimationUtils.subclip(gltf.animations[ 0 ], "Idle",0,60)).play();
+    character.mixer.clipAction(THREE.AnimationUtils.subclip(gltf.animations[ 1 ], "Walk",0,60)).play();
+    character.mixer._actions[1].enabled = true;
+    character.mixer.timeScale=3;
+    let color = [0xff0000,0x00ff00,0x0000ff,0xffff00,0x00ffff,0xff00ff][rn(0,5)];
+    var newMaterial = new THREE.MeshPhongMaterial({color: color});
+    character.traverse((o) => { if (o.isMesh) o.material = newMaterial; });
+    character.canvas = get_canvas(number);
+    character.value = number;
+    character.texture = new THREE.CanvasTexture(character.canvas);
+    const face = new THREE.Mesh( 
+      new THREE.PlaneGeometry(1, 1, 1),
+      new THREE.MeshLambertMaterial( { map:character.texture } )
+    );
+    face.position.set(0,0,0.8);
+    character.head = gltf.scenes[0].children[0].children[0].children[0].children[0].children[0];
+    character.head.add(face.clone());
+    face.rotateY(Math.PI);
+    face.position.set(0,0,-0.8);
+    character.head.add(face);
+    let pos = outerPosition(1200,1500);
+    character.children[0].position.y = 4;
+    character.position.set(pos[0], 50, pos[1]);
+    character.scale.set(35,35,35);
+    character.lookAt(character.target);
+    robots.push( character );
+    scene.add( character );
+  });
+}
+
+function newTarget() {
+  return camera.position.clone().add(new THREE.Vector3(Math.floor(Math.random()*1000)-500, -150, Math.floor(Math.random()*1000)-500));
+}
+
+function nextQuestion() {
+  bonus = 100;
+  let a = Math.floor(Math.random()*8+2.5);
+  let b = Math.floor(Math.random()*8+2.5);
+  question = {text:"What is "+a+" x "+b+"?",answer:a*b}
+  let bank = [];
+  for (let i=2; i<10; i++) {
+    if (i != b) bank.push(a*i);
+    if (i != a) bank.push(b*i);
+  }
+  for (let r of robots) {
+    r.status = 'exit';
+    r.target.set(r.target.x*10000,150,r.target.z*10000);
+  }
+  for (let i=0; i<NUMBER_OF_ROBOTS; i++) {
+    let next = Math.floor(Math.random()*bank.length);
+    newRobot(bank[next]);
+    bank.splice(next,1);
+  }
+  newRobot(question.answer);
+  time = (new Date().getTime());
+}
+
+nextQuestion();
+
+//render
+renderer.setAnimationLoop( render );
+function render(){
+  frames++;
+  if (bonus <= 0) bonus = 0;
+  else bonus -= 6/(frames/clock.elapsedTime);
+  processRobotMovement(clock.getDelta());
+  processMovement();
+  aimGun();
+  updateUI();
+  drawBlood();
+  drawCrosshair();
+  if (touch) drawLineData(touchUILines);
+  renderer.render(scene, camera);
+}
+
+//Process robot movement
+function processRobotMovement(clockDelta) {
+  for (let r of robots) {
+    if (r.status == 'dead') {
+      removeRobot(r, clockDelta);
+    } else {
+      r.mixer.update( clockDelta );
+      if (r.position.distanceTo(r.target) < 70) robotAtTarget(r, clockDelta);
+      else robotIsWalking(r, clockDelta);
+    }
+  }
+}
+
+function robotIsWalking(r, clockDelta) {
+  const distance = r.position.distanceTo(camera.position);
+  let speed = (r.status == "murder")? ROBOT_ATTACK_SPEED:ROBOT_SPEED;
+  if (distance > 500) speed *= 2;
+  speed = (speed * clockDelta);
+  if (distance > 4000) removeRobot(r, clockDelta);
+  r.position.add(r.target.clone().sub(r.position).normalize().multiplyScalar(speed));
+  let head = r.children[0].children[0].children[0].children[0]
+  if (rn(1,100) > 99) r.headSwivel = !r.headSwivel;
+  if (r.headSwivel) r.head.lookAt(camera.position);
+  else r.head.rotationY = 0; 
+  if (r.value == question.answer) {
+    if ((new Date().getTime())-time > 7000 && rn(1,1000) > 998)
+      becomeAMurderer(r);
+  }
+}
+
+function becomeAMurderer(robot) {
+  robot.target.copy(camera.position);
+  robot.target.y -= 150;
+  robot.lookAt(robot.target);
+  robot.status = "murder"; 
+}
+
+function robotAtTarget(r, clockDelta) {
+  //If its target is not the camera, then find a new target
+  if (r.status == "work") {
+    r.target = newTarget();
+    r.lookAt(r.target);
+  //If the robot is at the camera, the player is injured
+  } else {
+    health -= ROBOT_DAMAGE * clockDelta;
+    blood.push({x:rn(1,fg.width),y:rn(1,fg.height),r:rn(10,50)});
+    if (health < 1) youDied();
+  }
+}
+
+//Draws semi transparent red circles to indicate poor health
+function drawBlood() {
+  for(let i=0; i<blood.length; i++) {
+    fg.x.beginPath();
+    fg.x.fillStyle = "rgba(255,0,0,0.1)";
+    fg.x.arc(blood[i].x, blood[i].y, blood[i].r, 0, Math.PI*2);
+    fg.x.fill();
+  }
+}
+
+//Calculates player movement. Uses angle variable to the calculate a point
+//to the side (pointS) and in front (pointF) of the player. The fps varible
+//is used to give a similar speed across different devices. 
+function processMovement() {
+  let fps = frames/clock.elapsedTime;
+  if (keys.indexOf("KeyQ") >= 0) angle += PLAYER_TURN_SPEED/fps;
+  if (keys.indexOf("KeyE") >= 0) angle -= PLAYER_TURN_SPEED/fps;
+  let pointS = new THREE.Vector3(Math.sin(angle+Math.PI/2)*PLAYER_SPEED/fps, 0, Math.cos(angle+Math.PI/2)*PLAYER_SPEED/fps);
+  let pointF = new THREE.Vector3(Math.sin(angle)*PLAYER_SPEED/fps, 0, Math.cos(angle)*PLAYER_SPEED/fps);
+  if (keys.indexOf("KeyA") >= 0) camera.position.add(pointS);
+  if (keys.indexOf("KeyD") >= 0) camera.position.sub(pointS);
+  if (keys.indexOf("KeyW") >= 0) camera.position.add(pointF);
+  if (keys.indexOf("KeyS") >= 0) camera.position.sub(pointF);
+  checkBoundaries();
+  
+  //Move the Flashlight to the player and aim it forward
+  dirLight.position.copy(camera.position);
+  dirLight.target.position.copy(camera.position).add(pointF);
+  camera.lookAt(dirLight.target.position);
+  
+  //Position the gun in front and slightly lower than player
+  gun.position.copy(camera.position).add(pointF.normalize().divideScalar(2));
+  gun.position.y -= 0.2;
+}
+
+function checkBoundaries() {
+  if (camera.position.x > 1800) camera.position.x = 1800;
+  if (camera.position.x < -1800) camera.position.x = -1800;
+  if (camera.position.z > 1800) camera.position.z = 1800;
+  if (camera.position.z < -1800) camera.position.z = -1800;
+}
+
+//This function is called when mouse moves and rotates gun towards mouse
+function aimGun() {
+  gun.lookAt(dirLight.target.position);
+  if (touch && mouse.y > fg.height*0.7) return;
+  let xAngle = Math.atan2(mouse.x - fg.width/2, fg.height/2);
+  let yAngle = Math.atan2(fg.width/2, mouse.y - fg.height/2);
+  gun.rotateY(-xAngle);
+  gun.rotateX(-yAngle+Math.PI/2);
+}
+
+//Called when health is zero to display message are reset variables
+function youDied() {
+  fg.x.font = "80px Arial";
+  fg.x.fillStyle = "rgb(255,0,0)";
+  fg.x.fillText("You Were Killed!", fg.width/2-200, 100);
+  health = 100;
+  score = 0;
+  blood = [];
+  nextQuestion();
+  //renderer.setAnimationLoop(null); 
+}
+
+//Updates div elements with score, health, question, bonus and messages
+function updateUI() {
+  fg.x.clearRect(0, 0, fg.width, fg.height);
+  let size = (fg.width > 500)? 1:fg.width/500;
+  let scoreTxt = "Score: "+Math.floor(score);
+  let healthTxt = "Health: "+Math.floor(health);
+  fg.x.font = size*30 + "px Arial";
+  fg.x.fillStyle = "rgb(255,255,255)";
+  fg.x.fillText(scoreTxt, fg.width-getWidth(scoreTxt), 30);
+  fg.x.fillText(question.text, 10, 30);
+  fg.x.fillStyle = "rgb("+(255-health*2.55)+","+health*255+",0)";
+  fg.x.fillText(healthTxt, fg.width-getWidth(healthTxt), 60);
+  fg.x.fillStyle = "rgb(100,100,255)";
+  fg.x.fillText("Bonus", fg.width/2-getWidth("Bonus")/2, 130);
+  fg.x.fillText(Math.floor(bonus), fg.width/2-getWidth(Math.floor(bonus))/2, 160);
+  if (message.time > clock.elapsedTime) {
+    fg.x.fillStyle = message.color;
+    fg.x.font = message.size * size + "px Arial";
+    fg.x.fillText(message.text, fg.width/2-getWidth(message.text)/2, fg.height/2);
+  }
+  fg.x.fillStyle = "rgb(255,255,255)";
+  fg.x.font = size*20 + "px Arial";
+  if (touch == false)
+    fg.x.fillText("Press WASD to move. Press Q and E to turn.",10,fg.height-20);
+}
+
+function getWidth(txt) { return fg.x.measureText(txt).width; }
+
+//When the mouse clicks, play gunshot sound, use raytracing to detect hits
+window.addEventListener( 'mousedown', (e) => {
+  if (touch) return;
+  mouse.x = e.clientX; mouse.y = e.clientY; gunShot();});
+
+function gunShot() {
+  gunshotSound();
+  pointer.x = ( mouse.x / window.innerWidth ) * 2 - 1;
+  pointer.y = - ( mouse.y / window.innerHeight ) * 2 + 1;
+  raycaster.setFromCamera( pointer, camera );
+  const intersects = raycaster.intersectObjects( robots );
+  if (intersects.length < 1 || !("object" in intersects[0])) return;
+  let target = intersects[0].object;
+  for (let i=0; i<10; i++) {
+    if (target.name == "Scene") {
+      evaluate_click(target.parent);
+      break;
+    }
+    target = target.parent;
+  }
+};
+
+function evaluate_click(target) {
+  message.size = 50;
+  message.time = clock.elapsedTime + 2;
+  if (target.value == question.answer) clickedRightAnswer(target);
+  else clickedWrongAnswer(target);
+}
+
+function clickedRightAnswer(target) {
+  message.color = "rgb(0,255,0)";
+  message.text = "Got it!!! Answer is "+question.answer;
+  score += 50;
+  if (bonus > 0) score += bonus;
+  nextQuestion();
+  target.status = 'dead';
+}
+
+//If wrong answer is clicked, it's face changes and it comes after you
+function clickedWrongAnswer(target) {
+  message.color = "rgb(255,0,0)";
+  message.text = "Noooooo!! Not " + target.value;
+  target.texture.needsUpdate = true;
+  drawFace(target.canvas);
+  target.health -= PLAYER_DAMAGE;
+  becomeAMurderer(target);
+  score = score*0.9;
+  if (target.health <= 0) target.status = 'dead'
+}
+
+function removeRobot(robot, clockDelta) {
+  robot.lookAt(new THREE.Vector3(camera.position.x, (robot.position.y-31)*10, camera.position.z));
+  robot.position.y -= clockDelta*100;
+  if (robot.position.y < -100) {
+    scene.remove(robot);
+    robots.splice(robots.indexOf(robot),1);
+  } 
+}
+
+//Draw a frowny face for robots that get incorrectly clicked
+function drawFace(can) {
+  can.x.fillStyle = "rgb(255,0,0)";
+  can.x.fillRect(0,0,128,128);
+  let frownLines = [{c:"rgb(0,0,0)",w:10,can:can,p:[0.2,0.2,0.4,0.3]},{c:"rgb(0,0,0)",w:10,can:can,p:[0.6,0.3,0.8,0.2]},{c:"rgb(0,0,0)",w:10,can:can,p:[0.3,0.7,0.5,0.5,0.7,0.7]}]
+  drawLineData(frownLines);
+}
+
+addEventListener("keydown", (event) => {
+  if (keys.indexOf(event.code) < 0) keys.push(event.code);
+});
+
+addEventListener("keyup", (event) => {
+  keys.splice(keys.indexOf(event.code),1);
+});
+
+addEventListener("mousemove", (event) => {
+  mouse = {x:event.clientX, y:event.clientY};
+});
+
+//Draws crosshair where the mouse pointer is
+function drawCrosshair(){
+  fg.x.beginPath();
+  fg.x.lineWidth = 2;
+  fg.x.moveTo(mouse.x-10, mouse.y);
+  fg.x.lineTo(mouse.x+10, mouse.y);
+  fg.x.moveTo(mouse.x, mouse.y-10);
+  fg.x.lineTo(mouse.x, mouse.y+10);
+  fg.x.strokeStyle = "rgb(255,0,0)";
+  fg.x.stroke();
+}
+
+fg.addEventListener("mouseleave", (event) => { renderer.setAnimationLoop(null); })
+fg.addEventListener("mouseenter", (event) => { renderer.setAnimationLoop( render ); })
+
+document.addEventListener('pointerdown', (event) => {
+  if (event.pointerType === 'touch') { touch = true; }
+});
+
+//This uses the audio context to generate a sound for gunshots
+function gunshotSound() { 
+  if (!audioCtx) {
+      audioCtx = new (window.audioCtx || window.webkitaudioCtx)();
+  }
+
+  // White Noise for the initial "bang"
+  const bufferSize = audioCtx.sampleRate * 0.5; // 0.5 seconds of noise
+  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const output = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+      output[i] = Math.random() * 2 - 1; // Generate random values between -1 and 1
+  }
+  const whiteNoiseSource = audioCtx.createBufferSource();
+  whiteNoiseSource.buffer = noiseBuffer;
+  whiteNoiseSource.playbackRate.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+
+  // Gain Node for envelope shaping (attack and decay)
+  const gainNode = audioCtx.createGain();
+  gainNode.gain.value = GUN_VOLUME;
+  gainNode.gain.exponentialRampToValueAtTime(0.05, audioCtx.currentTime + 0.5); // Rapid decay
+  
+  // Create Low-Pass Filter
+  const lowpassFilter = audioCtx.createBiquadFilter();
+  lowpassFilter.type = "lowpass";
+  lowpassFilter.frequency.setValueAtTime(850, audioCtx.currentTime);
+  lowpassFilter.Q.setValueAtTime(1, audioCtx.currentTime); // Set resonance (Q factor)
+
+  // Connect the nodes
+  whiteNoiseSource.connect(lowpassFilter);
+  lowpassFilter.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+
+  // Start and Stop the sources
+  whiteNoiseSource.start(audioCtx.currentTime);
+  whiteNoiseSource.stop(audioCtx.currentTime + 0.5);
+}
+
+const touchUILines = [{w:10,p:[0,0.7,1,0.7]},{w:10,p:[0,0.85,1,0.85]},{w:10,p:[0.33,0.695,0.33,1]},{w:10,p:[0.66,0.695,0.66,1]},{f:true,p:[0.19,0.82, 0.19,0.79, 0.17,0.78, 0.14,0.78, 0.14,0.81, 0.07,0.775, 0.14,0.73, 0.14,0.75, 0.17,0.75, 0.21,0.76, 0.23,0.79, 0.23,0.82]},{f:true,p:[0.81,0.82, 0.81,0.79, 0.83,0.78, 0.86,0.78, 0.86,0.81, 0.93,0.775, 0.86,0.73, 0.86,0.75, 0.83,0.75, 0.79,0.76, 0.77,0.79, 0.77,0.82]},{f:true,p:[0.44,0.82, 0.46,0.77, 0.37,0.77, 0.5,0.73, 0.63,0.77, 0.54,0.77, 0.56,0.82]},{f:true,p:[0.46,0.88, 0.44,0.93, 0.35,0.93, 0.5,0.97, 0.65,0.93, 0.56,0.93, 0.54,0.88]},{f:true,p:[0.25,0.95, 0.17,0.94, 0.15,0.97, 0.05,0.91, 0.2,0.88, 0.18,0.91, 0.26,0.905]},{f:true,p:[0.75,0.95, 0.83,0.94, 0.85,0.97, 0.95,0.91, 0.8,0.88, 0.82,0.91, 0.74,0.905]},];
+
+//UI for touch screen users to see how to control by pressing buttons in the bottom
+//It processes the above touchUIlines variable with the points to draw the arrows
+function drawLineData(lines) {
+  for(let i=0; i<lines.length; i++) {
+    let color = ('c' in lines[i])? lines[i].c:"rgba(100,100,100,0.5";
+    let can = ('can' in lines[i])? lines[i].can:fg;
+    can.x.fillStyle = fg.x.strokeStyle = color;
+    can.x.beginPath();
+    can.x.lineWidth = ('w' in lines[i])? lines[i].w:1;
+    can.x.moveTo(lines[i].p[0]*can.width, lines[i].p[1]*can.height);
+    for(let j=2; j<lines[i].p.length; j+=2) {
+      can.x.lineTo(lines[i].p[j]*can.width, lines[i].p[j+1]*can.height);
+    }
+    if ('f' in lines[i]) can.x.fill(); else can.x.stroke();
+  }
+}
+
+//Listen for touch events that match up to the arrows shown for touch controls
+addEventListener("touchstart", (event) => {
+  let t = event.changedTouches[0];
+  mouse.x = t.pageX; 
+  mouse.y = t.pageY;
+  console.log(mouse.y);
+  if (t.pageY > fg.height*0.7) {
+    if (t.pageY > fg.height*0.85) {
+      if (t.pageX < fg.width*0.33) keys.push("KeyA");
+      else if (t.pageX < fg.width*0.66) keys.push("KeyS");
+      else keys.push("KeyD");
+    } else {
+      if (t.pageX < fg.width*0.33) keys.push("KeyQ");
+      else if (t.pageX < fg.width*0.66) keys.push("KeyW");
+      else keys.push("KeyE");
+    }
+  } 
+});
+
+addEventListener("touchend", (event) => { keys = [];
+  if (mouse.y < fg.height*0.7) gunShot(); });
+
+</script>
+</body>
+</html>
