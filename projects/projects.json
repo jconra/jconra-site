@@ -79,6 +79,14 @@
    "img": "shots/earth"
   },
   {
+   "id": "math-south-park",
+   "group": "math",
+   "name": "South Park Math",
+   "text": "Pick a South Park character and walk to the right answer. The UFO beams up the correct one; get it wrong and it takes you.",
+   "href": "/projects/math-games/south-park/",
+   "img": "shots/math-south-park"
+  },
+  {
    "id": "math-dino",
    "group": "math",
    "name": "Dino Math",
